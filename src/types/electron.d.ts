@@ -1,6 +1,38 @@
+export interface RagStatus {
+  ready: boolean;
+  chunksCount?: number;
+  filesCount?: number;
+  builtAt?: string;
+  model?: string;
+}
+
+export interface RunningProcess {
+  name: string;
+  pid: number;
+  command?: string;
+  startedAt?: string;
+}
+
+export interface ProcessStatus {
+  runningCount: number;
+  processes: RunningProcess[];
+}
+
+export interface GitLastCommit {
+  hash: string;
+  message: string;
+  date: string;
+  author: string;
+}
+
 export interface ProjectInfo {
   name: string;
   path: string;
+  description?: string;
+  version?: string;
+  favorite?: boolean;
+  addedAt?: string;
+  lastScannedAt?: string;
   hasBacklog: boolean;
   hasInfraConfig: boolean;
   hasGit: boolean;
@@ -9,6 +41,7 @@ export interface ProjectInfo {
   gitAhead?: number;
   gitBehind?: number;
   uncommittedCount?: number;
+  lastCommit?: GitLastCommit;
   taskCounts?: {
     total: number;
     todo: number;
@@ -16,6 +49,8 @@ export interface ProjectInfo {
     review: number;
     done: number;
   };
+  ragStatus?: RagStatus;
+  processStatus?: ProcessStatus;
   features?: {
     docsRag?: boolean;
     envTools?: boolean;
@@ -43,10 +78,29 @@ export interface GitCommit {
   author_email: string;
 }
 
+export interface ScanOptions {
+  roots?: string[];
+  depth?: number;
+}
+
+export interface RegistrySettings {
+  autoScanOnStartup: boolean;
+  scanDepth: number;
+}
+
 export interface IElectronAPI {
-  // Projects
-  scanProjects: (rootPaths?: string[]) => Promise<ProjectInfo[]>;
+  // Projects & Registry
+  listProjects: () => Promise<ProjectInfo[]>;
+  scanProjects: (options?: ScanOptions) => Promise<ProjectInfo[]>;
+  addProject: (folderPath: string) => Promise<ProjectInfo | null>;
+  removeProject: (projectPath: string) => Promise<boolean>;
+  refreshProject: (projectPath: string) => Promise<ProjectInfo | null>;
+  toggleFavorite: (projectPath: string) => Promise<boolean>;
+  getScanRoots: () => Promise<string[]>;
+  setScanRoots: (roots: string[]) => Promise<boolean>;
   getProjectDetails: (projectPath: string) => Promise<ProjectInfo | null>;
+
+  // System Dialogs & Launchers
   selectDirectory: () => Promise<string | null>;
   openInExplorer: (targetPath: string) => Promise<void>;
   openInCode: (targetPath: string) => Promise<void>;
@@ -71,3 +125,4 @@ declare global {
     api: IElectronAPI;
   }
 }
+

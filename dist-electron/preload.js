@@ -1,7 +1,14 @@
 import { contextBridge as e, ipcRenderer as t } from "electron";
 //#region electron/preload.ts
 e.exposeInMainWorld("api", {
+	listProjects: () => t.invoke("projects:list"),
 	scanProjects: (e) => t.invoke("projects:scan", e),
+	addProject: (e) => t.invoke("projects:add", e),
+	removeProject: (e) => t.invoke("projects:remove", e),
+	refreshProject: (e) => t.invoke("projects:refresh", e),
+	toggleFavorite: (e) => t.invoke("projects:toggleFavorite", e),
+	getScanRoots: () => t.invoke("projects:getScanRoots"),
+	setScanRoots: (e) => t.invoke("projects:setScanRoots", e),
 	getProjectDetails: (e) => t.invoke("projects:getDetails", e),
 	selectDirectory: () => t.invoke("dialog:selectDirectory"),
 	openInExplorer: (e) => t.invoke("system:openInExplorer", e),

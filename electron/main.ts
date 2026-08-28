@@ -5,7 +5,9 @@ import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import matter from 'gray-matter';
 import { simpleGit } from 'simple-git';
-import type { ProjectInfo, BacklogTask, GitCommit } from '../src/types/electron';
+import type { ProjectInfo, BacklogTask, GitCommit, ScanOptions } from '../src/types/electron';
+import { projectRegistry } from './services/projectRegistry';
+import { inspectProject, scanDirectories } from './services/projectScanner';
 
 // The built directory structure
 process.env.DIST = path.join(__dirname, '../dist');
@@ -62,169 +64,89 @@ app.on('activate', () => {
   }
 });
 
-// Helper to inspect a single project directory
-async function inspectProject(folderPath: string): Promise<ProjectInfo | null> {
-  try {
-    const hasBacklog = existsSync(path.join(folderPath, 'backlog'));
-    const hasInfraConfig = existsSync(path.join(folderPath, 'infra.config.json'));
-    const hasGit = existsSync(path.join(folderPath, '.git'));
+// ----------------------------------------------------
+// IPC HANDLERS: PROJECTS & REGISTRY
+// ----------------------------------------------------
 
-    if (!hasBacklog && !hasInfraConfig && !hasGit) {
-      return null;
+// 1. List registered projects with fresh metadata
+ipcMain.handle('projects:list', async () => {
+  const registered = await projectRegistry.getProjects();
+  const results: ProjectInfo[] = [];
+
+  for (const entry of registered) {
+    const details = await inspectProject(entry.path);
+    if (details) {
+      details.favorite = Boolean(entry.favorite);
+      details.addedAt = entry.addedAt;
+      results.push(details);
     }
+  }
 
-    let projectName = path.basename(folderPath);
-    let features: ProjectInfo['features'] = undefined;
+  return results;
+});
 
-    // Read infra.config.json if available
-    if (hasInfraConfig) {
-      try {
-        const rawConfig = await fs.readFile(path.join(folderPath, 'infra.config.json'), 'utf-8');
-        const parsed = JSON.parse(rawConfig);
-        features = parsed.features;
-      } catch (e) {
-        // ignore
-      }
-    }
+// 2. Scan directories and auto-register discovered projects
+ipcMain.handle('projects:scan', async (_event, options?: ScanOptions) => {
+  const roots = options?.roots && options.roots.length > 0
+    ? options.roots
+    : await projectRegistry.getScanRoots();
 
-    // Read backlog/config.yml if available
-    if (hasBacklog && existsSync(path.join(folderPath, 'backlog', 'config.yml'))) {
-      try {
-        const rawBacklog = await fs.readFile(path.join(folderPath, 'backlog', 'config.yml'), 'utf-8');
-        const match = rawBacklog.match(/project_name:\s*["']?([^"'\r\n]+)["']?/);
-        if (match && match[1]) {
-          projectName = match[1];
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
+  const depth = options?.depth ?? 2;
+  const discovered = await scanDirectories(roots, depth);
+  return discovered;
+});
 
-    // Calculate Backlog task counts
-    let taskCounts = { total: 0, todo: 0, inProgress: 0, review: 0, done: 0 };
-    if (hasBacklog && existsSync(path.join(folderPath, 'backlog', 'tasks'))) {
-      try {
-        const taskFiles = await fs.readdir(path.join(folderPath, 'backlog', 'tasks'));
-        for (const file of taskFiles) {
-          if (file.endsWith('.md')) {
-            taskCounts.total++;
-            try {
-              const content = await fs.readFile(path.join(folderPath, 'backlog', 'tasks', file), 'utf-8');
-              const { data } = matter(content);
-              const status = data.status || 'To Do';
-              if (status === 'To Do') taskCounts.todo++;
-              else if (status === 'In Progress') taskCounts.inProgress++;
-              else if (status === 'Review') taskCounts.review++;
-              else if (status === 'Done') taskCounts.done++;
-            } catch (e) {
-              taskCounts.todo++;
-            }
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-
-    // Git inspection
-    let gitBranch: string | undefined;
-    let gitClean = true;
-    let uncommittedCount = 0;
-
-    if (hasGit) {
-      try {
-        const git = simpleGit(folderPath);
-        const status = await git.status();
-        gitBranch = status.current || 'unknown';
-        gitClean = status.isClean();
-        uncommittedCount = status.files.length;
-      } catch (e) {
-        // Git error or detached
-      }
-    }
-
-    return {
-      name: projectName,
-      path: folderPath,
-      hasBacklog,
-      hasInfraConfig,
-      hasGit,
-      gitBranch,
-      gitClean,
-      uncommittedCount,
-      taskCounts,
-      features
-    };
-  } catch (err) {
-    console.error(`Error inspecting ${folderPath}:`, err);
+// 3. Add project by path manually
+ipcMain.handle('projects:add', async (_event, folderPath: string) => {
+  const details = await inspectProject(folderPath);
+  if (!details) {
     return null;
   }
-}
+  await projectRegistry.addProject(details.path, false);
+  return details;
+});
 
-// ----------------------------------------------------
-// IPC HANDLERS
-// ----------------------------------------------------
+// 4. Remove project from registry
+ipcMain.handle('projects:remove', async (_event, projectPath: string) => {
+  return await projectRegistry.removeProject(projectPath);
+});
 
-// 1. Projects Scan
-ipcMain.handle('projects:scan', async (_event, rootPaths?: string[]) => {
-  const scanDirs = rootPaths && rootPaths.length > 0
-    ? rootPaths
-    : ['F:\\', 'D:\\', process.cwd()];
+// 5. Refresh single project
+ipcMain.handle('projects:refresh', async (_event, projectPath: string) => {
+  return await inspectProject(projectPath);
+});
 
-  const discovered: ProjectInfo[] = [];
+// 6. Toggle Favorite status
+ipcMain.handle('projects:toggleFavorite', async (_event, projectPath: string) => {
+  return await projectRegistry.toggleFavorite(projectPath);
+});
 
-  for (const rootDir of scanDirs) {
-    try {
-      if (!existsSync(rootDir)) continue;
-      const stat = await fs.stat(rootDir);
-      if (!stat.isDirectory()) continue;
+// 7. Get/Set Scan Roots
+ipcMain.handle('projects:getScanRoots', async () => {
+  return await projectRegistry.getScanRoots();
+});
 
-      // Check root directory itself
-      const rootInfo = await inspectProject(rootDir);
-      if (rootInfo) {
-        discovered.push(rootInfo);
-      }
-
-      // Check immediate subdirectories
-      const entries = await fs.readdir(rootDir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== '$RECYCLE.BIN' && entry.name !== 'System Volume Information') {
-          const subPath = path.join(rootDir, entry.name);
-          const info = await inspectProject(subPath);
-          if (info) {
-            discovered.push(info);
-          }
-        }
-      }
-    } catch (e) {
-      console.error(`Failed to scan root: ${rootDir}`, e);
-    }
-  }
-
-  // Deduplicate by path
-  const uniqueMap = new Map<string, ProjectInfo>();
-  for (const p of discovered) {
-    uniqueMap.set(path.normalize(p.path).toLowerCase(), p);
-  }
-
-  return Array.from(uniqueMap.values());
+ipcMain.handle('projects:setScanRoots', async (_event, roots: string[]) => {
+  return await projectRegistry.setScanRoots(roots);
 });
 
 ipcMain.handle('projects:getDetails', async (_event, projectPath: string) => {
-  return inspectProject(projectPath);
+  return await inspectProject(projectPath);
 });
 
 // Dialog: Select Directory
 ipcMain.handle('dialog:selectDirectory', async () => {
   if (!win) return null;
   const result = await dialog.showOpenDialog(win, {
-    properties: ['openDirectory']
+    properties: ['openDirectory'],
+    title: 'Выберите папку проекта с Backlog.md или репозиторием'
   });
   if (result.canceled || result.filePaths.length === 0) {
     return null;
   }
   return result.filePaths[0];
 });
+
 
 // System open actions
 ipcMain.handle('system:openInExplorer', async (_event, targetPath: string) => {

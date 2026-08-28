@@ -81,8 +81,43 @@ export const Header: React.FC = () => {
                 {selectedProject.uncommittedCount === 0 ? 'clean' : `${selectedProject.uncommittedCount} dirty`}
               </span>
             )}
+
+            {Boolean(selectedProject.gitAhead && selectedProject.gitAhead > 0) && (
+              <span className="text-[10px] text-sky-400 bg-sky-950/40 border border-sky-800/40 px-1.5 py-0.5 rounded font-mono" title={`Ahead ${selectedProject.gitAhead} commits`}>
+                ↑{selectedProject.gitAhead}
+              </span>
+            )}
+
+            {Boolean(selectedProject.gitBehind && selectedProject.gitBehind > 0) && (
+              <span className="text-[10px] text-amber-400 bg-amber-950/40 border border-amber-800/40 px-1.5 py-0.5 rounded font-mono" title={`Behind ${selectedProject.gitBehind} commits`}>
+                ↓{selectedProject.gitBehind}
+              </span>
+            )}
           </div>
         )}
+
+        {/* Status Badges for RAG & Process */}
+        <div className="flex items-center gap-2">
+          {selectedProject.processStatus && selectedProject.processStatus.runningCount > 0 && (
+            <span
+              className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-950/50 border border-emerald-700/60 px-2 py-0.5 rounded-full font-mono"
+              title={`Запущенные dev-процессы: ${selectedProject.processStatus.processes.map((p) => p.name).join(', ')}`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Dev-процессы: {selectedProject.processStatus.runningCount}
+            </span>
+          )}
+
+          {selectedProject.ragStatus?.ready && (
+            <span
+              className="flex items-center gap-1 text-[11px] text-indigo-300 bg-indigo-950/50 border border-indigo-700/60 px-2 py-0.5 rounded-full"
+              title={`LanceDB RAG Индекс активен: ${selectedProject.ragStatus.chunksCount || 0} чанков`}
+            >
+              <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
+              RAG готов ({selectedProject.ragStatus.chunksCount || 0})
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Right: Actions */}
