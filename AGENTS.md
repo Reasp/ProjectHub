@@ -1,0 +1,130 @@
+# AGENTS.md
+
+<!-- infra-dev:start (сгенерировано из infra-dev.md, правь его, не эту секцию) -->
+
+# infra-dev — правила работы с локальной инфраструктурой проекта
+
+> Источник истины — этот файл. Он подключается секцией в `CLAUDE.md`, `GEMINI.md`, `AGENTS.md`,
+> а также копируется целиком в `.agents/rules/infra-dev.md` (workspace rules Google Antigravity)
+> через `npm run sync-rules` (скрипт `scripts/sync-agent-rules.mjs`). Правь только здесь и
+> перезапускай синхронизацию — не редактируй ни секции в файлах правил агентов, ни
+> `.agents/rules/infra-dev.md` напрямую, следующий `sync-rules` их перезапишет.
+
+## Что здесь есть и зачем
+
+| Инструмент | Для чего | Когда использовать |
+|---|---|---|
+| **Git** | контроль версий | всегда |
+| **Backlog.md** (`backlog/`, MCP `backlog`) | задачи, milestones, decisions, доки проекта | смотреть перед началом работы над задачей; заводить задачу, а не только код; управлять задачами через нативный MCP-сервер `backlog mcp start`, а не только CLI |
+| **GitNexus** (MCP) | граф кода: вызовы, зависимости, impact-анализ | перед рефакторингом/правкой — проверить, что затронет изменение |
+| **Vector RAG** (`docs-rag`, MCP) | смысловой поиск по markdown-документации (`backlog/docs/`, `backlog/decisions/`) | перед ответом на вопрос про архитектуру/конвенции — вызвать `search_docs`, а не отвечать из памяти |
+| **LightRAG** (`docs-graph`, MCP) — опционально | граф сущностей/связей той же документации (LLM-экстракция через локальную Ollama) | вопросы про связи между понятиями ("как X связано с Y") — `search_docs_graph`; включён, только если `features.lightrag = true` в `infra.config.json` |
+| **env-tools** (`env-tools`, MCP) | старт/стоп/логи локальных процессов (dev-сервер и т.п.), пересборка RAG-индекса | вместо произвольного `Bash`/фоновых процессов, когда нужно, чтобы процесс был виден другим сессиям/агентам |
+
+Google Antigravity — второй поддерживаемый агент наравне с Claude Code: те же MCP-серверы
+подключены через `.agents/mcp_config.json`, те же правила — через `.agents/rules/infra-dev.md`,
+а скилл `init-dev-project` продублирован в `.agents/skills/init-dev-project/SKILL.md` (у
+Antigravity свой каталог скиллов, `.claude/skills/` он не читает). Все три генерируются/
+синхронизируются автоматически (`setup.mjs`, `sync-agent-rules.mjs`) — кроме самого скилла,
+его при правке синхронизируй вручную с `.claude/skills/init-dev-project/SKILL.md`.
+
+## Конфигурация: `infra.config.json`
+
+Инфраструктура может быть **корнем проекта** или **подпапкой** внутри уже существующего
+проекта (`projectRoot` в конфиге указывает, где именно) — все скрипты читают путь оттуда
+через `scripts/config.mjs` (Node) / `scripts/lightrag/pyconfig.py` (Python), нет захардкоженных
+относительных путей. Часть функций опциональна и включается/выключается флагом в
+`features` (по умолчанию выключен только `lightrag` — Python + локальная LLM, тяжело и не
+всем нужно). Менять конфиг — через `node scripts/setup.mjs` (интерактивно или флагами
+`--project-root`/`--features`), не руками: скрипт заодно синхронизирует **оба** MCP-конфига —
+`.mcp.json` (Claude Code) и `.agents/mcp_config.json` (Google Antigravity, тот же формат
+`mcpServers`) — одним и тем же набором серверов, по составу включённых `features`.
+
+## Правила
+
+1. **Документация не в GitNexus и не в отдельной верхнеуровневой `docs/`.** GitNexus
+   индексирует код; документация целиком живёт внутри `backlog/` (`backlog/docs/`,
+   `backlog/decisions/`), рядом с задачами. Если правишь `backlog/docs/**/*.md` или
+   `backlog/decisions/**/*.md` — после значимых изменений запусти
+   `npm run index-docs`, чтобы обновить векторный индекс. Индекс (`.rag-index/`) коммитится в git.
+2. **Перед ответом про архитектуру/устройство подсистемы — вызови `search_docs`** (MCP
+   `docs-rag`), а не отвечай только из контекста разговора или обучающих данных.
+3. **Перед рефакторингом/удалением — проверь impact через GitNexus**, а не только через grep.
+4. **Долгоживущие процессы (dev-сервер, вотчеры) — через `env-tools`** (`start_process`/
+   `stop_process`/`tail_log`), а не голым `&` в фоне без учёта — так у процесса есть трекинг
+   pid/логов, и другой агент/сессия не запустит дубликат на том же порту.
+5. **Задачи — в Backlog.md** (`backlog/`), не в отдельных заметках/TODO-комментариях в коде.
+   Статусы задач: `To Do` → `In Progress` → `Review` → `Done`. Переводи задачу в `Review`,
+   когда реализация закончена и её нужно проверить (человеку или ревью-агенту) перед `Done` —
+   не закрывай в `Done` в обход `Review`.
+6. Порядок разбора незнакомой части проекта: `search_docs` (что это и почему) →
+   `search_docs_graph`, если включён (как это связано с другими понятиями) →
+   GitNexus `impact`/`explain` (как это связано с кодом) → сам код.
+7. **LightRAG — не форсировать.** Если `features.lightrag = false`, не предлагать пользователю
+   включать его без явного запроса — это осознанно опциональная тяжёлая фича (Python + Ollama +
+   модель на несколько ГБ), а не часть базового набора.
+8. **Веб-интерфейсы (Backlog.md, GitNexus) — через `node scripts/web.mjs start`**
+   (или `start-web.bat`/`start-web.sh`), не поднимать их отдельными разрозненными командами —
+   так они тоже трекаются через `env-tools` и не плодят дубли на одних портах.
+9. **Коммиты и деплой — только по явному запросу пользователя.** Агент не делает `git commit`,
+   `git push` или деплой проекта самостоятельно. Если у агента настроены соответствующие
+   возможности, он может **предлагать** это сделать, но не выполнять без явного подтверждения
+   в текущем запросе.
+10. **По завершении задачи агент обязан навязчиво напомнить закоммитить изменения** —
+    заметным отдельным сообщением (не мелким комментарием в конце ответа), чтобы пользователь
+    точно это увидел, и предложить конкретную команду `git commit`/или перевод задачи в
+    `Review`/`Done` в Backlog.md. Само действие не выполняется без отдельного согласия
+    пользователя (см. правило 9).
+11. **Язык по умолчанию — русский.** Отвечай пользователю и пиши любую документацию
+    (`backlog/docs/**`, `backlog/decisions/**`, README, комментарии к задачам и т.п.) на
+    русском языке, если пользователь явно не попросил другой язык (в текущем запросе или
+    ранее в этом же разговоре/задаче). Идентификаторы кода, названия команд, ключи конфигов
+    и цитаты из английских источников по-английски не переводить.
+12. **Формат сообщений коммитов (Чистота Git-истории)**: Никогда не дописывать в сообщение
+    коммита строчки о совместной разработке с AI-агентом (например, `Co-authored-by: Claude`,
+    `Generated by AI`, `Assisted-by...` и т.п.) и не добавлять ничего лишнего, не относящегося
+    к задаче. Сообщение коммита должно содержать строго лаконичное и понятное описание
+    выполненных изменений (например, `feat(task-3): реализация доски задач`).
+
+## Быстрые команды
+
+```bash
+node scripts/setup.mjs               # настроить/переконфигурировать: корень проекта, включённые фичи
+npm run index-docs                   # пересобрать векторный индекс документации
+npm run rag-search -- "запрос"       # поиск по докам из терминала (для человека)
+npm run rag-server                   # MCP-сервер docs-rag (обычно запускается агентом через .mcp.json)
+npm run env-server                   # MCP-сервер env-tools (обычно через .mcp.json)
+npx backlog.md mcp start             # нативный MCP-сервер Backlog.md (обычно через .mcp.json)
+npm run bootstrap                    # поставить git/node/... под текущую ОС (scripts/bootstrap/stack.json)
+npm run lightrag-setup                # ОДНОРАЗОВО: venv + lightrag-hku + модели Ollama (если features.lightrag)
+npm run lightrag-index                # построить граф документации (LightRAG)
+npm run lightrag-server               # MCP-сервер docs-graph (обычно через .mcp.json)
+node scripts/web.mjs start|stop|status  # веб-интерфейсы Backlog.md/GitNexus (или start-web.bat/.sh)
+npm run sync-rules                    # разослать этот файл в CLAUDE.md/GEMINI.md/AGENTS.md
+```
+
+<!-- infra-dev:end -->
+
+<!-- BACKLOG.MD GUIDELINES START -->
+<!-- backlog.md-instructions-version: 1.50.1 -->
+<CRITICAL_INSTRUCTION>
+
+## Backlog.md Workflow
+
+This project uses Backlog.md for task and project management.
+
+**For every user request in this project, run `backlog instructions overview` before answering or taking action.**
+
+Use the overview to decide whether to search, read, create, or update Backlog tasks.
+
+Before task lifecycle actions, read the matching detailed guide:
+- `backlog instructions task-creation` before creating or splitting tasks
+- `backlog instructions task-execution` before planning, changing status or assignee, adding a plan or implementation notes, or implementing task work
+- `backlog instructions task-finalization` before checking acceptance criteria, writing final summaries, or moving tasks to terminal statuses
+
+Use `backlog <command> --help` before running unfamiliar commands. Help shows options, fields, and examples.
+
+Do not edit Backlog task, draft, document, decision, or milestone markdown files directly. Use the `backlog` CLI so metadata, relationships, and history stay consistent.
+
+</CRITICAL_INSTRUCTION>
+<!-- BACKLOG.MD GUIDELINES END -->

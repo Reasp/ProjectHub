@@ -1,0 +1,7 @@
+- [Правила работы](feedback_local_memory.md) — память хранится локально в проекте, не на C:, без личного одобрения пользователя
+- [Суть проекта и roadmap](project_purpose.md) — ProjectTemplate = базовая human+agent dev-инфраструктура; статус всех пунктов; референс F:\PlatPhas
+- [Node+huggingface.co сеть](feedback_network_node_huggingface.md) — Node fetch/https к huggingface.co нестабилен в этой сети, обход через curl -L --retry
+- [Windows detached-процессы](feedback_windows_detached_process.md) — shell:true+detached:true ломает лог-редирект на Windows, обход через PowerShell-обёртку + start /b
+- [Ollama-клиент: грабли](feedback_ollama_client_pitfalls.md) — OLLAMA_HOST-коллизия с серверным конфигом, num_ctx губит скорость на слабой видеопамяти
+- [Поиск системного Python](feedback_python_venv_discovery.md) — не доверять первому python/python3 в PATH, проверять что pip реально работает
+- [Docs внутри backlog](feedback_docs_inside_backlog.md) — документация в backlog/docs+backlog/decisions, без отдельной верхнеуровневой docs/

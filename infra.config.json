@@ -1,0 +1,10 @@
+{
+  "projectRoot": ".",
+  "features": {
+    "docsRag": true,
+    "envTools": true,
+    "backlogMcp": true,
+    "bootstrap": true,
+    "lightrag": true
+  }
+}

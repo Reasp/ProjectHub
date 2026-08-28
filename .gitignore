@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Кэш модели эмбеддингов (скачивается автоматически при первом npm run index-docs, ~90MB)
+# Сам векторный индекс в .rag-index/ НЕ игнорируется — он должен коммититься в git.
+.rag-cache/
+
+# Состояние env-tools (pid'ы фоновых процессов, логи) — runtime-состояние, не для коммита
+.env-state/
+
+# LightRAG: venv и Python-кэш — не коммитим (создаётся заново через npm run lightrag-setup).
+# Сам граф в .lightrag-index/ НЕ игнорируется — как и .rag-index/, он должен коммититься.
+scripts/lightrag/.venv/
+scripts/lightrag/__pycache__/
+**/__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code runtime (сессионные локи и т.п., не часть проекта)
+.claude/scheduled_tasks.lock
+.claude/worktrees/

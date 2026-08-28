@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "docs-rag": {
+      "command": "node",
+      "args": [
+        "scripts/rag/rag-server.mjs"
+      ]
+    },
+    "env-tools": {
+      "command": "node",
+      "args": [
+        "scripts/env/env-server.mjs"
+      ]
+    },
+    "backlog": {
+      "command": "npx",
+      "args": [
+        "--yes",
+        "backlog.md",
+        "mcp",
+        "start"
+      ]
+    },
+    "docs-graph": {
+      "command": "node",
+      "args": [
+        "scripts/lightrag/lightrag-server.mjs"
+      ]
+    }
+  }
+}

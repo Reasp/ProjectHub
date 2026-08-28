@@ -1,0 +1,22 @@
+{
+  "tools": [
+    {
+      "name": "git",
+      "check": "git --version",
+      "winget": "Git.Git",
+      "brew": "git",
+      "apt": "git",
+      "dnf": "git",
+      "pacman": "git"
+    },
+    {
+      "name": "node",
+      "check": "node --version",
+      "winget": "OpenJS.NodeJS.LTS",
+      "brew": "node",
+      "apt": "nodejs npm",
+      "dnf": "nodejs",
+      "pacman": "nodejs npm"
+    }
+  ]
+}
