@@ -37,6 +37,7 @@
       "dist/**/*",
       "dist-electron/**/*"
     ],
+    "npmRebuild": false,
     "win": {
       "icon": "build/icon.ico",
       "target": [
@@ -58,7 +59,8 @@
     "asarUnpack": [
       "**/*.node",
       "**/@lancedb/**",
-      "**/apache-arrow/**"
+      "**/apache-arrow/**",
+      "**/node-pty/**"
     ],
     "portable": {
       "useZip": true
@@ -78,6 +80,7 @@
     "gray-matter": "^4.0.3",
     "lucide-react": "^1.34.0",
     "mermaid": "^11.17.2",
+    "node-pty": "^1.1.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "simple-git": "^3.36.0",

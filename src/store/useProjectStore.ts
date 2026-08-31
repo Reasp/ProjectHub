@@ -13,7 +13,8 @@ import type {
   DocItem,
   CreateDocParams,
   Milestone,
-  CreateMilestoneParams
+  CreateMilestoneParams,
+  PtySession
 } from '../types/electron';
 
 interface ProjectState {
@@ -39,6 +40,11 @@ interface ProjectState {
   activeProcessId: string | null;
   terminalHeight: number;
   isHotkeysHelpOpen: boolean;
+
+  // Interactive PTY State (Claude Code & Multi-tab Terminals)
+  ptySessions: PtySession[];
+  activePtySessionId: string | null;
+  terminalMode: 'pty' | 'process_logs';
 
   // PR State
   prs: PullRequest[];
@@ -120,6 +126,13 @@ interface ProjectState {
   deleteTaskLocal: (filePath: string) => Promise<void>;
   toggleCriterionLocal: (filePath: string, index: number, completed: boolean) => Promise<void>;
 
+  // PTY Terminal Actions
+  fetchPtySessions: () => Promise<void>;
+  createPtySessionAction: (projectPath: string, type: 'claude' | 'shell', title?: string) => Promise<PtySession | null>;
+  closePtySessionAction: (sessionId: string) => Promise<boolean>;
+  setActivePtySessionId: (id: string | null) => void;
+  setTerminalMode: (mode: 'pty' | 'process_logs') => void;
+
   // Git Advanced Actions
   loadGitRepoDetails: (project: ProjectInfo) => Promise<void>;
   gitCheckoutBranch: (branchName: string, createNew?: boolean) => Promise<boolean>;
@@ -136,6 +149,7 @@ interface ProjectState {
 let watcherCleanup: (() => void) | null = null;
 let processStatusCleanup: (() => void) | null = null;
 let gitChangedCleanup: (() => void) | null = null;
+let ptyExitCleanup: (() => void) | null = null;
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
@@ -205,6 +219,85 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setTerminalHeight: (terminalHeight) => set({ terminalHeight }),
   addTerminalLog: (log) => set((s) => ({ terminalLogs: [...s.terminalLogs, log] })),
   clearTerminalLogs: () => set({ terminalLogs: [] }),
+
+  ptySessions: [],
+  activePtySessionId: null,
+  terminalMode: 'pty',
+
+  setActivePtySessionId: (activePtySessionId) => set({ activePtySessionId }),
+  setTerminalMode: (terminalMode) => set({ terminalMode }),
+
+  fetchPtySessions: async () => {
+    if (!window.api?.listPtySessions) return;
+    try {
+      const list = await window.api.listPtySessions();
+      set({ ptySessions: list });
+      if (!get().activePtySessionId && list.length > 0) {
+        set({ activePtySessionId: list[0].id });
+      }
+    } catch (e) {
+      console.error('Failed to fetch PTY sessions:', e);
+    }
+  },
+
+  createPtySessionAction: async (projectPath: string, type: 'claude' | 'shell', title?: string) => {
+    if (!window.api?.createPtySession) return null;
+    try {
+      set({ isTerminalOpen: true, terminalMode: 'pty' });
+      const session = await window.api.createPtySession({
+        projectPath,
+        type,
+        title
+      });
+      if (session) {
+        set((state) => ({
+          ptySessions: [...state.ptySessions.filter((s) => s.id !== session.id), session],
+          activePtySessionId: session.id
+        }));
+        get().addTerminalLog(`[Terminal] Создана интерактивная сессия: ${session.title}`);
+
+        // Setup onPtyExit listener once
+        if (!ptyExitCleanup && window.api.onPtyExit) {
+          ptyExitCleanup = window.api.onPtyExit(({ sessionId, exitCode }) => {
+            set((state) => ({
+              ptySessions: state.ptySessions.map((s) =>
+                s.id === sessionId ? { ...s, status: 'exited', exitCode } : s
+              )
+            }));
+          });
+        }
+
+        return session;
+      }
+      return null;
+    } catch (err: any) {
+      console.error('Failed to create PTY session:', err);
+      get().addTerminalLog(`[Terminal Error] Ошибка запуска: ${err.message}`);
+      return null;
+    }
+  },
+
+  closePtySessionAction: async (sessionId: string) => {
+    if (!window.api?.killPty) return false;
+    try {
+      const ok = await window.api.killPty(sessionId);
+      set((state) => {
+        const remaining = state.ptySessions.filter((s) => s.id !== sessionId);
+        let nextActive = state.activePtySessionId;
+        if (state.activePtySessionId === sessionId) {
+          nextActive = remaining.length > 0 ? remaining[remaining.length - 1].id : null;
+        }
+        return {
+          ptySessions: remaining,
+          activePtySessionId: nextActive
+        };
+      });
+      return ok;
+    } catch (e) {
+      console.error('Failed to close PTY session:', e);
+      return false;
+    }
+  },
 
   fetchProcesses: async (projectPath: string) => {
     if (window.api) {

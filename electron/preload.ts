@@ -140,6 +140,28 @@ const api: IElectronAPI = {
   getPRDiff: (projectPath: string, prNumber: number) =>
     ipcRenderer.invoke('pr:getDiff', projectPath, prNumber),
 
+  // Interactive PTY Terminals (Claude Code & Multi-tab Shell)
+  createPtySession: (options: any) => ipcRenderer.invoke('pty:create', options),
+  writePty: (sessionId: string, data: string) => ipcRenderer.invoke('pty:write', sessionId, data),
+  resizePty: (sessionId: string, cols: number, rows: number) =>
+    ipcRenderer.invoke('pty:resize', sessionId, cols, rows),
+  killPty: (sessionId: string) => ipcRenderer.invoke('pty:kill', sessionId),
+  listPtySessions: () => ipcRenderer.invoke('pty:list'),
+  onPtyData: (callback: (data: { sessionId: string; data: string }) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('pty:data', handler);
+    return () => {
+      ipcRenderer.removeListener('pty:data', handler);
+    };
+  },
+  onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('pty:exit', handler);
+    return () => {
+      ipcRenderer.removeListener('pty:exit', handler);
+    };
+  },
+
   // System
   getPlatform: () => ipcRenderer.invoke('system:getPlatform')
 };

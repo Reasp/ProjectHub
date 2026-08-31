@@ -324,8 +324,38 @@ export interface IElectronAPI {
   createPullRequest: (projectPath: string, options: PRCreateOptions) => Promise<PullRequest | null>;
   getPRDiff: (projectPath: string, prNumber: number) => Promise<string>;
 
+  // Interactive PTY Terminals (Claude Code & Multi-tab Shell)
+  createPtySession: (options: CreatePtyOptions) => Promise<PtySession>;
+  writePty: (sessionId: string, data: string) => Promise<boolean>;
+  resizePty: (sessionId: string, cols: number, rows: number) => Promise<boolean>;
+  killPty: (sessionId: string) => Promise<boolean>;
+  listPtySessions: () => Promise<PtySession[]>;
+  onPtyData: (callback: (data: { sessionId: string; data: string }) => void) => () => void;
+  onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void;
+
   // System
   getPlatform: () => Promise<string>;
+}
+
+export interface PtySession {
+  id: string;
+  projectPath: string;
+  projectName: string;
+  type: 'claude' | 'shell';
+  title: string;
+  createdAt: number;
+  status: 'running' | 'exited';
+  exitCode?: number;
+}
+
+export interface CreatePtyOptions {
+  sessionId?: string;
+  projectPath: string;
+  projectName?: string;
+  type: 'claude' | 'shell';
+  title?: string;
+  cols?: number;
+  rows?: number;
 }
 
 declare global {

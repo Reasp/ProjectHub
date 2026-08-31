@@ -25,6 +25,7 @@ class GitService {
     if (!existsSync(gitDir)) return;
 
     const watchTargets = [
+      normalized,
       path.join(gitDir, 'HEAD'),
       path.join(gitDir, 'index'),
       path.join(gitDir, 'refs')
@@ -32,7 +33,17 @@ class GitService {
 
     const watcher = chokidar.watch(watchTargets, {
       ignoreInitial: true,
-      awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 }
+      ignored: [
+        '**/node_modules/**',
+        '**/.git/**',
+        '**/dist/**',
+        '**/dist-electron/**',
+        '**/release/**',
+        '**/.rag-index/**',
+        '**/.venv/**',
+        '**/.tmp/**'
+      ],
+      awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 }
     });
 
     watcher.on('all', () => {

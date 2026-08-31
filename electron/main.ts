@@ -606,12 +606,37 @@ ipcMain.handle('milestones:delete', async (_event, filePath: string) => {
   return await deleteMilestone(filePath);
 });
 
+// 10. Interactive PTY Terminals (Claude Code & Multi-tab Shell)
+import { ptyService } from './services/ptyService';
+import type { CreatePtyOptions } from '../src/types/electron';
+
+ipcMain.handle('pty:create', async (_event, options: CreatePtyOptions) => {
+  return await ptyService.createSession(options);
+});
+
+ipcMain.handle('pty:write', async (_event, sessionId: string, data: string) => {
+  return ptyService.write(sessionId, data);
+});
+
+ipcMain.handle('pty:resize', async (_event, sessionId: string, cols: number, rows: number) => {
+  return ptyService.resize(sessionId, cols, rows);
+});
+
+ipcMain.handle('pty:kill', async (_event, sessionId: string) => {
+  return ptyService.kill(sessionId);
+});
+
+ipcMain.handle('pty:list', async () => {
+  return ptyService.listSessions();
+});
+
 ipcMain.handle('system:getPlatform', async () => {
   return process.platform;
 });
 
 app.on('before-quit', () => {
   processManager.cleanupAll();
+  ptyService.cleanupAll();
 });
 
 app.whenReady().then(createWindow);

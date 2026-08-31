@@ -10,7 +10,8 @@ import {
   Play,
   Square,
   RefreshCw,
-  HelpCircle
+  HelpCircle,
+  Bot
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 
@@ -18,11 +19,16 @@ export const Header: React.FC = () => {
   const {
     selectedProject,
     isTerminalOpen,
+    setTerminalOpen,
     toggleTerminal,
     setHotkeysHelpOpen,
     processes,
     startProcessAction,
-    stopProcessAction
+    stopProcessAction,
+    createPtySessionAction,
+    ptySessions,
+    setActivePtySessionId,
+    setTerminalMode
   } = useProjectStore();
 
   if (!selectedProject) {
@@ -133,6 +139,30 @@ export const Header: React.FC = () => {
 
         <div className="w-px h-6 bg-slate-800 mx-1 shrink-0" />
 
+        {/* Embedded Interactive Claude Code Launcher */}
+        <button
+          onClick={() => {
+            if (selectedProject) {
+              setTerminalOpen(true);
+              setTerminalMode('pty');
+              // Check if already has a claude session for this project
+              const existing = ptySessions.find(
+                (s) => s.projectPath === selectedProject.path && s.type === 'claude' && s.status === 'running'
+              );
+              if (existing) {
+                setActivePtySessionId(existing.id);
+              } else {
+                createPtySessionAction(selectedProject.path, 'claude');
+              }
+            }
+          }}
+          title="Открыть встроенную интерактивную консоль Claude Code для текущего проекта"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white text-xs font-semibold shadow-md shadow-indigo-600/25 border border-indigo-400/30 transition whitespace-nowrap shrink-0"
+        >
+          <Bot className="w-3.5 h-3.5 text-indigo-200 shrink-0" />
+          <span>Claude Code</span>
+        </button>
+
         <button
           onClick={handleOpenCode}
           title="Открыть проект в редакторе VS Code"
@@ -140,15 +170,6 @@ export const Header: React.FC = () => {
         >
           <Code className="w-3.5 h-3.5 text-blue-400 shrink-0" />
           <span className="hidden xl:inline">VS Code</span>
-        </button>
-
-        <button
-          onClick={handleOpenTerminal}
-          title="Открыть внешний терминал в папке проекта"
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition whitespace-nowrap shrink-0"
-        >
-          <Terminal className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-          <span className="hidden xl:inline">Терминал</span>
         </button>
 
         <button
@@ -164,7 +185,7 @@ export const Header: React.FC = () => {
 
         <button
           onClick={toggleTerminal}
-          title="Панель логов и процессов (Ctrl+\)"
+          title="Встроенная панель терминалов и логов (Ctrl+\)"
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition whitespace-nowrap shrink-0 ${
             isTerminalOpen
               ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20'
@@ -172,7 +193,7 @@ export const Header: React.FC = () => {
           }`}
         >
           <TerminalSquare className="w-3.5 h-3.5 shrink-0" />
-          <span className="hidden lg:inline">Логи</span>
+          <span className="hidden lg:inline">Консоль</span>
         </button>
 
         <button
