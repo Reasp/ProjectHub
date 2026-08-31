@@ -24,7 +24,7 @@ interface ProjectState {
   gitRepoDetails: GitRepoDetails | null;
   gitSelectedFile: string | null;
   gitDiffContent: string;
-  activeTab: 'kanban' | 'milestones' | 'git' | 'prs' | 'docs' | 'processes';
+  activeTab: 'kanban' | 'milestones' | 'git' | 'prs' | 'docs' | 'analytics' | 'processes';
   taskViewMode: 'kanban' | 'list';
   selectedLabelFilter: string | null;
   selectedMilestoneFilter: string | null;
@@ -79,7 +79,7 @@ interface ProjectState {
   selectProject: (project: ProjectInfo | null) => void;
   setTasks: (tasks: BacklogTask[]) => void;
   setGitLogs: (logs: GitCommit[]) => void;
-  setActiveTab: (tab: 'kanban' | 'milestones' | 'git' | 'prs' | 'docs' | 'processes') => void;
+  setActiveTab: (tab: 'kanban' | 'milestones' | 'git' | 'prs' | 'docs' | 'analytics' | 'processes') => void;
   setTaskViewMode: (mode: 'kanban' | 'list') => void;
   setSelectedLabelFilter: (label: string | null) => void;
   setIsLoading: (loading: boolean) => void;

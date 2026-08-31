@@ -26,7 +26,8 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ['Ctrl', 'M'], description: 'Вкладка "Майлстоуны & Roadmap"' },
       { keys: ['Ctrl', 'G'], description: 'Вкладка "Git Репозиторий" (История, Ветки, Diffs)' },
       { keys: ['Ctrl', 'P'], description: 'Вкладка "Pull / Merge Requests"' },
-      { keys: ['Ctrl', 'D'], description: 'Вкладка "Документация & ADR / RAG"' }
+      { keys: ['Ctrl', 'D'], description: 'Вкладка "Документация & ADR / RAG"' },
+      { keys: ['Ctrl', 'A'], description: 'Вкладка "Аналитика и метрики проекта"' }
     ]
   },
   {

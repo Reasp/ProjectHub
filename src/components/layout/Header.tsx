@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Code,
   Terminal,
@@ -10,15 +10,11 @@ import {
   Play,
   Square,
   RefreshCw,
-  Cpu,
-  HelpCircle,
-  BarChart2
+  HelpCircle
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
-import { ProjectAnalyticsModal } from '../analytics/ProjectAnalyticsModal';
 
 export const Header: React.FC = () => {
-  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const {
     selectedProject,
     isTerminalOpen,
@@ -180,15 +176,6 @@ export const Header: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setIsAnalyticsOpen(true)}
-          title="Сводная аналитика и метрики проекта"
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition"
-        >
-          <BarChart2 className="w-3.5 h-3.5 text-emerald-400" />
-          Аналитика
-        </button>
-
-        <button
           onClick={() => setHotkeysHelpOpen(true)}
           title="Справка по горячим клавишам (?)"
           className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700/60 transition"
@@ -196,12 +183,6 @@ export const Header: React.FC = () => {
           <HelpCircle className="w-3.5 h-3.5" />
         </button>
       </div>
-
-      {/* Project Analytics Modal */}
-      <ProjectAnalyticsModal
-        isOpen={isAnalyticsOpen}
-        onClose={() => setIsAnalyticsOpen(false)}
-      />
     </header>
   );
 };

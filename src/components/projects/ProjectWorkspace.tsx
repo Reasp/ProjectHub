@@ -7,7 +7,8 @@ import {
   BookOpen,
   Cpu,
   Layers,
-  Sparkles
+  Sparkles,
+  BarChart2
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { KanbanBoard } from '../kanban/KanbanBoard';
@@ -15,6 +16,7 @@ import { MilestonesRoadmapView } from '../milestones/MilestonesRoadmapView';
 import { GitInspector } from '../git/GitInspector';
 import { PullRequestView } from '../pr/PullRequestView';
 import { DocsRagView } from '../docs/DocsRagView';
+import { ProjectAnalyticsView } from '../analytics/ProjectAnalyticsView';
 
 const TABS = [
   { id: 'kanban', label: 'Задачи & Backlog', icon: Kanban },
@@ -22,6 +24,7 @@ const TABS = [
   { id: 'git', label: 'Git Репозиторий', icon: GitBranch },
   { id: 'prs', label: 'Pull / Merge Requests', icon: GitPullRequest },
   { id: 'docs', label: 'Документация & RAG', icon: BookOpen },
+  { id: 'analytics', label: 'Аналитика', icon: BarChart2 },
   { id: 'processes', label: 'Процессы & Окружение', icon: Cpu }
 ] as const;
 
@@ -74,6 +77,7 @@ export const ProjectWorkspace: React.FC = () => {
         {activeTab === 'git' && <GitInspector />}
         {activeTab === 'prs' && <PullRequestView />}
         {activeTab === 'docs' && <DocsRagView />}
+        {activeTab === 'analytics' && <ProjectAnalyticsView />}
 
         {activeTab === 'processes' && (
           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">

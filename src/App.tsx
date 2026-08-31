@@ -82,6 +82,9 @@ export const App: React.FC = () => {
         } else if (key === 'd') {
           e.preventDefault();
           setActiveTab('docs');
+        } else if (key === 'a') {
+          e.preventDefault();
+          setActiveTab('analytics');
         }
         // Ctrl + R: Refresh project
         else if (key === 'r') {
