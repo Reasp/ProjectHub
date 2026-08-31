@@ -1,9 +1,20 @@
 ---
-id: "task-8"
-title: "Модуль интеграции и управления Pull & Merge Requests (GitHub, GitLab, PR Links)"
-status: "To Do"
-labels: ["pr", "mr", "github", "gitlab", "code-review", "integration"]
-created: "2026-08-28"
+id: task-8
+title: >-
+  Модуль интеграции и управления Pull & Merge Requests (GitHub, GitLab, PR
+  Links)
+status: Done
+assignee: []
+created_date: ''
+updated_date: '2026-08-31 02:22'
+labels:
+  - pr
+  - mr
+  - github
+  - gitlab
+  - code-review
+  - integration
+dependencies: []
 ---
 
 # task-8: Модуль интеграции и управления Pull & Merge Requests (GitHub, GitLab, PR Links)

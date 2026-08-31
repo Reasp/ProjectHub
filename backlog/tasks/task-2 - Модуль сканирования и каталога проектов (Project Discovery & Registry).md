@@ -1,10 +1,10 @@
 ---
-id: "task-2"
-title: "Модуль сканирования и каталога проектов (Project Discovery & Registry)"
-status: "Review"
+id: task-2
+title: Модуль сканирования и каталога проектов (Project Discovery & Registry)
+status: Done
 assignee: []
-created_date: ""
-updated_date: "2026-08-28 03:13"
+created_date: ''
+updated_date: '2026-08-28 03:15'
 labels:
   - backend
   - discovery
@@ -30,4 +30,3 @@ dependencies: []
   - Статус RAG-индекса (готовность, количество чанков, дата сборки).
 - [x] Список проектов сохраняется в локальной конфигурации Hub (`~/.projecthub/projects.json` или `localStorage`).
 - [x] Реализованы методы IPC: `projects:list`, `projects:scan`, `projects:add`, `projects:remove`, `projects:refresh`, `projects:toggleFavorite`, `projects:getScanRoots`, `projects:setScanRoots`.
-

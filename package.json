@@ -9,6 +9,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "pack:win": "npm run build && electron-builder --win --dir",
+    "dist:win": "npm run build && electron-builder --win portable",
+    "dist": "npm run build && electron-builder --win",
     "setup": "node scripts/setup.mjs",
     "index-docs": "node scripts/rag/index-docs.mjs",
     "rag-server": "node scripts/rag/rag-server.mjs",
@@ -22,11 +25,45 @@
     "lightrag-server": "node scripts/lightrag/lightrag-server.mjs",
     "web": "node scripts/web.mjs"
   },
+  "build": {
+    "appId": "com.projecthub.desktop",
+    "productName": "ProjectHub",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "asar": true,
+    "portable": {
+      "useZip": true
+    }
+  },
+  "author": "ProjectHub Team",
   "license": "MIT",
   "dependencies": {
     "@huggingface/transformers": "^3.5.0",
     "@lancedb/lancedb": "^0.31.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "chokidar": "^5.0.0",
     "clsx": "^2.1.1",
     "gray-matter": "^4.0.3",
@@ -46,6 +83,7 @@
     "@types/react-dom": "^19.2.5",
     "@vitejs/plugin-react": "^6.1.0",
     "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",

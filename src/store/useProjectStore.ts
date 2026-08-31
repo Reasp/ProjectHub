@@ -1,12 +1,28 @@
 import { create } from 'zustand';
-import type { ProjectInfo, BacklogTask, GitCommit, ScanOptions } from '../types/electron';
+import type {
+  ProjectInfo,
+  BacklogTask,
+  GitCommit,
+  GitRepoDetails,
+  ScanOptions,
+  TaskCriterion,
+  ManagedProcess,
+  PullRequest,
+  PRCreateOptions,
+  PRProviderInfo
+} from '../types/electron';
 
 interface ProjectState {
   projects: ProjectInfo[];
   selectedProject: ProjectInfo | null;
   tasks: BacklogTask[];
   gitLogs: GitCommit[];
+  gitRepoDetails: GitRepoDetails | null;
+  gitSelectedFile: string | null;
+  gitDiffContent: string;
   activeTab: 'kanban' | 'git' | 'prs' | 'docs' | 'processes';
+  taskViewMode: 'kanban' | 'list';
+  selectedLabelFilter: string | null;
   isLoading: boolean;
   isScanning: boolean;
   searchQuery: string;
@@ -14,6 +30,17 @@ interface ProjectState {
   scanRoots: string[];
   isTerminalOpen: boolean;
   terminalLogs: string[];
+  processes: ManagedProcess[];
+  activeProcessId: string | null;
+  terminalHeight: number;
+
+  // PR State
+  prs: PullRequest[];
+  selectedPR: PullRequest | null;
+  prDiffContent: string;
+  prFilter: 'all' | 'open' | 'closed' | 'merged';
+  isLoadingPRs: boolean;
+  prProviderInfo: PRProviderInfo | null;
 
   // Actions
   setProjects: (projects: ProjectInfo[]) => void;
@@ -21,11 +48,29 @@ interface ProjectState {
   setTasks: (tasks: BacklogTask[]) => void;
   setGitLogs: (logs: GitCommit[]) => void;
   setActiveTab: (tab: 'kanban' | 'git' | 'prs' | 'docs' | 'processes') => void;
+  setTaskViewMode: (mode: 'kanban' | 'list') => void;
+  setSelectedLabelFilter: (label: string | null) => void;
   setIsLoading: (loading: boolean) => void;
   setSearchQuery: (query: string) => void;
   setFilterOnlyFavorites: (onlyFavs: boolean) => void;
+  setTerminalOpen: (open: boolean) => void;
   toggleTerminal: () => void;
+  setActiveProcessId: (id: string | null) => void;
+  setTerminalHeight: (h: number) => void;
   addTerminalLog: (log: string) => void;
+  clearTerminalLogs: () => void;
+
+  // PR Actions
+  fetchPRs: (projectPath: string, state?: 'all' | 'open' | 'closed' | 'merged') => Promise<void>;
+  fetchPRProviderInfo: (projectPath: string) => Promise<void>;
+  selectPR: (pr: PullRequest | null) => Promise<void>;
+  setPRFilter: (filter: 'all' | 'open' | 'closed' | 'merged') => void;
+  createPRAction: (options: PRCreateOptions) => Promise<PullRequest | null>;
+
+  // Process Actions
+  fetchProcesses: (projectPath: string) => Promise<void>;
+  startProcessAction: (command: string, name: string) => Promise<ManagedProcess | null>;
+  stopProcessAction: (processId: string) => Promise<boolean>;
 
   // Async Thunks
   fetchProjects: () => Promise<void>;
@@ -38,14 +83,38 @@ interface ProjectState {
   refreshSingleProject: (projectPath: string) => Promise<void>;
   loadProjectData: (project: ProjectInfo) => Promise<void>;
   updateTaskStatusLocal: (taskId: string, newStatus: BacklogTask['status']) => Promise<void>;
+  saveFullTaskLocal: (updatedTask: BacklogTask) => Promise<void>;
+  deleteTaskLocal: (filePath: string) => Promise<void>;
+  toggleCriterionLocal: (filePath: string, index: number, completed: boolean) => Promise<void>;
+
+  // Git Advanced Actions
+  loadGitRepoDetails: (project: ProjectInfo) => Promise<void>;
+  gitCheckoutBranch: (branchName: string, createNew?: boolean) => Promise<boolean>;
+  gitCreateBranch: (branchName: string) => Promise<boolean>;
+  gitStageFile: (filePath: string) => Promise<boolean>;
+  gitUnstageFile: (filePath: string) => Promise<boolean>;
+  gitStageAll: () => Promise<boolean>;
+  gitCommit: (message: string, stageAll?: boolean) => Promise<boolean>;
+  gitLoadFileDiff: (filePath: string, staged?: boolean) => Promise<void>;
+  setGitSelectedFile: (filePath: string | null) => void;
 }
+
+
+let watcherCleanup: (() => void) | null = null;
+let processStatusCleanup: (() => void) | null = null;
+let gitChangedCleanup: (() => void) | null = null;
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
   selectedProject: null,
   tasks: [],
   gitLogs: [],
+  gitRepoDetails: null,
+  gitSelectedFile: null,
+  gitDiffContent: '',
   activeTab: 'kanban',
+  taskViewMode: 'kanban',
+  selectedLabelFilter: null,
   isLoading: false,
   isScanning: false,
   searchQuery: '',
@@ -53,29 +122,98 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   scanRoots: [],
   isTerminalOpen: false,
   terminalLogs: ['[ProjectHub] Система инициализирована.', '[ProjectHub] Реестр проектов загружен.'],
+  processes: [],
+  activeProcessId: null,
+  terminalHeight: 220,
+
+  prs: [],
+  selectedPR: null,
+  prDiffContent: '',
+  prFilter: 'open',
+  isLoadingPRs: false,
+  prProviderInfo: null,
 
   setProjects: (projects) => set({ projects }),
   selectProject: (selectedProject) => {
     set({ selectedProject });
     if (selectedProject) {
       get().loadProjectData(selectedProject);
+      get().fetchProcesses(selectedProject.path);
     }
   },
   setTasks: (tasks) => set({ tasks }),
   setGitLogs: (gitLogs) => set({ gitLogs }),
   setActiveTab: (activeTab) => set({ activeTab }),
+  setTaskViewMode: (taskViewMode) => set({ taskViewMode }),
+  setSelectedLabelFilter: (selectedLabelFilter) => set({ selectedLabelFilter }),
   setIsLoading: (isLoading) => set({ isLoading }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setFilterOnlyFavorites: (filterOnlyFavorites) => set({ filterOnlyFavorites }),
+  setTerminalOpen: (isTerminalOpen) => set({ isTerminalOpen }),
   toggleTerminal: () => set((s) => ({ isTerminalOpen: !s.isTerminalOpen })),
+  setActiveProcessId: (activeProcessId) => set({ activeProcessId }),
+  setTerminalHeight: (terminalHeight) => set({ terminalHeight }),
   addTerminalLog: (log) => set((s) => ({ terminalLogs: [...s.terminalLogs, log] })),
+  clearTerminalLogs: () => set({ terminalLogs: [] }),
+
+  fetchProcesses: async (projectPath: string) => {
+    if (window.api) {
+      try {
+        const procs = await window.api.listProcesses(projectPath);
+        set({ processes: procs });
+        if (!get().activeProcessId && procs.length > 0) {
+          set({ activeProcessId: procs[0].id });
+        }
+      } catch (e) {
+        console.error('Failed to fetch processes:', e);
+      }
+    }
+  },
+
+  startProcessAction: async (command: string, name: string) => {
+    const curProject = get().selectedProject;
+    if (!curProject || !window.api) return null;
+
+    try {
+      set({ isTerminalOpen: true });
+      const proc = await window.api.startProcess(curProject.path, command, name);
+      set((state) => ({
+        processes: [...state.processes.filter((p) => p.id !== proc.id), proc],
+        activeProcessId: proc.id
+      }));
+      get().addTerminalLog(`[Process] Запущен процесс: ${name} (${command})`);
+      return proc;
+    } catch (e: any) {
+      console.error(`Failed to start process ${name}:`, e);
+      get().addTerminalLog(`[Process Error] Не удалось запустить ${name}: ${e.message}`);
+      return null;
+    }
+  },
+
+  stopProcessAction: async (processId: string) => {
+    if (!window.api) return false;
+    try {
+      const ok = await window.api.stopProcess(processId);
+      if (ok) {
+        set((state) => ({
+          processes: state.processes.map((p) =>
+            p.id === processId ? { ...p, status: 'stopped' } : p
+          )
+        }));
+        get().addTerminalLog(`[Process] Процесс остановлен: ${processId}`);
+      }
+      return ok;
+    } catch (e) {
+      console.error('Failed to stop process:', e);
+      return false;
+    }
+  },
 
   fetchProjects: async () => {
     set({ isLoading: true });
     try {
       if (window.api) {
         let list = await window.api.listProjects();
-        // If empty, auto-run first scan
         if (list.length === 0) {
           list = await window.api.scanProjects();
         }
@@ -213,11 +351,50 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   loadProjectData: async (project: ProjectInfo) => {
     try {
       if (window.api) {
+        // Setup chokidar watcher listener if not setup
+        if (!watcherCleanup) {
+          watcherCleanup = window.api.onTasksChanged(async (data) => {
+            const curProject = get().selectedProject;
+            if (curProject && curProject.path.toLowerCase() === data.projectPath.toLowerCase()) {
+              const freshTasks = await window.api.getTasks(curProject.path);
+              set({ tasks: freshTasks });
+              get().addTerminalLog(`[Backlog] Автосинхронизация задач: событие ${data.event} (${data.filePath})`);
+            }
+          });
+        }
+
+        if (!processStatusCleanup) {
+          processStatusCleanup = window.api.onProcessStatusChanged((proc) => {
+            set((state) => ({
+              processes: state.processes.map((p) => (p.id === proc.id ? proc : p))
+            }));
+          });
+        }
+
+        // Setup git:changed watcher for real-time updates
+        if (gitChangedCleanup) {
+          gitChangedCleanup();
+          gitChangedCleanup = null;
+        }
+        if (window.api.onGitChanged) {
+          gitChangedCleanup = window.api.onGitChanged(async (data) => {
+            const curProject = get().selectedProject;
+            if (curProject && curProject.path.toLowerCase() === data.projectPath.toLowerCase()) {
+              await get().loadGitRepoDetails(curProject);
+            }
+          });
+        }
+
         const [tasks, logs] = await Promise.all([
           window.api.getTasks(project.path),
           window.api.getGitLog(project.path, 25)
         ]);
         set({ tasks, gitLogs: logs });
+
+        // Load full git details
+        if (project.hasGit) {
+          get().loadGitRepoDetails(project);
+        }
       }
     } catch (e) {
       console.error('Failed to load project data:', e);
@@ -228,7 +405,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const task = get().tasks.find((t) => t.id === taskId);
     if (!task || !window.api) return;
 
-    // Optimistic UI update
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
     }));
@@ -236,14 +412,277 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const ok = await window.api.updateTaskStatus(task.filePath, newStatus);
       if (!ok) {
-        // Rollback if failed
         if (get().selectedProject) {
           get().loadProjectData(get().selectedProject!);
         }
+      } else {
+        get().addTerminalLog(`[Backlog] Статус задачи ${task.id} изменен на "${newStatus}"`);
       }
     } catch (e) {
       console.error('Failed to update task status:', e);
     }
+  },
+
+  saveFullTaskLocal: async (updatedTask: BacklogTask) => {
+    if (!window.api) return;
+    try {
+      const ok = await window.api.saveFullTask(updatedTask.filePath, {
+        title: updatedTask.title,
+        status: updatedTask.status,
+        labels: updatedTask.labels,
+        description: updatedTask.description || '',
+        criteria: updatedTask.acceptanceCriteria
+      });
+
+      if (ok) {
+        set((state) => ({
+          tasks: state.tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t))
+        }));
+        get().addTerminalLog(`[Backlog] Задача ${updatedTask.id} успешно сохранена.`);
+      }
+    } catch (e) {
+      console.error('Failed to save full task:', e);
+    }
+  },
+
+  deleteTaskLocal: async (filePath: string) => {
+    if (!window.api) return;
+    try {
+      const ok = await window.api.deleteTask(filePath);
+      if (ok) {
+        set((state) => ({
+          tasks: state.tasks.filter((t) => t.filePath !== filePath)
+        }));
+        get().addTerminalLog(`[Backlog] Задача удалена: ${filePath}`);
+      }
+    } catch (e) {
+      console.error('Failed to delete task:', e);
+    }
+  },
+
+  toggleCriterionLocal: async (filePath: string, index: number, completed: boolean) => {
+    if (!window.api) return;
+    try {
+      await window.api.toggleCriterion(filePath, index, completed);
+      set((state) => ({
+        tasks: state.tasks.map((t) => {
+          if (t.filePath === filePath && t.acceptanceCriteria) {
+            const updatedCriteria = [...t.acceptanceCriteria];
+            if (updatedCriteria[index]) {
+              updatedCriteria[index] = { ...updatedCriteria[index], completed };
+            }
+            return { ...t, acceptanceCriteria: updatedCriteria };
+          }
+          return t;
+        })
+      }));
+    } catch (e) {
+      console.error('Failed to toggle criterion:', e);
+    }
+  },
+
+  // ─── Git Advanced Actions ─────────────────────────────────────────────────
+
+  loadGitRepoDetails: async (project: ProjectInfo) => {
+    if (!window.api || !project.hasGit) return;
+    try {
+      const details = await window.api.getGitRepoDetails(project.path);
+      set({ gitRepoDetails: details });
+    } catch (e) {
+      console.error('Failed to load git repo details:', e);
+    }
+  },
+
+  gitCheckoutBranch: async (branchName: string, createNew = false) => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return false;
+    try {
+      const ok = await window.api.checkoutBranch(project.path, branchName, createNew);
+      if (ok) {
+        get().addTerminalLog(`[Git] Переключено на ветку: ${branchName}`);
+        await get().loadGitRepoDetails(project);
+      }
+      return ok;
+    } catch (e) {
+      console.error('Failed to checkout branch:', e);
+      return false;
+    }
+  },
+
+  gitCreateBranch: async (branchName: string) => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return false;
+    try {
+      const ok = await window.api.createBranch(project.path, branchName);
+      if (ok) {
+        get().addTerminalLog(`[Git] Создана и переключена ветка: ${branchName}`);
+        await get().loadGitRepoDetails(project);
+      }
+      return ok;
+    } catch (e) {
+      console.error('Failed to create branch:', e);
+      return false;
+    }
+  },
+
+  gitStageFile: async (filePath: string) => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return false;
+    try {
+      const ok = await window.api.stageFile(project.path, filePath);
+      if (ok) await get().loadGitRepoDetails(project);
+      return ok;
+    } catch (e) {
+      console.error('Failed to stage file:', e);
+      return false;
+    }
+  },
+
+  gitUnstageFile: async (filePath: string) => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return false;
+    try {
+      const ok = await window.api.unstageFile(project.path, filePath);
+      if (ok) await get().loadGitRepoDetails(project);
+      return ok;
+    } catch (e) {
+      console.error('Failed to unstage file:', e);
+      return false;
+    }
+  },
+
+  gitStageAll: async () => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return false;
+    try {
+      const ok = await window.api.stageAll(project.path);
+      if (ok) await get().loadGitRepoDetails(project);
+      return ok;
+    } catch (e) {
+      console.error('Failed to stage all:', e);
+      return false;
+    }
+  },
+
+  gitCommit: async (message: string, stageAll = false) => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return false;
+    try {
+      const ok = await window.api.commitChanges(project.path, message, stageAll);
+      if (ok) {
+        get().addTerminalLog(`[Git] Коммит создан: "${message}"`);
+        const [logs, _] = await Promise.all([
+          window.api.getGitLog(project.path, 25),
+          get().loadGitRepoDetails(project)
+        ]);
+        set({ gitLogs: logs, gitDiffContent: '', gitSelectedFile: null });
+      }
+      return ok;
+    } catch (e) {
+      console.error('Failed to commit:', e);
+      return false;
+    }
+  },
+
+  gitLoadFileDiff: async (filePath: string, staged = false) => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return;
+    try {
+      set({ gitSelectedFile: filePath });
+      const diff = await window.api.getFileDiff(project.path, filePath, staged);
+      set({ gitDiffContent: diff });
+    } catch (e) {
+      console.error('Failed to load file diff:', e);
+      set({ gitDiffContent: '' });
+    }
+  },
+
+  setGitSelectedFile: (filePath: string | null) => {
+    set({ gitSelectedFile: filePath, gitDiffContent: '' });
+  },
+
+  // ─── PR Actions ───────────────────────────────────────────────────────────
+
+  fetchPRProviderInfo: async (projectPath: string) => {
+    if (!window.api) return;
+    try {
+      const info = await window.api.getPRProviderInfo(projectPath);
+      set({ prProviderInfo: info });
+    } catch (e) {
+      console.error('Failed to get PR provider info:', e);
+      set({ prProviderInfo: null });
+    }
+  },
+
+  fetchPRs: async (projectPath: string, state?: 'all' | 'open' | 'closed' | 'merged') => {
+    if (!window.api) return;
+    const filter = state || get().prFilter;
+    set({ isLoadingPRs: true });
+    try {
+      await get().fetchPRProviderInfo(projectPath);
+      const prList = await window.api.listPullRequests(projectPath, filter);
+      set({ prs: prList });
+      if (!get().selectedPR && prList.length > 0) {
+        get().selectPR(prList[0]);
+      } else if (get().selectedPR) {
+        const stillExists = prList.find((p) => p.number === get().selectedPR?.number);
+        if (stillExists) {
+          set({ selectedPR: stillExists });
+        } else if (prList.length > 0) {
+          get().selectPR(prList[0]);
+        } else {
+          set({ selectedPR: null, prDiffContent: '' });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch PRs:', e);
+      set({ prs: [] });
+    } finally {
+      set({ isLoadingPRs: false });
+    }
+  },
+
+  selectPR: async (pr: PullRequest | null) => {
+    set({ selectedPR: pr, prDiffContent: '' });
+    const project = get().selectedProject;
+    if (!window.api || !project || !pr) return;
+    try {
+      const diff = await window.api.getPRDiff(project.path, pr.number);
+      set({ prDiffContent: diff });
+    } catch (e) {
+      console.error(`Failed to load diff for PR #${pr.number}:`, e);
+      set({ prDiffContent: '' });
+    }
+  },
+
+  setPRFilter: (filter: 'all' | 'open' | 'closed' | 'merged') => {
+    set({ prFilter: filter });
+    const project = get().selectedProject;
+    if (project) {
+      get().fetchPRs(project.path, filter);
+    }
+  },
+
+  createPRAction: async (options: PRCreateOptions) => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return null;
+    try {
+      const created = await window.api.createPullRequest(project.path, options);
+      if (created) {
+        get().addTerminalLog(`[PR] Pull Request #${created.number} успешно создан: ${created.title}`);
+        await get().fetchPRs(project.path, get().prFilter);
+        get().selectPR(created);
+        // Reload tasks in case Backlog task status was transitioned to Review
+        await get().loadProjectData(project);
+      }
+      return created;
+    } catch (err: any) {
+      console.error('Failed to create PR:', err);
+      get().addTerminalLog(`[PR Error] Ошибка создания PR: ${err.message}`);
+      throw err;
+    }
   }
 }));
+
+
 

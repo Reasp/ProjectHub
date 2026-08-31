@@ -6,12 +6,23 @@ import {
   GitBranch,
   CircleDot,
   TerminalSquare,
-  Sparkles
+  Sparkles,
+  Play,
+  Square,
+  RefreshCw,
+  Cpu
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 
 export const Header: React.FC = () => {
-  const { selectedProject, isTerminalOpen, toggleTerminal } = useProjectStore();
+  const {
+    selectedProject,
+    isTerminalOpen,
+    toggleTerminal,
+    processes,
+    startProcessAction,
+    stopProcessAction
+  } = useProjectStore();
 
   if (!selectedProject) {
     return (
@@ -20,6 +31,8 @@ export const Header: React.FC = () => {
       </header>
     );
   }
+
+  const devProcess = processes.find((p) => p.name === 'dev' && p.status === 'running');
 
   const handleOpenCode = () => {
     if (window.api && selectedProject) {
@@ -81,47 +94,44 @@ export const Header: React.FC = () => {
                 {selectedProject.uncommittedCount === 0 ? 'clean' : `${selectedProject.uncommittedCount} dirty`}
               </span>
             )}
-
-            {Boolean(selectedProject.gitAhead && selectedProject.gitAhead > 0) && (
-              <span className="text-[10px] text-sky-400 bg-sky-950/40 border border-sky-800/40 px-1.5 py-0.5 rounded font-mono" title={`Ahead ${selectedProject.gitAhead} commits`}>
-                ↑{selectedProject.gitAhead}
-              </span>
-            )}
-
-            {Boolean(selectedProject.gitBehind && selectedProject.gitBehind > 0) && (
-              <span className="text-[10px] text-amber-400 bg-amber-950/40 border border-amber-800/40 px-1.5 py-0.5 rounded font-mono" title={`Behind ${selectedProject.gitBehind} commits`}>
-                ↓{selectedProject.gitBehind}
-              </span>
-            )}
           </div>
         )}
-
-        {/* Status Badges for RAG & Process */}
-        <div className="flex items-center gap-2">
-          {selectedProject.processStatus && selectedProject.processStatus.runningCount > 0 && (
-            <span
-              className="flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-950/50 border border-emerald-700/60 px-2 py-0.5 rounded-full font-mono"
-              title={`Запущенные dev-процессы: ${selectedProject.processStatus.processes.map((p) => p.name).join(', ')}`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Dev-процессы: {selectedProject.processStatus.runningCount}
-            </span>
-          )}
-
-          {selectedProject.ragStatus?.ready && (
-            <span
-              className="flex items-center gap-1 text-[11px] text-indigo-300 bg-indigo-950/50 border border-indigo-700/60 px-2 py-0.5 rounded-full"
-              title={`LanceDB RAG Индекс активен: ${selectedProject.ragStatus.chunksCount || 0} чанков`}
-            >
-              <Sparkles className="w-2.5 h-2.5 text-indigo-400" />
-              RAG готов ({selectedProject.ragStatus.chunksCount || 0})
-            </span>
-          )}
-        </div>
       </div>
 
-      {/* Right: Actions */}
+      {/* Right: Actions & Process Controls */}
       <div className="flex items-center gap-2">
+        {/* Quick Dev Server Control Button */}
+        {devProcess ? (
+          <button
+            onClick={() => stopProcessAction(devProcess.id)}
+            title="Остановить локальный dev-сервер"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/70 text-xs font-semibold text-rose-300 border border-rose-800/50 shadow-md shadow-rose-950/20 transition"
+          >
+            <Square className="w-3 h-3 text-rose-400 fill-rose-400" />
+            Стоп Dev
+          </button>
+        ) : (
+          <button
+            onClick={() => startProcessAction('npm run dev', 'dev')}
+            title="Запустить локальный dev-сервер"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/50 hover:bg-emerald-900/60 text-xs font-semibold text-emerald-300 border border-emerald-800/50 shadow-md shadow-emerald-950/20 transition"
+          >
+            <Play className="w-3 h-3 text-emerald-400 fill-emerald-400" />
+            Старт Dev
+          </button>
+        )}
+
+        <button
+          onClick={() => startProcessAction('npm run index-docs', 'index-docs')}
+          title="Собрать векторный RAG-индекс документации"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition"
+        >
+          <RefreshCw className="w-3 h-3 text-indigo-400" />
+          Индекс RAG
+        </button>
+
+        <div className="w-px h-6 bg-slate-800 mx-1" />
+
         <button
           onClick={handleOpenCode}
           title="Открыть в VS Code"
@@ -153,7 +163,7 @@ export const Header: React.FC = () => {
 
         <button
           onClick={toggleTerminal}
-          title="Встроенная консоль логов"
+          title="Встроенная интерактивная консоль"
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
             isTerminalOpen
               ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20'
@@ -161,9 +171,10 @@ export const Header: React.FC = () => {
           }`}
         >
           <TerminalSquare className="w-3.5 h-3.5" />
-          Логи
+          Терминал
         </button>
       </div>
     </header>
   );
 };
+

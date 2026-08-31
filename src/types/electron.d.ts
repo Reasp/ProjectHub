@@ -60,6 +60,11 @@ export interface ProjectInfo {
   };
 }
 
+export interface TaskCriterion {
+  text: string;
+  completed: boolean;
+}
+
 export interface BacklogTask {
   id: string;
   title: string;
@@ -68,6 +73,8 @@ export interface BacklogTask {
   created?: string;
   filePath: string;
   content: string;
+  description?: string;
+  acceptanceCriteria?: TaskCriterion[];
 }
 
 export interface GitCommit {
@@ -88,6 +95,104 @@ export interface RegistrySettings {
   scanDepth: number;
 }
 
+export interface CreateProjectOptions {
+  name: string;
+  targetDir: string;
+  templateSource?: string;
+  features: {
+    docsRag?: boolean;
+    envTools?: boolean;
+    backlogMcp?: boolean;
+    bootstrap?: boolean;
+    lightrag?: boolean;
+  };
+  initGit?: boolean;
+}
+
+export interface ManagedProcess {
+  id: string;
+  name: string;
+  command: string;
+  cwd: string;
+  pid?: number;
+  startedAt: string;
+  status: 'running' | 'stopped' | 'failed';
+  exitCode?: number;
+  source: 'hub' | 'env-tools';
+}
+
+export interface RagSearchOptions {
+  projectPath?: string;
+  query: string;
+  mode?: 'vector' | 'text' | 'all';
+  limit?: number;
+  global?: boolean;
+}
+
+export interface RagSearchResult {
+  projectName: string;
+  projectPath: string;
+  filePath: string;
+  fileRelative: string;
+  heading?: string;
+  snippet: string;
+  score: number;
+  type: 'vector' | 'text';
+  category: 'doc' | 'decision' | 'task';
+}
+
+export interface GitFileStatus {
+  path: string;
+  index: string; // 'M', 'A', 'D', '?'
+  working_dir: string;
+  staged: boolean;
+}
+
+export interface GitRepoDetails {
+  currentBranch: string;
+  branches: string[];
+  remoteBranches: string[];
+  commits: GitCommit[];
+  files: GitFileStatus[];
+  stashes: string[];
+  tags: string[];
+  isClean: boolean;
+}
+
+export interface PullRequest {
+  id: number | string;
+  number: number;
+  title: string;
+  state: 'OPEN' | 'CLOSED' | 'MERGED';
+  url: string;
+  author: string;
+  createdAt: string;
+  updatedAt: string;
+  sourceBranch: string;
+  targetBranch: string;
+  body: string;
+  labels: string[];
+  checksStatus?: 'SUCCESS' | 'PENDING' | 'FAILURE' | 'NONE';
+  provider: 'github' | 'gitlab' | 'custom';
+  commentsCount?: number;
+}
+
+export interface PRCreateOptions {
+  title: string;
+  body: string;
+  sourceBranch: string;
+  targetBranch?: string;
+  draft?: boolean;
+}
+
+export interface PRProviderInfo {
+  provider: 'github' | 'gitlab' | 'none';
+  repo?: string;
+  remoteUrl?: string;
+  hasCli: boolean;
+  authenticated: boolean;
+}
+
 export interface IElectronAPI {
   // Projects & Registry
   listProjects: () => Promise<ProjectInfo[]>;
@@ -100,21 +205,66 @@ export interface IElectronAPI {
   setScanRoots: (roots: string[]) => Promise<boolean>;
   getProjectDetails: (projectPath: string) => Promise<ProjectInfo | null>;
 
+  // Project Template Wizard
+  createProjectFromTemplate: (options: CreateProjectOptions) => Promise<ProjectInfo>;
+  checkTemplateAvailable: (customSource?: string) => Promise<{ available: boolean; path: string }>;
+
+  // Background Processes & Terminal
+  startProcess: (projectPath: string, command: string, name: string) => Promise<ManagedProcess>;
+  stopProcess: (processId: string) => Promise<boolean>;
+  listProcesses: (projectPath: string) => Promise<ManagedProcess[]>;
+  tailProcessLog: (projectPath: string, processName: string, lines?: number) => Promise<string>;
+  onProcessLogChunk: (callback: (data: { processId: string; text: string }) => void) => () => void;
+  onProcessStatusChanged: (callback: (process: ManagedProcess) => void) => () => void;
+
+  // Vector RAG & Knowledge Search
+  searchDocs: (options: RagSearchOptions) => Promise<RagSearchResult[]>;
+  getRagStats: (projectPath: string) => Promise<{ hasIndex: boolean; chunksCount: number; lastModified?: string }>;
+
   // System Dialogs & Launchers
   selectDirectory: () => Promise<string | null>;
   openInExplorer: (targetPath: string) => Promise<void>;
   openInCode: (targetPath: string) => Promise<void>;
   openTerminal: (targetPath: string) => Promise<void>;
 
-  // Backlog Tasks
+  // Backlog Tasks & Real-time Watcher
   getTasks: (projectPath: string) => Promise<BacklogTask[]>;
   updateTaskStatus: (filePath: string, newStatus: string) => Promise<boolean>;
   saveTask: (filePath: string, content: string) => Promise<boolean>;
+  saveFullTask: (
+    filePath: string,
+    data: {
+      title: string;
+      status: BacklogTask['status'];
+      labels: string[];
+      description: string;
+      criteria?: TaskCriterion[];
+    }
+  ) => Promise<boolean>;
+  toggleCriterion: (filePath: string, index: number, completed: boolean) => Promise<boolean>;
   createTask: (projectPath: string, task: { title: string; description: string; labels: string[] }) => Promise<BacklogTask | null>;
+  deleteTask: (filePath: string) => Promise<boolean>;
+  watchProjectTasks: (projectPath: string) => Promise<void>;
+  onTasksChanged: (callback: (data: { projectPath: string; event: string; filePath: string }) => void) => () => void;
 
-  // Git
+  // Git Advanced
+  getGitRepoDetails: (projectPath: string) => Promise<GitRepoDetails | null>;
+  checkoutBranch: (projectPath: string, branchName: string, createNew?: boolean) => Promise<boolean>;
+  createBranch: (projectPath: string, branchName: string) => Promise<boolean>;
+  stageFile: (projectPath: string, filePath: string) => Promise<boolean>;
+  unstageFile: (projectPath: string, filePath: string) => Promise<boolean>;
+  stageAll: (projectPath: string) => Promise<boolean>;
+  commitChanges: (projectPath: string, message: string, stageAll?: boolean) => Promise<boolean>;
+  getFileDiff: (projectPath: string, filePath: string, staged?: boolean) => Promise<string>;
+  onGitChanged: (callback: (data: { projectPath: string }) => void) => () => void;
   getGitLog: (projectPath: string, maxCount?: number) => Promise<GitCommit[]>;
   getGitStatus: (projectPath: string) => Promise<any>;
+
+  // Pull & Merge Requests
+  getPRProviderInfo: (projectPath: string) => Promise<PRProviderInfo>;
+  listPullRequests: (projectPath: string, state?: 'all' | 'open' | 'closed' | 'merged') => Promise<PullRequest[]>;
+  createPullRequest: (projectPath: string, options: PRCreateOptions) => Promise<PullRequest | null>;
+  getPRDiff: (projectPath: string, prNumber: number) => Promise<string>;
 
   // System
   getPlatform: () => Promise<string>;
@@ -125,4 +275,10 @@ declare global {
     api: IElectronAPI;
   }
 }
+
+
+
+
+
+
 

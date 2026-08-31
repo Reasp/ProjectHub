@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { ScanSettingsModal } from '../projects/ScanSettingsModal';
+import { NewProjectWizardModal } from '../projects/NewProjectWizardModal';
 
 export const Sidebar: React.FC = () => {
   const {
@@ -41,6 +42,7 @@ export const Sidebar: React.FC = () => {
   } = useProjectStore();
 
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
 
   const handleAddFolder = async () => {
     if (window.api) {
@@ -320,9 +322,7 @@ export const Sidebar: React.FC = () => {
           </button>
 
           <button
-            onClick={() => {
-              alert('Мастер создания нового проекта (Task-4) будет доступен в следующем обновлении.');
-            }}
+            onClick={() => setIsWizardOpen(true)}
             className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-xs font-medium text-white shadow-md shadow-indigo-600/20 transition"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
@@ -336,7 +336,14 @@ export const Sidebar: React.FC = () => {
         isOpen={isScanModalOpen}
         onClose={() => setIsScanModalOpen(false)}
       />
+
+      {/* Modal: Project Template Wizard */}
+      <NewProjectWizardModal
+        isOpen={isWizardOpen}
+        onClose={() => setIsWizardOpen(false)}
+      />
     </>
   );
 };
+
 

@@ -11,6 +11,8 @@ import {
 import { useProjectStore } from '../../store/useProjectStore';
 import { KanbanBoard } from '../kanban/KanbanBoard';
 import { GitInspector } from '../git/GitInspector';
+import { PullRequestView } from '../pr/PullRequestView';
+import { DocsRagView } from '../docs/DocsRagView';
 
 const TABS = [
   { id: 'kanban', label: 'Задачи & Backlog', icon: Kanban },
@@ -66,30 +68,15 @@ export const ProjectWorkspace: React.FC = () => {
       <div className="flex-1 flex flex-col overflow-hidden">
         {activeTab === 'kanban' && <KanbanBoard />}
         {activeTab === 'git' && <GitInspector />}
-        {activeTab === 'prs' && (
-          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-            <GitPullRequest className="w-12 h-12 text-indigo-400/40 mb-3" />
-            <h3 className="text-sm font-semibold text-white mb-1">Центр Pull & Merge Requests</h3>
-            <p className="text-xs text-slate-400 max-w-sm">
-              Интеграция с GitHub и GitLab для автоматической синхронизации задач и ревью кода будет активна в модуле task-8.
-            </p>
-          </div>
-        )}
-        {activeTab === 'docs' && (
-          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-            <BookOpen className="w-12 h-12 text-indigo-400/40 mb-3" />
-            <h3 className="text-sm font-semibold text-white mb-1">База знаний & RAG-поиск</h3>
-            <p className="text-xs text-slate-400 max-w-sm">
-              Векторный семантический поиск по markdown-документации и ADR решениям через LanceDB будет доступен в task-6.
-            </p>
-          </div>
-        )}
+        {activeTab === 'prs' && <PullRequestView />}
+        {activeTab === 'docs' && <DocsRagView />}
+
         {activeTab === 'processes' && (
           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
             <Cpu className="w-12 h-12 text-indigo-400/40 mb-3" />
             <h3 className="text-sm font-semibold text-white mb-1">Управление процессами и окружением</h3>
             <p className="text-xs text-slate-400 max-w-sm">
-              Интеграция с env-server и управление фоновыми процессами dev-серверов реализуется в task-5.
+              Управление фоновыми процессами и живой терминал логов доступны в нижней панели терминала и в заголовке проекта.
             </p>
           </div>
         )}
@@ -97,3 +84,4 @@ export const ProjectWorkspace: React.FC = () => {
     </div>
   );
 };
+
