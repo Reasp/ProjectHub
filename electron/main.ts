@@ -26,6 +26,10 @@ function createWindow() {
   const distPath = path.join(__dirname, '../dist');
   const indexPath = path.join(distPath, 'index.html');
 
+  const preloadCjs = path.join(__dirname, 'preload.cjs');
+  const preloadJs = path.join(__dirname, 'preload.js');
+  const preloadPath = existsSync(preloadCjs) ? preloadCjs : preloadJs;
+
   win = new BrowserWindow({
     title: 'ProjectHub — Панель управления проектами',
     width: 1400,
@@ -35,10 +39,16 @@ function createWindow() {
     backgroundColor: '#0f1117',
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: preloadPath,
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      sandbox: false
     }
+  });
+
+  // Log renderer console messages to stdout
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    console.log(`[Renderer Console: ${level}] ${message} (${sourceId}:${line})`);
   });
 
   // Toggle DevTools with F12 or Ctrl+Shift+I
