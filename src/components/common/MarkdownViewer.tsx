@@ -397,8 +397,8 @@ const TableBlock: React.FC<{ headers: string[]; rows: string[][] }> = ({ headers
 const InlineMarkdown: React.FC<{ text: string }> = ({ text }) => {
   if (!text) return null;
 
-  // Split by markdown images: ![alt](url)
-  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  // Split by markdown images: ![alt](url) OR html img tags: <img src="..." />
+  const imageRegex = /(!\[([^\]]*)\]\(([^)]+)\)|<img\s+([^>]+?)\/?>)/gi;
   const parts: React.ReactNode[] = [];
   let lastIdx = 0;
   let match;
@@ -407,17 +407,50 @@ const InlineMarkdown: React.FC<{ text: string }> = ({ text }) => {
     if (match.index > lastIdx) {
       parts.push(renderFormattedText(text.substring(lastIdx, match.index), parts.length));
     }
-    const alt = match[1];
-    const src = match[2];
-    parts.push(
-      <img
-        key={`img-${match.index}`}
-        src={src}
-        alt={alt}
-        className="inline-block max-w-full rounded-xl border border-slate-800 shadow-lg my-2 object-contain"
-        style={{ maxHeight: '360px' }}
-      />
-    );
+
+    if (match[0].startsWith('![')) {
+      // Markdown style: ![alt](url)
+      const alt = match[2] || '';
+      const src = match[3] || '';
+      parts.push(
+        <img
+          key={`md-img-${match.index}`}
+          src={src}
+          alt={alt}
+          className="inline-block max-w-full rounded-xl border border-slate-800 shadow-lg my-1.5 object-contain"
+          style={{ maxHeight: '360px' }}
+        />
+      );
+    } else {
+      // HTML style: <img src="..." ... />
+      const attrString = match[4] || '';
+      const srcMatch = attrString.match(/src=["']([^"']+)["']/i);
+      const altMatch = attrString.match(/alt=["']([^"']+)["']/i);
+      const widthMatch = attrString.match(/width=["']?(\d+)(?:px)?["']?/i);
+      const heightMatch = attrString.match(/height=["']?(\d+)(?:px)?["']?/i);
+
+      const src = srcMatch ? srcMatch[1] : '';
+      const alt = altMatch ? altMatch[1] : 'Image';
+      const width = widthMatch ? parseInt(widthMatch[1], 10) : undefined;
+      const height = heightMatch ? parseInt(heightMatch[1], 10) : undefined;
+
+      parts.push(
+        <img
+          key={`html-img-${match.index}`}
+          src={src}
+          alt={alt}
+          width={width}
+          height={height}
+          className="inline-block max-w-full rounded-lg border border-slate-800/80 shadow-md my-1 object-contain"
+          style={{
+            width: width ? `${width}px` : undefined,
+            height: height ? `${height}px` : undefined,
+            maxHeight: '360px'
+          }}
+        />
+      );
+    }
+
     lastIdx = match.index + match[0].length;
   }
 
