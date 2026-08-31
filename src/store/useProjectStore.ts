@@ -9,7 +9,9 @@ import type {
   ManagedProcess,
   PullRequest,
   PRCreateOptions,
-  PRProviderInfo
+  PRProviderInfo,
+  DocItem,
+  CreateDocParams
 } from '../types/electron';
 
 interface ProjectState {
@@ -41,6 +43,21 @@ interface ProjectState {
   prFilter: 'all' | 'open' | 'closed' | 'merged';
   isLoadingPRs: boolean;
   prProviderInfo: PRProviderInfo | null;
+
+  // Docs & ADR State
+  docsList: DocItem[];
+  selectedDoc: DocItem | null;
+  docContent: string;
+  isDocLoading: boolean;
+  isDocSaving: boolean;
+  isDocDirty: boolean;
+
+  // Docs & ADR Actions
+  fetchDocs: (projectPath: string) => Promise<void>;
+  selectDoc: (doc: DocItem | null) => Promise<void>;
+  setDocContent: (content: string) => void;
+  saveDocAction: () => Promise<boolean>;
+  createDocAction: (params: CreateDocParams) => Promise<DocItem | null>;
 
   // Actions
   setProjects: (projects: ProjectInfo[]) => void;
@@ -133,12 +150,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isLoadingPRs: false,
   prProviderInfo: null,
 
+  docsList: [],
+  selectedDoc: null,
+  docContent: '',
+  isDocLoading: false,
+  isDocSaving: false,
+  isDocDirty: false,
+
   setProjects: (projects) => set({ projects }),
   selectProject: (selectedProject) => {
     set({ selectedProject });
     if (selectedProject) {
       get().loadProjectData(selectedProject);
       get().fetchProcesses(selectedProject.path);
+      get().fetchDocs(selectedProject.path);
     }
   },
   setTasks: (tasks) => set({ tasks }),
@@ -680,6 +705,96 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       console.error('Failed to create PR:', err);
       get().addTerminalLog(`[PR Error] Ошибка создания PR: ${err.message}`);
       throw err;
+    }
+  },
+
+  // ─── Docs & ADR Actions ───────────────────────────────────────────────────
+
+  fetchDocs: async (projectPath: string) => {
+    if (!window.api) return;
+    set({ isDocLoading: true });
+    try {
+      const list = await window.api.listDocs(projectPath);
+      set({ docsList: list });
+      if (!get().selectedDoc && list.length > 0) {
+        get().selectDoc(list[0]);
+      } else if (get().selectedDoc) {
+        const stillExists = list.find((d) => d.filePath === get().selectedDoc?.filePath);
+        if (stillExists) {
+          set({ selectedDoc: stillExists });
+        } else if (list.length > 0) {
+          get().selectDoc(list[0]);
+        } else {
+          set({ selectedDoc: null, docContent: '' });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch docs:', e);
+      set({ docsList: [] });
+    } finally {
+      set({ isDocLoading: false });
+    }
+  },
+
+  selectDoc: async (doc: DocItem | null) => {
+    set({ selectedDoc: doc, isDocDirty: false });
+    if (!doc || !window.api) {
+      set({ docContent: '' });
+      return;
+    }
+    set({ isDocLoading: true });
+    try {
+      const content = await window.api.readDoc(doc.filePath);
+      set({ docContent: content, isDocDirty: false });
+    } catch (e) {
+      console.error('Failed to read doc content:', e);
+      set({ docContent: 'Не удалось загрузить содержимое документа.' });
+    } finally {
+      set({ isDocLoading: false });
+    }
+  },
+
+  setDocContent: (content: string) => {
+    set({ docContent: content, isDocDirty: true });
+  },
+
+  saveDocAction: async () => {
+    const doc = get().selectedDoc;
+    if (!doc || !window.api) return false;
+    set({ isDocSaving: true });
+    try {
+      const ok = await window.api.saveDoc(doc.filePath, get().docContent);
+      if (ok) {
+        set({ isDocDirty: false });
+        get().addTerminalLog(`[Docs] Документ сохранен: ${doc.fileRelative}`);
+        if (get().selectedProject) {
+          await get().fetchDocs(get().selectedProject!.path);
+        }
+      }
+      return ok;
+    } catch (e) {
+      console.error('Failed to save doc:', e);
+      return false;
+    } finally {
+      set({ isDocSaving: false });
+    }
+  },
+
+  createDocAction: async (params: CreateDocParams) => {
+    const project = get().selectedProject;
+    if (!project || !window.api) return null;
+    try {
+      const created = await window.api.createDoc(project.path, params);
+      if (created) {
+        get().addTerminalLog(`[Docs] Создан ${created.category === 'decision' ? 'ADR' : 'документ'}: ${created.fileRelative}`);
+        await get().fetchDocs(project.path);
+        await get().selectDoc(created);
+      }
+      return created;
+    } catch (e: any) {
+      console.error('Failed to create doc:', e);
+      get().addTerminalLog(`[Docs Error] Ошибка создания: ${e.message}`);
+      return null;
     }
   }
 }));

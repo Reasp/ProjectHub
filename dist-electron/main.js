@@ -21970,10 +21970,172 @@ var vn = new class {
 		}
 	}
 }();
+//#endregion
+//#region electron/services/docsService.ts
+function xn(e) {
+	return e.toLowerCase().trim().replace(/[^\w\sа-яё\-]/gi, "").replace(/[\s_]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
+}
+async function Sn(e) {
+	let t = [], n = s.normalize(e), r = s.join(n, "backlog", "decisions");
+	if (u(r)) try {
+		let e = await c.readdir(r);
+		for (let i of e) if (i.endsWith(".md")) {
+			let e = s.join(r, i), a = await c.stat(e), o = await c.readFile(e, "utf-8"), { data: l, content: u } = p(o), d = l.title;
+			if (!d) {
+				let e = u.match(/^#\s+(.+)$/m);
+				d = e ? e[1].trim() : i.replace(/\.md$/, "");
+			}
+			t.push({
+				id: `decision-${i}`,
+				title: d,
+				category: "decision",
+				filePath: e,
+				fileRelative: s.relative(n, e).replace(/\\/g, "/"),
+				tags: Array.isArray(l.tags) ? l.tags : [],
+				status: l.status || "Accepted",
+				date: l.date ? String(l.date) : void 0,
+				updatedAt: a.mtime.toISOString(),
+				size: a.size
+			});
+		}
+	} catch (e) {
+		console.error("Error scanning decisions:", e);
+	}
+	let i = s.join(n, "backlog", "docs");
+	if (u(i)) {
+		async function e(r) {
+			try {
+				let i = await c.readdir(r, { withFileTypes: !0 });
+				for (let a of i) {
+					let i = s.join(r, a.name);
+					if (a.isDirectory()) await e(i);
+					else if (a.isFile() && a.name.endsWith(".md")) {
+						let e = await c.stat(i), r = await c.readFile(i, "utf-8"), { data: o, content: l } = p(r), u = o.title;
+						if (!u) {
+							let e = l.match(/^#\s+(.+)$/m);
+							u = e ? e[1].trim() : a.name.replace(/\.md$/, "");
+						}
+						t.push({
+							id: `doc-${a.name}`,
+							title: u,
+							category: "doc",
+							filePath: i,
+							fileRelative: s.relative(n, i).replace(/\\/g, "/"),
+							tags: Array.isArray(o.tags) ? o.tags : [],
+							status: o.status,
+							date: o.date ? String(o.date) : void 0,
+							updatedAt: e.mtime.toISOString(),
+							size: e.size
+						});
+					}
+				}
+			} catch (e) {
+				console.error("Error scanning docs:", e);
+			}
+		}
+		await e(i);
+	}
+	return t.sort((e, t) => e.title.localeCompare(t.title));
+}
+async function Cn(e) {
+	let t = s.normalize(e);
+	if (!u(t)) throw Error(`Файл не найден: ${t}`);
+	return await c.readFile(t, "utf-8");
+}
+async function wn(e, t) {
+	let n = s.normalize(e), r = s.dirname(n);
+	return u(r) || await c.mkdir(r, { recursive: !0 }), await c.writeFile(n, t, "utf-8"), !0;
+}
+async function Tn(e, t) {
+	let n = s.normalize(e), r = t.type || "doc", i = t.title.trim(), a = xn(i), o, l, u = t.content;
+	if (r === "decision") {
+		o = s.join(n, "backlog", "decisions"), await c.mkdir(o, { recursive: !0 });
+		let e = 1;
+		try {
+			let t = await c.readdir(o);
+			for (let n of t) {
+				let t = n.match(/^(\d{4})/);
+				if (t) {
+					let n = parseInt(t[1], 10);
+					n >= e && (e = n + 1);
+				}
+			}
+		} catch {}
+		let r = String(e).padStart(4, "0");
+		if (l = `${r}-${a}.md`, !u) {
+			let e = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+			u = `---
+title: "${i}"
+tags: ${t.tags && t.tags.length > 0 ? JSON.stringify(t.tags) : JSON.stringify([
+				"adr",
+				"decision",
+				a
+			])}
+status: "${t.status || "Accepted"}"
+date: "${e}"
+---
+
+# ${r}. ${i}
+
+## Контекст и проблематика
+Опишите контекст проблемы, технические ограничения и требования, которые привели к необходимости принятия этого архитектурного решения.
+
+## Рассматриваемые варианты
+1. **Вариант 1**: Плюсы и минусы
+2. **Вариант 2**: Плюсы и минусы
+
+## Принятое решение
+Опишите выбранный подход и обоснование выбора.
+
+## Последствия
+### Положительные
+- 
+
+### Отрицательные / Риски
+- 
+`;
+		}
+	} else if (o = s.join(n, "backlog", "docs"), await c.mkdir(o, { recursive: !0 }), l = `${a}.md`, !u) {
+		let e = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+		u = `---
+title: "${i}"
+tags: ${t.tags && t.tags.length > 0 ? JSON.stringify(t.tags) : JSON.stringify(["documentation", a])}
+date: "${e}"
+---
+
+# ${i}
+
+## Обзор
+Краткое описание назначения и содержания данного документа.
+
+## Основные разделы
+### 1. Введение
+Описание архитектуры или процесса.
+
+### 2. Спецификация
+Детальные спецификации, схемы или примеры использования.
+`;
+	}
+	let d = s.join(o, l);
+	await c.writeFile(d, u, "utf-8");
+	let f = await c.stat(d);
+	return {
+		id: `${r}-${l}`,
+		title: i,
+		category: r,
+		filePath: d,
+		fileRelative: s.relative(n, d).replace(/\\/g, "/"),
+		tags: t.tags || [],
+		status: t.status || (r === "decision" ? "Accepted" : void 0),
+		date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+		updatedAt: f.mtime.toISOString(),
+		size: f.size
+	};
+}
 process.env.DIST = s.join(__dirname, "../dist"), process.env.VITE_PUBLIC = n.isPackaged ? process.env.DIST : s.join(__dirname, "../public");
-var xn = null, Sn = process.env.VITE_DEV_SERVER_URL;
-function Cn() {
-	xn = new t({
+var En = null, Dn = process.env.VITE_DEV_SERVER_URL;
+function On() {
+	En = new t({
 		width: 1400,
 		height: 900,
 		minWidth: 1024,
@@ -21990,14 +22152,14 @@ function Cn() {
 			nodeIntegration: !1,
 			contextIsolation: !0
 		}
-	}), xn.webContents.on("did-finish-load", () => {
-		xn?.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
-	}), Sn ? xn.loadURL(Sn) : xn.loadFile(s.join(process.env.DIST ?? s.join(__dirname, "../dist"), "index.html"));
+	}), En.webContents.on("did-finish-load", () => {
+		En?.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
+	}), Dn ? En.loadURL(Dn) : En.loadFile(s.join(process.env.DIST ?? s.join(__dirname, "../dist"), "index.html"));
 }
 n.on("window-all-closed", () => {
-	process.platform !== "darwin" && (n.quit(), xn = null);
+	process.platform !== "darwin" && (n.quit(), En = null);
 }), n.on("activate", () => {
-	t.getAllWindows().length === 0 && Cn();
+	t.getAllWindows().length === 0 && On();
 }), i.handle("projects:list", async () => {
 	let e = await N.getProjects(), t = [];
 	for (let n of e) {
@@ -22009,8 +22171,8 @@ n.on("window-all-closed", () => {
 	let n = await P(t);
 	return n ? (await N.addProject(n.path, !1), n) : null;
 }), i.handle("projects:remove", async (e, t) => await N.removeProject(t)), i.handle("projects:refresh", async (e, t) => await P(t)), i.handle("projects:toggleFavorite", async (e, t) => await N.toggleFavorite(t)), i.handle("projects:getScanRoots", async () => await N.getScanRoots()), i.handle("projects:setScanRoots", async (e, t) => await N.setScanRoots(t)), i.handle("projects:getDetails", async (e, t) => await P(t)), i.handle("dialog:selectDirectory", async () => {
-	if (!xn) return null;
-	let e = await r.showOpenDialog(xn, {
+	if (!En) return null;
+	let e = await r.showOpenDialog(En, {
 		properties: ["openDirectory"],
 		title: "Выберите папку проекта с Backlog.md или репозиторием"
 	});
@@ -22038,9 +22200,9 @@ n.on("window-all-closed", () => {
 		t
 	], { detached: !0 });
 }), i.handle("backlog:watchProject", async (e, t) => {
-	re.watch(t, xn);
+	re.watch(t, En);
 });
-function wn(e) {
+function kn(e) {
 	let t = [], n = e.split("\n"), r = !1, i = [], a = !1;
 	for (let e of n) {
 		let n = e.trim();
@@ -22068,12 +22230,12 @@ function wn(e) {
 i.handle("backlog:getTasks", async (e, t) => {
 	let n = s.join(t, "backlog", "tasks");
 	if (!u(n)) return [];
-	re.watch(t, xn);
+	re.watch(t, En);
 	let r = [];
 	try {
 		let e = await c.readdir(n);
 		for (let t of e) if (t.endsWith(".md")) {
-			let e = s.join(n, t), i = await c.readFile(e, "utf-8"), a = p(i), { criteria: o, description: l } = wn(a.content);
+			let e = s.join(n, t), i = await c.readFile(e, "utf-8"), a = p(i), { criteria: o, description: l } = kn(a.content);
 			r.push({
 				id: a.data.id || s.basename(t, ".md").split("-")[0].trim(),
 				title: a.data.title || s.basename(t, ".md"),
@@ -22192,8 +22354,8 @@ i.handle("backlog:getTasks", async (e, t) => {
 	} catch (e) {
 		return console.error(`Git status error for ${t}:`, e), null;
 	}
-}), i.handle("git:getRepoDetails", async (e, t) => await vn.getRepoDetails(t)), i.handle("git:checkout", async (e, t, n, r = !1) => await vn.checkoutBranch(t, n, r)), i.handle("git:createBranch", async (e, t, n) => await vn.createBranch(t, n)), i.handle("git:stageFile", async (e, t, n) => await vn.stageFile(t, n)), i.handle("git:unstageFile", async (e, t, n) => await vn.unstageFile(t, n)), i.handle("git:stageAll", async (e, t) => await vn.stageAll(t)), i.handle("git:commit", async (e, t, n, r = !1) => await vn.commitChanges(t, n, r)), i.handle("git:getFileDiff", async (e, t, n, r = !1) => await vn.getFileDiff(t, n, r)), i.handle("pr:getProviderInfo", async (e, t) => await bn.getProviderInfo(t)), i.handle("pr:list", async (e, t, n) => await bn.listPullRequests(t, n)), i.handle("pr:create", async (e, t, n) => await bn.createPullRequest(t, n)), i.handle("pr:getDiff", async (e, t, n) => await bn.getPRDiff(t, n)), i.handle("system:getPlatform", async () => process.platform), n.on("before-quit", () => {
+}), i.handle("git:getRepoDetails", async (e, t) => await vn.getRepoDetails(t)), i.handle("git:checkout", async (e, t, n, r = !1) => await vn.checkoutBranch(t, n, r)), i.handle("git:createBranch", async (e, t, n) => await vn.createBranch(t, n)), i.handle("git:stageFile", async (e, t, n) => await vn.stageFile(t, n)), i.handle("git:unstageFile", async (e, t, n) => await vn.unstageFile(t, n)), i.handle("git:stageAll", async (e, t) => await vn.stageAll(t)), i.handle("git:commit", async (e, t, n, r = !1) => await vn.commitChanges(t, n, r)), i.handle("git:getFileDiff", async (e, t, n, r = !1) => await vn.getFileDiff(t, n, r)), i.handle("pr:getProviderInfo", async (e, t) => await bn.getProviderInfo(t)), i.handle("pr:list", async (e, t, n) => await bn.listPullRequests(t, n)), i.handle("pr:create", async (e, t, n) => await bn.createPullRequest(t, n)), i.handle("pr:getDiff", async (e, t, n) => await bn.getPRDiff(t, n)), i.handle("docs:list", async (e, t) => await Sn(t)), i.handle("docs:read", async (e, t) => await Cn(t)), i.handle("docs:save", async (e, t, n) => await wn(t, n)), i.handle("docs:create", async (e, t, n) => await Tn(t, n)), i.handle("system:getPlatform", async () => process.platform), n.on("before-quit", () => {
 	se.cleanupAll();
-}), n.whenReady().then(Cn);
+}), n.whenReady().then(On);
 //#endregion
 export {};

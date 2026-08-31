@@ -193,6 +193,27 @@ export interface PRProviderInfo {
   authenticated: boolean;
 }
 
+export interface DocItem {
+  id: string;
+  title: string;
+  category: 'doc' | 'decision';
+  filePath: string;
+  fileRelative: string;
+  tags: string[];
+  status?: string;
+  date?: string;
+  updatedAt?: string;
+  size: number;
+}
+
+export interface CreateDocParams {
+  type: 'doc' | 'decision';
+  title: string;
+  status?: string;
+  tags?: string[];
+  content?: string;
+}
+
 export interface IElectronAPI {
   // Projects & Registry
   listProjects: () => Promise<ProjectInfo[]>;
@@ -204,6 +225,12 @@ export interface IElectronAPI {
   getScanRoots: () => Promise<string[]>;
   setScanRoots: (roots: string[]) => Promise<boolean>;
   getProjectDetails: (projectPath: string) => Promise<ProjectInfo | null>;
+
+  // Documentation & ADR Decisions
+  listDocs: (projectPath: string) => Promise<DocItem[]>;
+  readDoc: (filePath: string) => Promise<string>;
+  saveDoc: (filePath: string, content: string) => Promise<boolean>;
+  createDoc: (projectPath: string, params: CreateDocParams) => Promise<DocItem>;
 
   // Project Template Wizard
   createProjectFromTemplate: (options: CreateProjectOptions) => Promise<ProjectInfo>;

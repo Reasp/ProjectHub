@@ -21,6 +21,12 @@ const api: IElectronAPI = {
   setScanRoots: (roots: string[]) => ipcRenderer.invoke('projects:setScanRoots', roots),
   getProjectDetails: (projectPath: string) => ipcRenderer.invoke('projects:getDetails', projectPath),
 
+  // Documentation & ADR Decisions
+  listDocs: (projectPath: string) => ipcRenderer.invoke('docs:list', projectPath),
+  readDoc: (filePath: string) => ipcRenderer.invoke('docs:read', filePath),
+  saveDoc: (filePath: string, content: string) => ipcRenderer.invoke('docs:save', filePath, content),
+  createDoc: (projectPath: string, params: any) => ipcRenderer.invoke('docs:create', projectPath, params),
+
   // Project Template Wizard
   createProjectFromTemplate: (options: CreateProjectOptions) =>
     ipcRenderer.invoke('template:createProject', options),

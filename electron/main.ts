@@ -534,6 +534,26 @@ ipcMain.handle('pr:getDiff', async (_event, projectPath: string, prNumber: numbe
   return await prService.getPRDiff(projectPath, prNumber);
 });
 
+// 8. Documentation & ADR Decisions
+import { listProjectDocs, readDocFile, saveDocFile, createProjectDoc } from './services/docsService';
+import type { CreateDocParams } from '../src/types/electron';
+
+ipcMain.handle('docs:list', async (_event, projectPath: string) => {
+  return await listProjectDocs(projectPath);
+});
+
+ipcMain.handle('docs:read', async (_event, filePath: string) => {
+  return await readDocFile(filePath);
+});
+
+ipcMain.handle('docs:save', async (_event, filePath: string, content: string) => {
+  return await saveDocFile(filePath, content);
+});
+
+ipcMain.handle('docs:create', async (_event, projectPath: string, params: CreateDocParams) => {
+  return await createProjectDoc(projectPath, params);
+});
+
 ipcMain.handle('system:getPlatform', async () => {
   return process.platform;
 });
