@@ -85,6 +85,12 @@ export const App: React.FC = () => {
         } else if (key === 'a') {
           e.preventDefault();
           setActiveTab('analytics');
+        } else if (key === 'i') {
+          e.preventDefault();
+          setActiveTab('ai');
+        } else if (key === 't' && !e.shiftKey) {
+          e.preventDefault();
+          setActiveTab('claude-cli');
         }
         // Ctrl + R: Refresh project
         else if (key === 'r') {

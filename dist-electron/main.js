@@ -8,11 +8,12 @@ import { execFile as f, spawn as p } from "node:child_process";
 import m from "gray-matter";
 import { simpleGit as h } from "simple-git";
 import g from "node:os";
-import _ from "chokidar";
-import v from "tree-kill";
-import { promisify as y } from "node:util";
+import { EventEmitter as _ } from "node:events";
+import v from "chokidar";
+import y from "tree-kill";
+import { promisify as b } from "node:util";
 //#region electron/services/projectRegistry.ts
-var b = {
+var x = {
 	version: 1,
 	scanRoots: (process.platform === "win32" ? [
 		"F:\\",
@@ -29,7 +30,7 @@ var b = {
 		autoScanOnStartup: !0,
 		scanDepth: 2
 	}
-}, x = new class {
+}, S = new class {
 	configPath;
 	cachedConfig = null;
 	constructor() {
@@ -39,10 +40,10 @@ var b = {
 	async ensureConfigFile() {
 		try {
 			let e = c.dirname(this.configPath);
-			return d(e) || await u.mkdir(e, { recursive: !0 }), d(this.configPath) || await u.writeFile(this.configPath, JSON.stringify(b, null, 2), "utf-8"), this.configPath;
+			return d(e) || await u.mkdir(e, { recursive: !0 }), d(this.configPath) || await u.writeFile(this.configPath, JSON.stringify(x, null, 2), "utf-8"), this.configPath;
 		} catch {
 			let e = i ? i.getPath("userData") : c.join(g.tmpdir(), ".projecthub");
-			return d(e) || await u.mkdir(e, { recursive: !0 }), this.configPath = c.join(e, "projects.json"), d(this.configPath) || await u.writeFile(this.configPath, JSON.stringify(b, null, 2), "utf-8"), this.configPath;
+			return d(e) || await u.mkdir(e, { recursive: !0 }), this.configPath = c.join(e, "projects.json"), d(this.configPath) || await u.writeFile(this.configPath, JSON.stringify(x, null, 2), "utf-8"), this.configPath;
 		}
 	}
 	async getConfig() {
@@ -51,17 +52,17 @@ var b = {
 		try {
 			let e = await u.readFile(this.configPath, "utf-8"), t = JSON.parse(e);
 			return this.cachedConfig = {
-				...b,
+				...x,
 				...t,
 				projects: t.projects || [],
-				scanRoots: t.scanRoots || b.scanRoots,
+				scanRoots: t.scanRoots || x.scanRoots,
 				settings: {
-					...b.settings,
+					...x.settings,
 					...t.settings
 				}
 			}, this.cachedConfig;
 		} catch (e) {
-			return console.error("Failed to parse projects.json, restoring default config:", e), this.cachedConfig = b, await this.saveConfig(this.cachedConfig), this.cachedConfig;
+			return console.error("Failed to parse projects.json, restoring default config:", e), this.cachedConfig = x, await this.saveConfig(this.cachedConfig), this.cachedConfig;
 		}
 	}
 	async saveConfig(e) {
@@ -103,7 +104,7 @@ var b = {
 		let t = c.normalize(e).toLowerCase();
 		return !!(await this.getConfig()).projects.find((e) => c.normalize(e.path).toLowerCase() === t)?.favorite;
 	}
-}(), S = /* @__PURE__ */ new Set([
+}(), C = /* @__PURE__ */ new Set([
 	"node_modules",
 	".git",
 	".agents",
@@ -119,7 +120,7 @@ var b = {
 	"appdata",
 	"windows"
 ]);
-async function C(e) {
+async function w(e) {
 	try {
 		let t = c.normalize(e);
 		if (!d(t) || !(await u.stat(t)).isDirectory()) return null;
@@ -157,12 +158,12 @@ async function C(e) {
 				}
 			}
 		} catch {}
-		let g, _, v = 0, y = 0, b = 0, S;
+		let g, _, v = 0, y = 0, b = 0, x;
 		if (i) try {
 			let e = h(t), n = await e.status();
 			g = n.current || "detached", _ = n.isClean(), v = n.files.length, y = n.ahead || 0, b = n.behind || 0;
 			let r = await e.log({ maxCount: 1 });
-			r.latest && (S = {
+			r.latest && (x = {
 				hash: r.latest.hash,
 				message: r.latest.message,
 				date: r.latest.date,
@@ -208,7 +209,7 @@ async function C(e) {
 				processes: n
 			};
 		} catch {}
-		let D = await x.isFavorite(t);
+		let D = await S.isFavorite(t);
 		return {
 			name: o,
 			path: t,
@@ -223,7 +224,7 @@ async function C(e) {
 			gitAhead: y,
 			gitBehind: b,
 			uncommittedCount: v,
-			lastCommit: S,
+			lastCommit: x,
 			taskCounts: p,
 			ragStatus: C,
 			processStatus: T,
@@ -234,26 +235,528 @@ async function C(e) {
 		return console.error(`Error inspecting project at ${e}:`, t), null;
 	}
 }
-async function w(e, t = 2) {
+async function T(e, t = 2) {
 	let n = /* @__PURE__ */ new Map();
 	async function r(e, i) {
 		if (!(i > t)) try {
 			if (!d(e) || !(await u.stat(e)).isDirectory()) return;
-			let t = await C(e);
+			let t = await w(e);
 			if (t && (n.set(c.normalize(t.path).toLowerCase(), t), i > 0)) return;
 			let a = await u.readdir(e, { withFileTypes: !0 });
 			for (let t of a) if (t.isDirectory()) {
 				let n = t.name.toLowerCase();
-				if (S.has(n) || n.startsWith(".")) continue;
+				if (C.has(n) || n.startsWith(".")) continue;
 				await r(c.join(e, t.name), i + 1);
 			}
 		} catch {}
 	}
 	for (let t of e) await r(c.normalize(t), 0);
-	for (let e of n.values()) await x.addProject(e.path, !!e.favorite);
+	for (let e of n.values()) await S.addProject(e.path, !!e.favorite);
 	return Array.from(n.values());
 }
-var T = new class {
+//#endregion
+//#region electron/services/aiAgentService.ts
+var E = c.join(g.homedir(), ".projecthub", "ai-config.json"), D = new class {
+	activeControllers = /* @__PURE__ */ new Map();
+	constructor() {
+		this.ensureConfigDir();
+	}
+	ensureConfigDir() {
+		let e = c.dirname(E);
+		if (!d(e)) try {
+			u.mkdir(e, { recursive: !0 });
+		} catch (e) {
+			console.error("Failed to create config dir:", e);
+		}
+	}
+	async getClaudeAuthStatus() {
+		let e = c.join(g.homedir(), ".claude.json");
+		if (d(e)) try {
+			let t = await u.readFile(e, "utf-8"), n = JSON.parse(t);
+			if (n.oauthAccount && (n.oauthAccount.emailAddress || n.oauthAccount.email)) return {
+				isLoggedIn: !0,
+				email: n.oauthAccount.emailAddress || n.oauthAccount.email,
+				displayName: n.oauthAccount.displayName || n.oauthAccount.fullName,
+				seatTier: n.oauthAccount.seatTier || n.oauthAccount.billingType || "Pro / Team",
+				organizationName: n.oauthAccount.organizationName
+			};
+		} catch (e) {
+			console.warn("Failed to read .claude.json:", e);
+		}
+		return { isLoggedIn: !1 };
+	}
+	async getConfig() {
+		try {
+			if (d(E)) {
+				let e = await u.readFile(E, "utf-8");
+				return JSON.parse(e);
+			}
+		} catch (e) {
+			console.warn("Failed to load AI config, using defaults:", e);
+		}
+		return {
+			provider: "anthropic",
+			model: "claude-3-7-sonnet-20250219",
+			temperature: .7,
+			thinkingBudget: 2048
+		};
+	}
+	async saveConfig(e) {
+		this.ensureConfigDir(), await u.writeFile(E, JSON.stringify(e, null, 2), "utf-8");
+	}
+	abortStream(e) {
+		let t = this.activeControllers.get(e);
+		t && (t.abort(), this.activeControllers.delete(e));
+	}
+	generateDiff(e, t, n = "file") {
+		let r = e.split("\n"), i = t.split("\n"), a = `--- a/${n}\n+++ b/${n}\n@@ -1,${r.length} +1,${i.length} @@\n`, o = Math.max(r.length, i.length);
+		for (let e = 0; e < o; e++) {
+			let t = r[e], n = i[e];
+			t === n ? a += ` ${t ?? ""}\n` : (t !== void 0 && (a += `-${t}\n`), n !== void 0 && (a += `+${n}\n`));
+		}
+		return a.trim();
+	}
+	async applyDiff(e, t, n) {
+		let r = c.isAbsolute(t) ? t : c.join(e, t), i = c.dirname(r);
+		return await u.mkdir(i, { recursive: !0 }), await u.writeFile(r, n, "utf-8"), !0;
+	}
+	async streamChat(e, t, n, r) {
+		let i = new AbortController();
+		this.activeControllers.set(e.sessionId, i);
+		try {
+			let a = await this.buildSystemPrompt(e.projectPath, e.mode);
+			e.config.provider === "anthropic" ? await this.streamAnthropic(e, a, i.signal, t, n, r) : await this.streamOpenAICompatible(e, a, i.signal, t, n, r);
+		} catch (e) {
+			e.name === "AbortError" ? t({ text: "\n\n*(Отменено пользователем)*" }) : r(e.message || String(e));
+		} finally {
+			this.activeControllers.delete(e.sessionId);
+		}
+	}
+	async streamAnthropic(e, t, n, r, i, a) {
+		let o = e.config.apiKey?.trim();
+		if (!o) throw Error("API ключ Anthropic не указан. Пожалуйста, откройте настройки AI Studio и укажите ключ.");
+		let s = e.messages.filter((e) => e.role === "user" || e.role === "assistant").map((e) => ({
+			role: e.role,
+			content: e.content
+		})), l = e.mode === "agent" ? this.getAnthropicTools() : void 0, f = {
+			model: e.config.model || "claude-3-7-sonnet-20250219",
+			max_tokens: 4096,
+			system: t,
+			messages: s,
+			stream: !0
+		};
+		l && l.length > 0 && (f.tools = l), e.config.thinkingBudget && e.config.thinkingBudget > 0 && e.config.model.includes("3-7") ? f.thinking = {
+			type: "enabled",
+			budget_tokens: e.config.thinkingBudget
+		} : f.temperature = e.config.temperature ?? .7;
+		let p = await fetch("https://api.anthropic.com/v1/messages", {
+			method: "POST",
+			headers: {
+				"x-api-key": o,
+				"anthropic-version": "2023-06-01",
+				"content-type": "application/json"
+			},
+			body: JSON.stringify(f),
+			signal: n
+		});
+		if (!p.ok) {
+			let e = await p.text();
+			throw Error(`Anthropic API Error (${p.status}): ${e}`);
+		}
+		let m = "", h = "", g = [], _ = null, v = p.body?.getReader();
+		if (!v) throw Error("Response body is empty");
+		let y = new TextDecoder(), b = "";
+		for (;;) {
+			let { done: t, value: n } = await v.read();
+			if (t) break;
+			b += y.decode(n, { stream: !0 });
+			let i = b.split("\n");
+			b = i.pop() || "";
+			for (let t of i) {
+				let n = t.trim();
+				if (!n || !n.startsWith("data: ")) continue;
+				let i = n.slice(6);
+				if (i !== "[DONE]") try {
+					let t = JSON.parse(i);
+					if (t.type === "content_block_delta") {
+						if (t.delta?.type === "text_delta") {
+							let e = t.delta.text;
+							m += e, r({ text: e });
+						} else if (t.delta?.type === "thinking_delta") {
+							let e = t.delta.thinking;
+							h += e, r({ thought: e });
+						} else t.delta?.type === "input_json_delta" && _ && (_.argsStr += t.delta.partial_json);
+					} else if (t.type === "content_block_start") t.content_block?.type === "tool_use" && (_ = {
+						id: t.content_block.id,
+						name: t.content_block.name,
+						argsStr: ""
+					});
+					else if (t.type === "content_block_stop" && _) {
+						let t = {};
+						try {
+							t = JSON.parse(_.argsStr || "{}");
+						} catch (e) {
+							console.error("Failed to parse tool args:", e);
+						}
+						let n = {
+							id: _.id,
+							name: _.name,
+							args: t,
+							status: "pending"
+						};
+						if (_.name === "write_file" && t.filePath && t.content) {
+							let r = c.isAbsolute(t.filePath) ? t.filePath : c.join(e.projectPath, t.filePath), i = "";
+							d(r) && (i = await u.readFile(r, "utf-8").catch(() => "")), n.diff = {
+								filePath: t.filePath,
+								oldContent: i,
+								newContent: t.content,
+								patch: this.generateDiff(i, t.content, t.filePath)
+							};
+						}
+						g.push(n), r({ toolCall: n }), _ = null;
+					}
+				} catch {}
+			}
+		}
+		i({
+			id: `msg-${Date.now()}`,
+			role: "assistant",
+			content: m,
+			thought: h || void 0,
+			toolCalls: g.length > 0 ? g : void 0,
+			timestamp: (/* @__PURE__ */ new Date()).toISOString()
+		});
+	}
+	async streamOpenAICompatible(e, t, n, r, i, a) {
+		let o = "https://openrouter.ai/api/v1/chat/completions", s = { "content-type": "application/json" }, c = e.config.apiKey?.trim();
+		if (e.config.provider === "openrouter") {
+			if (!c) throw Error("API ключ OpenRouter не указан в настройках.");
+			s.Authorization = `Bearer ${c}`, s["HTTP-Referer"] = "https://projecthub.local", s["X-Title"] = "ProjectHub AI Studio";
+		} else if (e.config.provider === "deepseek") {
+			if (!c) throw Error("API ключ DeepSeek не указан в настройках.");
+			o = "https://api.deepseek.com/chat/completions", s.Authorization = `Bearer ${c}`;
+		} else e.config.provider === "ollama" ? o = `${(e.config.baseUrl || "http://127.0.0.1:11434").replace(/\/+$/, "")}/v1/chat/completions` : e.config.provider === "custom" && (o = e.config.baseUrl || "http://localhost:8000/v1/chat/completions", c && (s.Authorization = `Bearer ${c}`));
+		let l = [{
+			role: "system",
+			content: t
+		}, ...e.messages.filter((e) => e.role === "user" || e.role === "assistant").map((e) => ({
+			role: e.role,
+			content: e.content
+		}))], u = {
+			model: e.config.model || "deepseek/deepseek-chat",
+			messages: l,
+			temperature: e.config.temperature ?? .7,
+			stream: !0
+		}, d = await fetch(o, {
+			method: "POST",
+			headers: s,
+			body: JSON.stringify(u),
+			signal: n
+		});
+		if (!d.ok) {
+			let e = await d.text();
+			throw Error(`API Error (${d.status}): ${e}`);
+		}
+		let f = "", p = "", m = d.body?.getReader();
+		if (!m) throw Error("Response body is empty");
+		let h = new TextDecoder(), g = "";
+		for (;;) {
+			let { done: e, value: t } = await m.read();
+			if (e) break;
+			g += h.decode(t, { stream: !0 });
+			let n = g.split("\n");
+			g = n.pop() || "";
+			for (let e of n) {
+				let t = e.trim();
+				if (!t || !t.startsWith("data: ")) continue;
+				let n = t.slice(6);
+				if (n !== "[DONE]") try {
+					let e = JSON.parse(n).choices?.[0]?.delta;
+					e && (e.reasoning_content && (p += e.reasoning_content, r({ thought: e.reasoning_content })), e.content && (f += e.content, r({ text: e.content })));
+				} catch {}
+			}
+		}
+		i({
+			id: `msg-${Date.now()}`,
+			role: "assistant",
+			content: f,
+			thought: p || void 0,
+			timestamp: (/* @__PURE__ */ new Date()).toISOString()
+		});
+	}
+	async buildSystemPrompt(e, t) {
+		let n = `Ты — Claude AI Studio, интеллектуальный инженерный ассистент и парный программист, встроенный в десктопную панель управления ProjectHub.
+Текущий проект расположен по пути: "${e}".
+Стандарты проекта:
+- Управление задачами: Backlog.md (директория backlog/tasks/ и backlog/completed/)
+- Архитектурные решения: ADR (директория backlog/decisions/)
+- Документация: Markdown (директория backlog/docs/)
+- Векторный RAG: LanceDB
+- Язык ответов: Русский (технические идентификаторы и код остаются на языке оригинала).
+
+Режим работы: ${t.toUpperCase()}.
+`;
+		return t === "agent" ? n += "\nТы обладаешь возможностью предлагать изменения в коде и использовать инструменты.\nКогда ты предлагаешь изменить существующий файл или создать новый, подробно описывай внесенные изменения и используй инструмент write_file. Пользователь увидит визуальный Diff-блок и сможет одобрить или отклонить правки.\n" : t === "architect" && (n += "\nСфокусируйся на архитектурных паттернах, C4-моделировании, проектировании систем, ADR и анализе требований Backlog.md.\n"), n;
+	}
+	getAnthropicTools() {
+		return [
+			{
+				name: "read_file",
+				description: "Прочитать содержимое файла проекта",
+				input_schema: {
+					type: "object",
+					properties: { filePath: {
+						type: "string",
+						description: "Относительный или абсолютный путь к файлу"
+					} },
+					required: ["filePath"]
+				}
+			},
+			{
+				name: "write_file",
+				description: "Создать или изменить файл проекта (показывает интерактивный Diff пользователю)",
+				input_schema: {
+					type: "object",
+					properties: {
+						filePath: {
+							type: "string",
+							description: "Относительный или абсолютный путь к файлу"
+						},
+						content: {
+							type: "string",
+							description: "Полное новое содержимое файла"
+						},
+						explanation: {
+							type: "string",
+							description: "Краткое объяснение внесенных изменений"
+						}
+					},
+					required: ["filePath", "content"]
+				}
+			},
+			{
+				name: "list_dir",
+				description: "Получить список файлов и подкаталогов в директории проекта",
+				input_schema: {
+					type: "object",
+					properties: { subDir: {
+						type: "string",
+						description: "Относительный путь подкаталога (пустая строка для корня)"
+					} }
+				}
+			},
+			{
+				name: "search_rag",
+				description: "Семантический поиск по документации и ADR проекта через LanceDB",
+				input_schema: {
+					type: "object",
+					properties: { query: {
+						type: "string",
+						description: "Поисковый запрос на естественном языке"
+					} },
+					required: ["query"]
+				}
+			}
+		];
+	}
+}(), O = new class extends _ {
+	projectStatuses = /* @__PURE__ */ new Map();
+	pendingApprovals = /* @__PURE__ */ new Map();
+	activeSubagents = /* @__PURE__ */ new Map();
+	activeProcesses = /* @__PURE__ */ new Map();
+	constructor() {
+		super();
+	}
+	getProjectStatus(e) {
+		return this.projectStatuses.get(e) || {
+			projectPath: e,
+			projectName: c.basename(e),
+			status: "idle",
+			updatedAt: Date.now()
+		};
+	}
+	getAllProjectStatuses() {
+		return Array.from(this.projectStatuses.values());
+	}
+	setProjectStatus(e, t, n, r) {
+		let i = (this.activeSubagents.get(e) || []).filter((e) => e.status === "running").length, a = {
+			projectPath: e,
+			projectName: c.basename(e),
+			status: t,
+			lastMessage: n,
+			pendingApproval: r,
+			activeSubagentsCount: i,
+			updatedAt: Date.now()
+		};
+		this.projectStatuses.set(e, a), this.emit("statusChanged", a);
+	}
+	async requestApproval(e) {
+		return new Promise((t) => {
+			this.pendingApprovals.set(e.id, t), this.setProjectStatus(e.projectPath, "waiting_approval", e.title, e);
+		});
+	}
+	sendApprovalResponse(e, t) {
+		let n = this.pendingApprovals.get(e);
+		return n ? (n(t), this.pendingApprovals.delete(e), !0) : !1;
+	}
+	registerSubagent(e) {
+		let t = this.activeSubagents.get(e.projectPath) || [], n = t.findIndex((t) => t.id === e.id);
+		n >= 0 ? t[n] = e : t.push(e), this.activeSubagents.set(e.projectPath, t), this.emit("subagentUpdated", e);
+	}
+	getSubagents(e) {
+		return this.activeSubagents.get(e) || [];
+	}
+	abortSession(e) {
+		D.abortStream(e);
+		let t = this.activeProcesses.get(e);
+		t && (t.kill(), this.activeProcesses.delete(e));
+	}
+	async runAgentTask(e, t, n, r) {
+		let { sessionId: i, projectPath: a } = e;
+		if (this.setProjectStatus(a, "running", "Агент анализирует задачу..."), e.config.provider === "anthropic" && (!e.config.apiKey || !e.config.apiKey.trim())) return this.runClaudeCliTask(e, t, n, r);
+		try {
+			await D.streamChat(e, async (e) => {
+				if (t(e), e.toolCall) {
+					let n = e.toolCall;
+					if (n.name === "run_command" || n.name === "bash") {
+						let e = n.args.command || n.args.cmd || "", r = {
+							id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+							sessionId: i,
+							projectPath: a,
+							type: "command",
+							title: `Разрешение на запуск команды: ${e}`,
+							command: e,
+							details: n.args.explanation || "Выполнение команды терминала",
+							createdAt: Date.now()
+						};
+						t({ approvalRequest: r });
+						let o = await this.requestApproval(r);
+						if (o.approved) {
+							this.setProjectStatus(a, "running", `Выполняется: ${e}`);
+							try {
+								let r = await this.executeSubprocess(e, a);
+								n.status = "accepted", n.result = r, t({ toolCall: n });
+							} catch (e) {
+								n.status = "error", n.result = `Error: ${e.message}`, t({ toolCall: n });
+							}
+						} else n.status = "rejected", n.result = `Отклонено пользователем: ${o.text || "Без комментария"}`, t({ toolCall: n });
+						this.setProjectStatus(a, "running", "Обработка результатов...");
+					} else if (n.name === "spawn_subagent" || n.name === "dispatch_agent") {
+						let e = n.args.task || n.args.prompt || "Подзадача", r = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, o = {
+							id: r,
+							parentSessionId: i,
+							projectPath: a,
+							name: n.args.name || `Подагент #${r.slice(-4)}`,
+							task: e,
+							status: "running",
+							progress: "Инициализация подзадачи...",
+							startedAt: Date.now()
+						};
+						this.registerSubagent(o), t({ subagent: o });
+					}
+				}
+			}, (e) => {
+				this.setProjectStatus(a, "done", "Задача успешно выполнена"), n(e);
+			}, (e) => {
+				this.setProjectStatus(a, "error", `Ошибка: ${e}`), r(e);
+			});
+		} catch (e) {
+			this.setProjectStatus(a, "error", e.message), r(e.message);
+		}
+	}
+	async runClaudeCliTask(e, t, n, r) {
+		let { sessionId: i, projectPath: a, messages: o } = e, s = [...o].reverse().find((e) => e.role === "user")?.content || "Привет", c = p("claude", [
+			"-p",
+			s,
+			"--output-format",
+			"stream-json",
+			"--verbose"
+		], {
+			cwd: a,
+			shell: process.platform === "win32",
+			stdio: [
+				"ignore",
+				"pipe",
+				"pipe"
+			],
+			env: {
+				...process.env,
+				FORCE_COLOR: "0"
+			}
+		});
+		this.activeProcesses.set(i, c);
+		let l = "", u = "", d = [], f = "";
+		c.stdout.on("data", async (e) => {
+			f += e.toString("utf-8");
+			let n = f.split("\n");
+			f = n.pop() || "";
+			for (let e of n) {
+				let n = e.trim();
+				if (!(!n || !n.startsWith("{"))) try {
+					let e = JSON.parse(n);
+					if (e.type === "assistant" && e.message?.content) {
+						for (let n of e.message.content) if (n.type === "text") l += n.text, t({ text: n.text });
+						else if (n.type === "thinking") u += n.thinking, t({ thought: n.thinking });
+						else if (n.type === "tool_use") {
+							let e = {
+								id: n.id || `tool-${Date.now()}`,
+								name: n.name,
+								args: n.input || {}
+							};
+							d.push(e), t({ toolCall: e });
+						}
+					} else e.type === "result" && e.result && typeof e.result == "string" && !l && (l = e.result, t({ text: e.result }));
+				} catch {}
+			}
+		});
+		let m = "";
+		c.stderr.on("data", (e) => {
+			m += e.toString();
+		}), c.on("close", (e) => {
+			if (this.activeProcesses.delete(i), e === 0 || l) {
+				let e = {
+					id: `msg-${Date.now()}`,
+					role: "assistant",
+					content: l,
+					thought: u,
+					toolCalls: d,
+					timestamp: (/* @__PURE__ */ new Date()).toISOString()
+				};
+				this.setProjectStatus(a, "done", "Задача успешно выполнена"), n(e);
+			} else {
+				let t = m || `Claude Code завершился с кодом ${e}`;
+				this.setProjectStatus(a, "error", t), r(t);
+			}
+		}), c.on("error", (e) => {
+			this.activeProcesses.delete(i), this.setProjectStatus(a, "error", e.message), r(e.message);
+		});
+	}
+	executeSubprocess(e, t) {
+		return new Promise((n, r) => {
+			let i = process.platform === "win32", a = p(i ? "powershell.exe" : "/bin/bash", i ? [
+				"-NoProfile",
+				"-NonInteractive",
+				"-Command",
+				e
+			] : ["-c", e], {
+				cwd: t,
+				env: {
+					...process.env,
+					FORCE_COLOR: "0"
+				}
+			}), o = "";
+			a.stdout.on("data", (e) => {
+				o += e.toString();
+			}), a.stderr.on("data", (e) => {
+				o += e.toString();
+			}), a.on("close", (e) => {
+				n(e === 0 ? o || "Команда успешно выполнена (код 0)" : `Команда завершилась с кодом ${e}:\n${o}`);
+			}), a.on("error", (e) => {
+				r(e);
+			});
+		});
+	}
+}(), k = new class {
 	watcher = null;
 	currentPath = null;
 	debounceTimer = null;
@@ -262,7 +765,7 @@ var T = new class {
 		this.unwatch();
 		let n = c.join(e, "backlog", "tasks");
 		if (!d(n)) return;
-		this.currentPath = e, this.watcher = _.watch(n, {
+		this.currentPath = e, this.watcher = v.watch(n, {
 			ignoreInitial: !0,
 			depth: 1,
 			awaitWriteFinish: {
@@ -284,7 +787,7 @@ var T = new class {
 	unwatch() {
 		this.watcher &&= (this.watcher.close(), null), this.currentPath = null;
 	}
-}(), E = "F:\\ProjectTemplate", D = /* @__PURE__ */ new Set([
+}(), A = "F:\\ProjectTemplate", j = /* @__PURE__ */ new Set([
 	"node_modules",
 	".git",
 	".rag-index",
@@ -297,29 +800,29 @@ var T = new class {
 	"dist-electron",
 	"build"
 ]);
-async function O(e, t) {
+async function M(e, t) {
 	await u.mkdir(t, { recursive: !0 });
 	let n = await u.readdir(e, { withFileTypes: !0 });
 	for (let r of n) {
 		let n = c.join(e, r.name), i = c.join(t, r.name), a = r.name.toLowerCase();
-		D.has(a) || (r.isDirectory() ? await O(n, i) : r.isFile() && await u.copyFile(n, i));
+		j.has(a) || (r.isDirectory() ? await M(n, i) : r.isFile() && await u.copyFile(n, i));
 	}
 }
 async function ee(e) {
-	let t = e || E;
+	let t = e || A;
 	return {
 		available: d(t),
 		path: t
 	};
 }
 async function te(e) {
-	let t = e.templateSource || E;
+	let t = e.templateSource || A;
 	if (!d(t)) throw Error(`Директория шаблона не найдена: ${t}`);
 	let n = c.normalize(e.targetDir);
 	if (d(n)) {
 		if ((await u.readdir(n)).length > 0) throw Error(`Целевая директория уже существует и не пуста: ${n}`);
 	} else await u.mkdir(n, { recursive: !0 });
-	await O(t, n);
+	await M(t, n);
 	let r = c.join(n, "package.json");
 	if (d(r)) try {
 		let t = await u.readFile(r, "utf-8"), n = JSON.parse(t);
@@ -361,12 +864,12 @@ async function te(e) {
 	} catch (e) {
 		console.error("Setup script execution warning:", e);
 	}
-	await x.addProject(n, !0);
-	let s = await C(n);
+	await S.addProject(n, !0);
+	let s = await w(n);
 	if (!s) throw Error("Не удалось проинспектировать созданный проект.");
 	return s;
 }
-var k = new class {
+var N = new class {
 	activeProcesses = /* @__PURE__ */ new Map();
 	broadcastLog(e, t) {
 		for (let n of r.getAllWindows()) n.isDestroyed() || n.webContents.send("process:logChunk", {
@@ -421,7 +924,7 @@ var k = new class {
 	async stopProcess(e) {
 		let t = this.activeProcesses.get(e);
 		return t ? !t.info.pid || new Promise((n) => {
-			v(t.info.pid, "SIGKILL", (r) => {
+			y(t.info.pid, "SIGKILL", (r) => {
 				r ? (console.error(`Failed to kill process tree for ${e}:`, r), n(!1)) : (t.info.status = "stopped", this.broadcastStatus(t.info), n(!0));
 			});
 		}) : !1;
@@ -475,37 +978,37 @@ var k = new class {
 	}
 	cleanupAll() {
 		for (let [e, t] of this.activeProcesses.entries()) if (t.info.pid && t.info.status === "running") try {
-			v(t.info.pid, "SIGKILL");
+			y(t.info.pid, "SIGKILL");
 		} catch (t) {
 			console.error(`Cleanup kill failed for ${e}:`, t);
 		}
 	}
-}(), ne = "Xenova/all-MiniLM-L6-v2", A = null, j = null, M = null;
-async function N() {
-	if (!j) try {
-		j = await import("@lancedb/lancedb");
+}(), ne = "Xenova/all-MiniLM-L6-v2", P = null, F = null, I = null;
+async function L() {
+	if (!F) try {
+		F = await import("@lancedb/lancedb");
 	} catch (e) {
 		return console.warn("[RAG] LanceDB native module not available, fallback to fulltext search:", e), null;
 	}
-	return j;
+	return F;
 }
 async function re() {
-	if (!M) try {
-		M = await import("./transformers.node-COFdxZ8y.js"), M.env && (M.env.cacheDir = c.join(process.cwd(), ".rag-cache"));
+	if (!I) try {
+		I = await import("./transformers.node-COFdxZ8y.js"), I.env && (I.env.cacheDir = c.join(process.cwd(), ".rag-cache"));
 	} catch (e) {
 		return console.warn("[RAG] Transformers not available:", e), null;
 	}
-	return M;
+	return I;
 }
 async function ie() {
-	if (!A) {
+	if (!P) {
 		let e = await re();
 		if (!e) return null;
-		A = e.pipeline("feature-extraction", ne, { dtype: "fp32" });
+		P = e.pipeline("feature-extraction", ne, { dtype: "fp32" });
 	}
-	return A;
+	return P;
 }
-async function P(e) {
+async function ae(e) {
 	try {
 		let t = await ie();
 		if (!t) return null;
@@ -519,7 +1022,7 @@ async function P(e) {
 		return console.warn("[RAG] Embedding failed:", e), null;
 	}
 }
-async function ae(e) {
+async function oe(e) {
 	let t = [], n = [
 		{
 			dir: c.join(e, "backlog", "docs"),
@@ -554,11 +1057,11 @@ async function ae(e) {
 		category: "doc"
 	}), t;
 }
-async function oe(e) {
+async function se(e) {
 	let t = e.query?.trim();
 	if (!t) return [];
 	let n = e.mode || "all", r = e.limit || 15, i = e.global ?? !1, a = [];
-	a = i || !e.projectPath ? (await x.getProjects()).map((e) => ({
+	a = i || !e.projectPath ? (await S.getProjects()).map((e) => ({
 		name: c.basename(e.path),
 		path: e.path
 	})) : [{
@@ -571,11 +1074,11 @@ async function oe(e) {
 		if (n === "vector" || n === "all") {
 			let n = c.join(i, ".rag-index");
 			if (d(n)) try {
-				let a = await N();
+				let a = await L();
 				if (a) {
 					let s = await a.connect(n), l = await s.tableNames(), u = l.includes("docs") ? "docs" : l[0];
 					if (u) {
-						let n = await s.openTable(u), a = await P([t]);
+						let n = await s.openTable(u), a = await ae([t]);
 						if (a && a[0]) {
 							let t = await n.search(a[0]).limit(r).toArray();
 							for (let n of t) {
@@ -600,7 +1103,7 @@ async function oe(e) {
 			}
 		}
 		if (n === "text" || n === "all") try {
-			let n = await ae(i), r = t.toLowerCase();
+			let n = await oe(i), r = t.toLowerCase();
 			for (let t of n) {
 				let n = await u.readFile(t.filePath, "utf-8"), a = m(n), s = a.data?.title || c.basename(t.filePath, ".md"), l = a.content, d = s.toLowerCase().includes(r), f = l.toLowerCase().indexOf(r);
 				if (d || f !== -1) {
@@ -628,14 +1131,14 @@ async function oe(e) {
 	}
 	return o.sort((e, t) => t.score - e.score), o.slice(0, r);
 }
-async function se(e) {
+async function ce(e) {
 	let t = c.join(e, ".rag-index");
 	if (!d(t)) return {
 		hasIndex: !1,
 		chunksCount: 0
 	};
 	try {
-		let e = await N();
+		let e = await L();
 		if (e) {
 			let n = await e.connect(t), r = await n.tableNames(), i = r.includes("docs") ? "docs" : r[0];
 			if (i) return {
@@ -652,7 +1155,7 @@ async function se(e) {
 		chunksCount: 0
 	};
 }
-var F = new class {
+var R = new class {
 	watchers = /* @__PURE__ */ new Map();
 	broadcastGitChanged(e) {
 		for (let t of r.getAllWindows()) t.isDestroyed() || t.webContents.send("git:changed", { projectPath: e });
@@ -667,7 +1170,7 @@ var F = new class {
 			c.join(n, "HEAD"),
 			c.join(n, "index"),
 			c.join(n, "refs")
-		], i = _.watch(r, {
+		], i = v.watch(r, {
 			ignoreInitial: !0,
 			ignored: [
 				"**/node_modules/**",
@@ -806,10 +1309,10 @@ var F = new class {
 			return console.error(`Failed to get diff for ${t}:`, e), "";
 		}
 	}
-}(), I = y(f), L = new class {
+}(), z = b(f), B = new class {
 	async runGh(e, t) {
 		try {
-			let { stdout: n } = await I("gh", e, {
+			let { stdout: n } = await z("gh", e, {
 				cwd: t,
 				env: {
 					...process.env,
@@ -823,7 +1326,7 @@ var F = new class {
 	}
 	async isGhAvailable() {
 		try {
-			return await I("gh", ["--version"]), !0;
+			return await z("gh", ["--version"]), !0;
 		} catch {
 			return !1;
 		}
@@ -1009,10 +1512,10 @@ var F = new class {
 }();
 //#endregion
 //#region electron/services/docsService.ts
-function ce(e) {
+function V(e) {
 	return e.toLowerCase().trim().replace(/[^\w\sа-яё\-]/gi, "").replace(/[\s_]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
 }
-async function R(e) {
+async function H(e) {
 	let t = [], n = c.normalize(e), r = c.join(n, "backlog", "decisions");
 	if (d(r)) try {
 		let e = await u.readdir(r);
@@ -1074,17 +1577,17 @@ async function R(e) {
 	}
 	return t.sort((e, t) => e.title.localeCompare(t.title));
 }
-async function z(e) {
+async function U(e) {
 	let t = c.normalize(e);
 	if (!d(t)) throw Error(`Файл не найден: ${t}`);
 	return await u.readFile(t, "utf-8");
 }
-async function B(e, t) {
+async function W(e, t) {
 	let n = c.normalize(e), r = c.dirname(n);
 	return d(r) || await u.mkdir(r, { recursive: !0 }), await u.writeFile(n, t, "utf-8"), !0;
 }
-async function V(e, t) {
-	let n = c.normalize(e), r = t.type || "doc", i = t.title.trim(), a = ce(i), o, s, l = t.content;
+async function le(e, t) {
+	let n = c.normalize(e), r = t.type || "doc", i = t.title.trim(), a = V(i), o, s, l = t.content;
 	if (r === "decision") {
 		o = c.join(n, "backlog", "decisions"), await u.mkdir(o, { recursive: !0 });
 		let e = 1;
@@ -1171,10 +1674,10 @@ date: "${e}"
 }
 //#endregion
 //#region electron/services/milestoneService.ts
-function H(e) {
+function ue(e) {
 	return e.toLowerCase().trim().replace(/[^\w\sа-яё\-]/gi, "").replace(/[\s_]+/g, "-").replace(/^-+|-+$/g, "") || "milestone";
 }
-async function U(e) {
+async function de(e) {
 	let t = [], n = c.normalize(e), r = c.join(n, "backlog", "milestones"), i = c.join(n, "backlog", "tasks"), a = /* @__PURE__ */ new Map();
 	if (d(i)) try {
 		let e = await u.readdir(i);
@@ -1221,10 +1724,10 @@ async function U(e) {
 	}
 	return t;
 }
-async function W(e, t) {
+async function fe(e, t) {
 	let n = c.normalize(e), r = c.join(n, "backlog", "milestones");
 	await u.mkdir(r, { recursive: !0 });
-	let i = t.title.trim(), a = H(i), o = 1;
+	let i = t.title.trim(), a = ue(i), o = 1;
 	try {
 		let e = await u.readdir(r);
 		for (let t of e) {
@@ -1259,7 +1762,7 @@ async function W(e, t) {
 		}
 	};
 }
-async function G(e, t) {
+async function pe(e, t) {
 	let n = c.normalize(e);
 	if (!d(n)) return !1;
 	let r = await u.readFile(n, "utf-8"), i = m(r);
@@ -1267,13 +1770,13 @@ async function G(e, t) {
 	let a = m.stringify(i.content, i.data);
 	return await u.writeFile(n, a, "utf-8"), !0;
 }
-async function le(e) {
+async function me(e) {
 	let t = c.normalize(e);
 	return d(t) ? (await u.unlink(t), !0) : !1;
 }
 //#endregion
 //#region node_modules/node-pty/lib/utils.js
-var K = /* @__PURE__ */ n(((t) => {
+var G = /* @__PURE__ */ n(((t) => {
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.loadNativeModule = t.assign = void 0;
 	function n(e) {
 		return [...arguments].slice(1).forEach(function(t) {
@@ -1302,7 +1805,7 @@ var K = /* @__PURE__ */ n(((t) => {
 		throw Error("Failed to load native module: " + t + ".node, checked: " + n.join(", ") + ": " + i);
 	}
 	t.loadNativeModule = r;
-})), q = /* @__PURE__ */ n(((e) => {
+})), K = /* @__PURE__ */ n(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.EventEmitter2 = void 0, e.EventEmitter2 = function() {
 		function e() {
 			this._listeners = [];
@@ -1326,9 +1829,9 @@ var K = /* @__PURE__ */ n(((t) => {
 			for (var n = 0; n < t.length; n++) t[n].call(void 0, e);
 		}, e;
 	}();
-})), J = /* @__PURE__ */ n(((t) => {
+})), q = /* @__PURE__ */ n(((t) => {
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.Terminal = t.DEFAULT_ROWS = t.DEFAULT_COLS = void 0;
-	var n = e("events"), r = q();
+	var n = e("events"), r = K();
 	t.DEFAULT_COLS = 80, t.DEFAULT_ROWS = 24;
 	var i = "", a = "";
 	t.Terminal = function() {
@@ -1432,13 +1935,13 @@ var K = /* @__PURE__ */ n(((t) => {
 			return n;
 		}, e;
 	}();
-})), ue = /* @__PURE__ */ n(((e) => {
+})), he = /* @__PURE__ */ n(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.getWorkerPipeName = void 0;
 	function t(e) {
 		return e + "-worker";
 	}
 	e.getWorkerPipeName = t;
-})), de = /* @__PURE__ */ n(((t) => {
+})), ge = /* @__PURE__ */ n(((t) => {
 	var n = t && t.__awaiter || function(e, t, n, r) {
 		function i(e) {
 			return e instanceof n ? e : new n(function(t) {
@@ -1540,7 +2043,7 @@ var K = /* @__PURE__ */ n(((t) => {
 		}
 	};
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.ConoutConnection = void 0;
-	var i = e("worker_threads"), a = ue(), o = e("path"), s = q(), c = 1e3;
+	var i = e("worker_threads"), a = he(), o = e("path"), s = K(), c = 1e3;
 	t.ConoutConnection = function() {
 		function e(e, t) {
 			var n = this;
@@ -1581,9 +2084,9 @@ var K = /* @__PURE__ */ n(((t) => {
 			});
 		}, e;
 	}();
-})), fe = /* @__PURE__ */ n(((t) => {
+})), _e = /* @__PURE__ */ n(((t) => {
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.argsToCommandLine = t.WindowsPtyAgent = void 0;
-	var n = e("fs"), r = e("os"), i = e("path"), a = e("child_process"), o = e("net"), s = de(), c = K(), l, u, d = 1e3;
+	var n = e("fs"), r = e("os"), i = e("path"), a = e("child_process"), o = e("net"), s = ge(), c = G(), l, u, d = 1e3;
 	t.WindowsPtyAgent = function() {
 		function e(e, t, r, a, d, p, m, h, g, _) {
 			var v = this;
@@ -1729,7 +2232,7 @@ var K = /* @__PURE__ */ n(((t) => {
 	function h(e, t) {
 		return e && !t || !e && t;
 	}
-})), pe = /* @__PURE__ */ n(((e) => {
+})), ve = /* @__PURE__ */ n(((e) => {
 	var t = e && e.__extends || (function() {
 		var e = function(t, n) {
 			return e = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(e, t) {
@@ -1747,7 +2250,7 @@ var K = /* @__PURE__ */ n(((t) => {
 		};
 	})();
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.WindowsTerminal = void 0;
-	var n = J(), r = fe(), i = K(), a = "cmd.exe", o = "Windows Shell";
+	var n = q(), r = _e(), i = G(), a = "cmd.exe", o = "Windows Shell";
 	e.WindowsTerminal = function(e) {
 		t(s, e);
 		function s(t, s, c) {
@@ -1834,7 +2337,7 @@ var K = /* @__PURE__ */ n(((t) => {
 			configurable: !0
 		}), s;
 	}(n.Terminal);
-})), me = /* @__PURE__ */ n(((t) => {
+})), J = /* @__PURE__ */ n(((t) => {
 	var n = t && t.__extends || (function() {
 		var e = function(t, n) {
 			return e = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(e, t) {
@@ -1852,7 +2355,7 @@ var K = /* @__PURE__ */ n(((t) => {
 		};
 	})();
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.UnixTerminal = void 0;
-	var r = e("fs"), i = e("path"), a = e("tty"), o = J(), s = K(), c = s.loadNativeModule("pty"), l = c.module, u = c.dir + "/spawn-helper";
+	var r = e("fs"), i = e("path"), a = e("tty"), o = q(), s = G(), c = s.loadNativeModule("pty"), l = c.module, u = c.dir + "/spawn-helper";
 	u = i.resolve(__dirname, u), u = u.replace("app.asar", "app.asar.unpacked"), u = u.replace("node_modules.asar", "node_modules.asar.unpacked");
 	var d = "sh", f = "xterm", p = 200;
 	t.UnixTerminal = function(e) {
@@ -1979,9 +2482,9 @@ var K = /* @__PURE__ */ n(((t) => {
 			}
 		}, e;
 	}();
-})), he = /* @__PURE__ */ t((/* @__PURE__ */ n(((e) => {
+})), ye = /* @__PURE__ */ t((/* @__PURE__ */ n(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.native = e.open = e.createTerminal = e.fork = e.spawn = void 0;
-	var t = K(), n = process.platform === "win32" ? pe().WindowsTerminal : me().UnixTerminal;
+	var t = G(), n = process.platform === "win32" ? ve().WindowsTerminal : J().UnixTerminal;
 	function r(e, t, r) {
 		return new n(e, t, r);
 	}
@@ -2023,7 +2526,7 @@ var K = /* @__PURE__ */ n(((t) => {
 			...process.env,
 			TERM: "xterm-256color",
 			COLORTERM: "truecolor"
-		}, f = d(e.projectPath) ? e.projectPath : process.cwd(), p = he.spawn(a, o, {
+		}, f = d(e.projectPath) ? e.projectPath : process.cwd(), p = ye.spawn(a, o, {
 			name: "xterm-256color",
 			cols: r,
 			rows: i,
@@ -2084,9 +2587,14 @@ var K = /* @__PURE__ */ n(((t) => {
 		} catch {}
 		this.sessions.clear();
 	}
-}(), ge = l(import.meta.url), X = c.dirname(ge);
+}(), be = l(import.meta.url), X = c.dirname(be);
 process.env.DIST = c.join(X, "../dist"), process.env.VITE_PUBLIC = i.isPackaged ? process.env.DIST : c.join(X, "../public");
 var Z = null, Q = process.env.VITE_DEV_SERVER_URL;
+O.on("statusChanged", (e) => {
+	Z && !Z.isDestroyed() && Z.webContents.send("claudeBridge:statusChanged", e);
+}), O.on("subagentUpdated", (e) => {
+	Z && !Z.isDestroyed() && Z.webContents.send("claudeBridge:subagentUpdated", e);
+});
 function $() {
 	let e = c.join(X, "../dist"), t = c.join(e, "index.html"), n = c.join(X, "preload.cjs"), i = c.join(X, "preload.js"), a = d(n) ? n : i, o = c.join(X, "../public/icon.png"), s = c.join(X, "../build/icon.png"), l = d(o) ? o : s;
 	Z = new r({
@@ -2117,16 +2625,16 @@ i.on("window-all-closed", () => {
 }), i.on("activate", () => {
 	r.getAllWindows().length === 0 && $();
 }), o.handle("projects:list", async () => {
-	let e = await x.getProjects(), t = [];
+	let e = await S.getProjects(), t = [];
 	for (let n of e) {
-		let e = await C(n.path);
+		let e = await w(n.path);
 		e && (e.favorite = !!n.favorite, e.addedAt = n.addedAt, t.push(e));
 	}
 	return t;
-}), o.handle("projects:scan", async (e, t) => await w(t?.roots && t.roots.length > 0 ? t.roots : await x.getScanRoots(), t?.depth ?? 2)), o.handle("projects:add", async (e, t) => {
-	let n = await C(t);
-	return n ? (await x.addProject(n.path, !1), n) : null;
-}), o.handle("projects:remove", async (e, t) => await x.removeProject(t)), o.handle("projects:refresh", async (e, t) => await C(t)), o.handle("projects:toggleFavorite", async (e, t) => await x.toggleFavorite(t)), o.handle("projects:getScanRoots", async () => await x.getScanRoots()), o.handle("projects:setScanRoots", async (e, t) => await x.setScanRoots(t)), o.handle("projects:getDetails", async (e, t) => await C(t)), o.handle("dialog:selectDirectory", async () => {
+}), o.handle("projects:scan", async (e, t) => await T(t?.roots && t.roots.length > 0 ? t.roots : await S.getScanRoots(), t?.depth ?? 2)), o.handle("projects:add", async (e, t) => {
+	let n = await w(t);
+	return n ? (await S.addProject(n.path, !1), n) : null;
+}), o.handle("projects:remove", async (e, t) => await S.removeProject(t)), o.handle("projects:refresh", async (e, t) => await w(t)), o.handle("projects:toggleFavorite", async (e, t) => await S.toggleFavorite(t)), o.handle("projects:getScanRoots", async () => await S.getScanRoots()), o.handle("projects:setScanRoots", async (e, t) => await S.setScanRoots(t)), o.handle("projects:getDetails", async (e, t) => await w(t)), o.handle("dialog:selectDirectory", async () => {
 	if (!Z) return null;
 	let e = await a.showOpenDialog(Z, {
 		properties: ["openDirectory"],
@@ -2156,9 +2664,9 @@ i.on("window-all-closed", () => {
 		t
 	], { detached: !0 });
 }), o.handle("backlog:watchProject", async (e, t) => {
-	T.watch(t, Z);
+	k.watch(t, Z);
 });
-function _e(e) {
+function xe(e) {
 	let t = [], n = e.split("\n"), r = !1, i = [], a = !1;
 	for (let e of n) {
 		let n = e.trim();
@@ -2186,12 +2694,12 @@ function _e(e) {
 o.handle("backlog:getTasks", async (e, t) => {
 	let n = c.join(t, "backlog", "tasks");
 	if (!d(n)) return [];
-	T.watch(t, Z);
+	k.watch(t, Z);
 	let r = [];
 	try {
 		let e = await u.readdir(n);
 		for (let t of e) if (t.endsWith(".md")) {
-			let e = c.join(n, t), i = await u.readFile(e, "utf-8"), a = m(i), { criteria: o, description: s } = _e(a.content);
+			let e = c.join(n, t), i = await u.readFile(e, "utf-8"), a = m(i), { criteria: o, description: s } = xe(a.content);
 			r.push({
 				id: a.data.id || c.basename(t, ".md").split("-")[0].trim(),
 				title: a.data.title || c.basename(t, ".md"),
@@ -2293,7 +2801,7 @@ o.handle("backlog:getTasks", async (e, t) => {
 	} catch (e) {
 		return console.error("Failed to create task:", e), null;
 	}
-}), o.handle("template:createProject", async (e, t) => await te(t)), o.handle("template:checkAvailable", async (e, t) => await ee(t)), o.handle("process:start", async (e, t, n, r) => await k.startProcess(t, n, r)), o.handle("process:stop", async (e, t) => await k.stopProcess(t)), o.handle("process:list", async (e, t) => await k.listProcessesForProject(t)), o.handle("process:tailLog", async (e, t, n, r = 100) => await k.tailProjectLog(t, n, r)), o.handle("rag:search", async (e, t) => await oe(t)), o.handle("rag:getStats", async (e, t) => await se(t)), o.handle("git:getLog", async (e, t, n = 30) => {
+}), o.handle("template:createProject", async (e, t) => await te(t)), o.handle("template:checkAvailable", async (e, t) => await ee(t)), o.handle("process:start", async (e, t, n, r) => await N.startProcess(t, n, r)), o.handle("process:stop", async (e, t) => await N.stopProcess(t)), o.handle("process:list", async (e, t) => await N.listProcessesForProject(t)), o.handle("process:tailLog", async (e, t, n, r = 100) => await N.tailProjectLog(t, n, r)), o.handle("rag:search", async (e, t) => await se(t)), o.handle("rag:getStats", async (e, t) => await ce(t)), o.handle("git:getLog", async (e, t, n = 30) => {
 	try {
 		return d(c.join(t, ".git")) ? (await h(t).log({ maxCount: n })).all.map((e) => ({
 			hash: e.hash,
@@ -2311,8 +2819,35 @@ o.handle("backlog:getTasks", async (e, t) => {
 	} catch (e) {
 		return console.error(`Git status error for ${t}:`, e), null;
 	}
-}), o.handle("git:getRepoDetails", async (e, t) => await F.getRepoDetails(t)), o.handle("git:checkout", async (e, t, n, r = !1) => await F.checkoutBranch(t, n, r)), o.handle("git:createBranch", async (e, t, n) => await F.createBranch(t, n)), o.handle("git:stageFile", async (e, t, n) => await F.stageFile(t, n)), o.handle("git:unstageFile", async (e, t, n) => await F.unstageFile(t, n)), o.handle("git:stageAll", async (e, t) => await F.stageAll(t)), o.handle("git:commit", async (e, t, n, r = !1) => await F.commitChanges(t, n, r)), o.handle("git:getFileDiff", async (e, t, n, r = !1) => await F.getFileDiff(t, n, r)), o.handle("pr:getProviderInfo", async (e, t) => await L.getProviderInfo(t)), o.handle("pr:list", async (e, t, n) => await L.listPullRequests(t, n)), o.handle("pr:create", async (e, t, n) => await L.createPullRequest(t, n)), o.handle("pr:getDiff", async (e, t, n) => await L.getPRDiff(t, n)), o.handle("docs:list", async (e, t) => await R(t)), o.handle("docs:read", async (e, t) => await z(t)), o.handle("docs:save", async (e, t, n) => await B(t, n)), o.handle("docs:create", async (e, t, n) => await V(t, n)), o.handle("milestones:list", async (e, t) => await U(t)), o.handle("milestones:create", async (e, t, n) => await W(t, n)), o.handle("milestones:save", async (e, t, n) => await G(t, n)), o.handle("milestones:delete", async (e, t) => await le(t)), o.handle("pty:create", async (e, t) => await Y.createSession(t)), o.handle("pty:write", async (e, t, n) => Y.write(t, n)), o.handle("pty:resize", async (e, t, n, r) => Y.resize(t, n, r)), o.handle("pty:kill", async (e, t) => Y.kill(t)), o.handle("pty:list", async () => Y.listSessions()), o.handle("system:getPlatform", async () => process.platform), i.on("before-quit", () => {
-	k.cleanupAll(), Y.cleanupAll();
+}), o.handle("git:getRepoDetails", async (e, t) => await R.getRepoDetails(t)), o.handle("git:checkout", async (e, t, n, r = !1) => await R.checkoutBranch(t, n, r)), o.handle("git:createBranch", async (e, t, n) => await R.createBranch(t, n)), o.handle("git:stageFile", async (e, t, n) => await R.stageFile(t, n)), o.handle("git:unstageFile", async (e, t, n) => await R.unstageFile(t, n)), o.handle("git:stageAll", async (e, t) => await R.stageAll(t)), o.handle("git:commit", async (e, t, n, r = !1) => await R.commitChanges(t, n, r)), o.handle("git:getFileDiff", async (e, t, n, r = !1) => await R.getFileDiff(t, n, r)), o.handle("pr:getProviderInfo", async (e, t) => await B.getProviderInfo(t)), o.handle("pr:list", async (e, t, n) => await B.listPullRequests(t, n)), o.handle("pr:create", async (e, t, n) => await B.createPullRequest(t, n)), o.handle("pr:getDiff", async (e, t, n) => await B.getPRDiff(t, n)), o.handle("docs:list", async (e, t) => await H(t)), o.handle("docs:read", async (e, t) => await U(t)), o.handle("docs:save", async (e, t, n) => await W(t, n)), o.handle("docs:create", async (e, t, n) => await le(t, n)), o.handle("milestones:list", async (e, t) => await de(t)), o.handle("milestones:create", async (e, t, n) => await fe(t, n)), o.handle("milestones:save", async (e, t, n) => await pe(t, n)), o.handle("milestones:delete", async (e, t) => await me(t)), o.handle("pty:create", async (e, t) => await Y.createSession(t)), o.handle("pty:write", async (e, t, n) => Y.write(t, n)), o.handle("pty:resize", async (e, t, n, r) => Y.resize(t, n, r)), o.handle("pty:kill", async (e, t) => Y.kill(t)), o.handle("pty:list", async () => Y.listSessions()), o.handle("ai:getConfig", async () => await D.getConfig()), o.handle("ai:saveConfig", async (e, t) => await D.saveConfig(t)), o.handle("ai:getClaudeAuthStatus", async () => await D.getClaudeAuthStatus()), o.handle("ai:startClaudeLogin", async () => (s.openExternal("https://claude.ai/login"), !0)), o.handle("ai:abortStream", async (e, t) => (D.abortStream(t), !0)), o.handle("ai:applyDiff", async (e, t, n, r) => await D.applyDiff(t, n, r)), o.handle("ai:streamChat", async (e, t) => {
+	if (!Z) return;
+	let n = Z;
+	O.runAgentTask(t, (e) => {
+		n.isDestroyed() || n.webContents.send(`ai:chunk:${t.sessionId}`, e);
+	}, (e) => {
+		n.isDestroyed() || n.webContents.send(`ai:complete:${t.sessionId}`, e);
+	}, (e) => {
+		n.isDestroyed() || n.webContents.send(`ai:error:${t.sessionId}`, e);
+	});
+}), o.handle("claudeBridge:getAllProjectStatuses", async () => O.getAllProjectStatuses()), o.handle("claudeBridge:getProjectStatus", async (e, t) => O.getProjectStatus(t)), o.handle("claudeBridge:sendApprovalResponse", async (e, t, n) => O.sendApprovalResponse(t, n)), o.handle("claudeBridge:getSubagents", async (e, t) => O.getSubagents(t)), o.handle("file:readFile", async (e, t, n) => {
+	let r = c.isAbsolute(n) ? n : c.join(t, n);
+	return await u.readFile(r, "utf-8");
+}), o.handle("file:writeFile", async (e, t, n, r) => {
+	let i = c.isAbsolute(n) ? n : c.join(t, n);
+	return await u.mkdir(c.dirname(i), { recursive: !0 }), await u.writeFile(i, r, "utf-8"), !0;
+}), o.handle("file:listFiles", async (e, t, n) => {
+	let r = n ? c.join(t, n) : t;
+	try {
+		return (await u.readdir(r, { withFileTypes: !0 })).map((e) => ({
+			name: e.name,
+			isDirectory: e.isDirectory(),
+			relativePath: n ? c.join(n, e.name) : e.name
+		}));
+	} catch {
+		return [];
+	}
+}), o.handle("system:getPlatform", async () => process.platform), i.on("before-quit", () => {
+	N.cleanupAll(), Y.cleanupAll();
 }), i.whenReady().then($);
 //#endregion
 export {};

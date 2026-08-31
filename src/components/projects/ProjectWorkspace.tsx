@@ -8,7 +8,8 @@ import {
   Cpu,
   Layers,
   Sparkles,
-  BarChart2
+  BarChart2,
+  Bot
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -18,6 +19,8 @@ import { GitInspector } from '../git/GitInspector';
 import { PullRequestView } from '../pr/PullRequestView';
 import { DocsRagView } from '../docs/DocsRagView';
 import { ProjectAnalyticsView } from '../analytics/ProjectAnalyticsView';
+import { AIStudioView } from '../ai/AIStudioView';
+import { ClaudeCliView } from '../claude/ClaudeCliView';
 
 export const ProjectWorkspace: React.FC = () => {
   const { t } = useTranslation();
@@ -30,6 +33,8 @@ export const ProjectWorkspace: React.FC = () => {
     { id: 'prs', label: t.tabs.prs, shortLabel: 'PR', hotkey: 'Ctrl+P', icon: GitPullRequest },
     { id: 'docs', label: t.tabs.docs, shortLabel: 'Docs', hotkey: 'Ctrl+D', icon: BookOpen },
     { id: 'analytics', label: t.tabs.analytics, shortLabel: 'Analytics', hotkey: 'Ctrl+A', icon: BarChart2 },
+    { id: 'ai', label: t.tabs.ai, shortLabel: 'Claude Studio', hotkey: 'Ctrl+I', icon: Sparkles },
+    { id: 'claude-cli', label: t.tabs.claudeCli, shortLabel: 'Claude CLI', hotkey: 'Ctrl+T', icon: Bot },
     { id: 'processes', label: t.tabs.processes, shortLabel: 'Processes', hotkey: 'Ctrl+\\', icon: Cpu }
   ] as const;
 
@@ -82,6 +87,8 @@ export const ProjectWorkspace: React.FC = () => {
         {activeTab === 'prs' && <PullRequestView />}
         {activeTab === 'docs' && <DocsRagView />}
         {activeTab === 'analytics' && <ProjectAnalyticsView />}
+        {activeTab === 'ai' && <AIStudioView />}
+        {activeTab === 'claude-cli' && <ClaudeCliView />}
 
         {activeTab === 'processes' && (
           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">

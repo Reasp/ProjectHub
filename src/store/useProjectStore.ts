@@ -14,7 +14,8 @@ import type {
   CreateDocParams,
   Milestone,
   CreateMilestoneParams,
-  PtySession
+  PtySession,
+  ProjectAgentStatus
 } from '../types/electron';
 import type { Language } from '../i18n';
 
@@ -26,7 +27,7 @@ interface ProjectState {
   gitRepoDetails: GitRepoDetails | null;
   gitSelectedFile: string | null;
   gitDiffContent: string;
-  activeTab: 'kanban' | 'milestones' | 'git' | 'prs' | 'docs' | 'analytics' | 'processes';
+  activeTab: 'kanban' | 'milestones' | 'git' | 'prs' | 'docs' | 'analytics' | 'ai' | 'claude-cli' | 'processes';
   taskViewMode: 'kanban' | 'list';
   selectedLabelFilter: string | null;
   selectedMilestoneFilter: string | null;
@@ -41,6 +42,11 @@ interface ProjectState {
   activeProcessId: string | null;
   terminalHeight: number;
   isHotkeysHelpOpen: boolean;
+
+  // Agent Statuses across all projects
+  projectAgentStatuses: Record<string, ProjectAgentStatus>;
+  fetchProjectAgentStatuses: () => Promise<void>;
+  setProjectAgentStatus: (status: ProjectAgentStatus) => void;
 
   // Language & i18n Localization
   language: Language;
@@ -90,7 +96,7 @@ interface ProjectState {
   selectProject: (project: ProjectInfo | null) => void;
   setTasks: (tasks: BacklogTask[]) => void;
   setGitLogs: (logs: GitCommit[]) => void;
-  setActiveTab: (tab: 'kanban' | 'milestones' | 'git' | 'prs' | 'docs' | 'analytics' | 'processes') => void;
+  setActiveTab: (tab: 'kanban' | 'milestones' | 'git' | 'prs' | 'docs' | 'analytics' | 'ai' | 'claude-cli' | 'processes') => void;
   setTaskViewMode: (mode: 'kanban' | 'list') => void;
   setSelectedLabelFilter: (label: string | null) => void;
   setIsLoading: (loading: boolean) => void;
@@ -156,6 +162,8 @@ let processStatusCleanup: (() => void) | null = null;
 let gitChangedCleanup: (() => void) | null = null;
 let ptyExitCleanup: (() => void) | null = null;
 
+let agentStatusCleanup: (() => void) | null = null;
+
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
   selectedProject: null,
@@ -204,6 +212,32 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   milestones: [],
   selectedMilestoneFilter: null,
   isLoadingMilestones: false,
+
+  projectAgentStatuses: {},
+
+  fetchProjectAgentStatuses: async () => {
+    if (window.api?.getAllProjectStatuses) {
+      try {
+        const statuses = await window.api.getAllProjectStatuses();
+        const map: Record<string, ProjectAgentStatus> = {};
+        for (const s of statuses) {
+          map[s.projectPath] = s;
+        }
+        set({ projectAgentStatuses: map });
+      } catch (e) {
+        console.error('Failed to fetch project agent statuses:', e);
+      }
+    }
+  },
+
+  setProjectAgentStatus: (status) => {
+    set((state) => ({
+      projectAgentStatuses: {
+        ...state.projectAgentStatuses,
+        [status.projectPath]: status
+      }
+    }));
+  },
 
   setSelectedMilestoneFilter: (selectedMilestoneFilter) => set({ selectedMilestoneFilter }),
 
@@ -369,6 +403,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ isLoading: true });
     try {
       if (window.api) {
+        // Setup agent status event listener
+        if (!agentStatusCleanup && window.api.onProjectAgentStatusChanged) {
+          agentStatusCleanup = window.api.onProjectAgentStatusChanged((status) => {
+            get().setProjectAgentStatus(status);
+          });
+        }
+        get().fetchProjectAgentStatuses();
+
         let list = await window.api.listProjects();
         if (list.length === 0) {
           list = await window.api.scanProjects();

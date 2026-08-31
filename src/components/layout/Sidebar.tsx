@@ -40,7 +40,8 @@ export const Sidebar: React.FC = () => {
     addProjectByPath,
     removeProjectFromCatalog,
     toggleFavoriteProject,
-    refreshSingleProject
+    refreshSingleProject,
+    projectAgentStatuses
   } = useProjectStore();
 
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
@@ -167,6 +168,7 @@ export const Sidebar: React.FC = () => {
             const doneCount = project.taskCounts?.done || 0;
             const activeProcs = project.processStatus?.runningCount || 0;
             const hasRagReady = project.ragStatus?.ready;
+            const agentStatus = projectAgentStatuses[project.path];
 
             return (
               <div
@@ -259,29 +261,53 @@ export const Sidebar: React.FC = () => {
                     <span className="text-slate-500 italic text-[10px]">без git</span>
                   )}
 
-                  {/* Micro Indicators: Dev process & RAG */}
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Processes and RAG */}
+                  <div className="flex items-center gap-1.5">
                     {activeProcs > 0 && (
-                      <span
-                        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-700/50 font-mono"
-                        title={`Запущено процессов: ${activeProcs}`}
-                      >
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono text-[9px]">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        <Activity className="w-2.5 h-2.5" />
-                        {activeProcs}
+                        {activeProcs} proc
                       </span>
                     )}
 
                     {hasRagReady && (
                       <span
-                        className="flex items-center gap-0.5 text-indigo-300 bg-indigo-950/40 border border-indigo-800/40 px-1 py-0.5 rounded"
+                        className="p-0.5 rounded text-indigo-400"
                         title={`RAG Индекс готов: ${project.ragStatus?.chunksCount || 0} чанков`}
                       >
-                        <BookOpen className="w-2.5 h-2.5 text-indigo-400" />
+                        <BookOpen className="w-2.5 h-2.5" />
                       </span>
                     )}
                   </div>
                 </div>
+
+                {/* Claude Agent Live Status Alert */}
+                {agentStatus && agentStatus.status !== 'idle' && (
+                  <div className="pt-0.5">
+                    {agentStatus.status === 'waiting_approval' ? (
+                      <div className="flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500/20 to-amber-600/20 border border-amber-500/60 text-amber-200 text-[10px] font-medium shadow-sm animate-pulse">
+                        <span className="flex items-center gap-1">
+                          <span className="text-amber-400 font-bold">⚠️</span>
+                          <span className="font-bold">Требует решения!</span>
+                        </span>
+                        <span className="text-[9px] bg-amber-500/30 text-amber-200 px-1 py-0.2 rounded font-mono">
+                          Human-in-the-loop
+                        </span>
+                      </div>
+                    ) : agentStatus.status === 'running' ? (
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-950/70 border border-indigo-500/40 text-indigo-300 text-[10px]">
+                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
+                        <span className="font-bold text-amber-400">✳</span>
+                        <span className="truncate">{agentStatus.lastMessage || 'Агент выполняет задачу...'}</span>
+                      </div>
+                    ) : agentStatus.status === 'done' ? (
+                      <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/50 border border-emerald-800/50 text-emerald-300 text-[10px]">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                        <span>Claude завершил задачу</span>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
 
                 {/* Bottom Row: Path & Backlog Task Breakdown */}
                 <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5 border-t border-slate-800/40">

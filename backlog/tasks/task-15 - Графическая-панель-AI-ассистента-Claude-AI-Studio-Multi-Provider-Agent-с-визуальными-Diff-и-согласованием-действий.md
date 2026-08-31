@@ -3,9 +3,10 @@ id: TASK-15
 title: >-
   Графическая панель AI-ассистента (Claude AI Studio & Multi-Provider Agent) с
   визуальными Diff и согласованием действий
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-31 13:59'
+updated_date: '2026-08-31 16:18'
 labels:
   - ai
   - claude

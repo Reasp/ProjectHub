@@ -9,6 +9,7 @@ import { simpleGit } from 'simple-git';
 import type { ProjectInfo, BacklogTask, GitCommit, ScanOptions } from '../src/types/electron';
 import { projectRegistry } from './services/projectRegistry';
 import { inspectProject, scanDirectories } from './services/projectScanner';
+import { claudeBridgeService } from './services/claudeBridgeService';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +22,19 @@ process.env.VITE_PUBLIC = app.isPackaged
 
 let win: BrowserWindow | null = null;
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
+
+// Forward claudeBridge status events to renderer
+claudeBridgeService.on('statusChanged', (status) => {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('claudeBridge:statusChanged', status);
+  }
+});
+
+claudeBridgeService.on('subagentUpdated', (subagent) => {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('claudeBridge:subagentUpdated', subagent);
+  }
+});
 
 function createWindow() {
   const distPath = path.join(__dirname, '../dist');
@@ -609,6 +623,7 @@ ipcMain.handle('milestones:delete', async (_event, filePath: string) => {
 // 10. Interactive PTY Terminals (Claude Code & Multi-tab Shell)
 import { ptyService } from './services/ptyService';
 import type { CreatePtyOptions } from '../src/types/electron';
+import { aiAgentService, type AIProviderConfig, type AIStreamRequest } from './services/aiAgentService';
 
 ipcMain.handle('pty:create', async (_event, options: CreatePtyOptions) => {
   return await ptyService.createSession(options);
@@ -628,6 +643,101 @@ ipcMain.handle('pty:kill', async (_event, sessionId: string) => {
 
 ipcMain.handle('pty:list', async () => {
   return ptyService.listSessions();
+});
+
+// 11. AI Studio & Multi-provider Agent
+ipcMain.handle('ai:getConfig', async () => {
+  return await aiAgentService.getConfig();
+});
+
+ipcMain.handle('ai:saveConfig', async (_event, config: AIProviderConfig) => {
+  return await aiAgentService.saveConfig(config);
+});
+
+ipcMain.handle('ai:getClaudeAuthStatus', async () => {
+  return await aiAgentService.getClaudeAuthStatus();
+});
+
+ipcMain.handle('ai:startClaudeLogin', async () => {
+  shell.openExternal('https://claude.ai/login');
+  return true;
+});
+
+ipcMain.handle('ai:abortStream', async (_event, sessionId: string) => {
+  aiAgentService.abortStream(sessionId);
+  return true;
+});
+
+ipcMain.handle('ai:applyDiff', async (_event, projectPath: string, relativePath: string, newContent: string) => {
+  return await aiAgentService.applyDiff(projectPath, relativePath, newContent);
+});
+
+ipcMain.handle('ai:streamChat', async (_event, req: AIStreamRequest) => {
+  if (!win) return;
+  const targetWin = win;
+
+  claudeBridgeService.runAgentTask(
+    req,
+    (chunk) => {
+      if (!targetWin.isDestroyed()) {
+        targetWin.webContents.send(`ai:chunk:${req.sessionId}`, chunk);
+      }
+    },
+    (fullMsg) => {
+      if (!targetWin.isDestroyed()) {
+        targetWin.webContents.send(`ai:complete:${req.sessionId}`, fullMsg);
+      }
+    },
+    (err) => {
+      if (!targetWin.isDestroyed()) {
+        targetWin.webContents.send(`ai:error:${req.sessionId}`, err);
+      }
+    }
+  );
+});
+
+// Claude Bridge & Subagents Handlers
+ipcMain.handle('claudeBridge:getAllProjectStatuses', async () => {
+  return claudeBridgeService.getAllProjectStatuses();
+});
+
+ipcMain.handle('claudeBridge:getProjectStatus', async (_event, projectPath: string) => {
+  return claudeBridgeService.getProjectStatus(projectPath);
+});
+
+ipcMain.handle('claudeBridge:sendApprovalResponse', async (_event, requestId: string, response: { approved: boolean; text?: string }) => {
+  return claudeBridgeService.sendApprovalResponse(requestId, response);
+});
+
+ipcMain.handle('claudeBridge:getSubagents', async (_event, projectPath: string) => {
+  return claudeBridgeService.getSubagents(projectPath);
+});
+
+// 12. File System Helpers for AI & Explorer
+ipcMain.handle('file:readFile', async (_event, projectPath: string, relativePath: string) => {
+  const targetPath = path.isAbsolute(relativePath) ? relativePath : path.join(projectPath, relativePath);
+  return await fs.readFile(targetPath, 'utf-8');
+});
+
+ipcMain.handle('file:writeFile', async (_event, projectPath: string, relativePath: string, content: string) => {
+  const targetPath = path.isAbsolute(relativePath) ? relativePath : path.join(projectPath, relativePath);
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.writeFile(targetPath, content, 'utf-8');
+  return true;
+});
+
+ipcMain.handle('file:listFiles', async (_event, projectPath: string, subDir?: string) => {
+  const targetDir = subDir ? path.join(projectPath, subDir) : projectPath;
+  try {
+    const entries = await fs.readdir(targetDir, { withFileTypes: true });
+    return entries.map((e) => ({
+      name: e.name,
+      isDirectory: e.isDirectory(),
+      relativePath: subDir ? path.join(subDir, e.name) : e.name
+    }));
+  } catch (err) {
+    return [];
+  }
 });
 
 ipcMain.handle('system:getPlatform', async () => {

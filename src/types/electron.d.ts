@@ -333,8 +333,135 @@ export interface IElectronAPI {
   onPtyData: (callback: (data: { sessionId: string; data: string }) => void) => () => void;
   onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void;
 
+  // AI Studio & Claude Bridge Engine
+  getAIConfig: () => Promise<AIProviderConfig>;
+  saveAIConfig: (config: AIProviderConfig) => Promise<void>;
+  getClaudeAuthStatus: () => Promise<ClaudeAuthStatus>;
+  startClaudeLogin: () => Promise<boolean>;
+  streamAIChat: (request: AIStreamRequest) => Promise<boolean>;
+  abortAIStream: (sessionId: string) => Promise<boolean>;
+  applyAIDiff: (projectPath: string, relativePath: string, newContent: string) => Promise<boolean>;
+
+  // Claude Bridge Approvals & Statuses
+  getAllProjectStatuses: () => Promise<ProjectAgentStatus[]>;
+  getProjectAgentStatus: (projectPath: string) => Promise<ProjectAgentStatus>;
+  sendApprovalResponse: (requestId: string, response: { approved: boolean; text?: string }) => Promise<boolean>;
+  getSubagents: (projectPath: string) => Promise<SubagentInfo[]>;
+  onProjectAgentStatusChanged: (callback: (status: ProjectAgentStatus) => void) => () => void;
+  onSubagentUpdated: (callback: (subagent: SubagentInfo) => void) => () => void;
+
+  onAIChunk: (
+    sessionId: string,
+    callback: (chunk: {
+      text?: string;
+      thought?: string;
+      toolCall?: AIToolCall;
+      approvalRequest?: ApprovalRequest;
+      subagent?: SubagentInfo;
+      status?: AgentStatusType;
+    }) => void
+  ) => () => void;
+  onAIComplete: (sessionId: string, callback: (message: AIMessage) => void) => () => void;
+  onAIError: (sessionId: string, callback: (error: string) => void) => () => void;
+
+  // File Helpers
+  readFile: (projectPath: string, relativePath: string) => Promise<string>;
+  writeFile: (projectPath: string, relativePath: string, content: string) => Promise<boolean>;
+  listFiles: (projectPath: string, subDir?: string) => Promise<Array<{ name: string; isDirectory: boolean; relativePath: string }>>;
+
   // System
   getPlatform: () => Promise<string>;
+}
+
+export type AgentStatusType = 'idle' | 'running' | 'waiting_approval' | 'done' | 'error';
+
+export interface ProjectAgentStatus {
+  projectPath: string;
+  projectName: string;
+  status: AgentStatusType;
+  lastMessage?: string;
+  pendingApproval?: ApprovalRequest;
+  activeSubagentsCount?: number;
+  updatedAt: number;
+}
+
+export interface ApprovalRequest {
+  id: string;
+  sessionId: string;
+  projectPath: string;
+  type: 'command' | 'file_write' | 'question' | 'subagent_dispatch';
+  title: string;
+  details?: string;
+  command?: string;
+  filePath?: string;
+  diff?: {
+    filePath: string;
+    oldContent: string;
+    newContent: string;
+    patch: string;
+  };
+  createdAt: number;
+}
+
+export interface SubagentInfo {
+  id: string;
+  parentSessionId: string;
+  projectPath: string;
+  name: string;
+  task: string;
+  status: 'running' | 'completed' | 'failed';
+  progress?: string;
+  output?: string;
+  startedAt: number;
+  completedAt?: number;
+}
+
+export interface ClaudeAuthStatus {
+  isLoggedIn: boolean;
+  email?: string;
+  displayName?: string;
+  seatTier?: string;
+  organizationName?: string;
+}
+
+export interface AIProviderConfig {
+  provider: 'anthropic' | 'openrouter' | 'deepseek' | 'ollama' | 'custom';
+  apiKey?: string;
+  model: string;
+  baseUrl?: string;
+  temperature?: number;
+  thinkingBudget?: number;
+}
+
+export interface AIToolCall {
+  id: string;
+  name: string;
+  args: Record<string, any>;
+  status?: 'pending' | 'accepted' | 'rejected' | 'running' | 'done' | 'error';
+  result?: any;
+  diff?: {
+    filePath: string;
+    oldContent: string;
+    newContent: string;
+    patch: string;
+  };
+}
+
+export interface AIMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string;
+  thought?: string;
+  toolCalls?: AIToolCall[];
+  timestamp: string;
+}
+
+export interface AIStreamRequest {
+  sessionId: string;
+  projectPath: string;
+  messages: AIMessage[];
+  config: AIProviderConfig;
+  mode: 'chat' | 'agent' | 'architect';
 }
 
 export interface PtySession {

@@ -162,6 +162,71 @@ const api: IElectronAPI = {
     };
   },
 
+  // AI Studio & Claude Bridge Engine
+  getAIConfig: () => ipcRenderer.invoke('ai:getConfig'),
+  saveAIConfig: (config: any) => ipcRenderer.invoke('ai:saveConfig', config),
+  getClaudeAuthStatus: () => ipcRenderer.invoke('ai:getClaudeAuthStatus'),
+  startClaudeLogin: () => ipcRenderer.invoke('ai:startClaudeLogin'),
+  streamAIChat: (request: any) => ipcRenderer.invoke('ai:streamChat', request),
+  abortAIStream: (sessionId: string) => ipcRenderer.invoke('ai:abortStream', sessionId),
+  applyAIDiff: (projectPath: string, relativePath: string, newContent: string) =>
+    ipcRenderer.invoke('ai:applyDiff', projectPath, relativePath, newContent),
+
+  // Claude Bridge Approvals & Statuses
+  getAllProjectStatuses: () => ipcRenderer.invoke('claudeBridge:getAllProjectStatuses'),
+  getProjectAgentStatus: (projectPath: string) => ipcRenderer.invoke('claudeBridge:getProjectStatus', projectPath),
+  sendApprovalResponse: (requestId: string, response: { approved: boolean; text?: string }) =>
+    ipcRenderer.invoke('claudeBridge:sendApprovalResponse', requestId, response),
+  getSubagents: (projectPath: string) => ipcRenderer.invoke('claudeBridge:getSubagents', projectPath),
+
+  onProjectAgentStatusChanged: (callback: (status: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('claudeBridge:statusChanged', handler);
+    return () => {
+      ipcRenderer.removeListener('claudeBridge:statusChanged', handler);
+    };
+  },
+  onSubagentUpdated: (callback: (subagent: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('claudeBridge:subagentUpdated', handler);
+    return () => {
+      ipcRenderer.removeListener('claudeBridge:subagentUpdated', handler);
+    };
+  },
+
+  onAIChunk: (sessionId: string, callback: (chunk: any) => void) => {
+    const channel = `ai:chunk:${sessionId}`;
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on(channel, handler);
+    return () => {
+      ipcRenderer.removeListener(channel, handler);
+    };
+  },
+  onAIComplete: (sessionId: string, callback: (message: any) => void) => {
+    const channel = `ai:complete:${sessionId}`;
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on(channel, handler);
+    return () => {
+      ipcRenderer.removeListener(channel, handler);
+    };
+  },
+  onAIError: (sessionId: string, callback: (error: string) => void) => {
+    const channel = `ai:error:${sessionId}`;
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on(channel, handler);
+    return () => {
+      ipcRenderer.removeListener(channel, handler);
+    };
+  },
+
+  // File helpers
+  readFile: (projectPath: string, relativePath: string) =>
+    ipcRenderer.invoke('file:readFile', projectPath, relativePath),
+  writeFile: (projectPath: string, relativePath: string, content: string) =>
+    ipcRenderer.invoke('file:writeFile', projectPath, relativePath, content),
+  listFiles: (projectPath: string, subDir?: string) =>
+    ipcRenderer.invoke('file:listFiles', projectPath, subDir),
+
   // System
   getPlatform: () => ipcRenderer.invoke('system:getPlatform')
 };

@@ -1,0 +1,495 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Sparkles,
+  Send,
+  Square,
+  Settings,
+  Trash2,
+  BrainCircuit,
+  Bot,
+  User,
+  CheckSquare,
+  BookOpen,
+  GitBranch,
+  ChevronDown,
+  ChevronRight,
+  Code2,
+  Plus,
+  X,
+  GitFork
+} from 'lucide-react';
+import { useAIStudioStore, type AISession } from '../../store/useAIStudioStore';
+import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
+import { DiffReviewCard } from './DiffReviewCard';
+import { AISettingsModal } from './AISettingsModal';
+import { InteractiveApprovalCard } from './InteractiveApprovalCard';
+import { SubagentsPanel } from './SubagentsPanel';
+import { PromptInputArea } from './PromptInputArea';
+
+export const AIStudioView: React.FC = () => {
+  const { t } = useTranslation();
+  const { selectedProject, tasks, gitRepoDetails } = useProjectStore();
+  const {
+    sessions,
+    activeSessionId,
+    isStreaming,
+    config,
+    mode,
+    isSettingsOpen,
+    claudeAuth,
+    pendingApprovals,
+    subagents,
+    isSubagentsPanelOpen,
+    setIsSubagentsPanelOpen,
+    sendApprovalResponse,
+    fetchSubagents,
+    fetchConfig,
+    fetchClaudeAuth,
+    startClaudeLogin,
+    setMode,
+    setIsSettingsOpen,
+    createSession,
+    switchSession,
+    closeSession,
+    clearSession,
+    sendMessage,
+    abortStream,
+    acceptDiff,
+    rejectDiff
+  } = useAIStudioStore();
+
+  const [expandedThoughts, setExpandedThoughts] = useState<Record<string, boolean>>({});
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const projectPath = selectedProject?.path || '';
+  const projectSessions: AISession[] = sessions[projectPath] || [];
+  const currentSessionId = activeSessionId[projectPath] || projectSessions[0]?.id;
+  const currentSession = projectSessions.find((s) => s.id === currentSessionId) || projectSessions[0];
+  const messages = currentSession?.messages || [];
+  const projectApprovals = pendingApprovals[projectPath] || [];
+  const projectSubagents = subagents[projectPath] || [];
+
+  useEffect(() => {
+    fetchConfig();
+    fetchClaudeAuth();
+    if (projectPath) {
+      fetchSubagents(projectPath);
+    }
+  }, [fetchConfig, fetchClaudeAuth, fetchSubagents, projectPath]);
+
+  // Ensure at least one session exists
+  useEffect(() => {
+    if (projectPath && projectSessions.length === 0) {
+      createSession(projectPath);
+    }
+  }, [projectPath, projectSessions.length, createSession]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isStreaming, projectApprovals.length]);
+
+  if (!selectedProject) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-500">
+        <Bot className="w-12 h-12 text-slate-700 mb-3" />
+        <h3 className="text-sm font-semibold text-slate-300 mb-1">{t.header.noProjectSelected}</h3>
+        <p className="text-xs text-slate-500 max-w-sm">{t.header.selectProjectHint}</p>
+      </div>
+    );
+  }
+
+  const toggleThought = (msgId: string) => {
+    setExpandedThoughts((prev) => ({
+      ...prev,
+      [msgId]: !prev[msgId]
+    }));
+  };
+
+  return (
+    <div className="flex-1 flex flex-col h-full bg-[#0d0f17] overflow-hidden">
+      {/* 1. Multi-Session Tabs Bar (VS Code Extension Style) */}
+      <div className="bg-[#12141f] border-b border-slate-800/90 flex items-center justify-between px-2 pt-1.5 shrink-0 overflow-x-auto select-none">
+        <div className="flex items-center gap-1 overflow-x-auto max-w-[80%] pb-1 scrollbar-none">
+          {projectSessions.map((session) => {
+            const isActive = session.id === currentSessionId;
+
+            return (
+              <div
+                key={session.id}
+                onClick={() => switchSession(projectPath, session.id)}
+                className={`group flex items-center gap-2 px-3 py-1.5 rounded-t-lg border-t-2 text-xs font-medium cursor-pointer transition whitespace-nowrap max-w-xs ${
+                  isActive
+                    ? 'bg-[#181b2a] border-amber-500 text-slate-100 shadow-sm ring-1 ring-slate-800/40'
+                    : 'bg-[#141624]/60 border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#161928]'
+                }`}
+              >
+                {/* Claude Anthropic Orange Spark Icon */}
+                <div className="w-3.5 h-3.5 flex items-center justify-center shrink-0">
+                  <span className="text-amber-500 font-bold text-xs">✳</span>
+                </div>
+
+                <span className="truncate text-xs font-sans" title={session.title}>
+                  {session.title || 'Новый диалог'}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeSession(projectPath, session.id);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-700/80 text-slate-400 hover:text-white transition ml-1 shrink-0"
+                  title="Закрыть сессию"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })}
+
+          {/* New Session Button (+) */}
+          <button
+            type="button"
+            onClick={() => createSession(projectPath)}
+            title="Открыть новую сессию (New Session)"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-amber-500/10 transition text-xs font-medium shrink-0 ml-1"
+          >
+            <Plus className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-[11px] hidden sm:inline">Новый чат</span>
+          </button>
+        </div>
+
+        {/* Studio Controls Header Right */}
+        <div className="flex items-center gap-2 pb-1 pr-2">
+          {/* Claude.ai Auth Status Button */}
+          {claudeAuth?.isLoggedIn ? (
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              title={`Авторизован через Claude.ai: ${claudeAuth.email} (${claudeAuth.seatTier || 'Pro'})`}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 text-[11px] font-medium transition shrink-0"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="font-bold text-xs text-amber-400">✳</span>
+              <span className="max-w-[120px] lg:max-w-[180px] truncate font-sans text-[10px]">
+                {claudeAuth.email}
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={() => startClaudeLogin()}
+              title="Войти в свой аккаунт Claude.ai (Pro / Team без API-ключа)"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-[11px] font-semibold shadow-md shadow-amber-600/20 border border-amber-400/30 transition shrink-0"
+            >
+              <span className="font-bold text-xs">✳</span>
+              <span>Войти в Claude.ai</span>
+            </button>
+          )}
+
+          {/* Subagents Button */}
+          <button
+            onClick={() => setIsSubagentsPanelOpen(!isSubagentsPanelOpen)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition ${
+              isSubagentsPanelOpen || projectSubagents.some((s) => s.status === 'running')
+                ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300 shadow-sm'
+                : 'bg-slate-800/80 border-slate-700/60 text-slate-400 hover:text-slate-200'
+            }`}
+            title="Дерево и управление подагентами (Subagents)"
+          >
+            <GitFork className="w-3 h-3 text-indigo-400" />
+            <span className="hidden sm:inline">Подагенты</span>
+            {projectSubagents.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-indigo-500/30 text-indigo-300 font-mono text-[9px]">
+                {projectSubagents.length}
+              </span>
+            )}
+          </button>
+
+          {/* Mode Switcher */}
+          <div className="flex items-center gap-0.5 bg-[#090b10] p-0.5 rounded-lg border border-slate-800 text-[11px]">
+            {(['agent', 'chat', 'architect'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition capitalize ${
+                  mode === m
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {m === 'agent' ? '⚡ Agent' : m === 'chat' ? '💬 Chat' : '🏛️ ADR'}
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => clearSession(projectPath, currentSessionId)}
+            title="Очистить текущий диалог (/clear)"
+            className="p-1 rounded-lg bg-slate-800/80 hover:bg-rose-950/40 hover:text-rose-300 text-slate-400 border border-slate-700/60 transition"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            title="Настройки Claude AI Studio & API Ключей"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60 font-medium text-[11px] transition"
+          >
+            <Settings className="w-3 h-3 text-indigo-400" />
+            <span className="hidden md:inline">Настройки</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Subagents Panel Drawer */}
+      {isSubagentsPanelOpen && (
+        <div className="p-3 bg-[#0c0e16] border-b border-slate-800/90 animate-in slide-in-from-top-2 duration-200">
+          <SubagentsPanel
+            subagents={projectSubagents}
+            onClose={() => setIsSubagentsPanelOpen(false)}
+          />
+        </div>
+      )}
+
+      {/* 2. Messages Feed */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        {messages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center p-8 max-w-xl mx-auto space-y-6">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-indigo-600/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-xl shadow-amber-600/10">
+              <span className="text-2xl font-bold text-amber-400">✳</span>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-base font-semibold text-slate-200">
+                Claude AI Studio — {currentSession?.title || 'Новый диалог'}
+              </h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Интерактивный графический ассистент с прямой поддержкой Claude 3.7 Sonnet, OpenRouter, DeepSeek и локальной Ollama. Вы можете открывать множество независимых сессий сверху.
+              </p>
+
+              {/* Claude.ai Account Status Card */}
+              {claudeAuth?.isLoggedIn ? (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>
+                    Авторизован аккаунт Claude.ai: <strong>{claudeAuth.email}</strong> ({claudeAuth.seatTier || 'Pro / Team'})
+                  </span>
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-left">
+                  <div className="text-xs text-amber-200">
+                    <p className="font-semibold text-amber-300">Используете подписку Claude.ai Pro / Team?</p>
+                    <p className="text-[11px] text-slate-400">Войдите в аккаунт через браузер без ввода API-ключа.</p>
+                  </div>
+                  <button
+                    onClick={() => startClaudeLogin()}
+                    className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold shadow transition whitespace-nowrap"
+                  >
+                    Войти в Claude.ai
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Prompt Cards */}
+            <div className="grid grid-cols-2 gap-2.5 w-full text-left">
+              <button
+                onClick={() =>
+                  sendMessage(
+                    projectPath,
+                    'Проанализируй активные задачи в Backlog.md и предложи план реализации следующей задачи.'
+                  )
+                }
+                className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-indigo-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"
+              >
+                <div className="font-semibold text-indigo-300 flex items-center gap-1.5">
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  План задач Backlog
+                </div>
+                <p className="text-[11px] text-slate-500 group-hover:text-slate-400">
+                  Анализ DoD и составление плана
+                </p>
+              </button>
+
+              <button
+                onClick={() =>
+                  sendMessage(
+                    projectPath,
+                    'Создай архитектурное решение (ADR) для внедрения новой функциональности в этот проект.'
+                  )
+                }
+                className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-indigo-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"
+              >
+                <div className="font-semibold text-purple-300 flex items-center gap-1.5">
+                  <BrainCircuit className="w-3.5 h-3.5" />
+                  Создание ADR решения
+                </div>
+                <p className="text-[11px] text-slate-500 group-hover:text-slate-400">
+                  Архитектурный шаблон в backlog/decisions
+                </p>
+              </button>
+
+              <button
+                onClick={() =>
+                  sendMessage(
+                    projectPath,
+                    'Проведи аудит кодовой базы и предложи оптимизацию производительности компонентов.'
+                  )
+                }
+                className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-indigo-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"
+              >
+                <div className="font-semibold text-emerald-300 flex items-center gap-1.5">
+                  <Code2 className="w-3.5 h-3.5" />
+                  Аудит и рефакторинг
+                </div>
+                <p className="text-[11px] text-slate-500 group-hover:text-slate-400">
+                  Поиск узких мест и генерация правок
+                </p>
+              </button>
+
+              <button
+                onClick={() =>
+                  sendMessage(
+                    projectPath,
+                    'Проверь статус незакоммиченных изменений в Git и сформируй информативное сообщение для коммита.'
+                  )
+                }
+                className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-indigo-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"
+              >
+                <div className="font-semibold text-amber-300 flex items-center gap-1.5">
+                  <GitBranch className="w-3.5 h-3.5" />
+                  Git Коммит-ассистент
+                </div>
+                <p className="text-[11px] text-slate-500 group-hover:text-slate-400">
+                  Генерация сообщения по стандартам
+                </p>
+              </button>
+            </div>
+          </div>
+        ) : (
+          messages.map((msg) => {
+            const isUser = msg.role === 'user';
+            const isThoughtOpen = expandedThoughts[msg.id] ?? false;
+
+            return (
+              <div
+                key={msg.id}
+                className={`flex gap-3.5 ${isUser ? 'justify-end' : 'justify-start'} animate-in fade-in duration-150`}
+              >
+                {/* Assistant Avatar */}
+                {!isUser && (
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 mt-0.5 shadow-md shadow-amber-600/10">
+                    <span className="font-bold text-sm text-amber-400">✳</span>
+                  </div>
+                )}
+
+                <div className={`max-w-3xl flex flex-col gap-2 ${isUser ? 'items-end' : 'items-start'}`}>
+                  {/* Thinking / Reasoning Accordion */}
+                  {msg.thought && (
+                    <div className="w-full rounded-xl bg-[#141724] border border-amber-500/20 overflow-hidden text-xs">
+                      <button
+                        onClick={() => toggleThought(msg.id)}
+                        className="w-full px-3.5 py-2 flex items-center justify-between text-amber-300/90 hover:text-amber-200 hover:bg-amber-500/5 transition font-mono text-[11px]"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <BrainCircuit className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                          Ход рассуждений (Thinking Process)
+                        </span>
+                        {isThoughtOpen ? (
+                          <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        )}
+                      </button>
+                      {isThoughtOpen && (
+                        <div className="px-4 py-3 bg-[#0d0f17] border-t border-slate-800/80 text-[11px] text-slate-400 font-mono leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">
+                          {msg.thought}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Message Bubble */}
+                  <div
+                    className={`p-4 rounded-2xl text-xs leading-relaxed ${
+                      isUser
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 rounded-tr-sm'
+                        : 'bg-[#151928] text-slate-200 border border-slate-800/80 shadow-md rounded-tl-sm w-full'
+                    }`}
+                  >
+                    {msg.content ? (
+                      <div className="whitespace-pre-wrap font-sans">{msg.content}</div>
+                    ) : isStreaming && !msg.thought && (!msg.toolCalls || msg.toolCalls.length === 0) ? (
+                      <div className="flex items-center gap-1.5 text-amber-400 py-1 font-mono">
+                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                        Генерация ответа...
+                      </div>
+                    ) : null}
+
+                    {/* Embedded Tool Calls / Diffs */}
+                    {msg.toolCalls && msg.toolCalls.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {msg.toolCalls.map((tool) => (
+                          <DiffReviewCard
+                            key={tool.id}
+                            toolCall={tool}
+                            messageId={msg.id}
+                            projectPath={projectPath}
+                            onAccept={(mId, tId, fPath, nContent) =>
+                              acceptDiff(projectPath, mId, tId, fPath, nContent)
+                            }
+                            onReject={(mId, tId) => rejectDiff(projectPath, mId, tId)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <span className="text-[10px] text-slate-500 font-mono px-1">
+                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+
+                {/* User Avatar */}
+                {isUser && (
+                  <div className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 shrink-0 mt-0.5">
+                    <User className="w-4 h-4" />
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+
+        {/* Pending Interactive Approval Cards (Human-in-the-Loop) */}
+        {projectApprovals.map((req) => (
+          <InteractiveApprovalCard
+            key={req.id}
+            request={req}
+            onApprove={(customText) =>
+              sendApprovalResponse(projectPath, req.id, true, customText)
+            }
+            onReject={(customText) =>
+              sendApprovalResponse(projectPath, req.id, false, customText)
+            }
+          />
+        ))}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* 3. Isolated Memoized Prompt Input Area (0ms typing lag) */}
+      <PromptInputArea
+        mode={mode}
+        isStreaming={isStreaming}
+        tasks={tasks}
+        gitRepoDetails={gitRepoDetails}
+        onSend={(text) => sendMessage(projectPath, text)}
+        onAbort={abortStream}
+      />
+
+      {/* Settings Modal */}
+      <AISettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+    </div>
+  );
+};

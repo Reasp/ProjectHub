@@ -22,7 +22,9 @@ export const HotkeysHelpModal: React.FC<Props> = ({ isOpen, onClose }) => {
         { keys: ['Ctrl', 'G'], description: t.hotkeys.gitTab },
         { keys: ['Ctrl', 'P'], description: t.hotkeys.prsTab },
         { keys: ['Ctrl', 'D'], description: t.hotkeys.docsTab },
-        { keys: ['Ctrl', 'A'], description: t.hotkeys.analyticsTab }
+        { keys: ['Ctrl', 'A'], description: t.hotkeys.analyticsTab },
+        { keys: ['Ctrl', 'I'], description: t.hotkeys.aiTab },
+        { keys: ['Ctrl', 'T'], description: t.hotkeys.claudeCliTab }
       ]
     },
     {

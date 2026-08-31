@@ -67,6 +67,8 @@ export interface TranslationDictionary {
     prs: string;
     docs: string;
     analytics: string;
+    ai: string;
+    claudeCli: string;
     processes: string;
   };
   kanban: {
@@ -317,6 +319,8 @@ export interface TranslationDictionary {
     prsTab: string;
     docsTab: string;
     analyticsTab: string;
+    aiTab: string;
+    claudeCliTab: string;
     omniSearch: string;
     newTask: string;
     templateWizard: string;

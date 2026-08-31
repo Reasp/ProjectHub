@@ -31,7 +31,9 @@ export const Header: React.FC = () => {
     createPtySessionAction,
     ptySessions,
     setActivePtySessionId,
-    setTerminalMode
+    setTerminalMode,
+    setActiveTab,
+    projectAgentStatuses
   } = useProjectStore();
 
   if (!selectedProject) {
@@ -67,6 +69,7 @@ export const Header: React.FC = () => {
   }
 
   const devProcess = processes.find((p) => p.name === 'dev' && p.status === 'running');
+  const agentStatus = projectAgentStatuses[selectedProject.path];
 
   const handleOpenCode = () => {
     if (window.api && selectedProject) {
@@ -91,14 +94,42 @@ export const Header: React.FC = () => {
       {/* Left: Project title & Git info */}
       <div className="flex items-center gap-4 min-w-0 flex-1 mr-3 overflow-hidden">
         <div className="min-w-0 truncate">
-          <h2 className="text-sm font-semibold text-white tracking-tight flex items-center gap-2 truncate" title={selectedProject.name}>
-            <span className="truncate">{selectedProject.name}</span>
-            {selectedProject.hasInfraConfig && (
-              <span className="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1 shrink-0 whitespace-nowrap" title="Соответствует стандарту ProjectTemplate">
-                <Sparkles className="w-2.5 h-2.5 shrink-0" /> ProjectTemplate
-              </span>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-white tracking-tight flex items-center gap-2 truncate" title={selectedProject.name}>
+              <span className="truncate">{selectedProject.name}</span>
+              {selectedProject.hasInfraConfig && (
+                <span className="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1 shrink-0 whitespace-nowrap" title="Соответствует стандарту ProjectTemplate">
+                  <Sparkles className="w-2.5 h-2.5 shrink-0" /> ProjectTemplate
+                </span>
+              )}
+            </h2>
+
+            {/* Claude Agent Live Badge */}
+            {agentStatus && agentStatus.status !== 'idle' && (
+              <div className="shrink-0">
+                {agentStatus.status === 'waiting_approval' ? (
+                  <button
+                    onClick={() => setActiveTab('ai')}
+                    className="text-[11px] text-amber-300 font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/50 flex items-center gap-1.5 shrink-0 animate-pulse hover:bg-amber-500/30 transition shadow-sm"
+                    title="Кликните, чтобы перейти в Claude Studio и принять решение"
+                  >
+                    <span className="text-amber-400 font-bold">⚠️</span>
+                    <span>Требует решения</span>
+                  </button>
+                ) : agentStatus.status === 'running' ? (
+                  <button
+                    onClick={() => setActiveTab('ai')}
+                    className="text-[11px] text-indigo-300 font-medium px-2.5 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-500/30 flex items-center gap-1.5 shrink-0 hover:bg-indigo-500/25 transition"
+                    title="Claude Studio выполняет задачу"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                    <span className="font-bold text-amber-400">✳</span>
+                    <span className="truncate max-w-[140px]">{agentStatus.lastMessage || 'Работает...'}</span>
+                  </button>
+                ) : null}
+              </div>
             )}
-          </h2>
+          </div>
           <p className="text-[11px] text-slate-400 font-mono truncate max-w-md" title={selectedProject.path}>
             {selectedProject.path}
           </p>
@@ -165,29 +196,6 @@ export const Header: React.FC = () => {
         </button>
 
         <div className="w-px h-6 bg-slate-800 mx-1 shrink-0" />
-
-        {/* Embedded Interactive Claude Code Launcher */}
-        <button
-          onClick={() => {
-            if (selectedProject) {
-              setTerminalOpen(true);
-              setTerminalMode('pty');
-              const existing = ptySessions.find(
-                (s) => s.projectPath === selectedProject.path && s.type === 'claude' && s.status === 'running'
-              );
-              if (existing) {
-                setActivePtySessionId(existing.id);
-              } else {
-                createPtySessionAction(selectedProject.path, 'claude');
-              }
-            }
-          }}
-          title={t.header.claudeCode}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white text-xs font-semibold shadow-md shadow-indigo-600/25 border border-indigo-400/30 transition whitespace-nowrap shrink-0"
-        >
-          <Bot className="w-3.5 h-3.5 text-indigo-200 shrink-0" />
-          <span>{t.header.claudeCode}</span>
-        </button>
 
         <button
           onClick={handleOpenCode}

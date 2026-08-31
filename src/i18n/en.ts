@@ -67,6 +67,8 @@ export const en: TranslationDictionary = {
     prs: 'Pull Requests',
     docs: 'Docs & ADR',
     analytics: 'Analytics',
+    ai: 'Claude Studio',
+    claudeCli: 'Claude CLI',
     processes: 'Processes'
   },
   kanban: {
@@ -317,6 +319,8 @@ export const en: TranslationDictionary = {
     prsTab: 'Switch to Pull Requests',
     docsTab: 'Switch to Docs & RAG',
     analyticsTab: 'Switch to Analytics',
+    aiTab: 'Switch to Claude Studio',
+    claudeCliTab: 'Switch to Claude Code CLI',
     omniSearch: 'Omni Search (RAG & Knowledge)',
     newTask: 'Create New Task in Backlog',
     templateWizard: 'New Project from Template',
