@@ -44,7 +44,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: 'Окружение и справка',
     icon: Terminal,
     items: [
-      { keys: ['Ctrl', '\\'], description: 'Показать / скрыть панель терминала и логов' },
+      { keys: ['Ctrl', '\\'], description: 'Показать / скрыть панель логов и процессов' },
       { keys: ['?'], description: 'Открыть эту справку по горячим клавишам' },
       { keys: ['Esc'], description: 'Закрыть активное модальное окно' }
     ]

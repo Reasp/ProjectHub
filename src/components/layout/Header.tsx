@@ -164,7 +164,7 @@ export const Header: React.FC = () => {
 
         <button
           onClick={toggleTerminal}
-          title="Встроенная интерактивная консоль (Ctrl+\)"
+          title="Панель логов и процессов (Ctrl+\)"
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition whitespace-nowrap shrink-0 ${
             isTerminalOpen
               ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20'
@@ -172,7 +172,7 @@ export const Header: React.FC = () => {
           }`}
         >
           <TerminalSquare className="w-3.5 h-3.5 shrink-0" />
-          <span className="hidden lg:inline">Терминал</span>
+          <span className="hidden lg:inline">Логи</span>
         </button>
 
         <button
