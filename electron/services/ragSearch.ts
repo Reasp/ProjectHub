@@ -1,34 +1,67 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { connect } from '@lancedb/lancedb';
 import matter from 'gray-matter';
-import { pipeline, env } from '@huggingface/transformers';
 import type { RagSearchOptions, RagSearchResult } from '../../src/types/electron';
 import { projectRegistry } from './projectRegistry';
 
-env.cacheDir = path.join(process.cwd(), '.rag-cache');
-
 const MODEL_ID = 'Xenova/all-MiniLM-L6-v2';
 let embedderPromise: any = null;
+let lancedbModule: any = null;
+let transformersModule: any = null;
 
-function getEmbedder() {
+async function getLanceDb() {
+  if (!lancedbModule) {
+    try {
+      lancedbModule = await import('@lancedb/lancedb');
+    } catch (err) {
+      console.warn('[RAG] LanceDB native module not available, fallback to fulltext search:', err);
+      return null;
+    }
+  }
+  return lancedbModule;
+}
+
+async function getTransformers() {
+  if (!transformersModule) {
+    try {
+      transformersModule = await import('@huggingface/transformers');
+      if (transformersModule.env) {
+        transformersModule.env.cacheDir = path.join(process.cwd(), '.rag-cache');
+      }
+    } catch (err) {
+      console.warn('[RAG] Transformers not available:', err);
+      return null;
+    }
+  }
+  return transformersModule;
+}
+
+async function getEmbedder() {
   if (!embedderPromise) {
-    embedderPromise = pipeline('feature-extraction', MODEL_ID, { dtype: 'fp32' });
+    const tf = await getTransformers();
+    if (!tf) return null;
+    embedderPromise = tf.pipeline('feature-extraction', MODEL_ID, { dtype: 'fp32' });
   }
   return embedderPromise;
 }
 
-async function embed(texts: string[]): Promise<number[][]> {
-  const embedder = await getEmbedder();
-  const output = await embedder(texts, { pooling: 'mean', normalize: true });
-  const dim = output.dims[output.dims.length - 1];
-  const data = output.data;
-  const vectors: number[][] = [];
-  for (let i = 0; i < texts.length; i++) {
-    vectors.push(Array.from(data.slice(i * dim, (i + 1) * dim)));
+async function embed(texts: string[]): Promise<number[][] | null> {
+  try {
+    const embedder = await getEmbedder();
+    if (!embedder) return null;
+    const output = await embedder(texts, { pooling: 'mean', normalize: true });
+    const dim = output.dims[output.dims.length - 1];
+    const data = output.data;
+    const vectors: number[][] = [];
+    for (let i = 0; i < texts.length; i++) {
+      vectors.push(Array.from(data.slice(i * dim, (i + 1) * dim)));
+    }
+    return vectors;
+  } catch (e) {
+    console.warn('[RAG] Embedding failed:', e);
+    return null;
   }
-  return vectors;
 }
 
 async function scanProjectMarkdownFiles(projectPath: string): Promise<Array<{ filePath: string; relative: string; category: 'doc' | 'decision' | 'task' }>> {
@@ -91,7 +124,6 @@ export async function searchProjectDocs(options: RagSearchOptions): Promise<RagS
     targetProjects = [{ name: pName, path: options.projectPath }];
   }
 
-
   const searchResults: RagSearchResult[] = [];
 
   for (const proj of targetProjects) {
@@ -102,33 +134,38 @@ export async function searchProjectDocs(options: RagSearchOptions): Promise<RagS
       const indexDir = path.join(projPath, '.rag-index');
       if (existsSync(indexDir)) {
         try {
-          const db = await connect(indexDir);
-          const tableNames = await db.tableNames();
-          if (tableNames.includes('docs')) {
-            const table = await db.openTable('docs');
-            const [queryVector] = await embed([query]);
-            const vectorResults = await table.search(queryVector).limit(limit).toArray();
+          const lancedb = await getLanceDb();
+          if (lancedb) {
+            const db = await lancedb.connect(indexDir);
+            const tableNames = await db.tableNames();
+            if (tableNames.includes('docs')) {
+              const table = await db.openTable('docs');
+              const vectors = await embed([query]);
+              if (vectors && vectors[0]) {
+                const vectorResults = await table.search(vectors[0]).limit(limit).toArray();
 
-            for (const r of vectorResults) {
-              const distance = typeof r._distance === 'number' ? r._distance : 0.5;
-              const similarityScore = Math.max(0, Math.min(1, 1 - distance / 1.5));
+                for (const r of vectorResults) {
+                  const distance = typeof r._distance === 'number' ? r._distance : 0.5;
+                  const similarityScore = Math.max(0, Math.min(1, 1 - distance / 1.5));
 
-              const rel = r.file || '';
-              let cat: 'doc' | 'decision' | 'task' = 'doc';
-              if (rel.includes('decisions')) cat = 'decision';
-              else if (rel.includes('tasks')) cat = 'task';
+                  const rel = r.file || '';
+                  let cat: 'doc' | 'decision' | 'task' = 'doc';
+                  if (rel.includes('decisions')) cat = 'decision';
+                  else if (rel.includes('tasks')) cat = 'task';
 
-              searchResults.push({
-                projectName: proj.name,
-                projectPath: projPath,
-                filePath: path.join(projPath, rel),
-                fileRelative: rel,
-                heading: r.heading || undefined,
-                snippet: r.text || '',
-                score: Math.round(similarityScore * 100) / 100,
-                type: 'vector',
-                category: cat
-              });
+                  searchResults.push({
+                    projectName: proj.name,
+                    projectPath: projPath,
+                    filePath: path.join(projPath, rel),
+                    fileRelative: rel,
+                    heading: r.heading || undefined,
+                    snippet: r.text || '',
+                    score: Math.round(similarityScore * 100) / 100,
+                    type: 'vector',
+                    category: cat
+                  });
+                }
+              }
             }
           }
         } catch (e) {
@@ -197,17 +234,20 @@ export async function getProjectRagStats(projectPath: string): Promise<{
   }
 
   try {
-    const db = await connect(indexDir);
-    const tables = await db.tableNames();
-    if (tables.includes('docs')) {
-      const table = await db.openTable('docs');
-      const count = await table.countRows();
-      const stats = await fs.stat(indexDir);
-      return {
-        hasIndex: true,
-        chunksCount: count,
-        lastModified: stats.mtime.toISOString()
-      };
+    const lancedb = await getLanceDb();
+    if (lancedb) {
+      const db = await lancedb.connect(indexDir);
+      const tables = await db.tableNames();
+      if (tables.includes('docs')) {
+        const table = await db.openTable('docs');
+        const count = await table.countRows();
+        const stats = await fs.stat(indexDir);
+        return {
+          hasIndex: true,
+          chunksCount: count,
+          lastModified: stats.mtime.toISOString()
+        };
+      }
     }
   } catch (e) {
     console.error(`Failed to get RAG stats for ${projectPath}:`, e);
