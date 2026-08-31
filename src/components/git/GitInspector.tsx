@@ -210,47 +210,52 @@ export const GitInspector: React.FC = () => {
       )}
 
       {/* Sub-tabs */}
-      <div className="flex items-center gap-0.5 px-4 pt-3 pb-0 shrink-0">
+      <div className="flex items-center gap-0.5 px-4 pt-3 pb-0 shrink-0 flex-nowrap overflow-x-auto no-scrollbar">
         {([
-          { id: 'history', label: `История (${gitLogs.length})`, icon: GitCommitIcon },
-          { id: 'branches', label: `Ветки${details ? ` (${details.branches.length})` : ''}`, icon: GitBranch },
-          { id: 'working', label: `Working Copy${details ? ` (${details.files.length})` : ''}`, icon: FileDiff }
-        ] as { id: GitTab; label: string; icon: any }[]).map(tab => {
+          { id: 'history', label: `История (${gitLogs.length})`, shortLabel: `История (${gitLogs.length})`, title: 'История коммитов Git', icon: GitCommitIcon },
+          { id: 'branches', label: `Ветки${details ? ` (${details.branches.length})` : ''}`, shortLabel: `Ветки${details ? ` (${details.branches.length})` : ''}`, title: 'Управление локальными и удаленными ветками', icon: GitBranch },
+          { id: 'working', label: `Рабочая копия${details ? ` (${details.files.length})` : ''}`, shortLabel: `Файлы${details ? ` (${details.files.length})` : ''}`, title: 'Измененные и staged файлы (Working Copy)', icon: FileDiff }
+        ] as { id: GitTab; label: string; shortLabel: string; title: string; icon: any }[]).map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs font-medium transition border-b-2 ${
+              title={tab.title}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs font-medium transition border-b-2 shrink-0 whitespace-nowrap ${
                 isActive
                   ? 'border-indigo-500 text-indigo-300 bg-indigo-500/10'
                   : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
               }`}
             >
-              <Icon className="w-3 h-3" />
-              {tab.label}
+              <Icon className="w-3 h-3 shrink-0" />
+              <span className="hidden md:inline">{tab.label}</span>
+              <span className="hidden sm:inline md:hidden">{tab.shortLabel}</span>
             </button>
           );
         })}
 
-        <div className="ml-auto flex items-center gap-2 pr-1">
+        <div className="ml-auto flex items-center gap-2 pr-1 shrink-0 flex-nowrap">
           {/* Current branch badge */}
           {details && (
-            <span className="flex items-center gap-1.5 text-[11px] font-mono px-2 py-1 rounded bg-slate-800/80 border border-slate-700/50 text-slate-300">
-              <GitBranch className="w-3 h-3 text-indigo-400" />
-              {details.currentBranch}
+            <span
+              className="flex items-center gap-1.5 text-[11px] font-mono px-2 py-1 rounded bg-slate-800/80 border border-slate-700/50 text-slate-300 shrink-0 whitespace-nowrap"
+              title={`Текущая активная ветка: ${details.currentBranch} (${details.isClean ? 'чисто' : `${details.files.length} измененных файлов`})`}
+            >
+              <GitBranch className="w-3 h-3 text-indigo-400 shrink-0" />
+              <span className="truncate max-w-[140px]">{details.currentBranch}</span>
               {details.isClean ? (
-                <span className="text-emerald-400 text-[9px] font-sans">clean</span>
+                <span className="text-emerald-400 text-[9px] font-sans shrink-0">clean</span>
               ) : (
-                <span className="text-amber-400 text-[9px] font-sans">{details.files.length} changed</span>
+                <span className="text-amber-400 text-[9px] font-sans shrink-0">{details.files.length} dirty</span>
               )}
             </span>
           )}
           <button
             onClick={() => selectedProject && loadGitRepoDetails(selectedProject)}
-            className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-slate-300 transition"
-            title="Обновить Git-статус"
+            className="p-1.5 rounded hover:bg-slate-800 text-slate-500 hover:text-slate-300 transition shrink-0"
+            title="Обновить Git-статус и список веток"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>

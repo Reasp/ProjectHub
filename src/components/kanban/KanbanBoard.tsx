@@ -166,17 +166,17 @@ export const KanbanBoard: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden p-6 select-none">
       {/* Top Header Controls */}
-      <div className="flex flex-col gap-4 mb-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-base font-semibold text-white tracking-tight flex items-center gap-2">
-              Задачи проекта
-              <span className="text-xs font-normal text-slate-400 font-mono">
+      <div className="flex flex-col gap-4 mb-5 shrink-0">
+        <div className="flex items-center justify-between flex-nowrap gap-4">
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-white tracking-tight flex items-center gap-2 truncate">
+              <span>Задачи проекта</span>
+              <span className="text-xs font-normal text-slate-400 font-mono shrink-0 whitespace-nowrap">
                 ({doneCount} из {tasks.length} выполнено • {progressPercent}%)
               </span>
             </h3>
             {/* Progress bar */}
-            <div className="w-64 h-1.5 bg-slate-800 rounded-full mt-1.5 overflow-hidden">
+            <div className="w-64 max-w-full h-1.5 bg-slate-800 rounded-full mt-1.5 overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-indigo-500 to-emerald-500 transition-all duration-300"
                 style={{ width: `${progressPercent}%` }}
@@ -184,46 +184,49 @@ export const KanbanBoard: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0 flex-nowrap">
             {/* View Mode Toggle */}
-            <div className="flex items-center bg-[#141724] p-1 rounded-lg border border-slate-800">
+            <div className="flex items-center bg-[#141724] p-1 rounded-lg border border-slate-800 shrink-0">
               <button
                 onClick={() => setTaskViewMode('kanban')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition ${
+                title="Вид: Канбан-доска"
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition whitespace-nowrap ${
                   taskViewMode === 'kanban'
                     ? 'bg-indigo-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                Доска
+                <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden sm:inline">Доска</span>
               </button>
               <button
                 onClick={() => setTaskViewMode('list')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition ${
+                title="Вид: Табличный список задач"
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition whitespace-nowrap ${
                   taskViewMode === 'list'
                     ? 'bg-indigo-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <List className="w-3.5 h-3.5" />
-                Список
+                <List className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden sm:inline">Список</span>
               </button>
             </div>
 
             <button
               onClick={() => setIsCreateOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-md shadow-indigo-600/20 transition"
+              title="Создать новую задачу в Backlog"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-md shadow-indigo-600/20 transition shrink-0 whitespace-nowrap"
             >
-              <Plus className="w-3.5 h-3.5" />
-              Новая задача
+              <Plus className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Новая задача</span>
             </button>
           </div>
         </div>
 
         {/* Filter & Search Bar */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative w-72">
+        <div className="flex items-center gap-3 flex-nowrap overflow-x-auto no-scrollbar shrink-0 py-0.5">
+          <div className="relative w-64 shrink-0">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" />
             <input
               type="text"
@@ -235,10 +238,11 @@ export const KanbanBoard: React.FC = () => {
           </div>
 
           {/* Tag Chips */}
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-1.5 shrink-0 flex-nowrap overflow-x-auto no-scrollbar">
             <button
               onClick={() => setSelectedLabelFilter(null)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition ${
+              title="Показать все задачи без фильтра по тегам"
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition whitespace-nowrap shrink-0 ${
                 selectedLabelFilter === null
                   ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30'
                   : 'bg-[#141724] text-slate-400 hover:text-slate-200 border border-slate-800'
@@ -253,13 +257,14 @@ export const KanbanBoard: React.FC = () => {
                 onClick={() =>
                   setSelectedLabelFilter(selectedLabelFilter === label ? null : label)
                 }
-                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition ${
+                title={`Фильтровать по тегу "${label}"`}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition whitespace-nowrap shrink-0 ${
                   selectedLabelFilter === label
                     ? 'bg-indigo-600 text-white shadow-sm'
                     : 'bg-[#141724] text-slate-400 hover:text-slate-200 border border-slate-800'
                 }`}
               >
-                <Tag className="w-2.5 h-2.5" />
+                <Tag className="w-2.5 h-2.5 shrink-0" />
                 {label}
               </button>
             ))}
@@ -267,9 +272,9 @@ export const KanbanBoard: React.FC = () => {
 
           {/* Milestone Filter Dropdown */}
           {milestones.length > 0 && (
-            <div className="flex items-center gap-1.5 ml-auto">
-              <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
-                <Target className="w-3 h-3 text-indigo-400" />
+            <div className="flex items-center gap-1.5 ml-auto shrink-0 whitespace-nowrap" title="Фильтрация задач по майлстоуну">
+              <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1 shrink-0">
+                <Target className="w-3 h-3 text-indigo-400 shrink-0" />
                 Этап:
               </span>
               <select

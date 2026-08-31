@@ -98,19 +98,19 @@ export const MilestonesRoadmapView: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#0f1117]">
       {/* Header Bar */}
-      <div className="px-6 py-4 border-b border-slate-800/80 bg-[#12151f]/60 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-            <Target className="w-5 h-5" />
+      <div className="px-6 py-4 border-b border-slate-800/80 bg-[#12151f]/60 flex items-center justify-between gap-4 shrink-0 flex-nowrap overflow-hidden">
+        <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
+          <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
+            <Target className="w-5 h-5 shrink-0" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-white">Дорожная карта & Майлстоуны</h2>
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 border border-slate-700/60">
+          <div className="min-w-0 truncate">
+            <div className="flex items-center gap-2 truncate">
+              <h2 className="text-sm font-semibold text-white truncate">Дорожная карта & Майлстоуны</h2>
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-400 border border-slate-700/60 shrink-0 whitespace-nowrap">
                 {totalMilestones} {totalMilestones === 1 ? 'майлстоун' : 'майлстоунов'}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-[11px] text-slate-400 mt-0.5 truncate">
               Планирование релизов, контрольных точек и спринтов проекта
             </p>
           </div>
@@ -118,10 +118,11 @@ export const MilestonesRoadmapView: React.FC = () => {
 
         <button
           onClick={handleOpenCreate}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-lg shadow-indigo-600/20"
+          title="Создать новый майлстоун или релизный этап"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-lg shadow-indigo-600/20 shrink-0 whitespace-nowrap"
         >
-          <Plus className="w-3.5 h-3.5" />
-          Создать майлстоун
+          <Plus className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden sm:inline">Создать майлстоун</span>
         </button>
       </div>
 

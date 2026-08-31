@@ -19,13 +19,13 @@ import { DocsRagView } from '../docs/DocsRagView';
 import { ProjectAnalyticsView } from '../analytics/ProjectAnalyticsView';
 
 const TABS = [
-  { id: 'kanban', label: 'Задачи & Backlog', icon: Kanban },
-  { id: 'milestones', label: 'Майлстоуны & Roadmap', icon: Target },
-  { id: 'git', label: 'Git Репозиторий', icon: GitBranch },
-  { id: 'prs', label: 'Pull / Merge Requests', icon: GitPullRequest },
-  { id: 'docs', label: 'Документация & RAG', icon: BookOpen },
-  { id: 'analytics', label: 'Аналитика', icon: BarChart2 },
-  { id: 'processes', label: 'Процессы & Окружение', icon: Cpu }
+  { id: 'kanban', label: 'Задачи & Backlog', shortLabel: 'Задачи', hotkey: 'Ctrl+B', icon: Kanban },
+  { id: 'milestones', label: 'Майлстоуны & Roadmap', shortLabel: 'Майлстоуны', hotkey: 'Ctrl+M', icon: Target },
+  { id: 'git', label: 'Git Репозиторий', shortLabel: 'Git', hotkey: 'Ctrl+G', icon: GitBranch },
+  { id: 'prs', label: 'Pull / Merge Requests', shortLabel: 'PR / MR', hotkey: 'Ctrl+P', icon: GitPullRequest },
+  { id: 'docs', label: 'Документация & RAG', shortLabel: 'Документация', hotkey: 'Ctrl+D', icon: BookOpen },
+  { id: 'analytics', label: 'Аналитика', shortLabel: 'Аналитика', hotkey: 'Ctrl+A', icon: BarChart2 },
+  { id: 'processes', label: 'Процессы & Окружение', shortLabel: 'Процессы', hotkey: 'Ctrl+\\', icon: Cpu }
 ] as const;
 
 export const ProjectWorkspace: React.FC = () => {
@@ -48,7 +48,7 @@ export const ProjectWorkspace: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#0f1117]">
       {/* Navigation Sub-header */}
-      <div className="px-6 border-b border-slate-800/80 bg-[#12151f]/40 flex items-center gap-1 shrink-0">
+      <div className="px-6 border-b border-slate-800/80 bg-[#12151f]/40 flex items-center gap-1 shrink-0 flex-nowrap overflow-x-auto">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -57,14 +57,16 @@ export const ProjectWorkspace: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-3.5 py-3 text-xs font-medium border-b-2 transition relative ${
+              title={`${tab.label} (${tab.hotkey})`}
+              className={`flex items-center gap-2 px-3.5 py-3 text-xs font-medium border-b-2 transition relative shrink-0 whitespace-nowrap ${
                 isActive
                   ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
                   : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
               }`}
             >
-              <Icon className="w-3.5 h-3.5" />
-              {tab.label}
+              <Icon className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden xl:inline">{tab.label}</span>
+              <span className="hidden md:inline xl:hidden">{tab.shortLabel}</span>
             </button>
           );
         })}

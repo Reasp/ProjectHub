@@ -197,14 +197,15 @@ export const TerminalPanel: React.FC = () => {
           {/* System Log Tab */}
           <button
             onClick={() => setActiveProcessId(null)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition shrink-0 ${
+            title="Системный лог ProjectHub"
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition shrink-0 whitespace-nowrap ${
               activeProcessId === null
                 ? 'bg-slate-800 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
             }`}
           >
-            <TerminalIcon className="w-3 h-3 text-indigo-400" />
-            <span>Системный лог</span>
+            <TerminalIcon className="w-3 h-3 text-indigo-400 shrink-0" />
+            <span className="hidden sm:inline">Системный лог</span>
           </button>
 
           {/* Managed Process Tabs */}
@@ -216,14 +217,15 @@ export const TerminalPanel: React.FC = () => {
               <div
                 key={proc.id}
                 onClick={() => setActiveProcessId(proc.id)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition shrink-0 cursor-pointer border ${
+                title={`Процесс: ${proc.name} (статус: ${proc.status === 'running' ? 'работает' : 'остановлен'})`}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition shrink-0 cursor-pointer border whitespace-nowrap ${
                   isActive
                     ? 'bg-[#181c2d] border-slate-700 text-white shadow-sm'
                     : 'bg-[#111422] border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
                 }`}
               >
                 <span
-                  className={`w-1.5 h-1.5 rounded-full ${
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                     isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
                   }`}
                 />
@@ -234,8 +236,8 @@ export const TerminalPanel: React.FC = () => {
                       e.stopPropagation();
                       stopProcessAction(proc.id);
                     }}
-                    title="Остановить процесс"
-                    className="p-0.5 rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition"
+                    title={`Остановить процесс ${proc.name}`}
+                    className="p-0.5 rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition shrink-0"
                   >
                     <Square className="w-2.5 h-2.5" />
                   </button>

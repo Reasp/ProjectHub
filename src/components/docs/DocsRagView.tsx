@@ -144,20 +144,23 @@ export const DocsRagView: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden p-6 select-none">
-      {/* Top Banner: RAG Stats, Indexer & Create Doc */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-[#141828] to-[#171b2d] border border-slate-800 shadow-xl mb-5 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-            <Database className="w-5 h-5" />
+      {/* Header Banner with RAG Stats */}
+      <div className="p-4 rounded-2xl bg-[#141724]/80 border border-slate-800/80 flex items-center justify-between gap-4 shrink-0 flex-nowrap overflow-hidden mb-5">
+        <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+            <Database className="w-5 h-5 shrink-0" />
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              База знаний и Архитектурные решения (ADR)
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+          <div className="min-w-0 truncate">
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2 truncate">
+              <span className="truncate">База знаний и Архитектурные решения (ADR)</span>
+              <span
+                className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0 whitespace-nowrap"
+                title={ragStats.hasIndex ? `Векторный индекс LanceDB активен (${ragStats.chunksCount} чанков)` : 'Векторный индекс еще не сгенерирован'}
+              >
                 {ragStats.hasIndex ? `RAG готов (${ragStats.chunksCount} чанков)` : 'RAG не собран'}
               </span>
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-400 mt-0.5 truncate">
               Всего документов: <span className="font-semibold text-slate-200">{docsList.length}</span> (
               {docsList.filter((d) => d.category === 'decision').length} ADR,{' '}
               {docsList.filter((d) => d.category === 'doc').length} Док)
@@ -168,23 +171,24 @@ export const DocsRagView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 shrink-0 flex-nowrap">
           <button
             onClick={() => setIsCreateModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-md shadow-indigo-600/20 transition"
+            title="Создать новый документ или архитектурное решение (ADR)"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-md shadow-indigo-600/20 transition shrink-0 whitespace-nowrap"
           >
-            <Plus className="w-4 h-4" />
-            Создать документ / ADR
+            <Plus className="w-4 h-4 shrink-0" />
+            <span className="hidden sm:inline">Создать документ / ADR</span>
           </button>
 
           <button
             onClick={handleReindex}
             disabled={isReindexing}
             title="Пересобрать векторный индекс LanceDB (npm run index-docs)"
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition disabled:opacity-50"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition disabled:opacity-50 shrink-0 whitespace-nowrap"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isReindexing ? 'animate-spin text-indigo-400' : ''}`} />
-            {isReindexing ? 'Индексация...' : 'Пересобрать RAG'}
+            <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isReindexing ? 'animate-spin text-indigo-400' : ''}`} />
+            <span className="hidden sm:inline">{isReindexing ? 'Индексация...' : 'Пересобрать RAG'}</span>
           </button>
         </div>
       </div>

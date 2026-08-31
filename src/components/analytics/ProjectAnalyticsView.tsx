@@ -82,26 +82,26 @@ export const ProjectAnalyticsView: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col h-full overflow-y-auto bg-[#0f1117] p-6 space-y-6 text-xs">
       {/* Header Banner */}
-      <div className="flex items-center justify-between p-5 rounded-2xl bg-gradient-to-r from-[#161926] via-[#141724] to-[#12151e] border border-slate-800/80 shadow-lg">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-600/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-inner">
-            <BarChart2 className="w-6 h-6" />
+      <div className="flex items-center justify-between p-5 rounded-2xl bg-gradient-to-r from-[#161926] via-[#141724] to-[#12151e] border border-slate-800/80 shadow-lg shrink-0 flex-nowrap overflow-hidden gap-4">
+        <div className="flex items-center gap-4 min-w-0 flex-1 overflow-hidden">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-600/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-inner shrink-0">
+            <BarChart2 className="w-6 h-6 shrink-0" />
           </div>
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-base font-bold text-white tracking-tight">Сводная аналитика и метрики проекта</h1>
-              <span className="text-[11px] font-mono font-medium text-indigo-300 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-indigo-400" />
-                {selectedProject.name}
+          <div className="min-w-0 truncate">
+            <div className="flex items-center gap-2.5 truncate">
+              <h1 className="text-base font-bold text-white tracking-tight truncate">Сводная аналитика и метрики проекта</h1>
+              <span className="text-[11px] font-mono font-medium text-indigo-300 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20 flex items-center gap-1 shrink-0 whitespace-nowrap" title={selectedProject.name}>
+                <Sparkles className="w-3 h-3 text-indigo-400 shrink-0" />
+                <span className="truncate max-w-[150px]">{selectedProject.name}</span>
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">
+            <p className="text-[11px] text-slate-400 mt-1 truncate">
               Комплексный мониторинг выполнения Backlog, чек-поинтов Acceptance Criteria, активности Git и базы знаний RAG
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0 whitespace-nowrap">
           <div className="text-right">
             <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider block">Общий прогресс</span>
             <span className="text-lg font-bold text-emerald-400 font-mono">{completionRate}% задач готово</span>
