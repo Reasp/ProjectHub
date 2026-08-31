@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -8,6 +9,9 @@ import { simpleGit } from 'simple-git';
 import type { ProjectInfo, BacklogTask, GitCommit, ScanOptions } from '../src/types/electron';
 import { projectRegistry } from './services/projectRegistry';
 import { inspectProject, scanDirectories } from './services/projectScanner';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // The built directory structure
 process.env.DIST = path.join(__dirname, '../dist');
