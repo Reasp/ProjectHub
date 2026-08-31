@@ -52,7 +52,7 @@ export const DocsRagView: React.FC = () => {
   const [isReindexing, setIsReindexing] = useState(false);
   const [filterDocQuery, setFilterDocQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'decision' | 'doc'>('all');
-  const [viewMode, setViewMode] = useState<'preview' | 'edit' | 'split'>('split');
+  const [viewMode, setViewMode] = useState<'preview' | 'edit' | 'split'>('preview');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
 
@@ -73,8 +73,16 @@ export const DocsRagView: React.FC = () => {
     if (selectedProject) {
       fetchDocs(selectedProject.path);
       fetchStats();
+      setViewMode('preview');
     }
   }, [selectedProject]);
+
+  // Reset to preview whenever a new document is selected
+  useEffect(() => {
+    if (selectedDoc) {
+      setViewMode('preview');
+    }
+  }, [selectedDoc?.filePath]);
 
   // Keyboard shortcut: Ctrl + S to save
   useEffect(() => {
@@ -241,7 +249,10 @@ export const DocsRagView: React.FC = () => {
               return (
                 <div
                   key={doc.id}
-                  onClick={() => selectDoc(doc)}
+                  onClick={() => {
+                    selectDoc(doc);
+                    setViewMode('preview');
+                  }}
                   className={`p-3 rounded-xl border transition cursor-pointer flex flex-col gap-1.5 ${
                     isSelected
                       ? 'bg-indigo-600/15 border-indigo-500/50 text-white shadow-sm'
