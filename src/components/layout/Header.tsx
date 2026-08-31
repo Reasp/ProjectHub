@@ -11,11 +11,14 @@ import {
   Square,
   RefreshCw,
   HelpCircle,
-  Bot
+  Bot,
+  Globe
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 
 export const Header: React.FC = () => {
+  const { language, setLanguage, t } = useTranslation();
   const {
     selectedProject,
     isTerminalOpen,
@@ -34,7 +37,31 @@ export const Header: React.FC = () => {
   if (!selectedProject) {
     return (
       <header className="h-14 border-b border-slate-800/80 px-6 flex items-center justify-between bg-[#12151f]/80">
-        <span className="text-xs text-slate-500">Выберите проект в левой панели</span>
+        <span className="text-xs text-slate-500">{t.header.selectProjectHint}</span>
+        {/* Language Switcher */}
+        <div className="flex items-center gap-1 bg-[#181c2b] p-1 rounded-lg border border-slate-800 text-xs">
+          <Globe className="w-3.5 h-3.5 text-indigo-400 mx-1" />
+          <button
+            onClick={() => setLanguage('en')}
+            className={`px-2 py-0.5 rounded font-semibold transition ${
+              language === 'en'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            EN
+          </button>
+          <button
+            onClick={() => setLanguage('ru')}
+            className={`px-2 py-0.5 rounded font-semibold transition ${
+              language === 'ru'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            RU
+          </button>
+        </div>
       </header>
     );
   }
@@ -111,30 +138,30 @@ export const Header: React.FC = () => {
         {devProcess ? (
           <button
             onClick={() => stopProcessAction(devProcess.id)}
-            title="Остановить локальный dev-сервер"
+            title={t.header.stopDev}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/70 text-xs font-semibold text-rose-300 border border-rose-800/50 shadow-md shadow-rose-950/20 transition whitespace-nowrap shrink-0"
           >
             <Square className="w-3 h-3 text-rose-400 fill-rose-400 shrink-0" />
-            <span className="hidden lg:inline">Стоп Dev</span>
+            <span className="hidden lg:inline">{t.header.stopDev}</span>
           </button>
         ) : (
           <button
             onClick={() => startProcessAction('npm run dev', 'dev')}
-            title="Запустить локальный dev-сервер (npm run dev)"
+            title={t.header.startDev}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/50 hover:bg-emerald-900/60 text-xs font-semibold text-emerald-300 border border-emerald-800/50 shadow-md shadow-emerald-950/20 transition whitespace-nowrap shrink-0"
           >
             <Play className="w-3 h-3 text-emerald-400 fill-emerald-400 shrink-0" />
-            <span className="hidden lg:inline">Старт Dev</span>
+            <span className="hidden lg:inline">{t.header.startDev}</span>
           </button>
         )}
 
         <button
           onClick={() => startProcessAction('npm run index-docs', 'index-docs')}
-          title="Собрать векторный RAG-индекс документации (npm run index-docs)"
+          title={t.header.indexRag}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition whitespace-nowrap shrink-0"
         >
           <RefreshCw className="w-3 h-3 text-indigo-400 shrink-0" />
-          <span className="hidden 2xl:inline">Индекс RAG</span>
+          <span className="hidden 2xl:inline">{t.header.indexRag}</span>
         </button>
 
         <div className="w-px h-6 bg-slate-800 mx-1 shrink-0" />
@@ -145,7 +172,6 @@ export const Header: React.FC = () => {
             if (selectedProject) {
               setTerminalOpen(true);
               setTerminalMode('pty');
-              // Check if already has a claude session for this project
               const existing = ptySessions.find(
                 (s) => s.projectPath === selectedProject.path && s.type === 'claude' && s.status === 'running'
               );
@@ -156,36 +182,36 @@ export const Header: React.FC = () => {
               }
             }
           }}
-          title="Открыть встроенную интерактивную консоль Claude Code для текущего проекта"
+          title={t.header.claudeCode}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white text-xs font-semibold shadow-md shadow-indigo-600/25 border border-indigo-400/30 transition whitespace-nowrap shrink-0"
         >
           <Bot className="w-3.5 h-3.5 text-indigo-200 shrink-0" />
-          <span>Claude Code</span>
+          <span>{t.header.claudeCode}</span>
         </button>
 
         <button
           onClick={handleOpenCode}
-          title="Открыть проект в редакторе VS Code"
+          title={t.header.vsCode}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition whitespace-nowrap shrink-0"
         >
           <Code className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-          <span className="hidden xl:inline">VS Code</span>
+          <span className="hidden xl:inline">{t.header.vsCode}</span>
         </button>
 
         <button
           onClick={handleOpenExplorer}
-          title="Открыть папку проекта в проводнике Windows"
+          title={t.header.folder}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition whitespace-nowrap shrink-0"
         >
           <FolderOpen className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          <span className="hidden xl:inline">Папка</span>
+          <span className="hidden xl:inline">{t.header.folder}</span>
         </button>
 
         <div className="w-px h-6 bg-slate-800 mx-1 shrink-0" />
 
         <button
           onClick={toggleTerminal}
-          title="Встроенная панель терминалов и логов (Ctrl+\)"
+          title={t.header.console}
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition whitespace-nowrap shrink-0 ${
             isTerminalOpen
               ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20'
@@ -193,12 +219,39 @@ export const Header: React.FC = () => {
           }`}
         >
           <TerminalSquare className="w-3.5 h-3.5 shrink-0" />
-          <span className="hidden lg:inline">Консоль</span>
+          <span className="hidden lg:inline">{t.header.console}</span>
         </button>
+
+        {/* Language Switcher */}
+        <div className="flex items-center gap-0.5 bg-[#181c2b] p-0.5 rounded-lg border border-slate-800 text-xs shrink-0">
+          <Globe className="w-3.5 h-3.5 text-indigo-400 mx-1" />
+          <button
+            onClick={() => setLanguage('en')}
+            title="English language"
+            className={`px-2 py-1 rounded text-[11px] font-semibold transition ${
+              language === 'en'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            EN
+          </button>
+          <button
+            onClick={() => setLanguage('ru')}
+            title="Русский язык"
+            className={`px-2 py-1 rounded text-[11px] font-semibold transition ${
+              language === 'ru'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            RU
+          </button>
+        </div>
 
         <button
           onClick={() => setHotkeysHelpOpen(true)}
-          title="Справка по горячим клавишам (? / F1)"
+          title={t.header.hotkeysHelp}
           className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700/60 transition shrink-0"
         >
           <HelpCircle className="w-3.5 h-3.5 shrink-0" />

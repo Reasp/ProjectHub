@@ -17,10 +17,12 @@ import {
   Terminal
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 import { CreatePRModal } from './CreatePRModal';
 import type { PullRequest } from '../../types/electron';
 
 export const PullRequestView: React.FC = () => {
+  const { t } = useTranslation();
   const {
     selectedProject,
     prs,
@@ -127,14 +129,14 @@ export const PullRequestView: React.FC = () => {
               <button
                 key={filter}
                 onClick={() => setPRFilter(filter)}
-                title={`Фильтр PR: ${filter === 'all' ? 'Все' : filter === 'open' ? 'Открытые' : filter === 'merged' ? 'Слитые (Merged)' : 'Закрытые'}`}
+                title={`PR Filter: ${filter}`}
                 className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition capitalize whitespace-nowrap shrink-0 ${
                   prFilter === filter
                     ? 'bg-indigo-600 text-white shadow-sm'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
                 }`}
               >
-                {filter === 'all' ? 'Все' : filter === 'open' ? 'Открытые' : filter === 'merged' ? 'Merged' : 'Закрытые'}
+                {filter === 'all' ? t.pr.allFilter : filter === 'open' ? t.pr.openFilter : filter === 'merged' ? t.pr.mergedFilter : t.pr.closedFilter}
               </button>
             ))}
           </div>
@@ -145,18 +147,18 @@ export const PullRequestView: React.FC = () => {
           <button
             onClick={handleRefresh}
             disabled={isLoadingPRs}
-            title="Обновить список Pull Requests"
+            title={t.pr.refresh}
             className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700/60 transition disabled:opacity-50 shrink-0"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoadingPRs ? 'animate-spin' : ''}`} />
           </button>
           <button
             onClick={() => setIsCreateModalOpen(true)}
-            title="Создать новый Pull / Merge Request"
+            title={t.pr.newPR}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shadow-lg shadow-indigo-600/20 transition shrink-0 whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline">Создать PR</span>
+            <span className="hidden sm:inline">{t.pr.newPR}</span>
           </button>
         </div>
       </div>
@@ -166,18 +168,18 @@ export const PullRequestView: React.FC = () => {
         {/* Left Column: PR List */}
         <div className="w-80 border-r border-slate-800/80 flex flex-col bg-[#10131c] shrink-0">
           <div className="px-4 py-2 border-b border-slate-800 text-[11px] font-medium text-slate-400 flex items-center justify-between">
-            <span>Pull Requests ({prs.length})</span>
-            {isLoadingPRs && <span className="text-indigo-400 animate-pulse">Загрузка...</span>}
+            <span>{t.pr.title} ({prs.length})</span>
+            {isLoadingPRs && <span className="text-indigo-400 animate-pulse">{t.common.loading}</span>}
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-slate-800/50">
             {prs.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-500">
                 <GitPullRequest className="w-8 h-8 mx-auto mb-2 text-slate-600" />
-                <p>Нет Pull Requests в этом фильтре</p>
+                <p>{t.pr.noPRs}</p>
                 {!prProviderInfo?.hasCli && (
                   <p className="mt-2 text-[10px] text-slate-600">
-                    Установите GitHub CLI (gh) для загрузки PR с GitHub
+                    GitHub CLI (gh)
                   </p>
                 )}
               </div>
@@ -291,7 +293,7 @@ export const PullRequestView: React.FC = () => {
                         : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                     }`}
                   >
-                    Описание & Чек-лист
+                    {t.pr.overviewTab}
                   </button>
                   <button
                     onClick={() => setActiveSubTab('diff')}
@@ -302,7 +304,7 @@ export const PullRequestView: React.FC = () => {
                     }`}
                   >
                     <FileCode className="w-3.5 h-3.5" />
-                    Просмотр Diff (Изменения)
+                    {t.pr.diffTab}
                   </button>
                 </div>
               </div>
@@ -314,21 +316,21 @@ export const PullRequestView: React.FC = () => {
                     {/* Description Box */}
                     <div className="bg-[#141722] border border-slate-800 rounded-xl p-5 shadow-inner">
                       <h3 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">
-                        Описание Pull Request
+                        {t.pr.description}
                       </h3>
                       {selectedPR.body ? (
                         <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap font-mono bg-[#0b0d13] p-4 rounded-lg border border-slate-800/80">
                           {selectedPR.body}
                         </div>
                       ) : (
-                        <p className="text-xs text-slate-500 italic">Описание отсутствует.</p>
+                        <p className="text-xs text-slate-500 italic">{t.docs.noDocsFound}</p>
                       )}
                     </div>
 
                     {/* Labels */}
                     {selectedPR.labels && selectedPR.labels.length > 0 && (
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-slate-400">Метки:</span>
+                        <span className="text-xs text-slate-400">{t.kanban.labels}:</span>
                         {selectedPR.labels.map((label) => (
                           <span
                             key={label}
@@ -373,7 +375,7 @@ export const PullRequestView: React.FC = () => {
                     ) : (
                       <div className="p-8 text-center text-xs text-slate-500">
                         <FileCode className="w-8 h-8 mx-auto mb-2 text-slate-600" />
-                        Дифф пуст или не удалось загрузить.
+                        {t.git.noChanges}
                       </div>
                     )}
                   </div>
@@ -383,9 +385,9 @@ export const PullRequestView: React.FC = () => {
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-500">
               <GitPullRequest className="w-12 h-12 text-slate-700 mb-3" />
-              <h3 className="text-sm font-semibold text-slate-300 mb-1">Выберите Pull Request</h3>
+              <h3 className="text-sm font-semibold text-slate-300 mb-1">{t.pr.noPRSelected}</h3>
               <p className="text-xs text-slate-500 max-w-sm">
-                Выберите PR из списка слева для просмотра деталей, описания, статуса CI проверок и диффа.
+                {t.pr.noPRSelected}
               </p>
             </div>
           )}

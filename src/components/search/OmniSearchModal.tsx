@@ -13,6 +13,7 @@ import {
   Layers
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 import type { RagSearchResult } from '../../types/electron';
 
 interface OmniSearchModalProps {
@@ -21,6 +22,7 @@ interface OmniSearchModalProps {
 }
 
 export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const { selectedProject, selectProject, projects, setActiveTab } = useProjectStore();
 
   const [query, setQuery] = useState('');
@@ -116,7 +118,7 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Семантический поиск по документам, решениям и задачам..."
+            placeholder={t.search.placeholder}
             className="flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none font-medium"
           />
 
@@ -134,7 +136,7 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
           )}
 
           <div className="flex items-center gap-1 text-[11px] font-mono text-slate-500 bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700/50">
-            ESC закрыть
+            ESC {t.common.cancel}
           </div>
         </div>
 
@@ -148,7 +150,7 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
                 mode === 'all' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Все
+              {t.common.all}
             </button>
             <button
               onClick={() => setMode('vector')}
@@ -165,7 +167,7 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
                 mode === 'text' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Текст
+              Text
             </button>
           </div>
 
@@ -179,7 +181,7 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Все проекты ({projects.length})
+              {t.search.globalScope} ({projects.length})
             </button>
             {selectedProject && (
               <button
@@ -189,9 +191,9 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
                     ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/40'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
-                title={`Только ${selectedProject.name}`}
+                title={`Only ${selectedProject.name}`}
               >
-                Только: {selectedProject.name}
+                {t.search.projectScope}: {selectedProject.name}
               </button>
             )}
           </div>
@@ -202,16 +204,13 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
           {query.trim() === '' && (
             <div className="py-12 text-center text-xs text-slate-500 space-y-2">
               <BrainCircuit className="w-8 h-8 mx-auto text-slate-600" />
-              <p>Введите поисковый запрос для семантического поиска по базе знаний.</p>
-              <p className="text-[11px] text-slate-600">
-                Поддерживаются вопросы на естественном языке, термины, имена задач и ADR.
-              </p>
+              <p>{t.search.placeholder}</p>
             </div>
           )}
 
           {query.trim() !== '' && results.length === 0 && !isSearching && (
             <div className="py-12 text-center text-xs text-slate-500">
-              По запросу «{query}» ничего не найдено.
+              {t.search.noResults} «{query}»
             </div>
           )}
 

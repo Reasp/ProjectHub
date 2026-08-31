@@ -11,6 +11,7 @@ import {
   BarChart2
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 import { KanbanBoard } from '../kanban/KanbanBoard';
 import { MilestonesRoadmapView } from '../milestones/MilestonesRoadmapView';
 import { GitInspector } from '../git/GitInspector';
@@ -18,18 +19,19 @@ import { PullRequestView } from '../pr/PullRequestView';
 import { DocsRagView } from '../docs/DocsRagView';
 import { ProjectAnalyticsView } from '../analytics/ProjectAnalyticsView';
 
-const TABS = [
-  { id: 'kanban', label: 'Задачи & Backlog', shortLabel: 'Задачи', hotkey: 'Ctrl+B', icon: Kanban },
-  { id: 'milestones', label: 'Майлстоуны & Roadmap', shortLabel: 'Майлстоуны', hotkey: 'Ctrl+M', icon: Target },
-  { id: 'git', label: 'Git Репозиторий', shortLabel: 'Git', hotkey: 'Ctrl+G', icon: GitBranch },
-  { id: 'prs', label: 'Pull / Merge Requests', shortLabel: 'PR / MR', hotkey: 'Ctrl+P', icon: GitPullRequest },
-  { id: 'docs', label: 'Документация & RAG', shortLabel: 'Документация', hotkey: 'Ctrl+D', icon: BookOpen },
-  { id: 'analytics', label: 'Аналитика', shortLabel: 'Аналитика', hotkey: 'Ctrl+A', icon: BarChart2 },
-  { id: 'processes', label: 'Процессы & Окружение', shortLabel: 'Процессы', hotkey: 'Ctrl+\\', icon: Cpu }
-] as const;
-
 export const ProjectWorkspace: React.FC = () => {
+  const { t } = useTranslation();
   const { selectedProject, activeTab, setActiveTab } = useProjectStore();
+
+  const tabs = [
+    { id: 'kanban', label: t.tabs.tasks, shortLabel: t.tabs.tasks.split(' ')[0], hotkey: 'Ctrl+B', icon: Kanban },
+    { id: 'milestones', label: t.tabs.milestones, shortLabel: t.tabs.milestones.split(' ')[0], hotkey: 'Ctrl+M', icon: Target },
+    { id: 'git', label: t.tabs.git, shortLabel: 'Git', hotkey: 'Ctrl+G', icon: GitBranch },
+    { id: 'prs', label: t.tabs.prs, shortLabel: 'PR', hotkey: 'Ctrl+P', icon: GitPullRequest },
+    { id: 'docs', label: t.tabs.docs, shortLabel: 'Docs', hotkey: 'Ctrl+D', icon: BookOpen },
+    { id: 'analytics', label: t.tabs.analytics, shortLabel: 'Analytics', hotkey: 'Ctrl+A', icon: BarChart2 },
+    { id: 'processes', label: t.tabs.processes, shortLabel: 'Processes', hotkey: 'Ctrl+\\', icon: Cpu }
+  ] as const;
 
   if (!selectedProject) {
     return (
@@ -37,9 +39,9 @@ export const ProjectWorkspace: React.FC = () => {
         <div className="w-16 h-16 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center mb-4 text-indigo-400">
           <Layers className="w-8 h-8" />
         </div>
-        <h2 className="text-lg font-semibold text-white mb-2">Выберите проект для начала работы</h2>
+        <h2 className="text-lg font-semibold text-white mb-2">{t.header.selectProjectHint}</h2>
         <p className="text-xs text-slate-400 max-w-md mb-6">
-          Выберите проект из списка слева или добавьте существующую папку с репозиторием.
+          {t.sidebar.noProjectsFound}
         </p>
       </div>
     );
@@ -49,7 +51,7 @@ export const ProjectWorkspace: React.FC = () => {
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#0f1117]">
       {/* Navigation Sub-header */}
       <div className="px-6 border-b border-slate-800/80 bg-[#12151f]/40 flex items-center gap-1 shrink-0 flex-nowrap overflow-x-auto">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
 
@@ -84,9 +86,9 @@ export const ProjectWorkspace: React.FC = () => {
         {activeTab === 'processes' && (
           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
             <Cpu className="w-12 h-12 text-indigo-400/40 mb-3" />
-            <h3 className="text-sm font-semibold text-white mb-1">Управление процессами и окружением</h3>
+            <h3 className="text-sm font-semibold text-white mb-1">{t.terminal.processLogs}</h3>
             <p className="text-xs text-slate-400 max-w-sm">
-              Управление фоновыми процессами и живой терминал логов доступны в нижней панели терминала и в заголовке проекта.
+              {t.terminal.welcomeDesc}
             </p>
           </div>
         )}
@@ -94,4 +96,3 @@ export const ProjectWorkspace: React.FC = () => {
     </div>
   );
 };
-

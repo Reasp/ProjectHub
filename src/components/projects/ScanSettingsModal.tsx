@@ -11,6 +11,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface ScanSettingsModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ interface ScanSettingsModalProps {
 }
 
 export const ScanSettingsModal: React.FC<ScanSettingsModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const {
     scanRoots,
     fetchScanRoots,
@@ -77,8 +79,8 @@ export const ScanSettingsModal: React.FC<ScanSettingsModalProps> = ({ isOpen, on
               <FolderSearch className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Каталог и сканирование проектов</h2>
-              <p className="text-xs text-slate-400">Настройка путей автообнаружения репозиториев и бэклогов</p>
+              <h2 className="text-sm font-semibold text-white">{t.scanSettings.title}</h2>
+              <p className="text-xs text-slate-400">{t.scanSettings.subtitle}</p>
             </div>
           </div>
           <button
@@ -96,21 +98,21 @@ export const ScanSettingsModal: React.FC<ScanSettingsModalProps> = ({ isOpen, on
             <div className="flex items-center justify-between mb-2">
               <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                 <Folder className="w-3.5 h-3.5 text-indigo-400" />
-                Директории для сканирования ({roots.length})
+                {t.scanSettings.directories} ({roots.length})
               </label>
               <button
                 onClick={handleAddFolder}
                 className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 font-medium py-1 px-2 rounded-md hover:bg-indigo-500/10 transition"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Добавить путь
+                {t.scanSettings.addFolder}
               </button>
             </div>
 
             <div className="space-y-1.5">
               {roots.length === 0 ? (
                 <div className="p-4 rounded-xl border border-dashed border-slate-800 text-center text-slate-500">
-                  Нет добавленных директорий. Нажмите «Добавить путь».
+                  {t.scanSettings.noDirectories}
                 </div>
               ) : (
                 roots.map((rootPath) => (
@@ -127,7 +129,7 @@ export const ScanSettingsModal: React.FC<ScanSettingsModalProps> = ({ isOpen, on
                     <button
                       onClick={() => handleRemoveRoot(rootPath)}
                       className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-rose-500/10 transition opacity-60 group-hover:opacity-100"
-                      title="Удалить путь"
+                      title={t.common.delete}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -143,10 +145,10 @@ export const ScanSettingsModal: React.FC<ScanSettingsModalProps> = ({ isOpen, on
               <div>
                 <div className="font-medium text-slate-200 flex items-center gap-1.5">
                   <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-                  Глубина вложенности поиска
+                  {t.scanSettings.depth}
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  Сколько поддиректорий проверять внутри каждого пути
+                  {t.scanSettings.depthSubtitle}
                 </p>
               </div>
 
@@ -155,9 +157,9 @@ export const ScanSettingsModal: React.FC<ScanSettingsModalProps> = ({ isOpen, on
                 onChange={(e) => setScanDepth(Number(e.target.value))}
                 className="bg-[#121522] border border-slate-700 rounded-lg px-2.5 py-1 text-slate-200 text-xs focus:outline-none focus:border-indigo-500"
               >
-                <option value={1}>1 уровень (только прямые подпапки)</option>
-                <option value={2}>2 уровня (рекомендуется)</option>
-                <option value={3}>3 уровня (глубокий поиск)</option>
+                <option value={1}>1 {t.scanSettings.depthLevel1}</option>
+                <option value={2}>2 {t.scanSettings.depthLevel2}</option>
+                <option value={3}>3 {t.scanSettings.depthLevel3}</option>
               </select>
             </div>
           </div>
@@ -167,22 +169,21 @@ export const ScanSettingsModal: React.FC<ScanSettingsModalProps> = ({ isOpen, on
             <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-800/50 flex items-center gap-2.5 text-emerald-300">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>
-                Сканирование завершено в {scanResult.timestamp}. Обнаружено и актуализировано проектов:{' '}
-                <strong>{scanResult.count}</strong>.
+                {scanResult.timestamp} • {scanResult.count} {t.sidebar.projectsCount}
               </span>
             </div>
           )}
 
           <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
             <AlertCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            Проекты сохраняются в реестре <code>~/.projecthub/projects.json</code> и доступны оффлайн.
+            <code>~/.projecthub/projects.json</code>
           </div>
         </div>
 
         {/* Footer */}
         <div className="px-6 py-3.5 border-t border-slate-800 bg-[#181b2a]/70 flex items-center justify-between">
           <span className="text-xs text-slate-400">
-            Всего в каталоге: <strong className="text-white">{projects.length}</strong>
+            {t.common.all}: <strong className="text-white">{projects.length}</strong>
           </span>
 
           <div className="flex items-center gap-2">
@@ -190,7 +191,7 @@ export const ScanSettingsModal: React.FC<ScanSettingsModalProps> = ({ isOpen, on
               onClick={onClose}
               className="px-3.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 font-medium transition"
             >
-              Закрыть
+              {t.common.close}
             </button>
             <button
               onClick={handleRunScan}
@@ -198,7 +199,7 @@ export const ScanSettingsModal: React.FC<ScanSettingsModalProps> = ({ isOpen, on
               className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-md shadow-indigo-600/20 transition flex items-center gap-2 disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
-              {isScanning ? 'Сканирование...' : 'Сканировать сейчас'}
+              {isScanning ? t.common.loading : t.scanSettings.scanNow}
             </button>
           </div>
         </div>

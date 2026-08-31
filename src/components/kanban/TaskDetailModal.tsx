@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import type { BacklogTask, TaskCriterion } from '../../types/electron';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 import { generateTaskDraft } from '../../services/aiAssistantService';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 
@@ -38,6 +39,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onDelete,
   onToggleCriterion
 }) => {
+  const { t } = useTranslation();
   if (!task) return null;
 
   const { milestones } = useProjectStore();
@@ -145,7 +147,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   };
 
   const handleDelete = async () => {
-    if (confirm(`Вы уверены, что хотите удалить задачу ${task.id}? Файл ${task.filePath} будет удален.`)) {
+    if (confirm(`${t.taskDetail.confirmDelete} (${task.id}: ${task.filePath})`)) {
       await onDelete(task.filePath);
       onClose();
     }
@@ -165,7 +167,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="font-semibold text-sm text-white bg-transparent border-b border-transparent hover:border-slate-700 focus:border-indigo-500 focus:outline-none px-1 py-0.5 transition truncate max-w-md"
-              placeholder="Название задачи"
+              placeholder={t.taskDetail.title}
             />
           </div>
 
@@ -177,7 +179,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   activeTab === 'editor' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Редактор
+                {t.common.edit}
               </button>
               <button
                 onClick={() => setActiveTab('raw')}
@@ -214,31 +216,31 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <div className="grid grid-cols-3 gap-3 p-4 rounded-xl bg-[#171b2b]/50 border border-slate-800">
                 <div>
                   <label className="font-semibold text-slate-300 uppercase tracking-wider text-[11px] block mb-1.5">
-                    Статус задачи
+                    {t.taskDetail.status}
                   </label>
                   <select
                     value={status}
                     onChange={(e) => handleStatusChange(e.target.value as any)}
                     className="w-full bg-[#10121d] border border-slate-700 rounded-lg px-3 py-1.5 text-slate-200 text-xs font-medium focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="To Do">○ To Do (К выполнению)</option>
-                    <option value="In Progress">◒ In Progress (В работе)</option>
-                    <option value="Review">◆ Review (На проверке)</option>
-                    <option value="Done">✔ Done (Готово)</option>
+                    <option value="To Do">○ To Do ({t.kanban.todo})</option>
+                    <option value="In Progress">◒ In Progress ({t.kanban.inProgress})</option>
+                    <option value="Review">◆ Review ({t.kanban.review})</option>
+                    <option value="Done">✔ Done ({t.kanban.done})</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="font-semibold text-slate-300 uppercase tracking-wider text-[11px] block mb-1.5 flex items-center gap-1">
                     <Target className="w-3 h-3 text-indigo-400" />
-                    Майлстоун / Этап
+                    {t.taskDetail.milestone}
                   </label>
                   <select
                     value={milestone}
                     onChange={(e) => setMilestone(e.target.value)}
                     className="w-full bg-[#10121d] border border-slate-700 rounded-lg px-3 py-1.5 text-slate-200 text-xs font-medium focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="">(Без майлстоуна)</option>
+                    <option value="">({t.taskDetail.noMilestone})</option>
                     {milestones.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.id}: {m.title}
@@ -249,7 +251,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
                 <div>
                   <label className="font-semibold text-slate-300 uppercase tracking-wider text-[11px] block mb-1.5">
-                    Теги и лейблы
+                    {t.taskDetail.labels}
                   </label>
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {labels.map((l) => (
@@ -275,7 +277,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       value={newLabelInput}
                       onChange={(e) => setNewLabelInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddLabel())}
-                      placeholder="Добавить тег..."
+                      placeholder={t.taskDetail.addLabel}
                       className="bg-[#10121d] border border-slate-800 rounded-md px-2.5 py-1 text-xs text-slate-200 placeholder:text-slate-500 flex-1 focus:outline-none focus:border-indigo-500"
                     />
                     <button
@@ -294,7 +296,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 <div className="flex items-center justify-between">
                   <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                     <CheckSquare className="w-3.5 h-3.5 text-indigo-400" />
-                    Критерии приемки (Acceptance Criteria)
+                    {t.taskDetail.acceptanceCriteria}
                   </label>
                   <div className="flex items-center gap-3">
                     <button
@@ -302,13 +304,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       onClick={handleAIGenerate}
                       disabled={isGeneratingAI}
                       className="flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 font-medium px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 transition disabled:opacity-50"
-                      title="Сгенерировать описание и критерии с помощью AI / Ollama"
+                      title={t.taskDetail.generateCriteria}
                     >
                       <Sparkles className={`w-3 h-3 ${isGeneratingAI ? 'animate-spin' : ''}`} />
-                      {isGeneratingAI ? 'Генерация...' : 'AI Автогенерация'}
+                      {isGeneratingAI ? t.common.loading : t.taskDetail.aiAssistant}
                     </button>
                     <span className="text-[11px] text-slate-400 font-mono">
-                      Выполнено: {criteria.filter((c) => c.completed).length} / {criteria.length}
+                      {criteria.filter((c) => c.completed).length} / {criteria.length} {t.kanban.criteriaCount}
                     </span>
                   </div>
                 </div>
@@ -316,7 +318,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 <div className="space-y-1.5">
                   {criteria.length === 0 ? (
                     <div className="p-3 rounded-lg border border-dashed border-slate-800 text-center text-slate-500 text-xs">
-                      Нет критериев приемки. Добавьте первый ниже.
+                      {t.taskDetail.criterionPlaceholder}
                     </div>
                   ) : (
                     criteria.map((crit, index) => (
@@ -345,7 +347,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                         <button
                           onClick={() => handleRemoveCriterion(index)}
                           className="p-1 text-slate-600 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition"
-                          title="Удалить критерий"
+                          title={t.common.delete}
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -360,7 +362,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       value={newCriterionInput}
                       onChange={(e) => setNewCriterionInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCriterion())}
-                      placeholder="Новый критерий приемки (например: Добавлены unit-тесты)..."
+                      placeholder={t.taskDetail.criterionPlaceholder}
                       className="w-full bg-[#10121d] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
                     />
                     <button
@@ -369,7 +371,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium transition flex items-center gap-1 shrink-0"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      Добавить
+                      {t.taskDetail.addCriterion}
                     </button>
                   </div>
                 </div>
@@ -380,7 +382,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 <div className="flex items-center justify-between">
                   <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                     <Edit3 className="w-3.5 h-3.5 text-indigo-400" />
-                    Описание задачи (Markdown)
+                    {t.taskDetail.description} (Markdown)
                   </label>
                   <button
                     type="button"
@@ -388,7 +390,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 font-medium"
                   >
                     <Eye className="w-3 h-3" />
-                    {previewMode ? 'Редактировать' : 'Предпросмотр'}
+                    {previewMode ? t.common.edit : t.docs.viewDoc}
                   </button>
                 </div>
 
@@ -401,7 +403,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     rows={6}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Подробное описание задачи, архитектурный контекст и шаги реализации..."
+                    placeholder={t.createTask.descriptionPlaceholder}
                     className="w-full bg-[#10121d] border border-slate-800 rounded-xl p-3.5 text-xs text-slate-200 font-mono placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 leading-relaxed transition resize-y"
                   />
                 )}
@@ -412,7 +414,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             <div className="space-y-2">
               <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                 <FileCode className="w-3.5 h-3.5 text-indigo-400" />
-                Исходный файл .md
+                {t.docs.markdownEditor}
               </label>
               <pre className="bg-[#0e111a] p-4 rounded-xl text-xs text-slate-300 font-mono border border-slate-800 leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-[50vh]">
                 {rawContent}
@@ -425,7 +427,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             <span className="truncate max-w-lg" title={task.filePath}>
               {task.filePath}
             </span>
-            {task.created && <span>Создано: {task.created}</span>}
+            {task.created && <span>{task.created}</span>}
           </div>
         </div>
 
@@ -436,7 +438,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 border border-rose-900/40 transition text-xs font-medium"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            Удалить задачу
+            {t.taskDetail.deleteTask}
           </button>
 
           <div className="flex items-center gap-2">
@@ -444,7 +446,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               onClick={onClose}
               className="px-3.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 font-medium transition text-xs"
             >
-              Отмена
+              {t.common.cancel}
             </button>
             <button
               onClick={handleSave}
@@ -452,7 +454,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-md shadow-indigo-600/20 transition flex items-center gap-1.5 text-xs disabled:opacity-50"
             >
               <Save className="w-3.5 h-3.5" />
-              {isSaving ? 'Сохранение...' : 'Сохранить изменения'}
+              {isSaving ? t.taskDetail.saving : t.common.save}
             </button>
           </div>
         </div>

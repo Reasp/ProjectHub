@@ -16,18 +16,13 @@ import {
   X
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 import type { BacklogTask } from '../../types/electron';
 import { TaskDetailModal } from './TaskDetailModal';
 import { TaskListView } from './TaskListView';
 
-const COLUMNS: { status: BacklogTask['status']; label: string; color: string; bg: string; borderHover: string }[] = [
-  { status: 'To Do', label: 'К выполнению', color: 'text-slate-400', bg: 'border-slate-700/60', borderHover: 'border-slate-500' },
-  { status: 'In Progress', label: 'В работе', color: 'text-amber-400', bg: 'border-amber-500/40', borderHover: 'border-amber-500' },
-  { status: 'Review', label: 'На проверке', color: 'text-indigo-400', bg: 'border-indigo-500/40', borderHover: 'border-indigo-500' },
-  { status: 'Done', label: 'Готово', color: 'text-emerald-400', bg: 'border-emerald-500/40', borderHover: 'border-emerald-500' }
-];
-
 export const KanbanBoard: React.FC = () => {
+  const { t } = useTranslation();
   const {
     tasks,
     milestones,
@@ -44,6 +39,13 @@ export const KanbanBoard: React.FC = () => {
     toggleCriterionLocal,
     loadProjectData
   } = useProjectStore();
+
+  const columns: { status: BacklogTask['status']; label: string; color: string; bg: string; borderHover: string }[] = [
+    { status: 'To Do', label: t.kanban.todo, color: 'text-slate-400', bg: 'border-slate-700/60', borderHover: 'border-slate-500' },
+    { status: 'In Progress', label: t.kanban.inProgress, color: 'text-amber-400', bg: 'border-amber-500/40', borderHover: 'border-amber-500' },
+    { status: 'Review', label: t.kanban.review, color: 'text-indigo-400', bg: 'border-indigo-500/40', borderHover: 'border-indigo-500' },
+    { status: 'Done', label: t.kanban.done, color: 'text-emerald-400', bg: 'border-emerald-500/40', borderHover: 'border-emerald-500' }
+  ];
 
   const [selectedTask, setSelectedTask] = useState<BacklogTask | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -67,18 +69,18 @@ export const KanbanBoard: React.FC = () => {
 
   // Filter tasks
   const filteredTasks = useMemo(() => {
-    return tasks.filter((t) => {
+    return tasks.filter((taskItem) => {
       const matchQuery =
-        t.title.toLowerCase().includes(searchTaskQuery.toLowerCase()) ||
-        t.id.toLowerCase().includes(searchTaskQuery.toLowerCase()) ||
-        (t.description && t.description.toLowerCase().includes(searchTaskQuery.toLowerCase()));
+        taskItem.title.toLowerCase().includes(searchTaskQuery.toLowerCase()) ||
+        taskItem.id.toLowerCase().includes(searchTaskQuery.toLowerCase()) ||
+        (taskItem.description && taskItem.description.toLowerCase().includes(searchTaskQuery.toLowerCase()));
       if (!matchQuery) return false;
-      if (selectedLabelFilter && (!t.labels || !t.labels.includes(selectedLabelFilter))) {
+      if (selectedLabelFilter && (!taskItem.labels || !taskItem.labels.includes(selectedLabelFilter))) {
         return false;
       }
       if (selectedMilestoneFilter) {
         const mKey = selectedMilestoneFilter.toLowerCase();
-        const tMilestone = t.milestone?.toLowerCase();
+        const tMilestone = taskItem.milestone?.toLowerCase();
         const matchedM = milestones.find((m) => m.id.toLowerCase() === mKey);
         const matches =
           tMilestone === mKey ||
@@ -90,7 +92,7 @@ export const KanbanBoard: React.FC = () => {
   }, [tasks, searchTaskQuery, selectedLabelFilter, selectedMilestoneFilter, milestones]);
 
   // Progress metrics
-  const doneCount = tasks.filter((t) => t.status === 'Done').length;
+  const doneCount = tasks.filter((taskItem) => taskItem.status === 'Done').length;
   const progressPercent = tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : 0;
 
   // Drag & Drop handlers
@@ -100,16 +102,15 @@ export const KanbanBoard: React.FC = () => {
     setDraggingTaskId(taskId);
   };
 
-  const handleDragOver = (e: React.DragEvent, colStatus: BacklogTask['status']) => {
+  const handleDragOver = (e: React.DragEvent, status: BacklogTask['status']) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (dragOverColumn !== colStatus) {
-      setDragOverColumn(colStatus);
+    if (dragOverColumn !== status) {
+      setDragOverColumn(status);
     }
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
+  const handleDragLeave = () => {
     setDragOverColumn(null);
   };
 
@@ -121,13 +122,13 @@ export const KanbanBoard: React.FC = () => {
     const taskId = e.dataTransfer.getData('text/plain');
     if (!taskId) return;
 
-    const targetTask = tasks.find((t) => t.id === taskId);
+    const targetTask = tasks.find((taskItem) => taskItem.id === taskId);
     if (!targetTask || targetTask.status === targetStatus) return;
 
     // Rule 5 check: moving to Done directly
     if (targetStatus === 'Done' && (targetTask.status === 'To Do' || targetTask.status === 'In Progress')) {
       const proceed = confirm(
-        `Правило 5 Backlog.md рекомендует сначала перевести задачу в статус "Review" для проверки перед "Done".\n\nВы точно хотите перевести задачу ${targetTask.id} сразу в "Done"?`
+        `Rule 5 / Правило 5: Recommend moving to "Review" first.\nDo you really want to move ${targetTask.id} directly to Done?`
       );
       if (!proceed) {
         // Move to Review instead
@@ -170,9 +171,9 @@ export const KanbanBoard: React.FC = () => {
         <div className="flex items-center justify-between flex-nowrap gap-4">
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-white tracking-tight flex items-center gap-2 truncate">
-              <span>Задачи проекта</span>
+              <span>{t.tabs.tasks}</span>
               <span className="text-xs font-normal text-slate-400 font-mono shrink-0 whitespace-nowrap">
-                ({doneCount} из {tasks.length} выполнено • {progressPercent}%)
+                ({doneCount} / {tasks.length} {t.analytics.taskCompletionRate.toLowerCase()} • {progressPercent}%)
               </span>
             </h3>
             {/* Progress bar */}
@@ -189,7 +190,7 @@ export const KanbanBoard: React.FC = () => {
             <div className="flex items-center bg-[#141724] p-1 rounded-lg border border-slate-800 shrink-0">
               <button
                 onClick={() => setTaskViewMode('kanban')}
-                title="Вид: Канбан-доска"
+                title={t.kanban.viewKanban}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition whitespace-nowrap ${
                   taskViewMode === 'kanban'
                     ? 'bg-indigo-600 text-white shadow-sm'
@@ -197,11 +198,11 @@ export const KanbanBoard: React.FC = () => {
                 }`}
               >
                 <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
-                <span className="hidden sm:inline">Доска</span>
+                <span className="hidden sm:inline">{t.kanban.viewKanban}</span>
               </button>
               <button
                 onClick={() => setTaskViewMode('list')}
-                title="Вид: Табличный список задач"
+                title={t.kanban.viewList}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition whitespace-nowrap ${
                   taskViewMode === 'list'
                     ? 'bg-indigo-600 text-white shadow-sm'
@@ -209,17 +210,17 @@ export const KanbanBoard: React.FC = () => {
                 }`}
               >
                 <List className="w-3.5 h-3.5 shrink-0" />
-                <span className="hidden sm:inline">Список</span>
+                <span className="hidden sm:inline">{t.kanban.viewList}</span>
               </button>
             </div>
 
             <button
               onClick={() => setIsCreateOpen(true)}
-              title="Создать новую задачу в Backlog"
+              title={t.kanban.newTask}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-md shadow-indigo-600/20 transition shrink-0 whitespace-nowrap"
             >
               <Plus className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">Новая задача</span>
+              <span className="hidden sm:inline">{t.kanban.newTask}</span>
             </button>
           </div>
         </div>
@@ -232,7 +233,7 @@ export const KanbanBoard: React.FC = () => {
               type="text"
               value={searchTaskQuery}
               onChange={(e) => setSearchTaskQuery(e.target.value)}
-              placeholder="Поиск по задачам и критериям..."
+              placeholder={t.kanban.searchTasks}
               className="w-full bg-[#141724] border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition"
             />
           </div>
@@ -241,14 +242,14 @@ export const KanbanBoard: React.FC = () => {
           <div className="flex items-center gap-1.5 shrink-0 flex-nowrap overflow-x-auto no-scrollbar">
             <button
               onClick={() => setSelectedLabelFilter(null)}
-              title="Показать все задачи без фильтра по тегам"
+              title={t.kanban.allLabels}
               className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition whitespace-nowrap shrink-0 ${
                 selectedLabelFilter === null
                   ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30'
                   : 'bg-[#141724] text-slate-400 hover:text-slate-200 border border-slate-800'
               }`}
             >
-              Все теги
+              {t.kanban.allLabels}
             </button>
 
             {allLabels.map((label) => (
@@ -312,9 +313,9 @@ export const KanbanBoard: React.FC = () => {
         />
       ) : (
         <div className="flex-1 grid grid-cols-4 gap-4 overflow-hidden">
-          {COLUMNS.map((col) => {
+          {columns.map((col) => {
             const colTasks = filteredTasks.filter(
-              (t) => (t.status || 'To Do') === col.status
+              (taskItem) => (taskItem.status || 'To Do') === col.status
             );
             const isTarget = dragOverColumn === col.status;
 
@@ -356,8 +357,8 @@ export const KanbanBoard: React.FC = () => {
                 {/* Column Task Cards with DnD */}
                 <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5">
                   {colTasks.length === 0 && (
-                    <div className="h-28 flex items-center justify-center text-xs text-slate-500 border border-dashed border-slate-800/80 rounded-lg">
-                      Перетащите задачу сюда
+                    <div className="h-28 flex items-center justify-center text-xs text-slate-500 border border-dashed border-slate-800/80 rounded-lg text-center px-3">
+                      {t.kanban.moveTaskHint}
                     </div>
                   )}
 
@@ -397,7 +398,7 @@ export const KanbanBoard: React.FC = () => {
                           <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono pt-1">
                             <CheckSquare className="w-3 h-3 text-indigo-400" />
                             <span>
-                              {completedCriteria}/{criteria.length} критериев
+                              {completedCriteria}/{criteria.length} {t.kanban.criteriaCount}
                             </span>
                           </div>
                         )}
@@ -427,8 +428,8 @@ export const KanbanBoard: React.FC = () => {
 
                         {/* Card Footer Info */}
                         <div className="flex items-center justify-between pt-2 border-t border-slate-800/60 mt-1">
-                          <span className="text-[10px] text-slate-500">Подробнее →</span>
-                          <span className="text-[9px] font-mono text-slate-600 truncate max-w-[100px]">
+                          <span className="text-[10px] text-slate-500">{t.common.status}:</span>
+                          <span className="text-[9px] font-mono text-slate-400 truncate max-w-[100px]">
                             {task.status}
                           </span>
                         </div>
@@ -459,7 +460,7 @@ export const KanbanBoard: React.FC = () => {
             className="w-full max-w-lg bg-[#141724] border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
           >
             <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-[#161a2b]/70">
-              <h3 className="text-sm font-semibold text-white">Создать новую задачу Backlog</h3>
+              <h3 className="text-sm font-semibold text-white">{t.createTask.title}</h3>
               <button
                 type="button"
                 onClick={() => setIsCreateOpen(false)}
@@ -472,40 +473,40 @@ export const KanbanBoard: React.FC = () => {
             <div className="p-5 space-y-4 text-xs">
               <div>
                 <label className="text-slate-300 font-medium block mb-1">
-                  Название задачи *
+                  {t.createTask.taskTitle} *
                 </label>
                 <input
                   type="text"
                   required
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="Например: Модуль визуализации Git-графа"
+                  placeholder={t.createTask.taskTitlePlaceholder}
                   className="w-full bg-[#10121d] border border-slate-800 rounded-lg px-3 py-2 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition"
                 />
               </div>
 
               <div>
                 <label className="text-slate-300 font-medium block mb-1">
-                  Описание (Description)
+                  {t.createTask.description}
                 </label>
                 <textarea
                   rows={4}
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
-                  placeholder="Краткое описание проблемы и контекста..."
+                  placeholder={t.createTask.descriptionPlaceholder}
                   className="w-full bg-[#10121d] border border-slate-800 rounded-lg px-3 py-2 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition"
                 />
               </div>
 
               <div>
                 <label className="text-slate-300 font-medium block mb-1">
-                  Теги (через запятую)
+                  {t.createTask.labels}
                 </label>
                 <input
                   type="text"
                   value={newLabels}
                   onChange={(e) => setNewLabels(e.target.value)}
-                  placeholder="ui, git, backend, search"
+                  placeholder={t.createTask.labelsPlaceholder}
                   className="w-full bg-[#10121d] border border-slate-800 rounded-lg px-3 py-2 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition"
                 />
               </div>
@@ -517,13 +518,13 @@ export const KanbanBoard: React.FC = () => {
                 onClick={() => setIsCreateOpen(false)}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition"
               >
-                Отмена
+                {t.common.cancel}
               </button>
               <button
                 type="submit"
                 className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-md shadow-indigo-600/20 transition"
               >
-                Создать задачу
+                {t.createTask.createButton}
               </button>
             </div>
           </form>

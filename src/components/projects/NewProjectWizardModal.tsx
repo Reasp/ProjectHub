@@ -16,6 +16,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 import type { CreateProjectOptions } from '../../types/electron';
 
 interface NewProjectWizardModalProps {
@@ -27,6 +28,7 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
   isOpen,
   onClose
 }) => {
+  const { t } = useTranslation();
   const { fetchProjects, selectProject, setActiveTab, addTerminalLog } = useProjectStore();
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -122,8 +124,8 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
               <Sparkles className="w-4 h-4 text-amber-300" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Мастер создания проекта из ProjectTemplate</h2>
-              <p className="text-xs text-slate-400">Шаг {step} из 3</p>
+              <h2 className="text-sm font-semibold text-white">{t.wizard.title}</h2>
+              <p className="text-xs text-slate-400">{t.wizard.step} {step} / 3</p>
             </div>
           </div>
           {!isCreating && (
@@ -149,7 +151,7 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
             <div className="space-y-4">
               <div>
                 <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] block mb-1.5">
-                  Название нового проекта *
+                  {t.wizard.projectName} *
                 </label>
                 <input
                   type="text"
@@ -157,14 +159,14 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
                   required
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
-                  placeholder="Например: MyAIApp, GameEngine, WebDashboard"
+                  placeholder={t.wizard.projectNamePlaceholder}
                   className="w-full bg-[#171a29] border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition font-medium"
                 />
               </div>
 
               <div>
                 <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] block mb-1.5">
-                  Корневая директория размещения
+                  {t.wizard.parentDirectory}
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -179,14 +181,14 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
                     className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium transition flex items-center gap-1.5 border border-slate-700"
                   >
                     <Folder className="w-3.5 h-3.5 text-indigo-400" />
-                    Выбрать
+                    {t.wizard.selectFolder}
                   </button>
                 </div>
               </div>
 
               {projectName.trim() && (
                 <div className="p-3 rounded-xl bg-[#171a2b]/60 border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                  <span className="text-slate-500 font-semibold block">Результирующий путь:</span>
+                  <span className="text-slate-500 font-semibold block">{t.wizard.resultingPath}:</span>
                   <span className="font-mono text-indigo-300 break-all">{targetPath}</span>
                 </div>
               )}
@@ -201,7 +203,7 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
                   />
                   <span className="text-slate-300 font-medium flex items-center gap-1.5">
                     <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
-                    Инициализировать локальный Git репозиторий (`git init`)
+                    {t.wizard.initGit}
                   </span>
                 </label>
               </div>
@@ -397,7 +399,7 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
               className="flex items-center gap-1 px-3.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 font-medium transition text-xs"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              Назад
+              {t.wizard.back}
             </button>
           ) : (
             <div />
@@ -409,7 +411,7 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
                 onClick={onClose}
                 className="px-3.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 font-medium transition text-xs"
               >
-                Отмена
+                {t.common.cancel}
               </button>
             )}
 
@@ -417,14 +419,14 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
               <button
                 onClick={() => {
                   if (!projectName.trim()) {
-                    alert('Пожалуйста, введите название проекта.');
+                    alert('Please enter a project name.');
                     return;
                   }
                   setStep(2);
                 }}
                 className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-md shadow-indigo-600/20 transition flex items-center gap-1 text-xs"
               >
-                Далее
+                {t.wizard.next}
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}
@@ -436,7 +438,7 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
                 className="px-5 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium shadow-lg shadow-indigo-600/30 transition flex items-center gap-1.5 text-xs"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                Создать проект
+                {t.wizard.createButton}
               </button>
             )}
           </div>

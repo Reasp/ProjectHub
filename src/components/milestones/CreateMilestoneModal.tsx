@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Target, Calendar, AlignLeft, CheckCircle } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 import type { Milestone, CreateMilestoneParams } from '../../types/electron';
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export const CreateMilestoneModal: React.FC<Props> = ({ isOpen, onClose, milestoneToEdit }) => {
+  const { t } = useTranslation();
   const { createMilestoneAction, saveMilestoneAction } = useProjectStore();
 
   const [title, setTitle] = useState(milestoneToEdit?.title || '');
@@ -75,10 +77,10 @@ export const CreateMilestoneModal: React.FC<Props> = ({ isOpen, onClose, milesto
             </div>
             <div>
               <h2 className="text-sm font-semibold text-white">
-                {milestoneToEdit ? 'Редактировать майлстоун' : 'Новый майлстоун (Milestone)'}
+                {milestoneToEdit ? t.milestones.editMilestone : t.milestones.createMilestoneTitle}
               </h2>
               <p className="text-[11px] text-slate-400">
-                Группировка задач бэклога и отслеживание дорожной карты (Roadmap)
+                {t.milestones.subtitle}
               </p>
             </div>
           </div>
@@ -101,12 +103,12 @@ export const CreateMilestoneModal: React.FC<Props> = ({ isOpen, onClose, milesto
           {/* Title */}
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1.5">
-              Название майлстоуна <span className="text-rose-400">*</span>
+              {t.milestones.milestoneTitle} <span className="text-rose-400">*</span>
             </label>
             <input
               type="text"
               required
-              placeholder="Например: Релиз v1.0, Альфа MVP, Спринт 2"
+              placeholder={t.milestones.milestoneTitlePlaceholder}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full px-3 py-2 bg-slate-900/90 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
@@ -118,7 +120,7 @@ export const CreateMilestoneModal: React.FC<Props> = ({ isOpen, onClose, milesto
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                Плановая дата (Deadline)
+                {t.milestones.dueDate}
               </label>
               <input
                 type="date"
@@ -130,17 +132,17 @@ export const CreateMilestoneModal: React.FC<Props> = ({ isOpen, onClose, milesto
 
             <div>
               <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Статус
+                {t.milestones.status}
               </label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as any)}
                 className="w-full px-3 py-2 bg-slate-900/90 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500"
               >
-                <option value="Planning">Planning (Планируется)</option>
-                <option value="In Progress">In Progress (В работе)</option>
-                <option value="Completed">Completed (Завершен)</option>
-                <option value="Deferred">Deferred (Отложен)</option>
+                <option value="Planning">{t.milestones.statusPlanning}</option>
+                <option value="In Progress">{t.milestones.statusInProgress}</option>
+                <option value="Completed">{t.milestones.statusCompleted}</option>
+                <option value="Deferred">{t.milestones.statusDeferred}</option>
               </select>
             </div>
           </div>
@@ -149,11 +151,11 @@ export const CreateMilestoneModal: React.FC<Props> = ({ isOpen, onClose, milesto
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1.5 flex items-center gap-1.5">
               <AlignLeft className="w-3.5 h-3.5 text-slate-400" />
-              Описание и цели этапа
+              {t.milestones.description}
             </label>
             <textarea
               rows={4}
-              placeholder="Кратко опишите цели, ключевые фичи и критерии завершения этого майлстоуна..."
+              placeholder={t.milestones.descriptionPlaceholder}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-3 py-2 bg-slate-900/90 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none font-sans"
@@ -167,7 +169,7 @@ export const CreateMilestoneModal: React.FC<Props> = ({ isOpen, onClose, milesto
               onClick={onClose}
               className="px-4 py-2 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition"
             >
-              Отмена
+              {t.common.cancel}
             </button>
             <button
               type="submit"
@@ -175,7 +177,7 @@ export const CreateMilestoneModal: React.FC<Props> = ({ isOpen, onClose, milesto
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-indigo-600/20"
             >
               <CheckCircle className="w-3.5 h-3.5" />
-              {isSubmitting ? 'Сохранение...' : milestoneToEdit ? 'Сохранить' : 'Создать майлстоун'}
+              {isSubmitting ? t.common.loading : milestoneToEdit ? t.common.save : t.milestones.createMilestoneButton}
             </button>
           </div>
         </form>

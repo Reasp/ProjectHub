@@ -16,6 +16,7 @@ import type {
   CreateMilestoneParams,
   PtySession
 } from '../types/electron';
+import type { Language } from '../i18n';
 
 interface ProjectState {
   projects: ProjectInfo[];
@@ -40,6 +41,10 @@ interface ProjectState {
   activeProcessId: string | null;
   terminalHeight: number;
   isHotkeysHelpOpen: boolean;
+
+  // Language & i18n Localization
+  language: Language;
+  setLanguage: (language: Language) => void;
 
   // Interactive PTY State (Claude Code & Multi-tab Terminals)
   ptySessions: PtySession[];
@@ -173,6 +178,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   activeProcessId: null,
   terminalHeight: 220,
   isHotkeysHelpOpen: false,
+
+  language: (typeof window !== 'undefined' && (localStorage.getItem('projecthub_lang') as Language)) || 'en',
+  setLanguage: (language: Language) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('projecthub_lang', language);
+    }
+    set({ language });
+  },
 
   prs: [],
   selectedPR: null,

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, GitPullRequest, Sparkles, AlertCircle, Loader2 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 import { generatePRDraft } from '../../services/aiAssistantService';
 
 interface CreatePRModalProps {
@@ -9,6 +10,7 @@ interface CreatePRModalProps {
 }
 
 export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const {
     selectedProject,
     gitRepoDetails,
@@ -94,7 +96,7 @@ export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose })
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#12151f]">
           <div className="flex items-center gap-2.5 text-indigo-400">
             <GitPullRequest className="w-5 h-5" />
-            <h2 className="text-sm font-semibold text-white">Создать Pull Request</h2>
+            <h2 className="text-sm font-semibold text-white">{t.pr.createPRTitle}</h2>
           </div>
           <button
             onClick={onClose}
@@ -117,20 +119,20 @@ export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose })
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-slate-400 font-medium mb-1.5">
-                Исходная ветка (Head Branch)
+                {t.pr.headBranch}
               </label>
               <input
                 type="text"
                 value={sourceBranch}
                 onChange={(e) => setSourceBranch(e.target.value)}
-                placeholder="например: feat/task-8"
+                placeholder="feat/task-1"
                 className="w-full px-3 py-2 bg-[#0d0f15] border border-slate-700/80 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono text-xs"
                 required
               />
             </div>
             <div>
               <label className="block text-slate-400 font-medium mb-1.5">
-                Целевая ветка (Base Branch)
+                {t.pr.baseBranch}
               </label>
               <input
                 type="text"
@@ -146,14 +148,13 @@ export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose })
           {/* Title */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-slate-400 font-medium">Заголовок PR</label>
-              <span className="text-[10px] text-slate-500">Автоматически привязывается к Backlog</span>
+              <label className="text-slate-400 font-medium">{t.pr.prTitle}</label>
             </div>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="feat(task-8): Описание изменений"
+              placeholder="feat(task-1): Title"
               className="w-full px-3 py-2 bg-[#0d0f15] border border-slate-700/80 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 text-xs"
               required
             />
@@ -163,28 +164,28 @@ export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose })
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-slate-400 font-medium">
-                Описание (Markdown)
+                {t.pr.description} (Markdown)
               </label>
               <button
                 type="button"
                 onClick={async () => {
-                  const activeTask = tasks.find(t => t.status === 'In Progress') || tasks[0];
+                  const activeTask = tasks.find(taskItem => taskItem.status === 'In Progress') || tasks[0];
                   const draft = await generatePRDraft(activeTask?.id, activeTask?.title, activeTask?.description, sourceBranch);
                   if (!title) setTitle(draft.title);
                   setBody(draft.description);
                 }}
                 className="flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 font-medium px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 transition"
-                title="Сгенерировать шаблон описания PR"
+                title="AI Generate PR draft"
               >
                 <Sparkles className="w-3 h-3" />
-                AI Генерация описания
+                AI Draft
               </button>
             </div>
             <textarea
               rows={8}
               value={body}
               onChange={(e) => setBody(e.target.value)}
-              placeholder="Подробное описание изменений, ссылки на задачи и критерии приемки..."
+              placeholder="PR description..."
               className="w-full px-3 py-2 bg-[#0d0f15] border border-slate-700/80 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono text-xs leading-relaxed"
             />
           </div>
@@ -199,7 +200,7 @@ export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose })
               className="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0"
             />
             <label htmlFor="isDraft" className="text-slate-300 cursor-pointer select-none">
-              Создать как черновик (Draft Pull Request)
+              {t.pr.draft}
             </label>
           </div>
 
@@ -207,7 +208,7 @@ export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose })
           <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
             <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              При создании задача Backlog будет переведена в статус <b className="text-amber-400">Review</b>.
+              Backlog → <b className="text-amber-400">Review</b>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -216,7 +217,7 @@ export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose })
                 disabled={isSubmitting}
                 className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition"
               >
-                Отмена
+                {t.common.cancel}
               </button>
               <button
                 type="submit"
@@ -226,12 +227,12 @@ export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose })
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Создание...
+                    {t.common.loading}
                   </>
                 ) : (
                   <>
                     <GitPullRequest className="w-3.5 h-3.5" />
-                    Опубликовать PR
+                    {t.pr.createPRButton}
                   </>
                 )}
               </button>

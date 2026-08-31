@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, BookOpen, ShieldCheck, Tag, FileText, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface CreateDocModalProps {
   isOpen: boolean;
@@ -8,6 +9,7 @@ interface CreateDocModalProps {
 }
 
 export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const { createDocAction, selectedProject } = useProjectStore();
 
   const [type, setType] = useState<'doc' | 'decision'>('decision');
@@ -64,8 +66,8 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Создать документ / ADR</h2>
-              <p className="text-[11px] text-slate-400">Проект: {selectedProject.name}</p>
+              <h2 className="text-sm font-semibold text-white">{t.docs.createDocTitle}</h2>
+              <p className="text-[11px] text-slate-400">{selectedProject.name}</p>
             </div>
           </div>
           <button
@@ -87,7 +89,7 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
 
           {/* Type Selector */}
           <div className="space-y-2">
-            <label className="text-xs font-medium text-slate-300">Тип документа</label>
+            <label className="text-xs font-medium text-slate-300">{t.docs.docType}</label>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
@@ -100,10 +102,10 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
               >
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-indigo-400" />
-                  <span className="text-xs font-semibold">Архитектурное решение (ADR)</span>
+                  <span className="text-xs font-semibold">{t.docs.typeDecision}</span>
                 </div>
                 <span className="text-[10px] text-slate-500">
-                  Сохраняется в <code className="font-mono text-indigo-300/80">backlog/decisions/</code>
+                  <code className="font-mono text-indigo-300/80">backlog/decisions/</code>
                 </span>
               </button>
 
@@ -118,10 +120,10 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
               >
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4 text-indigo-400" />
-                  <span className="text-xs font-semibold">Документация</span>
+                  <span className="text-xs font-semibold">{t.docs.typeDoc}</span>
                 </div>
                 <span className="text-[10px] text-slate-500">
-                  Сохраняется в <code className="font-mono text-indigo-300/80">backlog/docs/</code>
+                  <code className="font-mono text-indigo-300/80">backlog/docs/</code>
                 </span>
               </button>
             </div>
@@ -130,18 +132,14 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
           {/* Title */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-300">
-              Заголовок <span className="text-rose-400">*</span>
+              {t.docs.docTitle} <span className="text-rose-400">*</span>
             </label>
             <input
               type="text"
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={
-                type === 'decision'
-                  ? 'например: Выбор стека Electron и Tailwind v4'
-                  : 'например: Архитектура модулей и IPC'
-              }
+              placeholder={t.docs.docTitlePlaceholder}
               className="w-full bg-[#10121d] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
             />
           </div>
@@ -149,7 +147,7 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
           {/* Decision Status if ADR */}
           {type === 'decision' && (
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-slate-300">Статус решения</label>
+              <label className="text-xs font-medium text-slate-300">{t.docs.decisionStatus}</label>
               <div className="grid grid-cols-3 gap-2">
                 {(['Accepted', 'Proposed', 'Rejected'] as const).map((st) => (
                   <button
@@ -166,7 +164,7 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
                         : 'bg-[#10121d] border-slate-800 text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    {st === 'Accepted' ? 'Принято (Accepted)' : st === 'Proposed' ? 'Предложено' : 'Отклонено'}
+                    {st}
                   </button>
                 ))}
               </div>
@@ -177,7 +175,7 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
               <Tag className="w-3 h-3 text-slate-400" />
-              Теги (через запятую)
+              {t.docs.tags}
             </label>
             <input
               type="text"
@@ -195,7 +193,7 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
               onClick={onClose}
               className="px-4 py-2 rounded-xl border border-slate-800 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800/50 transition"
             >
-              Отмена
+              {t.common.cancel}
             </button>
             <button
               type="submit"
@@ -203,7 +201,7 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-lg shadow-indigo-600/20 transition disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
-              {isSubmitting ? 'Создание...' : 'Создать документ'}
+              {isSubmitting ? t.common.loading : t.docs.createDocButton}
             </button>
           </div>
         </form>

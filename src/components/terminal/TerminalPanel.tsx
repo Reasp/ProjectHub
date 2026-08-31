@@ -19,9 +19,11 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 import { PtyTabTerminal } from './PtyTabTerminal';
 
 export const TerminalPanel: React.FC = () => {
+  const { t } = useTranslation();
   const {
     isTerminalOpen,
     setTerminalOpen,
@@ -217,20 +219,20 @@ export const TerminalPanel: React.FC = () => {
             <div className="flex items-center gap-1 mr-1 pr-1.5 border-r border-slate-800/80 shrink-0">
               <button
                 onClick={handleLaunchClaude}
-                title="Запустить новый инстанс Claude Code в текущем проекте"
+                title={t.terminal.newClaude}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-950/60 hover:bg-indigo-900/80 text-xs font-semibold text-indigo-300 border border-indigo-700/50 shadow-sm transition shrink-0"
               >
                 <Bot className="w-3.5 h-3.5 text-indigo-400" />
-                <span>+ Claude Code</span>
+                <span>{t.terminal.newClaude}</span>
               </button>
 
               <button
                 onClick={handleLaunchShell}
-                title="Открыть интерактивный терминал (PowerShell / Shell) в папке проекта"
+                title={t.terminal.newShell}
                 className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800/60 hover:bg-slate-700/70 text-xs font-medium text-slate-300 border border-slate-700/60 transition shrink-0"
               >
                 <TerminalIcon className="w-3 h-3 text-cyan-400" />
-                <span>+ Shell</span>
+                <span>{t.terminal.newShell}</span>
               </button>
             </div>
           )}
@@ -247,7 +249,7 @@ export const TerminalPanel: React.FC = () => {
                   setTerminalMode('pty');
                   setActivePtySessionId(session.id);
                 }}
-                title={`Сессия: ${session.title} (${isRunning ? 'активна' : 'завершена'})`}
+                title={`${session.title} (${isRunning ? t.terminal.running : t.terminal.exited})`}
                 className={`group flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition shrink-0 cursor-pointer border whitespace-nowrap ${
                   isCurrent
                     ? 'bg-[#181d2e] border-indigo-500/40 text-white shadow-sm'
@@ -273,7 +275,7 @@ export const TerminalPanel: React.FC = () => {
                     e.stopPropagation();
                     closePtySessionAction(session.id);
                   }}
-                  title="Закрыть терминал"
+                  title={t.terminal.close}
                   className="p-0.5 rounded hover:bg-rose-950/70 text-slate-500 hover:text-rose-300 transition shrink-0 ml-0.5"
                 >
                   <X className="w-3 h-3" />
@@ -288,7 +290,7 @@ export const TerminalPanel: React.FC = () => {
               setTerminalMode('process_logs');
               setActiveProcessId(null);
             }}
-            title="Логи процессов и системы"
+            title={t.terminal.processLogs}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition shrink-0 whitespace-nowrap border ${
               terminalMode === 'process_logs'
                 ? 'bg-[#181d2e] border-indigo-500/40 text-white shadow-sm'
@@ -296,7 +298,7 @@ export const TerminalPanel: React.FC = () => {
             }`}
           >
             <Radio className="w-3 h-3 text-amber-400 shrink-0" />
-            <span>Логи процессов</span>
+            <span>{t.terminal.processLogs}</span>
           </button>
 
           {/* Individual Managed Process Sub-Tabs (when in process_logs mode) */}
@@ -309,7 +311,7 @@ export const TerminalPanel: React.FC = () => {
                 <div
                   key={proc.id}
                   onClick={() => setActiveProcessId(proc.id)}
-                  title={`Процесс: ${proc.name} (${proc.status})`}
+                  title={`${proc.name} (${proc.status})`}
                   className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium transition shrink-0 cursor-pointer border whitespace-nowrap ${
                     isActive
                       ? 'bg-slate-800 border-slate-600 text-white'
@@ -328,7 +330,7 @@ export const TerminalPanel: React.FC = () => {
                         e.stopPropagation();
                         stopProcessAction(proc.id);
                       }}
-                      title="Остановить процесс"
+                      title={t.header.stopDev}
                       className="p-0.5 rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition"
                     >
                       <Square className="w-2.5 h-2.5" />
@@ -347,7 +349,7 @@ export const TerminalPanel: React.FC = () => {
               <button
                 onClick={() => startProcessAction('npm run dev', 'dev')}
                 className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/50 hover:bg-emerald-900/60 text-[11px] font-medium text-emerald-400 border border-emerald-800/40 transition"
-                title="Запустить dev-сервер проекта"
+                title={t.header.startDev}
               >
                 <Play className="w-2.5 h-2.5" />
                 dev
@@ -356,7 +358,7 @@ export const TerminalPanel: React.FC = () => {
               <button
                 onClick={() => startProcessAction('npm run build', 'build')}
                 className="flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-950/50 hover:bg-indigo-900/60 text-[11px] font-medium text-indigo-300 border border-indigo-800/40 transition"
-                title="Собрать проект"
+                title={t.terminal.buildProject}
               >
                 <Cpu className="w-2.5 h-2.5" />
                 build
@@ -365,7 +367,7 @@ export const TerminalPanel: React.FC = () => {
               <button
                 onClick={() => startProcessAction('npm run index-docs', 'index-docs')}
                 className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-950/40 hover:bg-amber-900/50 text-[11px] font-medium text-amber-300 border border-amber-800/40 transition"
-                title="Индексировать документацию"
+                title={t.terminal.indexDocs}
               >
                 <RefreshCw className="w-2.5 h-2.5" />
                 docs
@@ -383,7 +385,7 @@ export const TerminalPanel: React.FC = () => {
                 }
               }
             }}
-            title="Очистить лог"
+            title={t.terminal.clearLog}
             className="p-1 rounded hover:bg-slate-800 hover:text-slate-200 transition"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -397,7 +399,7 @@ export const TerminalPanel: React.FC = () => {
                 processFitAddonRef.current?.fit();
               }, 100);
             }}
-            title={isMaximized ? 'Восстановить размер' : 'Развернуть'}
+            title={isMaximized ? t.terminal.restore : t.terminal.maximize}
             className="p-1 rounded hover:bg-slate-800 hover:text-slate-200 transition"
           >
             {isMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
@@ -406,7 +408,7 @@ export const TerminalPanel: React.FC = () => {
           {/* Close Panel */}
           <button
             onClick={() => setTerminalOpen(false)}
-            title="Скрыть панель терминала"
+            title={t.terminal.close}
             className="p-1 rounded hover:bg-slate-800 hover:text-slate-200 transition"
           >
             <X className="w-3.5 h-3.5" />
@@ -432,10 +434,10 @@ export const TerminalPanel: React.FC = () => {
               <Bot className="w-6 h-6" />
             </div>
             <div className="text-sm font-medium text-slate-300">
-              Нет активных интерактивных терминалов
+              {t.terminal.noActiveSessions}
             </div>
             <p className="text-xs text-slate-500 text-center max-w-md">
-              Запустите Claude Code или PowerShell терминал в рабочей директории выбранного проекта:
+              {t.terminal.welcomeDesc}
             </p>
             {selectedProject && (
               <div className="flex items-center gap-2 pt-1">
@@ -444,14 +446,14 @@ export const TerminalPanel: React.FC = () => {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/20 transition"
                 >
                   <Bot className="w-4 h-4" />
-                  Запустить Claude Code в {selectedProject.name}
+                  {t.terminal.launchClaudeInProject} {selectedProject.name}
                 </button>
                 <button
                   onClick={handleLaunchShell}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition"
                 >
                   <TerminalIcon className="w-4 h-4 text-cyan-400" />
-                  Открыть Shell
+                  {t.terminal.openShell}
                 </button>
               </div>
             )}

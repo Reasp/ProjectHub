@@ -1,58 +1,50 @@
 import React from 'react';
-import { X, Keyboard, Command, Sparkles, Navigation, Zap, Terminal } from 'lucide-react';
+import { X, Keyboard, Navigation, Zap, Terminal } from 'lucide-react';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
 }
 
-interface ShortcutItem {
-  keys: string[];
-  description: string;
-}
-
-interface ShortcutGroup {
-  title: string;
-  icon: any;
-  items: ShortcutItem[];
-}
-
-const SHORTCUT_GROUPS: ShortcutGroup[] = [
-  {
-    title: 'Навигация по разделам',
-    icon: Navigation,
-    items: [
-      { keys: ['Ctrl', 'B'], description: 'Вкладка "Задачи & Backlog" (Канбан-доска)' },
-      { keys: ['Ctrl', 'M'], description: 'Вкладка "Майлстоуны & Roadmap"' },
-      { keys: ['Ctrl', 'G'], description: 'Вкладка "Git Репозиторий" (История, Ветки, Diffs)' },
-      { keys: ['Ctrl', 'P'], description: 'Вкладка "Pull / Merge Requests"' },
-      { keys: ['Ctrl', 'D'], description: 'Вкладка "Документация & ADR / RAG"' },
-      { keys: ['Ctrl', 'A'], description: 'Вкладка "Аналитика и метрики проекта"' }
-    ]
-  },
-  {
-    title: 'Быстрые действия',
-    icon: Zap,
-    items: [
-      { keys: ['Ctrl', 'K'], description: 'Omni-Search: глобальный поиск и Vector RAG' },
-      { keys: ['Ctrl', 'N'], description: 'Создать новую задачу в активном проекте' },
-      { keys: ['Ctrl', 'Shift', 'P'], description: 'Мастер создания проекта из ProjectTemplate' },
-      { keys: ['Ctrl', 'R'], description: 'Обновить метаданные проекта и статус Git' }
-    ]
-  },
-  {
-    title: 'Окружение и терминалы',
-    icon: Terminal,
-    items: [
-      { keys: ['Ctrl', '\\'], description: 'Показать / скрыть панель встроенных терминалов и Claude Code' },
-      { keys: ['?'], description: 'Открыть эту справку по горячим клавишам' },
-      { keys: ['Esc'], description: 'Закрыть активное модальное окно' }
-    ]
-  }
-];
-
 export const HotkeysHelpModal: React.FC<Props> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
+
   if (!isOpen) return null;
+
+  const shortcutGroups = [
+    {
+      title: t.hotkeys.navigation,
+      icon: Navigation,
+      items: [
+        { keys: ['Ctrl', 'B'], description: t.hotkeys.tasksTab },
+        { keys: ['Ctrl', 'M'], description: t.hotkeys.milestonesTab },
+        { keys: ['Ctrl', 'G'], description: t.hotkeys.gitTab },
+        { keys: ['Ctrl', 'P'], description: t.hotkeys.prsTab },
+        { keys: ['Ctrl', 'D'], description: t.hotkeys.docsTab },
+        { keys: ['Ctrl', 'A'], description: t.hotkeys.analyticsTab }
+      ]
+    },
+    {
+      title: t.hotkeys.quickActions,
+      icon: Zap,
+      items: [
+        { keys: ['Ctrl', 'K'], description: t.hotkeys.omniSearch },
+        { keys: ['Ctrl', 'N'], description: t.hotkeys.newTask },
+        { keys: ['Ctrl', 'Shift', 'P'], description: t.hotkeys.templateWizard },
+        { keys: ['Ctrl', 'R'], description: t.hotkeys.refreshData }
+      ]
+    },
+    {
+      title: t.hotkeys.environment,
+      icon: Terminal,
+      items: [
+        { keys: ['Ctrl', '\\'], description: t.hotkeys.toggleTerminal },
+        { keys: ['?'], description: t.hotkeys.openHelp },
+        { keys: ['Esc'], description: t.hotkeys.closeModal }
+      ]
+    }
+  ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150">
@@ -64,9 +56,9 @@ export const HotkeysHelpModal: React.FC<Props> = ({ isOpen, onClose }) => {
               <Keyboard className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Горячие клавиши (Keyboard Shortcuts)</h2>
+              <h2 className="text-sm font-semibold text-white">{t.hotkeys.title}</h2>
               <p className="text-[11px] text-slate-400">
-                Быстрое управление ProjectHub без использования мыши
+                {t.hotkeys.subtitle}
               </p>
             </div>
           </div>
@@ -81,7 +73,7 @@ export const HotkeysHelpModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
         {/* Shortcuts Content */}
         <div className="p-6 overflow-y-auto space-y-6">
-          {SHORTCUT_GROUPS.map((group) => {
+          {shortcutGroups.map((group) => {
             const GroupIcon = group.icon;
             return (
               <div key={group.title} className="space-y-3">
@@ -117,12 +109,12 @@ export const HotkeysHelpModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
         {/* Footer */}
         <div className="px-6 py-3 border-t border-slate-800 bg-[#12151e]/80 flex items-center justify-between text-[11px] text-slate-400 shrink-0">
-          <span>Нажмите <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[10px]">?</kbd> в любое время для вызова справки</span>
+          <span>{t.hotkeys.openHelp}: <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[10px]">?</kbd></span>
           <button
             onClick={onClose}
-            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-sm"
+            className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 transition border border-slate-700/60"
           >
-            Понятно
+            {t.common.close}
           </button>
         </div>
       </div>

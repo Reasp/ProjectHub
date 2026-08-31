@@ -25,11 +25,13 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 import { CreateDocModal } from './CreateDocModal';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 import type { DocItem } from '../../types/electron';
 
 export const DocsRagView: React.FC = () => {
+  const { t } = useTranslation();
   const {
     selectedProject,
     startProcessAction,
@@ -152,20 +154,20 @@ export const DocsRagView: React.FC = () => {
           </div>
           <div className="min-w-0 truncate">
             <h3 className="text-sm font-semibold text-white flex items-center gap-2 truncate">
-              <span className="truncate">База знаний и Архитектурные решения (ADR)</span>
+              <span className="truncate">{t.docs.title}</span>
               <span
                 className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0 whitespace-nowrap"
-                title={ragStats.hasIndex ? `Векторный индекс LanceDB активен (${ragStats.chunksCount} чанков)` : 'Векторный индекс еще не сгенерирован'}
+                title={ragStats.hasIndex ? `LanceDB active (${ragStats.chunksCount} chunks)` : 'Vector index not generated'}
               >
-                {ragStats.hasIndex ? `RAG готов (${ragStats.chunksCount} чанков)` : 'RAG не собран'}
+                {ragStats.hasIndex ? `${t.rag.ready} (${ragStats.chunksCount} chunks)` : t.rag.notIndexed}
               </span>
             </h3>
             <p className="text-xs text-slate-400 mt-0.5 truncate">
-              Всего документов: <span className="font-semibold text-slate-200">{docsList.length}</span> (
-              {docsList.filter((d) => d.category === 'decision').length} ADR,{' '}
-              {docsList.filter((d) => d.category === 'doc').length} Док)
+              {docsList.length} docs (
+              {docsList.filter((d) => d.category === 'decision').length} {t.docs.decisionsTab},{' '}
+              {docsList.filter((d) => d.category === 'doc').length} {t.docs.docsTab})
               {ragStats.lastModified && (
-                <span> • Индекс обновлен: {new Date(ragStats.lastModified).toLocaleDateString()}</span>
+                <span> • {new Date(ragStats.lastModified).toLocaleDateString()}</span>
               )}
             </p>
           </div>
@@ -174,21 +176,21 @@ export const DocsRagView: React.FC = () => {
         <div className="flex items-center gap-2.5 shrink-0 flex-nowrap">
           <button
             onClick={() => setIsCreateModalOpen(true)}
-            title="Создать новый документ или архитектурное решение (ADR)"
+            title={t.docs.newDoc}
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-md shadow-indigo-600/20 transition shrink-0 whitespace-nowrap"
           >
             <Plus className="w-4 h-4 shrink-0" />
-            <span className="hidden sm:inline">Создать документ / ADR</span>
+            <span className="hidden sm:inline">{t.docs.newDoc}</span>
           </button>
 
           <button
             onClick={handleReindex}
             disabled={isReindexing}
-            title="Пересобрать векторный индекс LanceDB (npm run index-docs)"
+            title={t.rag.rebuildIndex}
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition disabled:opacity-50 shrink-0 whitespace-nowrap"
           >
             <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isReindexing ? 'animate-spin text-indigo-400' : ''}`} />
-            <span className="hidden sm:inline">{isReindexing ? 'Индексация...' : 'Пересобрать RAG'}</span>
+            <span className="hidden sm:inline">{isReindexing ? t.rag.indexing : t.rag.rebuildIndex}</span>
           </button>
         </div>
       </div>
@@ -205,7 +207,7 @@ export const DocsRagView: React.FC = () => {
                 type="text"
                 value={filterDocQuery}
                 onChange={(e) => setFilterDocQuery(e.target.value)}
-                placeholder="Поиск по документам и тегам..."
+                placeholder={t.docs.searchPlaceholder}
                 className="w-full bg-[#10121d] border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
               />
             </div>
@@ -217,7 +219,7 @@ export const DocsRagView: React.FC = () => {
                   categoryFilter === 'all' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Все ({docsList.length})
+                {t.docs.allTab} ({docsList.length})
               </button>
               <button
                 onClick={() => setCategoryFilter('decision')}
@@ -225,7 +227,7 @@ export const DocsRagView: React.FC = () => {
                   categoryFilter === 'decision' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                ADR ({docsList.filter((d) => d.category === 'decision').length})
+                {t.docs.decisionsTab} ({docsList.filter((d) => d.category === 'decision').length})
               </button>
               <button
                 onClick={() => setCategoryFilter('doc')}
@@ -233,7 +235,7 @@ export const DocsRagView: React.FC = () => {
                   categoryFilter === 'doc' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Доки ({docsList.filter((d) => d.category === 'doc').length})
+                {t.docs.docsTab} ({docsList.filter((d) => d.category === 'doc').length})
               </button>
             </div>
           </div>
@@ -242,7 +244,7 @@ export const DocsRagView: React.FC = () => {
           <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
             {filteredDocs.length === 0 && (
               <div className="p-8 text-center text-xs text-slate-500">
-                Документы не найдены
+                {t.docs.noDocsFound}
               </div>
             )}
 
@@ -332,12 +334,12 @@ export const DocsRagView: React.FC = () => {
                       </span>
                       {isDocDirty && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
-                          Не сохранено
+                          {t.common.unsavedChanges}
                         </span>
                       )}
                       {saveSuccessNotice && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> Сохранено
+                          <CheckCircle2 className="w-3 h-3" /> {t.common.saved}
                         </span>
                       )}
                     </div>
@@ -355,30 +357,30 @@ export const DocsRagView: React.FC = () => {
                       className={`px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition ${
                         viewMode === 'preview' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
                       }`}
-                      title="Режим предпросмотра"
+                      title="Preview mode"
                     >
                       <Eye className="w-3.5 h-3.5" />
-                      Просмотр
+                      {t.docs.previewMode}
                     </button>
                     <button
                       onClick={() => setViewMode('split')}
                       className={`px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition ${
                         viewMode === 'split' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
                       }`}
-                      title="Разделенный режим (Редактор + Предпросмотр)"
+                      title="Split mode (Editor + Preview)"
                     >
                       <Columns className="w-3.5 h-3.5" />
-                      Split
+                      {t.docs.splitMode}
                     </button>
                     <button
                       onClick={() => setViewMode('edit')}
                       className={`px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition ${
                         viewMode === 'edit' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
                       }`}
-                      title="Режим только редактора"
+                      title="Editor only mode"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
-                      Редактор
+                      {t.docs.editMode}
                     </button>
                   </div>
 
@@ -386,10 +388,10 @@ export const DocsRagView: React.FC = () => {
                     onClick={handleSave}
                     disabled={isDocSaving || !isDocDirty}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-md shadow-indigo-600/20 transition disabled:opacity-40 disabled:hover:bg-indigo-600"
-                    title="Сохранить изменения (Ctrl + S)"
+                    title="Save (Ctrl + S)"
                   >
                     <Save className="w-3.5 h-3.5" />
-                    {isDocSaving ? 'Сохранение...' : 'Сохранить'}
+                    {isDocSaving ? t.common.loading : t.common.save}
                   </button>
                 </div>
               </div>
@@ -400,14 +402,14 @@ export const DocsRagView: React.FC = () => {
                   <button
                     onClick={() => insertSnippet('**', '**')}
                     className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition"
-                    title="Жирный текст (**text**)"
+                    title="Bold (**text**)"
                   >
                     <Bold className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => insertSnippet('*', '*')}
                     className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition"
-                    title="Курсив (*text*)"
+                    title="Italic (*text*)"
                   >
                     <Italic className="w-3.5 h-3.5" />
                   </button>
@@ -415,28 +417,28 @@ export const DocsRagView: React.FC = () => {
                   <button
                     onClick={() => insertSnippet('## ')}
                     className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition"
-                    title="Заголовок 2 (## Title)"
+                    title="Heading 2 (## Title)"
                   >
                     <Heading className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => insertSnippet('```typescript\n', '\n```')}
                     className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition"
-                    title="Блок кода (```)"
+                    title="Code block (```)"
                   >
                     <Code className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => insertSnippet('- ')}
                     className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition"
-                    title="Список (- Item)"
+                    title="List (- Item)"
                   >
                     <List className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => insertSnippet('> ')}
                     className="p-1.5 rounded hover:bg-slate-800 hover:text-white transition"
-                    title="Цитата (> Quote)"
+                    title="Quote (> Quote)"
                   >
                     <Quote className="w-3.5 h-3.5" />
                   </button>
@@ -466,7 +468,7 @@ export const DocsRagView: React.FC = () => {
                       ref={textareaRef}
                       value={docContent}
                       onChange={(e) => setDocContent(e.target.value)}
-                      placeholder="Введите markdown текст документа..."
+                      placeholder="Enter markdown content..."
                       className="flex-1 w-full p-4 bg-[#0d0f17] text-slate-200 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-indigo-600/40"
                       spellCheck={false}
                     />
@@ -484,13 +486,13 @@ export const DocsRagView: React.FC = () => {
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-3">
               <BookOpen className="w-10 h-10 text-slate-600" />
-              <p className="text-xs">Выберите архитектурное решение (ADR) или документ из списка слева</p>
+              <p className="text-xs">{t.docs.noDocSelected}</p>
               <button
                 onClick={() => setIsCreateModalOpen(true)}
                 className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 text-xs hover:bg-indigo-600/30 transition"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Создать первый документ
+                {t.docs.newDoc}
               </button>
             </div>
           )}
