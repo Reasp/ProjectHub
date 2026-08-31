@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Plus,
   Tag,
+  Target,
   Calendar,
   CheckCircle2,
   Clock,
@@ -29,11 +30,14 @@ const COLUMNS: { status: BacklogTask['status']; label: string; color: string; bg
 export const KanbanBoard: React.FC = () => {
   const {
     tasks,
+    milestones,
     selectedProject,
     taskViewMode,
     setTaskViewMode,
     selectedLabelFilter,
     setSelectedLabelFilter,
+    selectedMilestoneFilter,
+    setSelectedMilestoneFilter,
     updateTaskStatusLocal,
     saveFullTaskLocal,
     deleteTaskLocal,
@@ -72,9 +76,18 @@ export const KanbanBoard: React.FC = () => {
       if (selectedLabelFilter && (!t.labels || !t.labels.includes(selectedLabelFilter))) {
         return false;
       }
+      if (selectedMilestoneFilter) {
+        const mKey = selectedMilestoneFilter.toLowerCase();
+        const tMilestone = t.milestone?.toLowerCase();
+        const matchedM = milestones.find((m) => m.id.toLowerCase() === mKey);
+        const matches =
+          tMilestone === mKey ||
+          (matchedM && tMilestone === matchedM.title.toLowerCase());
+        if (!matches) return false;
+      }
       return true;
     });
-  }, [tasks, searchTaskQuery, selectedLabelFilter]);
+  }, [tasks, searchTaskQuery, selectedLabelFilter, selectedMilestoneFilter, milestones]);
 
   // Progress metrics
   const doneCount = tasks.filter((t) => t.status === 'Done').length;
@@ -251,6 +264,37 @@ export const KanbanBoard: React.FC = () => {
               </button>
             ))}
           </div>
+
+          {/* Milestone Filter Dropdown */}
+          {milestones.length > 0 && (
+            <div className="flex items-center gap-1.5 ml-auto">
+              <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
+                <Target className="w-3 h-3 text-indigo-400" />
+                Этап:
+              </span>
+              <select
+                value={selectedMilestoneFilter || ''}
+                onChange={(e) => setSelectedMilestoneFilter(e.target.value || null)}
+                className="bg-[#141724] border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-300 focus:outline-none focus:border-indigo-500"
+              >
+                <option value="">Все этапы</option>
+                {milestones.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.id}: {m.title}
+                  </option>
+                ))}
+              </select>
+              {selectedMilestoneFilter && (
+                <button
+                  onClick={() => setSelectedMilestoneFilter(null)}
+                  className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                  title="Сбросить фильтр этапа"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -350,6 +394,14 @@ export const KanbanBoard: React.FC = () => {
                             <span>
                               {completedCriteria}/{criteria.length} критериев
                             </span>
+                          </div>
+                        )}
+
+                        {/* Milestone Badge */}
+                        {task.milestone && (
+                          <div className="flex items-center gap-1 text-[9px] font-mono text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded w-fit">
+                            <Target className="w-2.5 h-2.5 text-indigo-400" />
+                            <span>{task.milestone}</span>
                           </div>
                         )}
 

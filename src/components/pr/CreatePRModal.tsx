@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, GitPullRequest, Sparkles, AlertCircle, Loader2 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { generatePRDraft } from '../../services/aiAssistantService';
 
 interface CreatePRModalProps {
   isOpen: boolean;
@@ -160,9 +161,25 @@ export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose })
 
           {/* Body / Description */}
           <div>
-            <label className="block text-slate-400 font-medium mb-1.5">
-              Описание (Markdown)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-slate-400 font-medium">
+                Описание (Markdown)
+              </label>
+              <button
+                type="button"
+                onClick={async () => {
+                  const activeTask = tasks.find(t => t.status === 'In Progress') || tasks[0];
+                  const draft = await generatePRDraft(activeTask?.id, activeTask?.title, activeTask?.description, sourceBranch);
+                  if (!title) setTitle(draft.title);
+                  setBody(draft.description);
+                }}
+                className="flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 font-medium px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 transition"
+                title="Сгенерировать шаблон описания PR"
+              >
+                <Sparkles className="w-3 h-3" />
+                AI Генерация описания
+              </button>
+            </div>
             <textarea
               rows={8}
               value={body}

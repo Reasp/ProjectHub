@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Calendar,
   Tag,
+  Target,
   CheckCircle2,
   Clock,
   Activity,
@@ -72,7 +73,15 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
                     {task.id}
                   </td>
                   <td className="py-3 px-4 font-medium text-slate-100 group-hover:text-white transition">
-                    <span className="line-clamp-1">{task.title}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="line-clamp-1">{task.title}</span>
+                      {task.milestone && (
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0">
+                          <Target className="w-2.5 h-2.5" />
+                          {task.milestone}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                     <select

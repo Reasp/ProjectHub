@@ -11,7 +11,9 @@ import type {
   PRCreateOptions,
   PRProviderInfo,
   DocItem,
-  CreateDocParams
+  CreateDocParams,
+  Milestone,
+  CreateMilestoneParams
 } from '../types/electron';
 
 interface ProjectState {
@@ -22,9 +24,10 @@ interface ProjectState {
   gitRepoDetails: GitRepoDetails | null;
   gitSelectedFile: string | null;
   gitDiffContent: string;
-  activeTab: 'kanban' | 'git' | 'prs' | 'docs' | 'processes';
+  activeTab: 'kanban' | 'milestones' | 'git' | 'prs' | 'docs' | 'processes';
   taskViewMode: 'kanban' | 'list';
   selectedLabelFilter: string | null;
+  selectedMilestoneFilter: string | null;
   isLoading: boolean;
   isScanning: boolean;
   searchQuery: string;
@@ -35,6 +38,7 @@ interface ProjectState {
   processes: ManagedProcess[];
   activeProcessId: string | null;
   terminalHeight: number;
+  isHotkeysHelpOpen: boolean;
 
   // PR State
   prs: PullRequest[];
@@ -59,12 +63,23 @@ interface ProjectState {
   saveDocAction: () => Promise<boolean>;
   createDocAction: (params: CreateDocParams) => Promise<DocItem | null>;
 
+  // Milestones State
+  milestones: Milestone[];
+  isLoadingMilestones: boolean;
+
+  // Milestones Actions
+  fetchMilestones: (projectPath: string) => Promise<void>;
+  setSelectedMilestoneFilter: (milestoneId: string | null) => void;
+  createMilestoneAction: (params: CreateMilestoneParams) => Promise<Milestone | null>;
+  saveMilestoneAction: (filePath: string, params: Partial<CreateMilestoneParams>) => Promise<boolean>;
+  deleteMilestoneAction: (filePath: string) => Promise<boolean>;
+
   // Actions
   setProjects: (projects: ProjectInfo[]) => void;
   selectProject: (project: ProjectInfo | null) => void;
   setTasks: (tasks: BacklogTask[]) => void;
   setGitLogs: (logs: GitCommit[]) => void;
-  setActiveTab: (tab: 'kanban' | 'git' | 'prs' | 'docs' | 'processes') => void;
+  setActiveTab: (tab: 'kanban' | 'milestones' | 'git' | 'prs' | 'docs' | 'processes') => void;
   setTaskViewMode: (mode: 'kanban' | 'list') => void;
   setSelectedLabelFilter: (label: string | null) => void;
   setIsLoading: (loading: boolean) => void;
@@ -72,6 +87,7 @@ interface ProjectState {
   setFilterOnlyFavorites: (onlyFavs: boolean) => void;
   setTerminalOpen: (open: boolean) => void;
   toggleTerminal: () => void;
+  setHotkeysHelpOpen: (open: boolean) => void;
   setActiveProcessId: (id: string | null) => void;
   setTerminalHeight: (h: number) => void;
   addTerminalLog: (log: string) => void;
@@ -142,6 +158,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   processes: [],
   activeProcessId: null,
   terminalHeight: 220,
+  isHotkeysHelpOpen: false,
 
   prs: [],
   selectedPR: null,
@@ -157,13 +174,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isDocSaving: false,
   isDocDirty: false,
 
+  milestones: [],
+  selectedMilestoneFilter: null,
+  isLoadingMilestones: false,
+
+  setSelectedMilestoneFilter: (selectedMilestoneFilter) => set({ selectedMilestoneFilter }),
+
   setProjects: (projects) => set({ projects }),
   selectProject: (selectedProject) => {
-    set({ selectedProject });
+    set({ selectedProject, selectedMilestoneFilter: null });
     if (selectedProject) {
       get().loadProjectData(selectedProject);
       get().fetchProcesses(selectedProject.path);
       get().fetchDocs(selectedProject.path);
+      get().fetchMilestones(selectedProject.path);
     }
   },
   setTasks: (tasks) => set({ tasks }),
@@ -176,6 +200,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setFilterOnlyFavorites: (filterOnlyFavorites) => set({ filterOnlyFavorites }),
   setTerminalOpen: (isTerminalOpen) => set({ isTerminalOpen }),
   toggleTerminal: () => set((s) => ({ isTerminalOpen: !s.isTerminalOpen })),
+  setHotkeysHelpOpen: (isHotkeysHelpOpen) => set({ isHotkeysHelpOpen }),
   setActiveProcessId: (activeProcessId) => set({ activeProcessId }),
   setTerminalHeight: (terminalHeight) => set({ terminalHeight }),
   addTerminalLog: (log) => set((s) => ({ terminalLogs: [...s.terminalLogs, log] })),
@@ -416,7 +441,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ]);
         set({ tasks, gitLogs: logs });
 
-        // Load full git details
+        // Load milestones and git details
+        get().fetchMilestones(project.path);
         if (project.hasGit) {
           get().loadGitRepoDetails(project);
         }
@@ -442,6 +468,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }
       } else {
         get().addTerminalLog(`[Backlog] Статус задачи ${task.id} изменен на "${newStatus}"`);
+        if (get().selectedProject) {
+          get().fetchMilestones(get().selectedProject!.path);
+        }
       }
     } catch (e) {
       console.error('Failed to update task status:', e);
@@ -455,6 +484,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         title: updatedTask.title,
         status: updatedTask.status,
         labels: updatedTask.labels,
+        milestone: updatedTask.milestone,
         description: updatedTask.description || '',
         criteria: updatedTask.acceptanceCriteria
       });
@@ -464,6 +494,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           tasks: state.tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t))
         }));
         get().addTerminalLog(`[Backlog] Задача ${updatedTask.id} успешно сохранена.`);
+        if (get().selectedProject) {
+          get().fetchMilestones(get().selectedProject!.path);
+        }
       }
     } catch (e) {
       console.error('Failed to save full task:', e);
@@ -795,6 +828,71 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       console.error('Failed to create doc:', e);
       get().addTerminalLog(`[Docs Error] Ошибка создания: ${e.message}`);
       return null;
+    }
+  },
+
+  // ─── Milestones Actions ───────────────────────────────────────────────────
+
+  fetchMilestones: async (projectPath: string) => {
+    if (!window.api) return;
+    set({ isLoadingMilestones: true });
+    try {
+      const milestones = await window.api.listMilestones(projectPath);
+      set({ milestones: milestones || [] });
+    } catch (e) {
+      console.error('Failed to fetch milestones:', e);
+      set({ milestones: [] });
+    } finally {
+      set({ isLoadingMilestones: false });
+    }
+  },
+
+  createMilestoneAction: async (params: CreateMilestoneParams) => {
+    const project = get().selectedProject;
+    if (!project || !window.api) return null;
+    try {
+      const created = await window.api.createMilestone(project.path, params);
+      if (created) {
+        get().addTerminalLog(`[Milestones] Создан майлстоун: ${created.title} (${created.id})`);
+        await get().fetchMilestones(project.path);
+      }
+      return created;
+    } catch (e: any) {
+      console.error('Failed to create milestone:', e);
+      get().addTerminalLog(`[Milestones Error] Ошибка создания: ${e.message}`);
+      return null;
+    }
+  },
+
+  saveMilestoneAction: async (filePath: string, params: Partial<CreateMilestoneParams>) => {
+    const project = get().selectedProject;
+    if (!project || !window.api) return false;
+    try {
+      const ok = await window.api.saveMilestone(filePath, params);
+      if (ok) {
+        get().addTerminalLog(`[Milestones] Майлстоун обновлен.`);
+        await get().fetchMilestones(project.path);
+      }
+      return ok;
+    } catch (e: any) {
+      console.error('Failed to save milestone:', e);
+      return false;
+    }
+  },
+
+  deleteMilestoneAction: async (filePath: string) => {
+    const project = get().selectedProject;
+    if (!project || !window.api) return false;
+    try {
+      const ok = await window.api.deleteMilestone(filePath);
+      if (ok) {
+        get().addTerminalLog(`[Milestones] Майлстоун удален.`);
+        await get().fetchMilestones(project.path);
+      }
+      return ok;
+    } catch (e: any) {
+      console.error('Failed to delete milestone:', e);
+      return false;
     }
   }
 }));

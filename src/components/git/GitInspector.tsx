@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   GitBranch,
   GitCommit as GitCommitIcon,
@@ -20,9 +20,11 @@ import {
   Layers,
   Send,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Sparkles
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { generateCommitMessage } from '../../services/aiAssistantService';
 
 // ─── Diff Viewer ──────────────────────────────────────────────────────────────
 
@@ -604,6 +606,20 @@ export const GitInspector: React.FC = () => {
                       {inProgressTask.id}
                     </button>
                   )}
+                  <button
+                    onClick={async () => {
+                      const activeTask = tasks.find(t => t.status === 'In Progress') || tasks[0];
+                      const changed = stagedFiles.map(f => f.path);
+                      const msg = await generateCommitMessage(activeTask?.id, activeTask?.title, changed);
+                      setCommitMessage(msg);
+                    }}
+                    type="button"
+                    className="flex items-center gap-1 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] hover:bg-amber-500/20 transition"
+                    title="Сгенерировать AI-сообщение коммита"
+                  >
+                    <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                    AI Сообщение
+                  </button>
                   <button
                     onClick={handleCommit}
                     disabled={!commitMessage.trim() || isCommitting || stagedFiles.length === 0}

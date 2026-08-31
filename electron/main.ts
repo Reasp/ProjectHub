@@ -236,6 +236,7 @@ ipcMain.handle('backlog:getTasks', async (_event, projectPath: string) => {
           title: (parsed.data.title as string) || path.basename(file, '.md'),
           status: (parsed.data.status as any) || 'To Do',
           labels: (parsed.data.labels as string[]) || [],
+          milestone: (parsed.data.milestone as string) || (parsed.data.milestone_id as string) || undefined,
           created: parsed.data.created ? String(parsed.data.created) : undefined,
           filePath: fullPath,
           content: parsed.content,
@@ -301,6 +302,7 @@ ipcMain.handle('backlog:saveFullTask', async (_event, filePath: string, data: {
   title: string;
   status: BacklogTask['status'];
   labels: string[];
+  milestone?: string;
   description: string;
   criteria?: Array<{ text: string; completed: boolean }>;
 }) => {
@@ -312,6 +314,12 @@ ipcMain.handle('backlog:saveFullTask', async (_event, filePath: string, data: {
     parsed.data.title = data.title;
     parsed.data.status = data.status;
     parsed.data.labels = data.labels;
+    if (data.milestone) {
+      parsed.data.milestone = data.milestone;
+    } else {
+      delete parsed.data.milestone;
+      delete parsed.data.milestone_id;
+    }
 
     const taskId = parsed.data.id || path.basename(filePath, '.md').split('-')[0].trim();
     let body = `\n# ${taskId}: ${data.title}\n\n## Description\n${data.description || 'Описание задачи'}\n\n## Acceptance Criteria\n`;
@@ -552,6 +560,26 @@ ipcMain.handle('docs:save', async (_event, filePath: string, content: string) =>
 
 ipcMain.handle('docs:create', async (_event, projectPath: string, params: CreateDocParams) => {
   return await createProjectDoc(projectPath, params);
+});
+
+// 9. Milestones & Roadmap
+import { listMilestones, createMilestone, saveMilestone, deleteMilestone } from './services/milestoneService';
+import type { CreateMilestoneParams } from '../src/types/electron';
+
+ipcMain.handle('milestones:list', async (_event, projectPath: string) => {
+  return await listMilestones(projectPath);
+});
+
+ipcMain.handle('milestones:create', async (_event, projectPath: string, params: CreateMilestoneParams) => {
+  return await createMilestone(projectPath, params);
+});
+
+ipcMain.handle('milestones:save', async (_event, filePath: string, params: Partial<CreateMilestoneParams>) => {
+  return await saveMilestone(filePath, params);
+});
+
+ipcMain.handle('milestones:delete', async (_event, filePath: string) => {
+  return await deleteMilestone(filePath);
 });
 
 ipcMain.handle('system:getPlatform', async () => {

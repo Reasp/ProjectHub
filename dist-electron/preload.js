@@ -52,6 +52,10 @@ e.exposeInMainWorld("api", {
 			t.removeListener("backlog:tasksChanged", n);
 		};
 	},
+	listMilestones: (e) => t.invoke("milestones:list", e),
+	createMilestone: (e, n) => t.invoke("milestones:create", e, n),
+	saveMilestone: (e, n) => t.invoke("milestones:save", e, n),
+	deleteMilestone: (e) => t.invoke("milestones:delete", e),
 	getGitLog: (e, n) => t.invoke("git:getLog", e, n),
 	getGitStatus: (e) => t.invoke("git:getStatus", e),
 	getGitRepoDetails: (e) => t.invoke("git:getRepoDetails", e),

@@ -22132,10 +22132,112 @@ date: "${e}"
 		size: f.size
 	};
 }
+//#endregion
+//#region electron/services/milestoneService.ts
+function En(e) {
+	return e.toLowerCase().trim().replace(/[^\w\sа-яё\-]/gi, "").replace(/[\s_]+/g, "-").replace(/^-+|-+$/g, "") || "milestone";
+}
+async function Dn(e) {
+	let t = [], n = s.normalize(e), r = s.join(n, "backlog", "milestones"), i = s.join(n, "backlog", "tasks"), a = /* @__PURE__ */ new Map();
+	if (u(i)) try {
+		let e = await c.readdir(i);
+		for (let t of e) if (t.endsWith(".md")) {
+			let e = await c.readFile(s.join(i, t), "utf-8"), n = p(e), r = n.data.milestone || n.data.milestone_id, o = n.data.status || "To Do";
+			if (r) {
+				let e = String(r).trim().toLowerCase();
+				a.has(e) || a.set(e, {
+					total: 0,
+					done: 0,
+					inProgress: 0,
+					review: 0,
+					todo: 0
+				});
+				let t = a.get(e);
+				t.total++, o === "Done" ? t.done++ : o === "In Progress" ? t.inProgress++ : o === "Review" ? t.review++ : t.todo++;
+			}
+		}
+	} catch (e) {
+		console.error("Error scanning tasks for milestones:", e);
+	}
+	if (u(r)) try {
+		let e = await c.readdir(r);
+		for (let n of e) if (n.endsWith(".md")) {
+			let e = s.join(r, n), i = await c.readFile(e, "utf-8"), { data: o, content: l } = p(i), u = o.id || n.replace(/\.md$/, "").split("-")[0].trim(), d = o.title || n.replace(/\.md$/, ""), f = o.status || "Planning", m = o.target_date || o.targetDate || o.due_date || void 0, h = o.description || l.trim(), g = u.toLowerCase(), _ = d.toLowerCase(), v = a.get(g) || a.get(_) || {
+				total: 0,
+				done: 0,
+				inProgress: 0,
+				review: 0,
+				todo: 0
+			};
+			t.push({
+				id: u,
+				title: d,
+				description: h,
+				targetDate: m ? String(m) : void 0,
+				status: f,
+				filePath: e,
+				taskCounts: v
+			});
+		}
+	} catch (e) {
+		console.error("Error reading milestones directory:", e);
+	}
+	return t;
+}
+async function On(e, t) {
+	let n = s.normalize(e), r = s.join(n, "backlog", "milestones");
+	await c.mkdir(r, { recursive: !0 });
+	let i = t.title.trim(), a = En(i), o = 1;
+	try {
+		let e = await c.readdir(r);
+		for (let t of e) {
+			let e = t.match(/milestone-(\d+)/i);
+			if (e) {
+				let t = parseInt(e[1], 10);
+				t >= o && (o = t + 1);
+			}
+		}
+	} catch {}
+	let l = `milestone-${o}`, u = `${l} - ${a}.md`, d = s.join(r, u), f = {
+		id: l,
+		title: i,
+		status: t.status || "Planning",
+		created_date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0]
+	};
+	t.targetDate && (f.target_date = t.targetDate), t.description && (f.description = t.description);
+	let m = `\n# ${i}\n\n${t.description || "Описание майлстоуна"}\n`, h = p.stringify(m, f);
+	return await c.writeFile(d, h, "utf-8"), {
+		id: l,
+		title: i,
+		description: t.description,
+		targetDate: t.targetDate,
+		status: t.status || "Planning",
+		filePath: d,
+		taskCounts: {
+			total: 0,
+			done: 0,
+			inProgress: 0,
+			review: 0,
+			todo: 0
+		}
+	};
+}
+async function kn(e, t) {
+	let n = s.normalize(e);
+	if (!u(n)) return !1;
+	let r = await c.readFile(n, "utf-8"), i = p(r);
+	t.title && (i.data.title = t.title), t.status && (i.data.status = t.status), t.targetDate !== void 0 && (i.data.target_date = t.targetDate), t.description !== void 0 && (i.data.description = t.description);
+	let a = p.stringify(i.content, i.data);
+	return await c.writeFile(n, a, "utf-8"), !0;
+}
+async function An(e) {
+	let t = s.normalize(e);
+	return u(t) ? (await c.unlink(t), !0) : !1;
+}
 process.env.DIST = s.join(__dirname, "../dist"), process.env.VITE_PUBLIC = n.isPackaged ? process.env.DIST : s.join(__dirname, "../public");
-var En = null, Dn = process.env.VITE_DEV_SERVER_URL;
-function On() {
-	En = new t({
+var jn = null, Mn = process.env.VITE_DEV_SERVER_URL;
+function Nn() {
+	jn = new t({
 		width: 1400,
 		height: 900,
 		minWidth: 1024,
@@ -22152,14 +22254,14 @@ function On() {
 			nodeIntegration: !1,
 			contextIsolation: !0
 		}
-	}), En.webContents.on("did-finish-load", () => {
-		En?.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
-	}), Dn ? En.loadURL(Dn) : En.loadFile(s.join(process.env.DIST ?? s.join(__dirname, "../dist"), "index.html"));
+	}), jn.webContents.on("did-finish-load", () => {
+		jn?.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
+	}), Mn ? jn.loadURL(Mn) : jn.loadFile(s.join(process.env.DIST ?? s.join(__dirname, "../dist"), "index.html"));
 }
 n.on("window-all-closed", () => {
-	process.platform !== "darwin" && (n.quit(), En = null);
+	process.platform !== "darwin" && (n.quit(), jn = null);
 }), n.on("activate", () => {
-	t.getAllWindows().length === 0 && On();
+	t.getAllWindows().length === 0 && Nn();
 }), i.handle("projects:list", async () => {
 	let e = await N.getProjects(), t = [];
 	for (let n of e) {
@@ -22171,8 +22273,8 @@ n.on("window-all-closed", () => {
 	let n = await P(t);
 	return n ? (await N.addProject(n.path, !1), n) : null;
 }), i.handle("projects:remove", async (e, t) => await N.removeProject(t)), i.handle("projects:refresh", async (e, t) => await P(t)), i.handle("projects:toggleFavorite", async (e, t) => await N.toggleFavorite(t)), i.handle("projects:getScanRoots", async () => await N.getScanRoots()), i.handle("projects:setScanRoots", async (e, t) => await N.setScanRoots(t)), i.handle("projects:getDetails", async (e, t) => await P(t)), i.handle("dialog:selectDirectory", async () => {
-	if (!En) return null;
-	let e = await r.showOpenDialog(En, {
+	if (!jn) return null;
+	let e = await r.showOpenDialog(jn, {
 		properties: ["openDirectory"],
 		title: "Выберите папку проекта с Backlog.md или репозиторием"
 	});
@@ -22200,9 +22302,9 @@ n.on("window-all-closed", () => {
 		t
 	], { detached: !0 });
 }), i.handle("backlog:watchProject", async (e, t) => {
-	re.watch(t, En);
+	re.watch(t, jn);
 });
-function kn(e) {
+function Pn(e) {
 	let t = [], n = e.split("\n"), r = !1, i = [], a = !1;
 	for (let e of n) {
 		let n = e.trim();
@@ -22230,17 +22332,18 @@ function kn(e) {
 i.handle("backlog:getTasks", async (e, t) => {
 	let n = s.join(t, "backlog", "tasks");
 	if (!u(n)) return [];
-	re.watch(t, En);
+	re.watch(t, jn);
 	let r = [];
 	try {
 		let e = await c.readdir(n);
 		for (let t of e) if (t.endsWith(".md")) {
-			let e = s.join(n, t), i = await c.readFile(e, "utf-8"), a = p(i), { criteria: o, description: l } = kn(a.content);
+			let e = s.join(n, t), i = await c.readFile(e, "utf-8"), a = p(i), { criteria: o, description: l } = Pn(a.content);
 			r.push({
 				id: a.data.id || s.basename(t, ".md").split("-")[0].trim(),
 				title: a.data.title || s.basename(t, ".md"),
 				status: a.data.status || "To Do",
 				labels: a.data.labels || [],
+				milestone: a.data.milestone || a.data.milestone_id || void 0,
 				created: a.data.created ? String(a.data.created) : void 0,
 				filePath: e,
 				content: a.content,
@@ -22284,7 +22387,7 @@ i.handle("backlog:getTasks", async (e, t) => {
 	try {
 		if (!u(t)) return !1;
 		let e = await c.readFile(t, "utf-8"), r = p(e);
-		r.data.title = n.title, r.data.status = n.status, r.data.labels = n.labels;
+		r.data.title = n.title, r.data.status = n.status, r.data.labels = n.labels, n.milestone ? r.data.milestone = n.milestone : (delete r.data.milestone, delete r.data.milestone_id);
 		let i = `\n# ${r.data.id || s.basename(t, ".md").split("-")[0].trim()}: ${n.title}\n\n## Description\n${n.description || "Описание задачи"}\n\n## Acceptance Criteria\n`;
 		if (n.criteria && n.criteria.length > 0) for (let e of n.criteria) i += `- [${e.completed ? "x" : " "}] ${e.text}\n`;
 		else i += "- [ ] Критерий 1\n";
@@ -22354,8 +22457,8 @@ i.handle("backlog:getTasks", async (e, t) => {
 	} catch (e) {
 		return console.error(`Git status error for ${t}:`, e), null;
 	}
-}), i.handle("git:getRepoDetails", async (e, t) => await vn.getRepoDetails(t)), i.handle("git:checkout", async (e, t, n, r = !1) => await vn.checkoutBranch(t, n, r)), i.handle("git:createBranch", async (e, t, n) => await vn.createBranch(t, n)), i.handle("git:stageFile", async (e, t, n) => await vn.stageFile(t, n)), i.handle("git:unstageFile", async (e, t, n) => await vn.unstageFile(t, n)), i.handle("git:stageAll", async (e, t) => await vn.stageAll(t)), i.handle("git:commit", async (e, t, n, r = !1) => await vn.commitChanges(t, n, r)), i.handle("git:getFileDiff", async (e, t, n, r = !1) => await vn.getFileDiff(t, n, r)), i.handle("pr:getProviderInfo", async (e, t) => await bn.getProviderInfo(t)), i.handle("pr:list", async (e, t, n) => await bn.listPullRequests(t, n)), i.handle("pr:create", async (e, t, n) => await bn.createPullRequest(t, n)), i.handle("pr:getDiff", async (e, t, n) => await bn.getPRDiff(t, n)), i.handle("docs:list", async (e, t) => await Sn(t)), i.handle("docs:read", async (e, t) => await Cn(t)), i.handle("docs:save", async (e, t, n) => await wn(t, n)), i.handle("docs:create", async (e, t, n) => await Tn(t, n)), i.handle("system:getPlatform", async () => process.platform), n.on("before-quit", () => {
+}), i.handle("git:getRepoDetails", async (e, t) => await vn.getRepoDetails(t)), i.handle("git:checkout", async (e, t, n, r = !1) => await vn.checkoutBranch(t, n, r)), i.handle("git:createBranch", async (e, t, n) => await vn.createBranch(t, n)), i.handle("git:stageFile", async (e, t, n) => await vn.stageFile(t, n)), i.handle("git:unstageFile", async (e, t, n) => await vn.unstageFile(t, n)), i.handle("git:stageAll", async (e, t) => await vn.stageAll(t)), i.handle("git:commit", async (e, t, n, r = !1) => await vn.commitChanges(t, n, r)), i.handle("git:getFileDiff", async (e, t, n, r = !1) => await vn.getFileDiff(t, n, r)), i.handle("pr:getProviderInfo", async (e, t) => await bn.getProviderInfo(t)), i.handle("pr:list", async (e, t, n) => await bn.listPullRequests(t, n)), i.handle("pr:create", async (e, t, n) => await bn.createPullRequest(t, n)), i.handle("pr:getDiff", async (e, t, n) => await bn.getPRDiff(t, n)), i.handle("docs:list", async (e, t) => await Sn(t)), i.handle("docs:read", async (e, t) => await Cn(t)), i.handle("docs:save", async (e, t, n) => await wn(t, n)), i.handle("docs:create", async (e, t, n) => await Tn(t, n)), i.handle("milestones:list", async (e, t) => await Dn(t)), i.handle("milestones:create", async (e, t, n) => await On(t, n)), i.handle("milestones:save", async (e, t, n) => await kn(t, n)), i.handle("milestones:delete", async (e, t) => await An(t)), i.handle("system:getPlatform", async () => process.platform), n.on("before-quit", () => {
 	se.cleanupAll();
-}), n.whenReady().then(On);
+}), n.whenReady().then(Nn);
 //#endregion
 export {};

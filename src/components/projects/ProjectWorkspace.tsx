@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Kanban,
+  Target,
   GitBranch,
   GitPullRequest,
   BookOpen,
@@ -10,12 +11,14 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { KanbanBoard } from '../kanban/KanbanBoard';
+import { MilestonesRoadmapView } from '../milestones/MilestonesRoadmapView';
 import { GitInspector } from '../git/GitInspector';
 import { PullRequestView } from '../pr/PullRequestView';
 import { DocsRagView } from '../docs/DocsRagView';
 
 const TABS = [
   { id: 'kanban', label: 'Задачи & Backlog', icon: Kanban },
+  { id: 'milestones', label: 'Майлстоуны & Roadmap', icon: Target },
   { id: 'git', label: 'Git Репозиторий', icon: GitBranch },
   { id: 'prs', label: 'Pull / Merge Requests', icon: GitPullRequest },
   { id: 'docs', label: 'Документация & RAG', icon: BookOpen },
@@ -67,6 +70,7 @@ export const ProjectWorkspace: React.FC = () => {
       {/* Tab View Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {activeTab === 'kanban' && <KanbanBoard />}
+        {activeTab === 'milestones' && <MilestonesRoadmapView />}
         {activeTab === 'git' && <GitInspector />}
         {activeTab === 'prs' && <PullRequestView />}
         {activeTab === 'docs' && <DocsRagView />}

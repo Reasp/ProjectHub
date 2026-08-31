@@ -14,9 +14,13 @@ import {
   Edit3,
   FileCode,
   AlertTriangle,
-  FolderOpen
+  FolderOpen,
+  Target,
+  Sparkles
 } from 'lucide-react';
 import type { BacklogTask, TaskCriterion } from '../../types/electron';
+import { useProjectStore } from '../../store/useProjectStore';
+import { generateTaskDraft } from '../../services/aiAssistantService';
 
 interface TaskDetailModalProps {
   task: BacklogTask | null;
@@ -35,11 +39,15 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 }) => {
   if (!task) return null;
 
+  const { milestones } = useProjectStore();
+
   const [activeTab, setActiveTab] = useState<'editor' | 'raw'>('editor');
   const [previewMode, setPreviewMode] = useState(false);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
   const [title, setTitle] = useState(task.title);
   const [status, setStatus] = useState<BacklogTask['status']>(task.status);
+  const [milestone, setMilestone] = useState(task.milestone || '');
   const [description, setDescription] = useState(task.description || '');
   const [labels, setLabels] = useState<string[]>(task.labels || []);
   const [newLabelInput, setNewLabelInput] = useState('');
@@ -49,9 +57,22 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
 
+  const handleAIGenerate = async () => {
+    if (!title.trim()) return;
+    setIsGeneratingAI(true);
+    try {
+      const draft = await generateTaskDraft(title);
+      setDescription(draft.description);
+      setCriteria(draft.criteria);
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
   useEffect(() => {
     setTitle(task.title);
     setStatus(task.status);
+    setMilestone(task.milestone || '');
     setDescription(task.description || '');
     setLabels(task.labels || []);
     setCriteria(task.acceptanceCriteria || []);
@@ -111,6 +132,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         title,
         status,
         labels,
+        milestone: milestone || undefined,
         description,
         acceptanceCriteria: criteria
       };
@@ -187,8 +209,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         <div className="p-6 overflow-y-auto space-y-5 flex-1 text-xs">
           {activeTab === 'editor' ? (
             <>
-              {/* Meta Row: Status & Labels */}
-              <div className="grid grid-cols-2 gap-4 p-4 rounded-xl bg-[#171b2b]/50 border border-slate-800">
+              {/* Meta Row: Status, Milestone & Labels */}
+              <div className="grid grid-cols-3 gap-3 p-4 rounded-xl bg-[#171b2b]/50 border border-slate-800">
                 <div>
                   <label className="font-semibold text-slate-300 uppercase tracking-wider text-[11px] block mb-1.5">
                     Статус задачи
@@ -202,6 +224,25 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     <option value="In Progress">◒ In Progress (В работе)</option>
                     <option value="Review">◆ Review (На проверке)</option>
                     <option value="Done">✔ Done (Готово)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-300 uppercase tracking-wider text-[11px] block mb-1.5 flex items-center gap-1">
+                    <Target className="w-3 h-3 text-indigo-400" />
+                    Майлстоун / Этап
+                  </label>
+                  <select
+                    value={milestone}
+                    onChange={(e) => setMilestone(e.target.value)}
+                    className="w-full bg-[#10121d] border border-slate-700 rounded-lg px-3 py-1.5 text-slate-200 text-xs font-medium focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="">(Без майлстоуна)</option>
+                    {milestones.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.id}: {m.title}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -254,9 +295,21 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     <CheckSquare className="w-3.5 h-3.5 text-indigo-400" />
                     Критерии приемки (Acceptance Criteria)
                   </label>
-                  <span className="text-[11px] text-slate-400 font-mono">
-                    Выполнено: {criteria.filter((c) => c.completed).length} / {criteria.length}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleAIGenerate}
+                      disabled={isGeneratingAI}
+                      className="flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 font-medium px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 transition disabled:opacity-50"
+                      title="Сгенерировать описание и критерии с помощью AI / Ollama"
+                    >
+                      <Sparkles className={`w-3 h-3 ${isGeneratingAI ? 'animate-spin' : ''}`} />
+                      {isGeneratingAI ? 'Генерация...' : 'AI Автогенерация'}
+                    </button>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      Выполнено: {criteria.filter((c) => c.completed).length} / {criteria.length}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">

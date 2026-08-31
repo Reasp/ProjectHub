@@ -4,28 +4,108 @@ import { Header } from './components/layout/Header';
 import { ProjectWorkspace } from './components/projects/ProjectWorkspace';
 import { TerminalPanel } from './components/terminal/TerminalPanel';
 import { OmniSearchModal } from './components/search/OmniSearchModal';
+import { HotkeysHelpModal } from './components/layout/HotkeysHelpModal';
 import { useProjectStore } from './store/useProjectStore';
 
 export const App: React.FC = () => {
-  const { fetchProjects } = useProjectStore();
+  const {
+    fetchProjects,
+    selectedProject,
+    setActiveTab,
+    toggleTerminal,
+    isHotkeysHelpOpen,
+    setHotkeysHelpOpen,
+    loadProjectData,
+    refreshSingleProject
+  } = useProjectStore();
+
   const [isOmniSearchOpen, setIsOmniSearchOpen] = useState(false);
 
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
 
-  // Global Ctrl + K / Cmd + K Shortcut
+  // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      const isInput =
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement)?.isContentEditable;
+
+      // 1. Help modal with '?' or F1 (when not typing in an input)
+      if (!isInput && (e.key === '?' || e.key === 'F1')) {
         e.preventDefault();
-        setIsOmniSearchOpen((prev) => !prev);
+        setHotkeysHelpOpen(true);
+        return;
+      }
+
+      // 2. Escape: close modals
+      if (e.key === 'Escape') {
+        if (isHotkeysHelpOpen) {
+          setHotkeysHelpOpen(false);
+          return;
+        }
+        if (isOmniSearchOpen) {
+          setIsOmniSearchOpen(false);
+          return;
+        }
+      }
+
+      // 3. Ctrl / Cmd Hotkeys
+      if (e.ctrlKey || e.metaKey) {
+        const key = e.key.toLowerCase();
+
+        // Ctrl + K: Search
+        if (key === 'k') {
+          e.preventDefault();
+          setIsOmniSearchOpen((prev) => !prev);
+        }
+        // Ctrl + \ or Ctrl + `: Toggle Terminal
+        else if (key === '\\' || key === '`') {
+          e.preventDefault();
+          toggleTerminal();
+        }
+        // Navigation: Ctrl + B, Ctrl + M, Ctrl + G, Ctrl + P, Ctrl + D
+        else if (key === 'b') {
+          e.preventDefault();
+          setActiveTab('kanban');
+        } else if (key === 'm') {
+          e.preventDefault();
+          setActiveTab('milestones');
+        } else if (key === 'g') {
+          e.preventDefault();
+          setActiveTab('git');
+        } else if (key === 'p' && !e.shiftKey) {
+          e.preventDefault();
+          setActiveTab('prs');
+        } else if (key === 'd') {
+          e.preventDefault();
+          setActiveTab('docs');
+        }
+        // Ctrl + R: Refresh project
+        else if (key === 'r') {
+          if (selectedProject) {
+            e.preventDefault();
+            loadProjectData(selectedProject);
+            refreshSingleProject(selectedProject.path);
+          }
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [
+    isHotkeysHelpOpen,
+    isOmniSearchOpen,
+    selectedProject,
+    setActiveTab,
+    toggleTerminal,
+    setHotkeysHelpOpen,
+    loadProjectData,
+    refreshSingleProject
+  ]);
 
   return (
     <div className="flex h-screen w-screen bg-[#0f1117] text-slate-100 overflow-hidden font-sans select-none">
@@ -51,8 +131,12 @@ export const App: React.FC = () => {
         isOpen={isOmniSearchOpen}
         onClose={() => setIsOmniSearchOpen(false)}
       />
+
+      {/* Hotkeys Help Modal (?) */}
+      <HotkeysHelpModal
+        isOpen={isHotkeysHelpOpen}
+        onClose={() => setHotkeysHelpOpen(false)}
+      />
     </div>
   );
 };
-
-

@@ -65,11 +65,35 @@ export interface TaskCriterion {
   completed: boolean;
 }
 
+export interface Milestone {
+  id: string;
+  title: string;
+  description?: string;
+  targetDate?: string;
+  status: 'Planning' | 'In Progress' | 'Completed' | 'Deferred';
+  filePath: string;
+  taskCounts?: {
+    total: number;
+    done: number;
+    inProgress: number;
+    review: number;
+    todo: number;
+  };
+}
+
+export interface CreateMilestoneParams {
+  title: string;
+  description?: string;
+  targetDate?: string;
+  status?: 'Planning' | 'In Progress' | 'Completed' | 'Deferred';
+}
+
 export interface BacklogTask {
   id: string;
   title: string;
   status: 'To Do' | 'In Progress' | 'Review' | 'Done';
   labels: string[];
+  milestone?: string;
   created?: string;
   filePath: string;
   content: string;
@@ -264,6 +288,7 @@ export interface IElectronAPI {
       title: string;
       status: BacklogTask['status'];
       labels: string[];
+      milestone?: string;
       description: string;
       criteria?: TaskCriterion[];
     }
@@ -273,6 +298,12 @@ export interface IElectronAPI {
   deleteTask: (filePath: string) => Promise<boolean>;
   watchProjectTasks: (projectPath: string) => Promise<void>;
   onTasksChanged: (callback: (data: { projectPath: string; event: string; filePath: string }) => void) => () => void;
+
+  // Milestones & Roadmap
+  listMilestones: (projectPath: string) => Promise<Milestone[]>;
+  createMilestone: (projectPath: string, params: CreateMilestoneParams) => Promise<Milestone | null>;
+  saveMilestone: (filePath: string, params: Partial<CreateMilestoneParams>) => Promise<boolean>;
+  deleteMilestone: (filePath: string) => Promise<boolean>;
 
   // Git Advanced
   getGitRepoDetails: (projectPath: string) => Promise<GitRepoDetails | null>;

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Code,
   Terminal,
@@ -10,15 +10,20 @@ import {
   Play,
   Square,
   RefreshCw,
-  Cpu
+  Cpu,
+  HelpCircle,
+  BarChart2
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { ProjectAnalyticsModal } from '../analytics/ProjectAnalyticsModal';
 
 export const Header: React.FC = () => {
+  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const {
     selectedProject,
     isTerminalOpen,
     toggleTerminal,
+    setHotkeysHelpOpen,
     processes,
     startProcessAction,
     stopProcessAction
@@ -163,7 +168,7 @@ export const Header: React.FC = () => {
 
         <button
           onClick={toggleTerminal}
-          title="Встроенная интерактивная консоль"
+          title="Встроенная интерактивная консоль (Ctrl+\)"
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
             isTerminalOpen
               ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/20'
@@ -173,7 +178,30 @@ export const Header: React.FC = () => {
           <TerminalSquare className="w-3.5 h-3.5" />
           Терминал
         </button>
+
+        <button
+          onClick={() => setIsAnalyticsOpen(true)}
+          title="Сводная аналитика и метрики проекта"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition"
+        >
+          <BarChart2 className="w-3.5 h-3.5 text-emerald-400" />
+          Аналитика
+        </button>
+
+        <button
+          onClick={() => setHotkeysHelpOpen(true)}
+          title="Справка по горячим клавишам (?)"
+          className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700/60 transition"
+        >
+          <HelpCircle className="w-3.5 h-3.5" />
+        </button>
       </div>
+
+      {/* Project Analytics Modal */}
+      <ProjectAnalyticsModal
+        isOpen={isAnalyticsOpen}
+        onClose={() => setIsAnalyticsOpen(false)}
+      />
     </header>
   );
 };

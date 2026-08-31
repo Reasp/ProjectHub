@@ -97,6 +97,12 @@ const api: IElectronAPI = {
     };
   },
 
+  // Milestones & Roadmap
+  listMilestones: (projectPath: string) => ipcRenderer.invoke('milestones:list', projectPath),
+  createMilestone: (projectPath: string, params: any) => ipcRenderer.invoke('milestones:create', projectPath, params),
+  saveMilestone: (filePath: string, params: any) => ipcRenderer.invoke('milestones:save', filePath, params),
+  deleteMilestone: (filePath: string) => ipcRenderer.invoke('milestones:delete', filePath),
+
   // Git
   getGitLog: (projectPath: string, maxCount?: number) => ipcRenderer.invoke('git:getLog', projectPath, maxCount),
   getGitStatus: (projectPath: string) => ipcRenderer.invoke('git:getStatus', projectPath),
