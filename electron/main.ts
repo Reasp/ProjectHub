@@ -23,18 +23,17 @@ let win: BrowserWindow | null = null;
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
 function createWindow() {
+  const distPath = path.join(__dirname, '../dist');
+  const indexPath = path.join(distPath, 'index.html');
+
   win = new BrowserWindow({
+    title: 'ProjectHub — Панель управления проектами',
     width: 1400,
     height: 900,
     minWidth: 1024,
     minHeight: 700,
     backgroundColor: '#0f1117',
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: '#0f1117',
-      symbolColor: '#94a3b8',
-      height: 38
-    },
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -42,16 +41,22 @@ function createWindow() {
     }
   });
 
-  // Test active push message to Renderer-process.
-  win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', new Date().toLocaleString());
+  // Toggle DevTools with F12 or Ctrl+Shift+I
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
+      win?.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+  });
+
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Electron] Failed to load ${validatedURL}: [${errorCode}] ${errorDescription}`);
   });
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL);
-    // win.webContents.openDevTools();
   } else {
-    win.loadFile(path.join(process.env.DIST ?? path.join(__dirname, '../dist'), 'index.html'));
+    win.loadFile(indexPath);
   }
 }
 
