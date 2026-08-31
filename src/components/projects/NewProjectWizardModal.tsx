@@ -31,7 +31,9 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
 
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [projectName, setProjectName] = useState('');
-  const [parentDir, setParentDir] = useState(process.platform === 'win32' ? 'F:\\' : '/Users');
+  const [parentDir, setParentDir] = useState(
+    typeof navigator !== 'undefined' && navigator.userAgent.includes('Win') ? 'F:\\' : '/Users'
+  );
   const [initGit, setInitGit] = useState(true);
 
   const [features, setFeatures] = useState({

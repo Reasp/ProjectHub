@@ -7,6 +7,9 @@ import tailwindcss from '@tailwindcss/vite';
 // https://vitejs.dev/config/
 export default defineConfig({
   base: './',
+  define: {
+    'process.env': {}
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -39,11 +42,13 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
+            lib: {
+              entry: 'electron/preload.ts',
+              formats: ['cjs'],
+              fileName: () => 'preload.cjs'
+            },
             rollupOptions: {
-              output: {
-                format: 'cjs',
-                entryFileNames: '[name].cjs'
-              }
+              external: ['electron']
             }
           }
         }
