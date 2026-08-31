@@ -21,6 +21,7 @@ import {
 import type { BacklogTask, TaskCriterion } from '../../types/electron';
 import { useProjectStore } from '../../store/useProjectStore';
 import { generateTaskDraft } from '../../services/aiAssistantService';
+import { MarkdownViewer } from '../common/MarkdownViewer';
 
 interface TaskDetailModalProps {
   task: BacklogTask | null;
@@ -392,8 +393,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 </div>
 
                 {previewMode ? (
-                  <div className="bg-[#0e111a] p-4 rounded-xl text-xs text-slate-300 border border-slate-800 min-h-[140px] leading-relaxed whitespace-pre-wrap">
-                    {description || <span className="text-slate-600 italic">Нет описания</span>}
+                  <div className="bg-[#0e111a] p-4 rounded-xl text-xs text-slate-300 border border-slate-800 min-h-[140px] leading-relaxed">
+                    <MarkdownViewer content={description} />
                   </div>
                 ) : (
                   <textarea

@@ -68,9 +68,15 @@ export const Sidebar: React.FC = () => {
         {/* App Brand Header */}
         <div className="h-14 px-4 flex items-center justify-between border-b border-slate-800/60 bg-[#141724]/60">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <Layers className="w-4 h-4 text-white" />
-            </div>
+            <img
+              src="./icon.png"
+              alt="ProjectHub"
+              className="w-8 h-8 rounded-lg shadow-lg shadow-cyan-500/20 object-cover border border-cyan-500/30"
+              onError={(e) => {
+                // Fallback if icon.png isn't available
+                (e.target as HTMLElement).style.display = 'none';
+              }}
+            />
             <div>
               <h1 className="font-semibold text-sm tracking-tight text-white flex items-center gap-1.5">
                 ProjectHub

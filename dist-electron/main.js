@@ -518,7 +518,7 @@ async function F(e) {
 		return console.warn("[RAG] Embedding failed:", e), null;
 	}
 }
-async function te(e) {
+async function I(e) {
 	let t = [], n = [
 		{
 			dir: a.join(e, "backlog", "docs"),
@@ -553,7 +553,7 @@ async function te(e) {
 		category: "doc"
 	}), t;
 }
-async function ne(e) {
+async function L(e) {
 	let t = e.query?.trim();
 	if (!t) return [];
 	let n = e.mode || "all", r = e.limit || 15, i = e.global ?? !1, o = [];
@@ -599,7 +599,7 @@ async function ne(e) {
 			}
 		}
 		if (n === "text" || n === "all") try {
-			let n = await te(i), r = t.toLowerCase();
+			let n = await I(i), r = t.toLowerCase();
 			for (let t of n) {
 				let n = await s.readFile(t.filePath, "utf-8"), o = d(n), c = o.data?.title || a.basename(t.filePath, ".md"), u = o.content, f = c.toLowerCase().includes(r), p = u.toLowerCase().indexOf(r);
 				if (f || p !== -1) {
@@ -627,7 +627,7 @@ async function ne(e) {
 	}
 	return l.sort((e, t) => t.score - e.score), l.slice(0, r);
 }
-async function re(e) {
+async function R(e) {
 	let t = a.join(e, ".rag-index");
 	if (!c(t)) return {
 		hasIndex: !1,
@@ -651,7 +651,7 @@ async function re(e) {
 		chunksCount: 0
 	};
 }
-var I = new class {
+var z = new class {
 	watchers = /* @__PURE__ */ new Map();
 	broadcastGitChanged(t) {
 		for (let n of e.getAllWindows()) n.isDestroyed() || n.webContents.send("git:changed", { projectPath: t });
@@ -794,10 +794,10 @@ var I = new class {
 			return console.error(`Failed to get diff for ${t}:`, e), "";
 		}
 	}
-}(), L = g(l), R = new class {
+}(), B = g(l), V = new class {
 	async runGh(e, t) {
 		try {
-			let { stdout: n } = await L("gh", e, {
+			let { stdout: n } = await B("gh", e, {
 				cwd: t,
 				env: {
 					...process.env,
@@ -811,7 +811,7 @@ var I = new class {
 	}
 	async isGhAvailable() {
 		try {
-			return await L("gh", ["--version"]), !0;
+			return await B("gh", ["--version"]), !0;
 		} catch {
 			return !1;
 		}
@@ -997,10 +997,10 @@ var I = new class {
 }();
 //#endregion
 //#region electron/services/docsService.ts
-function z(e) {
+function H(e) {
 	return e.toLowerCase().trim().replace(/[^\w\sа-яё\-]/gi, "").replace(/[\s_]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
 }
-async function B(e) {
+async function U(e) {
 	let t = [], n = a.normalize(e), r = a.join(n, "backlog", "decisions");
 	if (c(r)) try {
 		let e = await s.readdir(r);
@@ -1062,17 +1062,17 @@ async function B(e) {
 	}
 	return t.sort((e, t) => e.title.localeCompare(t.title));
 }
-async function V(e) {
+async function W(e) {
 	let t = a.normalize(e);
 	if (!c(t)) throw Error(`Файл не найден: ${t}`);
 	return await s.readFile(t, "utf-8");
 }
-async function H(e, t) {
+async function G(e, t) {
 	let n = a.normalize(e), r = a.dirname(n);
 	return c(r) || await s.mkdir(r, { recursive: !0 }), await s.writeFile(n, t, "utf-8"), !0;
 }
-async function U(e, t) {
-	let n = a.normalize(e), r = t.type || "doc", i = t.title.trim(), o = z(i), c, l, u = t.content;
+async function K(e, t) {
+	let n = a.normalize(e), r = t.type || "doc", i = t.title.trim(), o = H(i), c, l, u = t.content;
 	if (r === "decision") {
 		c = a.join(n, "backlog", "decisions"), await s.mkdir(c, { recursive: !0 });
 		let e = 1;
@@ -1159,10 +1159,10 @@ date: "${e}"
 }
 //#endregion
 //#region electron/services/milestoneService.ts
-function W(e) {
+function q(e) {
 	return e.toLowerCase().trim().replace(/[^\w\sа-яё\-]/gi, "").replace(/[\s_]+/g, "-").replace(/^-+|-+$/g, "") || "milestone";
 }
-async function G(e) {
+async function J(e) {
 	let t = [], n = a.normalize(e), r = a.join(n, "backlog", "milestones"), i = a.join(n, "backlog", "tasks"), o = /* @__PURE__ */ new Map();
 	if (c(i)) try {
 		let e = await s.readdir(i);
@@ -1209,10 +1209,10 @@ async function G(e) {
 	}
 	return t;
 }
-async function K(e, t) {
+async function Y(e, t) {
 	let n = a.normalize(e), r = a.join(n, "backlog", "milestones");
 	await s.mkdir(r, { recursive: !0 });
-	let i = t.title.trim(), o = W(i), c = 1;
+	let i = t.title.trim(), o = q(i), c = 1;
 	try {
 		let e = await s.readdir(r);
 		for (let t of e) {
@@ -1247,7 +1247,7 @@ async function K(e, t) {
 		}
 	};
 }
-async function q(e, t) {
+async function te(e, t) {
 	let n = a.normalize(e);
 	if (!c(n)) return !1;
 	let r = await s.readFile(n, "utf-8"), i = d(r);
@@ -1255,19 +1255,20 @@ async function q(e, t) {
 	let o = d.stringify(i.content, i.data);
 	return await s.writeFile(n, o, "utf-8"), !0;
 }
-async function J(e) {
+async function ne(e) {
 	let t = a.normalize(e);
 	return c(t) ? (await s.unlink(t), !0) : !1;
 }
 //#endregion
 //#region electron/main.ts
-var Y = o(import.meta.url), X = a.dirname(Y);
+var re = o(import.meta.url), X = a.dirname(re);
 process.env.DIST = a.join(X, "../dist"), process.env.VITE_PUBLIC = t.isPackaged ? process.env.DIST : a.join(X, "../public");
 var Z = null, Q = process.env.VITE_DEV_SERVER_URL;
 function $() {
-	let t = a.join(X, "../dist"), n = a.join(t, "index.html"), r = a.join(X, "preload.cjs"), i = a.join(X, "preload.js"), o = c(r) ? r : i;
+	let t = a.join(X, "../dist"), n = a.join(t, "index.html"), r = a.join(X, "preload.cjs"), i = a.join(X, "preload.js"), o = c(r) ? r : i, s = a.join(X, "../public/icon.png"), l = a.join(X, "../build/icon.png"), u = c(s) ? s : l;
 	Z = new e({
 		title: "ProjectHub — Панель управления проектами",
+		icon: u,
 		width: 1400,
 		height: 900,
 		minWidth: 1024,
@@ -1469,7 +1470,7 @@ r.handle("backlog:getTasks", async (e, t) => {
 	} catch (e) {
 		return console.error("Failed to create task:", e), null;
 	}
-}), r.handle("template:createProject", async (e, t) => await D(t)), r.handle("template:checkAvailable", async (e, t) => await E(t)), r.handle("process:start", async (e, t, n, r) => await O.startProcess(t, n, r)), r.handle("process:stop", async (e, t) => await O.stopProcess(t)), r.handle("process:list", async (e, t) => await O.listProcessesForProject(t)), r.handle("process:tailLog", async (e, t, n, r = 100) => await O.tailProjectLog(t, n, r)), r.handle("rag:search", async (e, t) => await ne(t)), r.handle("rag:getStats", async (e, t) => await re(t)), r.handle("git:getLog", async (e, t, n = 30) => {
+}), r.handle("template:createProject", async (e, t) => await D(t)), r.handle("template:checkAvailable", async (e, t) => await E(t)), r.handle("process:start", async (e, t, n, r) => await O.startProcess(t, n, r)), r.handle("process:stop", async (e, t) => await O.stopProcess(t)), r.handle("process:list", async (e, t) => await O.listProcessesForProject(t)), r.handle("process:tailLog", async (e, t, n, r = 100) => await O.tailProjectLog(t, n, r)), r.handle("rag:search", async (e, t) => await L(t)), r.handle("rag:getStats", async (e, t) => await R(t)), r.handle("git:getLog", async (e, t, n = 30) => {
 	try {
 		return c(a.join(t, ".git")) ? (await f(t).log({ maxCount: n })).all.map((e) => ({
 			hash: e.hash,
@@ -1487,7 +1488,7 @@ r.handle("backlog:getTasks", async (e, t) => {
 	} catch (e) {
 		return console.error(`Git status error for ${t}:`, e), null;
 	}
-}), r.handle("git:getRepoDetails", async (e, t) => await I.getRepoDetails(t)), r.handle("git:checkout", async (e, t, n, r = !1) => await I.checkoutBranch(t, n, r)), r.handle("git:createBranch", async (e, t, n) => await I.createBranch(t, n)), r.handle("git:stageFile", async (e, t, n) => await I.stageFile(t, n)), r.handle("git:unstageFile", async (e, t, n) => await I.unstageFile(t, n)), r.handle("git:stageAll", async (e, t) => await I.stageAll(t)), r.handle("git:commit", async (e, t, n, r = !1) => await I.commitChanges(t, n, r)), r.handle("git:getFileDiff", async (e, t, n, r = !1) => await I.getFileDiff(t, n, r)), r.handle("pr:getProviderInfo", async (e, t) => await R.getProviderInfo(t)), r.handle("pr:list", async (e, t, n) => await R.listPullRequests(t, n)), r.handle("pr:create", async (e, t, n) => await R.createPullRequest(t, n)), r.handle("pr:getDiff", async (e, t, n) => await R.getPRDiff(t, n)), r.handle("docs:list", async (e, t) => await B(t)), r.handle("docs:read", async (e, t) => await V(t)), r.handle("docs:save", async (e, t, n) => await H(t, n)), r.handle("docs:create", async (e, t, n) => await U(t, n)), r.handle("milestones:list", async (e, t) => await G(t)), r.handle("milestones:create", async (e, t, n) => await K(t, n)), r.handle("milestones:save", async (e, t, n) => await q(t, n)), r.handle("milestones:delete", async (e, t) => await J(t)), r.handle("system:getPlatform", async () => process.platform), t.on("before-quit", () => {
+}), r.handle("git:getRepoDetails", async (e, t) => await z.getRepoDetails(t)), r.handle("git:checkout", async (e, t, n, r = !1) => await z.checkoutBranch(t, n, r)), r.handle("git:createBranch", async (e, t, n) => await z.createBranch(t, n)), r.handle("git:stageFile", async (e, t, n) => await z.stageFile(t, n)), r.handle("git:unstageFile", async (e, t, n) => await z.unstageFile(t, n)), r.handle("git:stageAll", async (e, t) => await z.stageAll(t)), r.handle("git:commit", async (e, t, n, r = !1) => await z.commitChanges(t, n, r)), r.handle("git:getFileDiff", async (e, t, n, r = !1) => await z.getFileDiff(t, n, r)), r.handle("pr:getProviderInfo", async (e, t) => await V.getProviderInfo(t)), r.handle("pr:list", async (e, t, n) => await V.listPullRequests(t, n)), r.handle("pr:create", async (e, t, n) => await V.createPullRequest(t, n)), r.handle("pr:getDiff", async (e, t, n) => await V.getPRDiff(t, n)), r.handle("docs:list", async (e, t) => await U(t)), r.handle("docs:read", async (e, t) => await W(t)), r.handle("docs:save", async (e, t, n) => await G(t, n)), r.handle("docs:create", async (e, t, n) => await K(t, n)), r.handle("milestones:list", async (e, t) => await J(t)), r.handle("milestones:create", async (e, t, n) => await Y(t, n)), r.handle("milestones:save", async (e, t, n) => await te(t, n)), r.handle("milestones:delete", async (e, t) => await ne(t)), r.handle("system:getPlatform", async () => process.platform), t.on("before-quit", () => {
 	O.cleanupAll();
 }), t.whenReady().then($);
 //#endregion

@@ -30,8 +30,13 @@ function createWindow() {
   const preloadJs = path.join(__dirname, 'preload.js');
   const preloadPath = existsSync(preloadCjs) ? preloadCjs : preloadJs;
 
+  const iconPng = path.join(__dirname, '../public/icon.png');
+  const iconBuild = path.join(__dirname, '../build/icon.png');
+  const appIcon = existsSync(iconPng) ? iconPng : iconBuild;
+
   win = new BrowserWindow({
     title: 'ProjectHub — Панель управления проектами',
+    icon: appIcon,
     width: 1400,
     height: 900,
     minWidth: 1024,

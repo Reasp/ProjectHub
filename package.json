@@ -28,6 +28,7 @@
   "build": {
     "appId": "com.projecthub.desktop",
     "productName": "ProjectHub",
+    "icon": "build/icon.ico",
     "directories": {
       "output": "release"
     },
@@ -36,6 +37,7 @@
       "dist-electron/**/*"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "dir",
@@ -74,6 +76,7 @@
     "clsx": "^2.1.1",
     "gray-matter": "^4.0.3",
     "lucide-react": "^1.34.0",
+    "mermaid": "^11.17.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "simple-git": "^3.36.0",
@@ -90,6 +93,7 @@
     "@vitejs/plugin-react": "^6.1.0",
     "electron": "^44.0.0",
     "electron-builder": "^26.15.3",
+    "png-to-ico": "^3.0.2",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { CreateDocModal } from './CreateDocModal';
+import { MarkdownViewer } from '../common/MarkdownViewer';
 import type { DocItem } from '../../types/electron';
 
 export const DocsRagView: React.FC = () => {
@@ -460,9 +461,7 @@ export const DocsRagView: React.FC = () => {
                 {/* Live Markdown Preview Pane */}
                 {(viewMode === 'preview' || viewMode === 'split') && (
                   <div className="flex-1 overflow-y-auto p-6 bg-[#10121d] select-text">
-                    <div className="prose prose-invert max-w-none text-xs text-slate-300 leading-relaxed font-sans whitespace-pre-wrap">
-                      {docContent || 'Документ пуст'}
-                    </div>
+                    <MarkdownViewer content={docContent} />
                   </div>
                 )}
               </div>
