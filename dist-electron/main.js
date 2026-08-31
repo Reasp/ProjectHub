@@ -572,9 +572,9 @@ async function L(e) {
 			if (c(n)) try {
 				let o = await M();
 				if (o) {
-					let s = await o.connect(n);
-					if ((await s.tableNames()).includes("docs")) {
-						let n = await s.openTable("docs"), o = await F([t]);
+					let s = await o.connect(n), c = await s.tableNames(), u = c.includes("docs") ? "docs" : c[0];
+					if (u) {
+						let n = await s.openTable(u), o = await F([t]);
 						if (o && o[0]) {
 							let t = await n.search(o[0]).limit(r).toArray();
 							for (let n of t) {
@@ -636,10 +636,10 @@ async function R(e) {
 	try {
 		let e = await M();
 		if (e) {
-			let n = await e.connect(t);
-			if ((await n.tableNames()).includes("docs")) return {
+			let n = await e.connect(t), r = await n.tableNames(), i = r.includes("docs") ? "docs" : r[0];
+			if (i) return {
 				hasIndex: !0,
-				chunksCount: await (await n.openTable("docs")).countRows(),
+				chunksCount: await (await n.openTable(i)).countRows(),
 				lastModified: (await s.stat(t)).mtime.toISOString()
 			};
 		}

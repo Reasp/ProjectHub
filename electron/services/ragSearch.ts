@@ -138,8 +138,9 @@ export async function searchProjectDocs(options: RagSearchOptions): Promise<RagS
           if (lancedb) {
             const db = await lancedb.connect(indexDir);
             const tableNames = await db.tableNames();
-            if (tableNames.includes('docs')) {
-              const table = await db.openTable('docs');
+            const targetTable = tableNames.includes('docs') ? 'docs' : tableNames[0];
+            if (targetTable) {
+              const table = await db.openTable(targetTable);
               const vectors = await embed([query]);
               if (vectors && vectors[0]) {
                 const vectorResults = await table.search(vectors[0]).limit(limit).toArray();
@@ -238,8 +239,9 @@ export async function getProjectRagStats(projectPath: string): Promise<{
     if (lancedb) {
       const db = await lancedb.connect(indexDir);
       const tables = await db.tableNames();
-      if (tables.includes('docs')) {
-        const table = await db.openTable('docs');
+      const targetTable = tables.includes('docs') ? 'docs' : tables[0];
+      if (targetTable) {
+        const table = await db.openTable(targetTable);
         const count = await table.countRows();
         const stats = await fs.stat(indexDir);
         return {

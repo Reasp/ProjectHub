@@ -53,6 +53,18 @@ function parseMarkdownBlocks(text: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
   let i = 0;
 
+  const isHeading = (line: string) => /^(#{1,6})\s+(.*)$/.test(line);
+  const isHr = (line: string) => /^(\-{3,}|\*{3,}|_{3,})$/.test(line.trim());
+  const isCodeBlock = (line: string) => line.trim().startsWith('```');
+  const isAlertOrQuote = (line: string) => line.trim().startsWith('>');
+  const isList = (line: string) => /^(\*|-|\+|\d+\.)\s+/.test(line.trim());
+  const isTable = (line: string, nextLine?: string) => Boolean(
+    line.trim().startsWith('|') &&
+    line.trim().endsWith('|') &&
+    nextLine &&
+    nextLine.includes('---')
+  );
+
   while (i < lines.length) {
     const line = lines[i];
     const trimmed = line.trim();
@@ -64,14 +76,14 @@ function parseMarkdownBlocks(text: string): MarkdownBlock[] {
     }
 
     // 2. Horizontal Rule (---, ***, ___)
-    if (/^(\-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+    if (isHr(trimmed)) {
       blocks.push({ type: 'hr' });
       i++;
       continue;
     }
 
     // 3. Fenced Code Block / Mermaid
-    if (trimmed.startsWith('```')) {
+    if (isCodeBlock(trimmed)) {
       const lang = trimmed.substring(3).trim().toLowerCase();
       const codeLines: string[] = [];
       i++;
@@ -128,7 +140,7 @@ function parseMarkdownBlocks(text: string): MarkdownBlock[] {
     }
 
     // 6. Blockquote
-    if (trimmed.startsWith('>')) {
+    if (isAlertOrQuote(trimmed)) {
       const quoteLines: string[] = [];
       while (i < lines.length && lines[i].trim().startsWith('>')) {
         quoteLines.push(lines[i].trim().replace(/^>\s?/, ''));
@@ -142,7 +154,7 @@ function parseMarkdownBlocks(text: string): MarkdownBlock[] {
     }
 
     // 7. Markdown Table (| col 1 | col 2 |)
-    if (trimmed.startsWith('|') && trimmed.endsWith('|') && i + 1 < lines.length && lines[i + 1].includes('---')) {
+    if (isTable(trimmed, lines[i + 1])) {
       const headers = trimmed.split('|').slice(1, -1).map((s) => s.trim());
       i += 2; // skip header and delimiter row
       const rows: string[][] = [];
@@ -162,11 +174,11 @@ function parseMarkdownBlocks(text: string): MarkdownBlock[] {
     }
 
     // 8. Lists (Unordered - or *, Ordered 1.)
-    if (/^(\*|-|\+|\d+\.)\s+/.test(trimmed)) {
+    if (isList(trimmed)) {
       const items: string[] = [];
       const isOrdered = /^\d+\./.test(trimmed);
 
-      while (i < lines.length && /^(\*|-|\+|\d+\.)\s+/.test(lines[i].trim())) {
+      while (i < lines.length && isList(lines[i].trim())) {
         items.push(lines[i].trim().replace(/^(\*|-|\+|\d+\.)\s+/, ''));
         i++;
       }
@@ -179,28 +191,27 @@ function parseMarkdownBlocks(text: string): MarkdownBlock[] {
       continue;
     }
 
-    // 9. Standard Paragraph
-    const paragraphLines: string[] = [];
+    // 9. Standard Paragraph (always consumes at least current line, then continues until next block)
+    const paragraphLines: string[] = [lines[i]];
+    i++;
     while (
       i < lines.length &&
       lines[i].trim() &&
-      !lines[i].trim().startsWith('#') &&
-      !lines[i].trim().startsWith('```') &&
-      !lines[i].trim().startsWith('>') &&
-      !lines[i].trim().startsWith('|') &&
-      !/^(\*|-|\+|\d+\.)\s+/.test(lines[i].trim()) &&
-      !/^(\-{3,}|\*{3,}|_{3,})$/.test(lines[i].trim())
+      !isHeading(lines[i]) &&
+      !isCodeBlock(lines[i]) &&
+      !isAlertOrQuote(lines[i]) &&
+      !isHr(lines[i]) &&
+      !isList(lines[i]) &&
+      !isTable(lines[i], lines[i + 1])
     ) {
       paragraphLines.push(lines[i]);
       i++;
     }
 
-    if (paragraphLines.length > 0) {
-      blocks.push({
-        type: 'paragraph',
-        raw: paragraphLines.join('\n')
-      });
-    }
+    blocks.push({
+      type: 'paragraph',
+      raw: paragraphLines.join('\n')
+    });
   }
 
   return blocks;
