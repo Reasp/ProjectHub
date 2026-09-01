@@ -1,7 +1,8 @@
-import React, { useState, useRef, memo } from 'react';
-import { Send, Square, CheckSquare, GitBranch, BookOpen } from 'lucide-react';
+import React, { useState, useRef, useEffect, memo } from 'react';
+import { Send, Square, CheckSquare, GitBranch, BookOpen, Mic, Radio, Zap } from 'lucide-react';
 import type { BacklogTask, GitRepoDetails } from '../../types/electron';
 import { useTranslation } from '../../i18n/useTranslation';
+import { voiceService, type VoiceState } from '../../services/voiceService';
 
 interface PromptInputAreaProps {
   mode: 'agent' | 'chat' | 'architect';
@@ -21,7 +22,40 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
 }) => {
   const { t } = useTranslation();
   const [input, setInput] = useState('');
+  const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const unsub = voiceService.onStateChange((st: VoiceState) => {
+      setVoiceState(st);
+    });
+
+    const origResult = voiceService.onResult;
+    voiceService.onResult((text: string, isFinal: boolean) => {
+      if (isFinal && text.trim()) {
+        // If recording was initiated, append to input
+        setInput((prev) => (prev ? `${prev} ${text.trim()}` : text.trim()));
+      }
+    });
+
+    return () => {
+      // Cleanup
+    };
+  }, []);
+
+  const isRecording = voiceState === 'recording' || voiceState === 'listening';
+  const isTranscribing = voiceState === 'transcribing';
+
+  const handleToggleVoiceDictation = async () => {
+    if (isRecording) {
+      const result = await voiceService.stopListening();
+      if (result) {
+        setInput((prev) => (prev ? `${prev} ${result.trim()}` : result.trim()));
+      }
+    } else {
+      await voiceService.startListening();
+    }
+  };
 
   const handleSend = () => {
     if (!input.trim() || isStreaming) return;
@@ -60,38 +94,54 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
 
   return (
     <div className="p-4 bg-[#111420] border-t border-slate-800 shrink-0 space-y-2">
-      {/* Context Attachment Pills */}
-      <div className="flex items-center gap-2 text-xs flex-wrap">
-        <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
-          {t.aiStudio.input.contextTags}:
-        </span>
-        <button
-          type="button"
-          onClick={() => handleInsertContext('task')}
-          className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#161a29] border border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-[11px] text-slate-300 transition"
-        >
-          <CheckSquare className="w-3 h-3 text-amber-400" />
-          @Task
-        </button>
-        <button
-          type="button"
-          onClick={() => handleInsertContext('git')}
-          className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#161a29] border border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-[11px] text-slate-300 transition"
-        >
-          <GitBranch className="w-3 h-3 text-indigo-400" />
-          @GitStatus
-        </button>
-        <button
-          type="button"
-          onClick={() => handleInsertContext('docs')}
-          className="flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#161a29] border border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-[11px] text-slate-300 transition"
-        >
-          <BookOpen className="w-3 h-3 text-purple-400" />
-          @Docs
-        </button>
+      {/* Context Attachment Pills & Voice Indicator */}
+      <div className="flex items-center justify-between gap-2 text-xs flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+            {t.aiStudio.input.contextTags}:
+          </span>
+          <button
+            type="button"
+            onClick={() => handleInsertContext('task')}
+            className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#161a29] border border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-[11px] text-slate-300 transition"
+          >
+            <CheckSquare className="w-3 h-3 text-amber-400" />
+            @Task
+          </button>
+          <button
+            type="button"
+            onClick={() => handleInsertContext('git')}
+            className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#161a29] border border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-[11px] text-slate-300 transition"
+          >
+            <GitBranch className="w-3 h-3 text-indigo-400" />
+            @GitStatus
+          </button>
+          <button
+            type="button"
+            onClick={() => handleInsertContext('docs')}
+            className="flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#161a29] border border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-[11px] text-slate-300 transition"
+          >
+            <BookOpen className="w-3 h-3 text-purple-400" />
+            @Docs
+          </button>
+        </div>
+
+        {/* Live Audio Status */}
+        {isRecording && (
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[11px] animate-pulse">
+            <Radio className="w-3 h-3" />
+            <span>Запись промпта (Whisper)...</span>
+          </div>
+        )}
+        {isTranscribing && (
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[11px] animate-pulse">
+            <Zap className="w-3 h-3" />
+            <span>Транскрибация Whisper...</span>
+          </div>
+        )}
       </div>
 
-      {/* Input Textarea & Send / Stop Button */}
+      {/* Input Textarea & Send / Mic / Stop Button */}
       <div className="flex items-end gap-2 bg-[#171b2a] border border-slate-700/80 rounded-2xl p-2.5 shadow-inner focus-within:border-indigo-500 transition">
         <textarea
           ref={textareaRef}
@@ -109,9 +159,25 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
             e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px`;
           }}
           onKeyDown={handleKeyDown}
-          placeholder={t.aiStudio.input.placeholder}
+          placeholder={isRecording ? 'Слушаю вас... Говорите текст промпта' : t.aiStudio.input.placeholder}
           className="flex-1 bg-transparent text-xs text-white placeholder:text-slate-500 focus:outline-none resize-none font-sans px-2 py-1 leading-relaxed max-h-44"
         />
+
+        {/* Voice Dictation Button in Prompt Box */}
+        <button
+          type="button"
+          onClick={handleToggleVoiceDictation}
+          className={`p-2 rounded-xl transition flex items-center justify-center shrink-0 ${
+            isRecording
+              ? 'bg-rose-600 text-white ring-2 ring-rose-500/40 animate-pulse'
+              : isTranscribing
+              ? 'bg-amber-600 text-white animate-bounce'
+              : 'bg-[#121522] border border-slate-700 hover:border-indigo-500/70 text-slate-400 hover:text-indigo-400'
+          }`}
+          title={isRecording ? 'Остановить запись и транскрибировать' : 'Надиктовать промпт голосом (Whisper)'}
+        >
+          <Mic className="w-4 h-4" />
+        </button>
 
         {isStreaming ? (
           <button

@@ -157,7 +157,7 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
 
           {/* Options List */}
           <div className="space-y-2">
-            {qData.options.map((opt: QuestionOption) => {
+            {qData.options.map((opt: QuestionOption, optIdx: number) => {
               const isSelected = selectedOptionIds.includes(opt.id);
 
               return (
@@ -189,8 +189,13 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
 
                   {/* Option Label and Description */}
                   <div className="flex-1 min-w-0">
-                    <div className={`text-xs font-semibold ${isSelected ? 'text-white' : 'text-slate-200'}`}>
-                      {opt.label}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className={`text-xs font-semibold ${isSelected ? 'text-white' : 'text-slate-200'}`}>
+                        {opt.label}
+                      </div>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60 shrink-0" title="Голосовая команда: «Вариант ${optIdx + 1}»">
+                        Вариант {optIdx + 1}
+                      </span>
                     </div>
                     {opt.description && (
                       <div className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
@@ -372,9 +377,11 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
               disabled={isSubmitting}
               onClick={handleApprove}
               className="flex-1 px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 disabled:opacity-50 text-white font-semibold text-xs shadow-md shadow-emerald-700/20 flex items-center justify-center gap-1.5 transition active:scale-[0.98]"
+              title="Голосовая команда: «Одобрить» / «Принять»"
             >
               <Check className="w-4 h-4" />
               <span>{t.aiStudio.approval.allowOnce}</span>
+              <span className="text-[10px] opacity-75 font-normal ml-1">(🎤 «Одобрить»)</span>
             </button>
 
             <button
@@ -382,9 +389,11 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
               disabled={isSubmitting}
               onClick={handleReject}
               className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-700/60 border border-slate-700 disabled:opacity-50 text-slate-300 font-medium text-xs flex items-center justify-center gap-1.5 transition active:scale-[0.98]"
+              title="Голосовая команда: «Отклонить» / «Отмена»"
             >
               <X className="w-4 h-4" />
               <span>{t.aiStudio.approval.deny}</span>
+              <span className="text-[10px] opacity-75 font-normal ml-1">(🎤 «Отклонить»)</span>
             </button>
           </div>
         </div>

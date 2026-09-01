@@ -1,14 +1,171 @@
 export interface ParsedVoiceCommand {
-  type: 'navigation' | 'action' | 'dictation';
+  type: 'navigation' | 'action' | 'ai_control' | 'dictation';
   intent: string;
   payload?: any;
   feedbackText: string;
 }
 
-export function parseVoiceCommand(text: string): ParsedVoiceCommand {
+// Helper to convert Russian ordinal / number words to numeric index (0-based)
+function parseNumberWord(text: string): number | null {
   const normalized = text.toLowerCase().trim();
 
-  // ─── 1. NAVIGATION INTENTS ───
+  if (normalized.includes('1') || normalized.includes('один') || normalized.includes('перв') || normalized.includes('first')) return 0;
+  if (normalized.includes('2') || normalized.includes('два') || normalized.includes('втор') || normalized.includes('second')) return 1;
+  if (normalized.includes('3') || normalized.includes('три') || normalized.includes('трет') || normalized.includes('third')) return 2;
+  if (normalized.includes('4') || normalized.includes('четыр') || normalized.includes('четверт') || normalized.includes('fourth')) return 3;
+  if (normalized.includes('5') || normalized.includes('пят') || normalized.includes('fifth')) return 4;
+  if (normalized.includes('6') || normalized.includes('шест')) return 5;
+  if (normalized.includes('7') || normalized.includes('сед')) return 6;
+  if (normalized.includes('8') || normalized.includes('восем')) return 7;
+  if (normalized.includes('9') || normalized.includes('девят')) return 8;
+
+  return null;
+}
+
+export function parseVoiceCommand(text: string): ParsedVoiceCommand {
+  const raw = text.trim();
+  const normalized = raw.toLowerCase();
+
+  // ─────────────────────────────────────────────────────────────────
+  // 1. AI AGENT & INTERACTIVE MENU APPROVALS
+  // ─────────────────────────────────────────────────────────────────
+  // A. Approvals: «принять», «одобрить», «да», «разрешить», «применить diff»
+  if (
+    /^(принять|одобрить|одобри|разрешить|разреши|примени|применить|да|согласен|подтвердить|подтверждаю|approve|accept|allow|confirm)( диф| diff)?$/i.test(normalized) ||
+    normalized.includes('принять diff') ||
+    normalized.includes('примени diff') ||
+    normalized.includes('одобрить изменения')
+  ) {
+    return {
+      type: 'ai_control',
+      intent: 'agent_approve',
+      feedbackText: 'Действие одобрено'
+    };
+  }
+
+  // B. Rejections: «отклонить», «нет», «отменить», «запретить», «отклонить diff»
+  if (
+    /^(отклонить|отклони|запретить|запрети|отменить|отмена|нет|не надо|reject|deny|cancel)( диф| diff)?$/i.test(normalized) ||
+    normalized.includes('отклонить diff') ||
+    normalized.includes('отмени diff')
+  ) {
+    return {
+      type: 'ai_control',
+      intent: 'agent_reject',
+      feedbackText: 'Действие отклонено'
+    };
+  }
+
+  // C. Question Option Selection: «вариант 1», «вариант 2», «номер один», «первый вариант»
+  if (
+    normalized.startsWith('вариант') ||
+    normalized.startsWith('номер') ||
+    normalized.startsWith('выбери вариант') ||
+    normalized.startsWith('выбери номер') ||
+    normalized.startsWith('option') ||
+    normalized.includes('вариант') ||
+    normalized.includes('номер')
+  ) {
+    const numIdx = parseNumberWord(normalized);
+    if (numIdx !== null) {
+      return {
+        type: 'ai_control',
+        intent: 'agent_select_option',
+        payload: { optionIndex: numIdx },
+        feedbackText: `Выбираю вариант ${numIdx + 1}`
+      };
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // 2. CLAUDE STUDIO TABS & SESSION MANAGEMENT
+  // ─────────────────────────────────────────────────────────────────
+  // A. New Dialog / Session: «новый диалог», «новая вкладка», «новая сессия», «new session»
+  if (
+    normalized.includes('новый диалог') ||
+    normalized.includes('новая вкладка') ||
+    normalized.includes('новая сессия') ||
+    normalized.includes('новый чат') ||
+    normalized.includes('создай диалог') ||
+    normalized.includes('new chat') ||
+    normalized.includes('new session')
+  ) {
+    return {
+      type: 'ai_control',
+      intent: 'create_ai_session',
+      feedbackText: 'Создаю новый диалог в Claude Studio'
+    };
+  }
+
+  // B. Switch Studio Tab / Session by Number: «вкладка 1», «вкладка 2», «первая вкладка», «диалог 2»
+  if (
+    normalized.includes('вкладка') ||
+    normalized.includes('вкладку') ||
+    normalized.includes('диалог') ||
+    normalized.includes('сессия') ||
+    normalized.includes('сессию') ||
+    normalized.includes('tab')
+  ) {
+    const numIdx = parseNumberWord(normalized);
+    if (numIdx !== null) {
+      return {
+        type: 'ai_control',
+        intent: 'switch_ai_session',
+        payload: { sessionIndex: numIdx },
+        feedbackText: `Переключаю на вкладку ${numIdx + 1}`
+      };
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // 3. PROMPT DICTATION & SENDING TO AGENT
+  // ─────────────────────────────────────────────────────────────────
+  // A. Direct Prompt Injection: «промпт [текст]», «напиши [текст]», «скажи агенту [текст]», «отправь агенту [текст]»
+  const promptMatch = raw.match(/^(?:промпт|напиши агенту|напиши|скажи агенту|отправь агенту|отправь|спроси|prompt|ask agent)\s+(.+)$/i);
+  if (promptMatch && promptMatch[1]) {
+    const promptContent = promptMatch[1].trim();
+    return {
+      type: 'ai_control',
+      intent: 'send_prompt',
+      payload: { text: promptContent },
+      feedbackText: `Отправляю промпт агенту: ${promptContent}`
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // 4. PROJECT NAVIGATION (FUZZY SEARCH BY PROJECT NAME)
+  // ─────────────────────────────────────────────────────────────────
+  // «перейди на проект [X]», «открой проект [X]», «проект [X]», «переключи на [X]»
+  const projectMatch = raw.match(/^(?:перейди на проект|переключи на проект|открой проект|проект|open project|switch to project)\s+(.+)$/i);
+  if (projectMatch && projectMatch[1]) {
+    const targetProjectQuery = projectMatch[1].trim();
+    return {
+      type: 'navigation',
+      intent: 'navigate_project',
+      payload: { projectName: targetProjectQuery },
+      feedbackText: `Перехожу на проект ${targetProjectQuery}`
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // 5. MAIN TAB NAVIGATION
+  // ─────────────────────────────────────────────────────────────────
+  if (
+    normalized.includes('студи') ||
+    normalized.includes('ассистент') ||
+    normalized.includes('клауд') ||
+    normalized.includes('ии') ||
+    normalized.includes('ai studio') ||
+    normalized.includes('claude')
+  ) {
+    return {
+      type: 'navigation',
+      intent: 'navigate_ai',
+      payload: 'ai',
+      feedbackText: 'Открываю Claude AI Studio'
+    };
+  }
+
   if (
     normalized.includes('бэклог') ||
     normalized.includes('задач') ||
@@ -73,7 +230,8 @@ export function parseVoiceCommand(text: string): ParsedVoiceCommand {
     normalized.includes('пул') ||
     normalized.includes('пиар') ||
     normalized.includes('реквест') ||
-    normalized.includes('pull request')
+    normalized.includes('pull request') ||
+    normalized.includes('prs')
   ) {
     return {
       type: 'navigation',
@@ -114,21 +272,6 @@ export function parseVoiceCommand(text: string): ParsedVoiceCommand {
   }
 
   if (
-    normalized.includes('студи') ||
-    normalized.includes('ассистент') ||
-    normalized.includes('клауд') ||
-    normalized.includes('ии') ||
-    normalized.includes('ai')
-  ) {
-    return {
-      type: 'navigation',
-      intent: 'navigate_ai',
-      payload: 'ai',
-      feedbackText: 'Открываю Claude AI Studio'
-    };
-  }
-
-  if (
     normalized.includes('терминал') ||
     normalized.includes('консоль') ||
     normalized.includes('логи')
@@ -140,13 +283,16 @@ export function parseVoiceCommand(text: string): ParsedVoiceCommand {
     };
   }
 
-  // ─── 2. ACTION INTENTS ───
+  // ─────────────────────────────────────────────────────────────────
+  // 6. ACTION RUNNER INTENTS
+  // ─────────────────────────────────────────────────────────────────
   if (
     normalized.includes('запусти проект') ||
     normalized.includes('старт дев') ||
     normalized.includes('старт dev') ||
     normalized.includes('запусти сервер') ||
-    normalized.includes('запусти dev')
+    normalized.includes('запусти dev') ||
+    normalized.includes('start dev')
   ) {
     return {
       type: 'action',
@@ -160,7 +306,8 @@ export function parseVoiceCommand(text: string): ParsedVoiceCommand {
     normalized.includes('стоп дев') ||
     normalized.includes('стоп dev') ||
     normalized.includes('останови dev') ||
-    normalized.includes('останови проект')
+    normalized.includes('останови проект') ||
+    normalized.includes('stop dev')
   ) {
     return {
       type: 'action',
@@ -185,7 +332,8 @@ export function parseVoiceCommand(text: string): ParsedVoiceCommand {
   if (
     normalized.includes('тест') ||
     normalized.includes('запусти тесты') ||
-    normalized.includes('прогони тесты')
+    normalized.includes('прогони тесты') ||
+    normalized.includes('run tests')
   ) {
     return {
       type: 'action',
