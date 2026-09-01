@@ -49,6 +49,76 @@ export interface SubagentInfo {
   completedAt?: number;
 }
 
+export interface ClaudeModelOption {
+  id: string;
+  name: string;
+  description: string;
+  badge?: string;
+  family: 'default' | 'sonnet' | 'opus' | 'haiku' | 'fable';
+}
+
+export const CLAUDE_MODELS_CATALOG: ClaudeModelOption[] = [
+  {
+    id: 'default',
+    name: 'Default (recommended)',
+    description: 'Sonnet 5 · Efficient for routine tasks',
+    family: 'default'
+  },
+  {
+    id: 'sonnet',
+    name: 'Sonnet',
+    description: 'Sonnet 5 · Efficient for routine tasks',
+    family: 'sonnet'
+  },
+  {
+    id: 'fable',
+    name: 'Fable',
+    description: 'Fable 5 · Most capable for your hardest and longest-running tasks',
+    badge: 'Requires usage credits',
+    family: 'fable'
+  },
+  {
+    id: 'opus[1m]',
+    name: 'Opus (1M context)',
+    description: 'Opus 5 with 1M context · Best for everyday, complex tasks',
+    badge: '1M Context',
+    family: 'opus'
+  },
+  {
+    id: 'haiku',
+    name: 'Haiku',
+    description: 'Haiku 4.5 · Fastest for quick answers',
+    badge: 'Fast',
+    family: 'haiku'
+  },
+  {
+    id: 'best',
+    name: 'Best',
+    description: 'Auto-selects optimal model for task complexity',
+    family: 'default'
+  },
+  {
+    id: 'opusplan',
+    name: 'OpusPlan',
+    description: 'Opus planning with Sonnet execution',
+    family: 'opus'
+  },
+  {
+    id: 'sonnet[1m]',
+    name: 'Sonnet (1M context)',
+    description: 'Sonnet 5 with extended 1M context window',
+    badge: '1M Context',
+    family: 'sonnet'
+  },
+  {
+    id: 'fable[1m]',
+    name: 'Fable (1M context)',
+    description: 'Fable 5 with extended 1M context window',
+    badge: '1M Context',
+    family: 'fable'
+  }
+];
+
 export interface ClaudeBridgeMessageChunk {
   text?: string;
   thought?: string;
@@ -81,6 +151,10 @@ class ClaudeBridgeService extends EventEmitter {
 
   public getAllProjectStatuses(): ProjectAgentStatus[] {
     return Array.from(this.projectStatuses.values());
+  }
+
+  public getAvailableModels(): ClaudeModelOption[] {
+    return CLAUDE_MODELS_CATALOG;
   }
 
   public setProjectStatus(
@@ -251,6 +325,13 @@ class ClaudeBridgeService extends EventEmitter {
     }
   }
 
+  private sessionClaudeCliIds = new Map<string, string>();
+
+  public clearSession(sessionId: string): void {
+    this.sessionClaudeCliIds.delete(sessionId);
+    this.abortSession(sessionId);
+  }
+
   private async runClaudeCliTask(
     req: {
       sessionId: string;
@@ -264,20 +345,43 @@ class ClaudeBridgeService extends EventEmitter {
     onError: (err: string) => void
   ): Promise<void> {
     const { sessionId, projectPath, messages } = req;
-    const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content || 'Привет';
+    const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
+    if (!lastUserMessage.trim()) {
+      onComplete({
+        id: `msg-${Date.now()}`,
+        role: 'assistant',
+        content: 'Пожалуйста, введите сообщение.',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    const existingCliSessionId = this.sessionClaudeCliIds.get(sessionId);
+    const cliArgs = ['-p'];
+    if (existingCliSessionId) {
+      cliArgs.push('--resume', existingCliSessionId);
+    }
+    if (req.config.model && req.config.model !== 'default') {
+      cliArgs.push('--model', req.config.model);
+    }
+    cliArgs.push('--output-format', 'stream-json', '--verbose');
 
     const child = spawn(
       'claude',
-      ['-p', lastUserMessage, '--output-format', 'stream-json', '--verbose'],
+      cliArgs,
       {
         cwd: projectPath,
-        shell: process.platform === 'win32',
-        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env, FORCE_COLOR: '0' }
       }
     );
 
     this.activeProcesses.set(sessionId, child);
+
+    // Pass the prompt safely via stdin to avoid shell argument escaping issues
+    child.stdin.write(lastUserMessage, 'utf-8');
+    child.stdin.end();
 
     let accumulatedText = '';
     let accumulatedThought = '';
@@ -295,6 +399,10 @@ class ClaudeBridgeService extends EventEmitter {
 
         try {
           const event = JSON.parse(trimmed);
+
+          if (event.session_id) {
+            this.sessionClaudeCliIds.set(sessionId, event.session_id);
+          }
 
           if (event.type === 'assistant' && event.message?.content) {
             for (const item of event.message.content) {

@@ -21,9 +21,13 @@ interface AISettingsModalProps {
 
 const MODEL_PRESETS: Record<string, string[]> = {
   anthropic: [
-    'claude-3-7-sonnet-20250219',
-    'claude-3-5-sonnet-20241022',
-    'claude-3-5-haiku-20241022'
+    'default',
+    'sonnet',
+    'opus',
+    'haiku',
+    'claude-3-7-sonnet-latest',
+    'claude-3-5-sonnet-latest',
+    'claude-3-5-haiku-latest'
   ],
   openrouter: [
     'anthropic/claude-3.7-sonnet',

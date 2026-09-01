@@ -479,30 +479,9 @@ class AIAgentService {
    * System Prompt with Project Context
    */
   private async buildSystemPrompt(projectPath: string, mode: 'chat' | 'agent' | 'architect'): Promise<string> {
-    let context = `Ты — Claude AI Studio, интеллектуальный инженерный ассистент и парный программист, встроенный в десктопную панель управления ProjectHub.
-Текущий проект расположен по пути: "${projectPath}".
-Стандарты проекта:
-- Управление задачами: Backlog.md (директория backlog/tasks/ и backlog/completed/)
-- Архитектурные решения: ADR (директория backlog/decisions/)
-- Документация: Markdown (директория backlog/docs/)
-- Векторный RAG: LanceDB
-- Язык ответов: Русский (технические идентификаторы и код остаются на языке оригинала).
-
-Режим работы: ${mode.toUpperCase()}.
-`;
-
-    if (mode === 'agent') {
-      context += `
-Ты обладаешь возможностью предлагать изменения в коде и использовать инструменты.
-Когда ты предлагаешь изменить существующий файл или создать новый, подробно описывай внесенные изменения и используй инструмент write_file. Пользователь увидит визуальный Diff-блок и сможет одобрить или отклонить правки.
-`;
-    } else if (mode === 'architect') {
-      context += `
-Сфокусируйся на архитектурных паттернах, C4-моделировании, проектировании систем, ADR и анализе требований Backlog.md.
-`;
-    }
-
-    return context;
+    return `You are Claude Code, Anthropic's official AI assistant for software development.
+Working directory: "${projectPath}".
+Answer directly, clearly, and concisely as Claude Code. If the user addresses you in Russian, answer naturally in Russian while preserving technical terms, file paths, and code.`;
   }
 
   /**

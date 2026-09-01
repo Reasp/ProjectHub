@@ -485,18 +485,9 @@ var E = c.join(g.homedir(), ".projecthub", "ai-config.json"), D = new class {
 		});
 	}
 	async buildSystemPrompt(e, t) {
-		let n = `Ты — Claude AI Studio, интеллектуальный инженерный ассистент и парный программист, встроенный в десктопную панель управления ProjectHub.
-Текущий проект расположен по пути: "${e}".
-Стандарты проекта:
-- Управление задачами: Backlog.md (директория backlog/tasks/ и backlog/completed/)
-- Архитектурные решения: ADR (директория backlog/decisions/)
-- Документация: Markdown (директория backlog/docs/)
-- Векторный RAG: LanceDB
-- Язык ответов: Русский (технические идентификаторы и код остаются на языке оригинала).
-
-Режим работы: ${t.toUpperCase()}.
-`;
-		return t === "agent" ? n += "\nТы обладаешь возможностью предлагать изменения в коде и использовать инструменты.\nКогда ты предлагаешь изменить существующий файл или создать новый, подробно описывай внесенные изменения и используй инструмент write_file. Пользователь увидит визуальный Diff-блок и сможет одобрить или отклонить правки.\n" : t === "architect" && (n += "\nСфокусируйся на архитектурных паттернах, C4-моделировании, проектировании систем, ADR и анализе требований Backlog.md.\n"), n;
+		return `You are Claude Code, Anthropic's official AI assistant for software development.
+Working directory: "${e}".
+Answer directly, clearly, and concisely as Claude Code. If the user addresses you in Russian, answer naturally in Russian while preserving technical terms, file paths, and code.`;
 	}
 	getAnthropicTools() {
 		return [
@@ -559,7 +550,67 @@ var E = c.join(g.homedir(), ".projecthub", "ai-config.json"), D = new class {
 			}
 		];
 	}
-}(), O = new class extends _ {
+}(), ee = [
+	{
+		id: "default",
+		name: "Default (recommended)",
+		description: "Sonnet 5 · Efficient for routine tasks",
+		family: "default"
+	},
+	{
+		id: "sonnet",
+		name: "Sonnet",
+		description: "Sonnet 5 · Efficient for routine tasks",
+		family: "sonnet"
+	},
+	{
+		id: "fable",
+		name: "Fable",
+		description: "Fable 5 · Most capable for your hardest and longest-running tasks",
+		badge: "Requires usage credits",
+		family: "fable"
+	},
+	{
+		id: "opus[1m]",
+		name: "Opus (1M context)",
+		description: "Opus 5 with 1M context · Best for everyday, complex tasks",
+		badge: "1M Context",
+		family: "opus"
+	},
+	{
+		id: "haiku",
+		name: "Haiku",
+		description: "Haiku 4.5 · Fastest for quick answers",
+		badge: "Fast",
+		family: "haiku"
+	},
+	{
+		id: "best",
+		name: "Best",
+		description: "Auto-selects optimal model for task complexity",
+		family: "default"
+	},
+	{
+		id: "opusplan",
+		name: "OpusPlan",
+		description: "Opus planning with Sonnet execution",
+		family: "opus"
+	},
+	{
+		id: "sonnet[1m]",
+		name: "Sonnet (1M context)",
+		description: "Sonnet 5 with extended 1M context window",
+		badge: "1M Context",
+		family: "sonnet"
+	},
+	{
+		id: "fable[1m]",
+		name: "Fable (1M context)",
+		description: "Fable 5 with extended 1M context window",
+		badge: "1M Context",
+		family: "fable"
+	}
+], O = new class extends _ {
 	projectStatuses = /* @__PURE__ */ new Map();
 	pendingApprovals = /* @__PURE__ */ new Map();
 	activeSubagents = /* @__PURE__ */ new Map();
@@ -577,6 +628,9 @@ var E = c.join(g.homedir(), ".projecthub", "ai-config.json"), D = new class {
 	}
 	getAllProjectStatuses() {
 		return Array.from(this.projectStatuses.values());
+	}
+	getAvailableModels() {
+		return ee;
 	}
 	setProjectStatus(e, t, n, r) {
 		let i = (this.activeSubagents.get(e) || []).filter((e) => e.status === "running").length, a = {
@@ -664,18 +718,28 @@ var E = c.join(g.homedir(), ".projecthub", "ai-config.json"), D = new class {
 			this.setProjectStatus(a, "error", e.message), r(e.message);
 		}
 	}
+	sessionClaudeCliIds = /* @__PURE__ */ new Map();
+	clearSession(e) {
+		this.sessionClaudeCliIds.delete(e), this.abortSession(e);
+	}
 	async runClaudeCliTask(e, t, n, r) {
-		let { sessionId: i, projectPath: a, messages: o } = e, s = [...o].reverse().find((e) => e.role === "user")?.content || "Привет", c = p("claude", [
-			"-p",
-			s,
-			"--output-format",
-			"stream-json",
-			"--verbose"
-		], {
+		let { sessionId: i, projectPath: a, messages: o } = e, s = [...o].reverse().find((e) => e.role === "user")?.content || "";
+		if (!s.trim()) {
+			n({
+				id: `msg-${Date.now()}`,
+				role: "assistant",
+				content: "Пожалуйста, введите сообщение.",
+				timestamp: (/* @__PURE__ */ new Date()).toISOString()
+			});
+			return;
+		}
+		let c = this.sessionClaudeCliIds.get(i), l = ["-p"];
+		c && l.push("--resume", c), e.config.model && e.config.model !== "default" && l.push("--model", e.config.model), l.push("--output-format", "stream-json", "--verbose");
+		let u = p("claude", l, {
 			cwd: a,
-			shell: process.platform === "win32",
+			shell: !0,
 			stdio: [
-				"ignore",
+				"pipe",
 				"pipe",
 				"pipe"
 			],
@@ -684,50 +748,50 @@ var E = c.join(g.homedir(), ".projecthub", "ai-config.json"), D = new class {
 				FORCE_COLOR: "0"
 			}
 		});
-		this.activeProcesses.set(i, c);
-		let l = "", u = "", d = [], f = "";
-		c.stdout.on("data", async (e) => {
-			f += e.toString("utf-8");
-			let n = f.split("\n");
-			f = n.pop() || "";
+		this.activeProcesses.set(i, u), u.stdin.write(s, "utf-8"), u.stdin.end();
+		let d = "", f = "", m = [], h = "";
+		u.stdout.on("data", async (e) => {
+			h += e.toString("utf-8");
+			let n = h.split("\n");
+			h = n.pop() || "";
 			for (let e of n) {
 				let n = e.trim();
 				if (!(!n || !n.startsWith("{"))) try {
 					let e = JSON.parse(n);
-					if (e.type === "assistant" && e.message?.content) {
-						for (let n of e.message.content) if (n.type === "text") l += n.text, t({ text: n.text });
-						else if (n.type === "thinking") u += n.thinking, t({ thought: n.thinking });
+					if (e.session_id && this.sessionClaudeCliIds.set(i, e.session_id), e.type === "assistant" && e.message?.content) {
+						for (let n of e.message.content) if (n.type === "text") d += n.text, t({ text: n.text });
+						else if (n.type === "thinking") f += n.thinking, t({ thought: n.thinking });
 						else if (n.type === "tool_use") {
 							let e = {
 								id: n.id || `tool-${Date.now()}`,
 								name: n.name,
 								args: n.input || {}
 							};
-							d.push(e), t({ toolCall: e });
+							m.push(e), t({ toolCall: e });
 						}
-					} else e.type === "result" && e.result && typeof e.result == "string" && !l && (l = e.result, t({ text: e.result }));
+					} else e.type === "result" && e.result && typeof e.result == "string" && !d && (d = e.result, t({ text: e.result }));
 				} catch {}
 			}
 		});
-		let m = "";
-		c.stderr.on("data", (e) => {
-			m += e.toString();
-		}), c.on("close", (e) => {
-			if (this.activeProcesses.delete(i), e === 0 || l) {
+		let g = "";
+		u.stderr.on("data", (e) => {
+			g += e.toString();
+		}), u.on("close", (e) => {
+			if (this.activeProcesses.delete(i), e === 0 || d) {
 				let e = {
 					id: `msg-${Date.now()}`,
 					role: "assistant",
-					content: l,
-					thought: u,
-					toolCalls: d,
+					content: d,
+					thought: f,
+					toolCalls: m,
 					timestamp: (/* @__PURE__ */ new Date()).toISOString()
 				};
 				this.setProjectStatus(a, "done", "Задача успешно выполнена"), n(e);
 			} else {
-				let t = m || `Claude Code завершился с кодом ${e}`;
+				let t = g || `Claude Code завершился с кодом ${e}`;
 				this.setProjectStatus(a, "error", t), r(t);
 			}
-		}), c.on("error", (e) => {
+		}), u.on("error", (e) => {
 			this.activeProcesses.delete(i), this.setProjectStatus(a, "error", e.message), r(e.message);
 		});
 	}
@@ -808,7 +872,7 @@ async function M(e, t) {
 		j.has(a) || (r.isDirectory() ? await M(n, i) : r.isFile() && await u.copyFile(n, i));
 	}
 }
-async function ee(e) {
+async function N(e) {
 	let t = e || A;
 	return {
 		available: d(t),
@@ -869,7 +933,7 @@ async function te(e) {
 	if (!s) throw Error("Не удалось проинспектировать созданный проект.");
 	return s;
 }
-var N = new class {
+var P = new class {
 	activeProcesses = /* @__PURE__ */ new Map();
 	broadcastLog(e, t) {
 		for (let n of r.getAllWindows()) n.isDestroyed() || n.webContents.send("process:logChunk", {
@@ -983,34 +1047,34 @@ var N = new class {
 			console.error(`Cleanup kill failed for ${e}:`, t);
 		}
 	}
-}(), ne = "Xenova/all-MiniLM-L6-v2", P = null, F = null, I = null;
-async function L() {
-	if (!F) try {
-		F = await import("@lancedb/lancedb");
+}(), F = "Xenova/all-MiniLM-L6-v2", I = null, L = null, R = null;
+async function z() {
+	if (!L) try {
+		L = await import("@lancedb/lancedb");
 	} catch (e) {
 		return console.warn("[RAG] LanceDB native module not available, fallback to fulltext search:", e), null;
 	}
-	return F;
+	return L;
 }
-async function re() {
-	if (!I) try {
-		I = await import("./transformers.node-COFdxZ8y.js"), I.env && (I.env.cacheDir = c.join(process.cwd(), ".rag-cache"));
+async function ne() {
+	if (!R) try {
+		R = await import("./transformers.node-COFdxZ8y.js"), R.env && (R.env.cacheDir = c.join(process.cwd(), ".rag-cache"));
 	} catch (e) {
 		return console.warn("[RAG] Transformers not available:", e), null;
 	}
+	return R;
+}
+async function re() {
+	if (!I) {
+		let e = await ne();
+		if (!e) return null;
+		I = e.pipeline("feature-extraction", F, { dtype: "fp32" });
+	}
 	return I;
 }
-async function ie() {
-	if (!P) {
-		let e = await re();
-		if (!e) return null;
-		P = e.pipeline("feature-extraction", ne, { dtype: "fp32" });
-	}
-	return P;
-}
-async function ae(e) {
+async function ie(e) {
 	try {
-		let t = await ie();
+		let t = await re();
 		if (!t) return null;
 		let n = await t(e, {
 			pooling: "mean",
@@ -1022,7 +1086,7 @@ async function ae(e) {
 		return console.warn("[RAG] Embedding failed:", e), null;
 	}
 }
-async function oe(e) {
+async function ae(e) {
 	let t = [], n = [
 		{
 			dir: c.join(e, "backlog", "docs"),
@@ -1057,7 +1121,7 @@ async function oe(e) {
 		category: "doc"
 	}), t;
 }
-async function se(e) {
+async function oe(e) {
 	let t = e.query?.trim();
 	if (!t) return [];
 	let n = e.mode || "all", r = e.limit || 15, i = e.global ?? !1, a = [];
@@ -1074,11 +1138,11 @@ async function se(e) {
 		if (n === "vector" || n === "all") {
 			let n = c.join(i, ".rag-index");
 			if (d(n)) try {
-				let a = await L();
+				let a = await z();
 				if (a) {
 					let s = await a.connect(n), l = await s.tableNames(), u = l.includes("docs") ? "docs" : l[0];
 					if (u) {
-						let n = await s.openTable(u), a = await ae([t]);
+						let n = await s.openTable(u), a = await ie([t]);
 						if (a && a[0]) {
 							let t = await n.search(a[0]).limit(r).toArray();
 							for (let n of t) {
@@ -1103,7 +1167,7 @@ async function se(e) {
 			}
 		}
 		if (n === "text" || n === "all") try {
-			let n = await oe(i), r = t.toLowerCase();
+			let n = await ae(i), r = t.toLowerCase();
 			for (let t of n) {
 				let n = await u.readFile(t.filePath, "utf-8"), a = m(n), s = a.data?.title || c.basename(t.filePath, ".md"), l = a.content, d = s.toLowerCase().includes(r), f = l.toLowerCase().indexOf(r);
 				if (d || f !== -1) {
@@ -1131,14 +1195,14 @@ async function se(e) {
 	}
 	return o.sort((e, t) => t.score - e.score), o.slice(0, r);
 }
-async function ce(e) {
+async function se(e) {
 	let t = c.join(e, ".rag-index");
 	if (!d(t)) return {
 		hasIndex: !1,
 		chunksCount: 0
 	};
 	try {
-		let e = await L();
+		let e = await z();
 		if (e) {
 			let n = await e.connect(t), r = await n.tableNames(), i = r.includes("docs") ? "docs" : r[0];
 			if (i) return {
@@ -1155,7 +1219,7 @@ async function ce(e) {
 		chunksCount: 0
 	};
 }
-var R = new class {
+var B = new class {
 	watchers = /* @__PURE__ */ new Map();
 	broadcastGitChanged(e) {
 		for (let t of r.getAllWindows()) t.isDestroyed() || t.webContents.send("git:changed", { projectPath: e });
@@ -1309,10 +1373,10 @@ var R = new class {
 			return console.error(`Failed to get diff for ${t}:`, e), "";
 		}
 	}
-}(), z = b(f), B = new class {
+}(), V = b(f), H = new class {
 	async runGh(e, t) {
 		try {
-			let { stdout: n } = await z("gh", e, {
+			let { stdout: n } = await V("gh", e, {
 				cwd: t,
 				env: {
 					...process.env,
@@ -1326,7 +1390,7 @@ var R = new class {
 	}
 	async isGhAvailable() {
 		try {
-			return await z("gh", ["--version"]), !0;
+			return await V("gh", ["--version"]), !0;
 		} catch {
 			return !1;
 		}
@@ -1512,10 +1576,10 @@ var R = new class {
 }();
 //#endregion
 //#region electron/services/docsService.ts
-function V(e) {
+function U(e) {
 	return e.toLowerCase().trim().replace(/[^\w\sа-яё\-]/gi, "").replace(/[\s_]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
 }
-async function H(e) {
+async function W(e) {
 	let t = [], n = c.normalize(e), r = c.join(n, "backlog", "decisions");
 	if (d(r)) try {
 		let e = await u.readdir(r);
@@ -1577,17 +1641,17 @@ async function H(e) {
 	}
 	return t.sort((e, t) => e.title.localeCompare(t.title));
 }
-async function U(e) {
+async function G(e) {
 	let t = c.normalize(e);
 	if (!d(t)) throw Error(`Файл не найден: ${t}`);
 	return await u.readFile(t, "utf-8");
 }
-async function W(e, t) {
+async function ce(e, t) {
 	let n = c.normalize(e), r = c.dirname(n);
 	return d(r) || await u.mkdir(r, { recursive: !0 }), await u.writeFile(n, t, "utf-8"), !0;
 }
 async function le(e, t) {
-	let n = c.normalize(e), r = t.type || "doc", i = t.title.trim(), a = V(i), o, s, l = t.content;
+	let n = c.normalize(e), r = t.type || "doc", i = t.title.trim(), a = U(i), o, s, l = t.content;
 	if (r === "decision") {
 		o = c.join(n, "backlog", "decisions"), await u.mkdir(o, { recursive: !0 });
 		let e = 1;
@@ -1776,7 +1840,7 @@ async function me(e) {
 }
 //#endregion
 //#region node_modules/node-pty/lib/utils.js
-var G = /* @__PURE__ */ n(((t) => {
+var K = /* @__PURE__ */ n(((t) => {
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.loadNativeModule = t.assign = void 0;
 	function n(e) {
 		return [...arguments].slice(1).forEach(function(t) {
@@ -1805,7 +1869,7 @@ var G = /* @__PURE__ */ n(((t) => {
 		throw Error("Failed to load native module: " + t + ".node, checked: " + n.join(", ") + ": " + i);
 	}
 	t.loadNativeModule = r;
-})), K = /* @__PURE__ */ n(((e) => {
+})), q = /* @__PURE__ */ n(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.EventEmitter2 = void 0, e.EventEmitter2 = function() {
 		function e() {
 			this._listeners = [];
@@ -1829,9 +1893,9 @@ var G = /* @__PURE__ */ n(((t) => {
 			for (var n = 0; n < t.length; n++) t[n].call(void 0, e);
 		}, e;
 	}();
-})), q = /* @__PURE__ */ n(((t) => {
+})), J = /* @__PURE__ */ n(((t) => {
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.Terminal = t.DEFAULT_ROWS = t.DEFAULT_COLS = void 0;
-	var n = e("events"), r = K();
+	var n = e("events"), r = q();
 	t.DEFAULT_COLS = 80, t.DEFAULT_ROWS = 24;
 	var i = "", a = "";
 	t.Terminal = function() {
@@ -2043,7 +2107,7 @@ var G = /* @__PURE__ */ n(((t) => {
 		}
 	};
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.ConoutConnection = void 0;
-	var i = e("worker_threads"), a = he(), o = e("path"), s = K(), c = 1e3;
+	var i = e("worker_threads"), a = he(), o = e("path"), s = q(), c = 1e3;
 	t.ConoutConnection = function() {
 		function e(e, t) {
 			var n = this;
@@ -2086,7 +2150,7 @@ var G = /* @__PURE__ */ n(((t) => {
 	}();
 })), _e = /* @__PURE__ */ n(((t) => {
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.argsToCommandLine = t.WindowsPtyAgent = void 0;
-	var n = e("fs"), r = e("os"), i = e("path"), a = e("child_process"), o = e("net"), s = ge(), c = G(), l, u, d = 1e3;
+	var n = e("fs"), r = e("os"), i = e("path"), a = e("child_process"), o = e("net"), s = ge(), c = K(), l, u, d = 1e3;
 	t.WindowsPtyAgent = function() {
 		function e(e, t, r, a, d, p, m, h, g, _) {
 			var v = this;
@@ -2250,7 +2314,7 @@ var G = /* @__PURE__ */ n(((t) => {
 		};
 	})();
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.WindowsTerminal = void 0;
-	var n = q(), r = _e(), i = G(), a = "cmd.exe", o = "Windows Shell";
+	var n = J(), r = _e(), i = K(), a = "cmd.exe", o = "Windows Shell";
 	e.WindowsTerminal = function(e) {
 		t(s, e);
 		function s(t, s, c) {
@@ -2337,7 +2401,7 @@ var G = /* @__PURE__ */ n(((t) => {
 			configurable: !0
 		}), s;
 	}(n.Terminal);
-})), J = /* @__PURE__ */ n(((t) => {
+})), ye = /* @__PURE__ */ n(((t) => {
 	var n = t && t.__extends || (function() {
 		var e = function(t, n) {
 			return e = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(e, t) {
@@ -2355,7 +2419,7 @@ var G = /* @__PURE__ */ n(((t) => {
 		};
 	})();
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.UnixTerminal = void 0;
-	var r = e("fs"), i = e("path"), a = e("tty"), o = q(), s = G(), c = s.loadNativeModule("pty"), l = c.module, u = c.dir + "/spawn-helper";
+	var r = e("fs"), i = e("path"), a = e("tty"), o = J(), s = K(), c = s.loadNativeModule("pty"), l = c.module, u = c.dir + "/spawn-helper";
 	u = i.resolve(__dirname, u), u = u.replace("app.asar", "app.asar.unpacked"), u = u.replace("node_modules.asar", "node_modules.asar.unpacked");
 	var d = "sh", f = "xterm", p = 200;
 	t.UnixTerminal = function(e) {
@@ -2482,9 +2546,9 @@ var G = /* @__PURE__ */ n(((t) => {
 			}
 		}, e;
 	}();
-})), ye = /* @__PURE__ */ t((/* @__PURE__ */ n(((e) => {
+})), be = /* @__PURE__ */ t((/* @__PURE__ */ n(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.native = e.open = e.createTerminal = e.fork = e.spawn = void 0;
-	var t = G(), n = process.platform === "win32" ? ve().WindowsTerminal : J().UnixTerminal;
+	var t = K(), n = process.platform === "win32" ? ve().WindowsTerminal : ye().UnixTerminal;
 	function r(e, t, r) {
 		return new n(e, t, r);
 	}
@@ -2526,7 +2590,7 @@ var G = /* @__PURE__ */ n(((t) => {
 			...process.env,
 			TERM: "xterm-256color",
 			COLORTERM: "truecolor"
-		}, f = d(e.projectPath) ? e.projectPath : process.cwd(), p = ye.spawn(a, o, {
+		}, f = d(e.projectPath) ? e.projectPath : process.cwd(), p = be.spawn(a, o, {
 			name: "xterm-256color",
 			cols: r,
 			rows: i,
@@ -2587,7 +2651,7 @@ var G = /* @__PURE__ */ n(((t) => {
 		} catch {}
 		this.sessions.clear();
 	}
-}(), be = l(import.meta.url), X = c.dirname(be);
+}(), xe = l(import.meta.url), X = c.dirname(xe);
 process.env.DIST = c.join(X, "../dist"), process.env.VITE_PUBLIC = i.isPackaged ? process.env.DIST : c.join(X, "../public");
 var Z = null, Q = process.env.VITE_DEV_SERVER_URL;
 O.on("statusChanged", (e) => {
@@ -2666,7 +2730,7 @@ i.on("window-all-closed", () => {
 }), o.handle("backlog:watchProject", async (e, t) => {
 	k.watch(t, Z);
 });
-function xe(e) {
+function Se(e) {
 	let t = [], n = e.split("\n"), r = !1, i = [], a = !1;
 	for (let e of n) {
 		let n = e.trim();
@@ -2699,7 +2763,7 @@ o.handle("backlog:getTasks", async (e, t) => {
 	try {
 		let e = await u.readdir(n);
 		for (let t of e) if (t.endsWith(".md")) {
-			let e = c.join(n, t), i = await u.readFile(e, "utf-8"), a = m(i), { criteria: o, description: s } = xe(a.content);
+			let e = c.join(n, t), i = await u.readFile(e, "utf-8"), a = m(i), { criteria: o, description: s } = Se(a.content);
 			r.push({
 				id: a.data.id || c.basename(t, ".md").split("-")[0].trim(),
 				title: a.data.title || c.basename(t, ".md"),
@@ -2801,7 +2865,7 @@ o.handle("backlog:getTasks", async (e, t) => {
 	} catch (e) {
 		return console.error("Failed to create task:", e), null;
 	}
-}), o.handle("template:createProject", async (e, t) => await te(t)), o.handle("template:checkAvailable", async (e, t) => await ee(t)), o.handle("process:start", async (e, t, n, r) => await N.startProcess(t, n, r)), o.handle("process:stop", async (e, t) => await N.stopProcess(t)), o.handle("process:list", async (e, t) => await N.listProcessesForProject(t)), o.handle("process:tailLog", async (e, t, n, r = 100) => await N.tailProjectLog(t, n, r)), o.handle("rag:search", async (e, t) => await se(t)), o.handle("rag:getStats", async (e, t) => await ce(t)), o.handle("git:getLog", async (e, t, n = 30) => {
+}), o.handle("template:createProject", async (e, t) => await te(t)), o.handle("template:checkAvailable", async (e, t) => await N(t)), o.handle("process:start", async (e, t, n, r) => await P.startProcess(t, n, r)), o.handle("process:stop", async (e, t) => await P.stopProcess(t)), o.handle("process:list", async (e, t) => await P.listProcessesForProject(t)), o.handle("process:tailLog", async (e, t, n, r = 100) => await P.tailProjectLog(t, n, r)), o.handle("rag:search", async (e, t) => await oe(t)), o.handle("rag:getStats", async (e, t) => await se(t)), o.handle("git:getLog", async (e, t, n = 30) => {
 	try {
 		return d(c.join(t, ".git")) ? (await h(t).log({ maxCount: n })).all.map((e) => ({
 			hash: e.hash,
@@ -2819,7 +2883,7 @@ o.handle("backlog:getTasks", async (e, t) => {
 	} catch (e) {
 		return console.error(`Git status error for ${t}:`, e), null;
 	}
-}), o.handle("git:getRepoDetails", async (e, t) => await R.getRepoDetails(t)), o.handle("git:checkout", async (e, t, n, r = !1) => await R.checkoutBranch(t, n, r)), o.handle("git:createBranch", async (e, t, n) => await R.createBranch(t, n)), o.handle("git:stageFile", async (e, t, n) => await R.stageFile(t, n)), o.handle("git:unstageFile", async (e, t, n) => await R.unstageFile(t, n)), o.handle("git:stageAll", async (e, t) => await R.stageAll(t)), o.handle("git:commit", async (e, t, n, r = !1) => await R.commitChanges(t, n, r)), o.handle("git:getFileDiff", async (e, t, n, r = !1) => await R.getFileDiff(t, n, r)), o.handle("pr:getProviderInfo", async (e, t) => await B.getProviderInfo(t)), o.handle("pr:list", async (e, t, n) => await B.listPullRequests(t, n)), o.handle("pr:create", async (e, t, n) => await B.createPullRequest(t, n)), o.handle("pr:getDiff", async (e, t, n) => await B.getPRDiff(t, n)), o.handle("docs:list", async (e, t) => await H(t)), o.handle("docs:read", async (e, t) => await U(t)), o.handle("docs:save", async (e, t, n) => await W(t, n)), o.handle("docs:create", async (e, t, n) => await le(t, n)), o.handle("milestones:list", async (e, t) => await de(t)), o.handle("milestones:create", async (e, t, n) => await fe(t, n)), o.handle("milestones:save", async (e, t, n) => await pe(t, n)), o.handle("milestones:delete", async (e, t) => await me(t)), o.handle("pty:create", async (e, t) => await Y.createSession(t)), o.handle("pty:write", async (e, t, n) => Y.write(t, n)), o.handle("pty:resize", async (e, t, n, r) => Y.resize(t, n, r)), o.handle("pty:kill", async (e, t) => Y.kill(t)), o.handle("pty:list", async () => Y.listSessions()), o.handle("ai:getConfig", async () => await D.getConfig()), o.handle("ai:saveConfig", async (e, t) => await D.saveConfig(t)), o.handle("ai:getClaudeAuthStatus", async () => await D.getClaudeAuthStatus()), o.handle("ai:startClaudeLogin", async () => (s.openExternal("https://claude.ai/login"), !0)), o.handle("ai:abortStream", async (e, t) => (D.abortStream(t), !0)), o.handle("ai:applyDiff", async (e, t, n, r) => await D.applyDiff(t, n, r)), o.handle("ai:streamChat", async (e, t) => {
+}), o.handle("git:getRepoDetails", async (e, t) => await B.getRepoDetails(t)), o.handle("git:checkout", async (e, t, n, r = !1) => await B.checkoutBranch(t, n, r)), o.handle("git:createBranch", async (e, t, n) => await B.createBranch(t, n)), o.handle("git:stageFile", async (e, t, n) => await B.stageFile(t, n)), o.handle("git:unstageFile", async (e, t, n) => await B.unstageFile(t, n)), o.handle("git:stageAll", async (e, t) => await B.stageAll(t)), o.handle("git:commit", async (e, t, n, r = !1) => await B.commitChanges(t, n, r)), o.handle("git:getFileDiff", async (e, t, n, r = !1) => await B.getFileDiff(t, n, r)), o.handle("pr:getProviderInfo", async (e, t) => await H.getProviderInfo(t)), o.handle("pr:list", async (e, t, n) => await H.listPullRequests(t, n)), o.handle("pr:create", async (e, t, n) => await H.createPullRequest(t, n)), o.handle("pr:getDiff", async (e, t, n) => await H.getPRDiff(t, n)), o.handle("docs:list", async (e, t) => await W(t)), o.handle("docs:read", async (e, t) => await G(t)), o.handle("docs:save", async (e, t, n) => await ce(t, n)), o.handle("docs:create", async (e, t, n) => await le(t, n)), o.handle("milestones:list", async (e, t) => await de(t)), o.handle("milestones:create", async (e, t, n) => await fe(t, n)), o.handle("milestones:save", async (e, t, n) => await pe(t, n)), o.handle("milestones:delete", async (e, t) => await me(t)), o.handle("pty:create", async (e, t) => await Y.createSession(t)), o.handle("pty:write", async (e, t, n) => Y.write(t, n)), o.handle("pty:resize", async (e, t, n, r) => Y.resize(t, n, r)), o.handle("pty:kill", async (e, t) => Y.kill(t)), o.handle("pty:list", async () => Y.listSessions()), o.handle("ai:getConfig", async () => await D.getConfig()), o.handle("ai:saveConfig", async (e, t) => await D.saveConfig(t)), o.handle("ai:getClaudeAuthStatus", async () => await D.getClaudeAuthStatus()), o.handle("ai:startClaudeLogin", async () => (s.openExternal("https://claude.ai/login"), !0)), o.handle("ai:abortStream", async (e, t) => (D.abortStream(t), O.abortSession(t), !0)), o.handle("ai:applyDiff", async (e, t, n, r) => await D.applyDiff(t, n, r)), o.handle("ai:streamChat", async (e, t) => {
 	if (!Z) return;
 	let n = Z;
 	O.runAgentTask(t, (e) => {
@@ -2829,7 +2893,7 @@ o.handle("backlog:getTasks", async (e, t) => {
 	}, (e) => {
 		n.isDestroyed() || n.webContents.send(`ai:error:${t.sessionId}`, e);
 	});
-}), o.handle("claudeBridge:getAllProjectStatuses", async () => O.getAllProjectStatuses()), o.handle("claudeBridge:getProjectStatus", async (e, t) => O.getProjectStatus(t)), o.handle("claudeBridge:sendApprovalResponse", async (e, t, n) => O.sendApprovalResponse(t, n)), o.handle("claudeBridge:getSubagents", async (e, t) => O.getSubagents(t)), o.handle("file:readFile", async (e, t, n) => {
+}), o.handle("claudeBridge:getAllProjectStatuses", async () => O.getAllProjectStatuses()), o.handle("claudeBridge:getProjectStatus", async (e, t) => O.getProjectStatus(t)), o.handle("claudeBridge:sendApprovalResponse", async (e, t, n) => O.sendApprovalResponse(t, n)), o.handle("claudeBridge:getSubagents", async (e, t) => O.getSubagents(t)), o.handle("claudeBridge:getAvailableModels", async () => O.getAvailableModels()), o.handle("file:readFile", async (e, t, n) => {
 	let r = c.isAbsolute(n) ? n : c.join(t, n);
 	return await u.readFile(r, "utf-8");
 }), o.handle("file:writeFile", async (e, t, n, r) => {
@@ -2847,7 +2911,7 @@ o.handle("backlog:getTasks", async (e, t) => {
 		return [];
 	}
 }), o.handle("system:getPlatform", async () => process.platform), i.on("before-quit", () => {
-	N.cleanupAll(), Y.cleanupAll();
+	P.cleanupAll(), Y.cleanupAll();
 }), i.whenReady().then($);
 //#endregion
 export {};

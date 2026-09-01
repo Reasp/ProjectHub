@@ -26,6 +26,7 @@ import { AISettingsModal } from './AISettingsModal';
 import { InteractiveApprovalCard } from './InteractiveApprovalCard';
 import { SubagentsPanel } from './SubagentsPanel';
 import { PromptInputArea } from './PromptInputArea';
+import { ModelSelectorDropdown } from './ModelSelectorDropdown';
 
 export const AIStudioView: React.FC = () => {
   const { t } = useTranslation();
@@ -47,6 +48,7 @@ export const AIStudioView: React.FC = () => {
     fetchConfig,
     fetchClaudeAuth,
     startClaudeLogin,
+    saveConfig,
     setMode,
     setIsSettingsOpen,
     createSession,
@@ -109,8 +111,8 @@ export const AIStudioView: React.FC = () => {
   return (
     <div className="flex-1 flex flex-col h-full bg-[#0d0f17] overflow-hidden">
       {/* 1. Multi-Session Tabs Bar (VS Code Extension Style) */}
-      <div className="bg-[#12141f] border-b border-slate-800/90 flex items-center justify-between px-2 pt-1.5 shrink-0 overflow-x-auto select-none">
-        <div className="flex items-center gap-1 overflow-x-auto max-w-[80%] pb-1 scrollbar-none">
+      <div className="bg-[#12141f] border-b border-slate-800/90 flex items-center justify-between px-2 pt-1.5 shrink-0 select-none relative z-30">
+        <div className="flex items-center gap-1 overflow-x-auto max-w-[45%] lg:max-w-[55%] pb-1 scrollbar-none">
           {projectSessions.map((session) => {
             const isActive = session.id === currentSessionId;
 
@@ -204,6 +206,12 @@ export const AIStudioView: React.FC = () => {
               </span>
             )}
           </button>
+
+          {/* Quick Model Selector Dropdown matching official Claude Code UI */}
+          <ModelSelectorDropdown
+            config={config}
+            onSelectModel={(model) => saveConfig({ ...config, model })}
+          />
 
           {/* Mode Switcher */}
           <div className="flex items-center gap-0.5 bg-[#090b10] p-0.5 rounded-lg border border-slate-800 text-[11px]">

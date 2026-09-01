@@ -96,19 +96,19 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
           ref={textareaRef}
           rows={1}
           value={input}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-gramm="false"
+          data-enable-grammarly="false"
           onChange={(e) => {
             setInput(e.target.value);
             e.target.style.height = 'auto';
             e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px`;
           }}
           onKeyDown={handleKeyDown}
-          placeholder={
-            mode === 'agent'
-              ? 'Опишите задачу или изменение в коде (Agent Mode предложит визуальный Diff)...'
-              : mode === 'architect'
-              ? 'Задайте вопрос по архитектуре, ADR или C4-модели...'
-              : 'Задайте вопрос по проекту...'
-          }
+          placeholder="Спросите Claude Code о проекте или опишите задачу..."
           className="flex-1 bg-transparent text-xs text-white placeholder:text-slate-500 focus:outline-none resize-none font-sans px-2 py-1 leading-relaxed max-h-44"
         />
 

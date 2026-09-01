@@ -3,10 +3,10 @@ id: TASK-17
 title: >-
   Интеграция Claude Studio как обертки Claude Code CLI, поддержка подагентов и
   индикаторы статуса проектов
-status: Review
+status: In Progress
 assignee: []
 created_date: '2026-08-31 23:20'
-updated_date: '2026-08-31 23:28'
+updated_date: '2026-08-31 23:48'
 labels:
   - claude
   - agent

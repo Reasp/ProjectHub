@@ -665,6 +665,7 @@ ipcMain.handle('ai:startClaudeLogin', async () => {
 
 ipcMain.handle('ai:abortStream', async (_event, sessionId: string) => {
   aiAgentService.abortStream(sessionId);
+  claudeBridgeService.abortSession(sessionId);
   return true;
 });
 
@@ -711,6 +712,10 @@ ipcMain.handle('claudeBridge:sendApprovalResponse', async (_event, requestId: st
 
 ipcMain.handle('claudeBridge:getSubagents', async (_event, projectPath: string) => {
   return claudeBridgeService.getSubagents(projectPath);
+});
+
+ipcMain.handle('claudeBridge:getAvailableModels', async () => {
+  return claudeBridgeService.getAvailableModels();
 });
 
 // 12. File System Helpers for AI & Explorer

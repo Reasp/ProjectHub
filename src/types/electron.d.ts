@@ -347,6 +347,7 @@ export interface IElectronAPI {
   getProjectAgentStatus: (projectPath: string) => Promise<ProjectAgentStatus>;
   sendApprovalResponse: (requestId: string, response: { approved: boolean; text?: string }) => Promise<boolean>;
   getSubagents: (projectPath: string) => Promise<SubagentInfo[]>;
+  getAvailableModels: () => Promise<ClaudeModelOption[]>;
   onProjectAgentStatusChanged: (callback: (status: ProjectAgentStatus) => void) => () => void;
   onSubagentUpdated: (callback: (subagent: SubagentInfo) => void) => () => void;
 
@@ -414,6 +415,14 @@ export interface SubagentInfo {
   output?: string;
   startedAt: number;
   completedAt?: number;
+}
+
+export interface ClaudeModelOption {
+  id: string;
+  name: string;
+  description: string;
+  badge?: string;
+  family: 'default' | 'sonnet' | 'opus' | 'haiku' | 'fable';
 }
 
 export interface ClaudeAuthStatus {
