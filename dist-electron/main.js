@@ -555,6 +555,46 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 					} },
 					required: ["query"]
 				}
+			},
+			{
+				name: "ask_question",
+				description: "Задать интерактивный вопрос пользователю с выбором вариантов (радиокнопки, чекбоксы, свой вариант)",
+				input_schema: {
+					type: "object",
+					properties: {
+						title: {
+							type: "string",
+							description: "Краткий заголовок вопроса (например, \"Что делаем?\")"
+						},
+						question: {
+							type: "string",
+							description: "Развернутый текст вопроса пользователю"
+						},
+						options: {
+							type: "array",
+							items: {
+								type: "object",
+								properties: {
+									label: {
+										type: "string",
+										description: "Название варианта ответа"
+									},
+									description: {
+										type: "string",
+										description: "Подробное описание или действие для этого варианта"
+									}
+								},
+								required: ["label"]
+							},
+							description: "Список вариантов ответа (от 2 до 10 вариантов)"
+						},
+						is_multi_select: {
+							type: "boolean",
+							description: "Если true — множественный выбор (чекбоксы), если false — одиночный (радиокнопки)"
+						}
+					},
+					required: ["question", "options"]
+				}
 			}
 		];
 	}
@@ -673,27 +713,133 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 		let t = this.activeProcesses.get(e);
 		t && (t.kill(), this.activeProcesses.delete(e));
 	}
+	parseQuestionData(e) {
+		let t = e.title || "Вопрос от ассистента", n = e.question || e.prompt || e.subtitle || e.description || "", r = !!(e.is_multi_select || e.isMultiSelect || e.multiple), i = [];
+		if (Array.isArray(e.questions) && e.questions.length > 0) {
+			let t = e.questions[0];
+			t.question && (n = t.question), t.is_multi_select !== void 0 && (r = !!t.is_multi_select), Array.isArray(t.options) && (i = t.options);
+		} else Array.isArray(e.options) ? i = e.options : Array.isArray(e.choices) && (i = e.choices);
+		let a = i.map((e, t) => {
+			if (typeof e == "string") {
+				let n = e.indexOf(" - ");
+				return n > 0 ? {
+					id: `opt-${t}`,
+					label: e.slice(0, n).trim(),
+					description: e.slice(n + 3).trim()
+				} : {
+					id: `opt-${t}`,
+					label: e,
+					description: void 0
+				};
+			}
+			return typeof e == "object" && e ? {
+				id: e.id || `opt-${t}`,
+				label: e.label || e.text || e.title || e.name || `Вариант ${t + 1}`,
+				description: e.description || e.desc || e.detail
+			} : {
+				id: `opt-${t}`,
+				label: String(e)
+			};
+		});
+		return {
+			title: t,
+			subtitle: n,
+			options: a,
+			isMultiSelect: r,
+			allowOther: e.allowOther ?? !0
+		};
+	}
+	isPathExcluded(e, t = []) {
+		if (!e || !t || t.length === 0) return !1;
+		let n = e.replace(/\\/g, "/").toLowerCase(), r = c.basename(n);
+		return t.some((e) => {
+			let t = e.trim().replace(/\\/g, "/").toLowerCase();
+			if (!t) return !1;
+			if (t.startsWith("*") && t.endsWith("*")) {
+				let e = t.slice(1, -1);
+				return n.includes(e);
+			}
+			if (t.startsWith("*")) {
+				let e = t.slice(1);
+				return n.endsWith(e);
+			}
+			if (t.endsWith("*")) {
+				let e = t.slice(0, -1);
+				return n.startsWith(e) || r.startsWith(e);
+			}
+			if (t.startsWith("**/")) {
+				let e = t.slice(3);
+				return n.endsWith(e) || r === e;
+			}
+			return n === t || r === t || n.endsWith("/" + t);
+		});
+	}
+	isCommandDenied(e, t = []) {
+		if (!e || !t || t.length === 0) return !1;
+		let n = e.trim().toLowerCase();
+		return t.some((e) => {
+			let t = e.trim().toLowerCase();
+			return t && n.includes(t);
+		});
+	}
 	async runAgentTask(e, t, n, r) {
-		let { sessionId: i, projectPath: a } = e;
-		if (this.setProjectStatus(a, "running", "Агент анализирует задачу..."), e.config.provider === "anthropic" && (!e.config.apiKey || !e.config.apiKey.trim())) return this.runClaudeCliTask(e, t, n, r);
+		let { sessionId: i, projectPath: a } = e, o = !!e.config.autoApprove, s = e.config.autoApproveRules, l = o && (!s || s.allowCommands !== !1), f = o && (!s || s.allowFileWrite !== !1);
+		if (s && s.allowFileRead, o && s && s.allowSubagents, this.setProjectStatus(a, "running", "Агент анализирует задачу..."), e.config.provider === "anthropic" && (!e.config.apiKey || !e.config.apiKey.trim())) return this.runClaudeCliTask(e, t, n, r);
 		try {
 			await O.streamChat(e, async (e) => {
 				if (t(e), e.toolCall) {
 					let n = e.toolCall;
-					if (n.name === "run_command" || n.name === "bash") {
-						let e = n.args.command || n.args.cmd || "", r = {
+					if (n.name === "ask_question" || n.name === "AskUserQuestion") {
+						let e = this.parseQuestionData(n.args), r = {
 							id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
 							sessionId: i,
 							projectPath: a,
-							type: "command",
-							title: `Разрешение на запуск команды: ${e}`,
-							command: e,
-							details: n.args.explanation || "Выполнение команды терминала",
+							type: "question",
+							title: e.title || "Вопрос от ассистента",
+							details: e.subtitle,
+							questionData: e,
 							createdAt: Date.now()
 						};
 						t({ approvalRequest: r });
 						let o = await this.requestApproval(r);
-						if (o.approved) {
+						n.status = o.approved ? "accepted" : "rejected", n.result = o.text || (o.approved ? "Подтверждено пользователем" : "Отклонено пользователем"), t({ toolCall: n });
+					} else if (n.name === "read_file" || n.name === "read") {
+						let e = n.args.filePath || n.args.path || "";
+						if (s?.readExcludePatterns && this.isPathExcluded(e, s.readExcludePatterns)) {
+							let r = {
+								id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+								sessionId: i,
+								projectPath: a,
+								type: "question",
+								title: "Разрешение на чтение защищенного файла",
+								details: `Файл ${e} находится в списке исключений для чтения. Разрешить агенту доступ?`,
+								questionData: {
+									title: "Чтение защищенного файла",
+									subtitle: `Разрешить агенту прочитать файл ${e}?`,
+									options: [{
+										id: "allow",
+										label: "Разрешить чтение",
+										description: "Предоставить агенту содержимое файла"
+									}, {
+										id: "deny",
+										label: "Запретить чтение",
+										description: "Скрыть содержимое файла от агента"
+									}],
+									isMultiSelect: !1,
+									allowOther: !1
+								},
+								createdAt: Date.now()
+							};
+							t({ approvalRequest: r });
+							let o = await this.requestApproval(r);
+							if (!o.approved || o.text?.includes("deny") || o.text?.includes("Запретить")) {
+								n.status = "rejected", n.result = `Доступ к чтению файла ${e} отклонен пользователем`, t({ toolCall: n });
+								return;
+							}
+						}
+					} else if (n.name === "run_command" || n.name === "bash") {
+						let e = n.args.command || n.args.cmd || "", r = s?.commandDenyList && this.isCommandDenied(e, s.commandDenyList);
+						if (l && !r) {
 							this.setProjectStatus(a, "running", `Выполняется: ${e}`);
 							try {
 								let r = "", i = await this.executeSubprocess(e, a, (e) => {
@@ -703,8 +849,65 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 							} catch (e) {
 								n.status = "error", n.result = `Error: ${e.message}`, t({ toolCall: n });
 							}
-						} else n.status = "rejected", n.result = `Отклонено пользователем: ${o.text || "Без комментария"}`, t({ toolCall: n });
+						} else {
+							let o = {
+								id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+								sessionId: i,
+								projectPath: a,
+								type: "command",
+								title: r ? `⚠️ Заблокированная команда требует подтверждения: ${e}` : `Разрешение на запуск команды: ${e}`,
+								command: e,
+								details: n.args.explanation || (r ? "Команда находится в списке запрещенных для авто-запуска" : "Выполнение команды терминала"),
+								createdAt: Date.now()
+							};
+							t({ approvalRequest: o });
+							let s = await this.requestApproval(o);
+							if (s.approved) {
+								this.setProjectStatus(a, "running", `Выполняется: ${e}`);
+								try {
+									let r = "", i = await this.executeSubprocess(e, a, (e) => {
+										r += e, n.status = "running", n.result = r, t({ toolCall: { ...n } });
+									});
+									n.status = "accepted", n.result = i, t({ toolCall: n });
+								} catch (e) {
+									n.status = "error", n.result = `Error: ${e.message}`, t({ toolCall: n });
+								}
+							} else n.status = "rejected", n.result = `Отклонено пользователем: ${s.text || "Без комментария"}`, t({ toolCall: n });
+						}
 						this.setProjectStatus(a, "running", "Обработка результатов...");
+					} else if (n.name === "write_file" || n.name === "write_to_file") {
+						let e = n.args.filePath || n.args.path || "", r = n.args.content || "", o = s?.writeExcludePatterns && this.isPathExcluded(e, s.writeExcludePatterns);
+						if (f && !o) await O.applyDiff(a, e, r), n.status = "accepted", n.result = `Файл ${e} успешно записан`, t({ toolCall: n });
+						else {
+							let s = "", l = c.isAbsolute(e) ? e : c.join(a, e);
+							if (d(l)) try {
+								s = await u.readFile(l, "utf-8");
+							} catch {}
+							let f = O.generateDiff(s, r, e);
+							n.diff = {
+								filePath: e,
+								oldContent: s,
+								newContent: r,
+								patch: f
+							};
+							let p = {
+								id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+								sessionId: i,
+								projectPath: a,
+								type: "file_write",
+								title: o ? `⚠️ Файл в списке исключений: ${e}` : `Разрешение на запись файла: ${e}`,
+								filePath: e,
+								details: o ? "Файл защищен списком исключений авто-одобрения" : n.args.explanation || "Изменение содержимого файла",
+								diff: n.diff,
+								createdAt: Date.now()
+							};
+							t({
+								approvalRequest: p,
+								toolCall: n
+							});
+							let m = await this.requestApproval(p);
+							m.approved ? (await O.applyDiff(a, e, r), n.status = "accepted", n.result = `Файл ${e} успешно сохранен`, t({ toolCall: n })) : (n.status = "rejected", n.result = `Отклонено пользователем: ${m.text || "Без комментария"}`, t({ toolCall: n }));
+						}
 					} else if (n.name === "spawn_subagent" || n.name === "dispatch_agent") {
 						let e = n.args.task || n.args.prompt || "Подзадача", r = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, o = {
 							id: r,
@@ -744,7 +947,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 			return;
 		}
 		let c = e.claudeCliSessionId || this.sessionClaudeCliIds.get(i), l = ["-p"];
-		c && l.push("--resume", c), e.config.model && e.config.model !== "default" && l.push("--model", e.config.model), l.push("--output-format", "stream-json", "--verbose");
+		c && l.push("--resume", c), e.config.model && e.config.model !== "default" && l.push("--model", e.config.model), l.push("--dangerously-skip-permissions"), l.push("--output-format", "stream-json", "--verbose");
 		let u = p("claude", l, {
 			cwd: a,
 			shell: !0,
@@ -761,21 +964,21 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 		});
 		this.activeProcesses.set(i, u), u.stdin.write(s, "utf-8"), u.stdin.end();
 		let d = "", f = "", m = [], h = "";
-		u.stdout.on("data", async (e) => {
-			h += e.toString("utf-8");
-			let n = h.split("\n");
-			h = n.pop() || "";
-			for (let e of n) {
-				let n = e.trim();
-				if (!(!n || !n.startsWith("{"))) try {
-					let e = JSON.parse(n);
-					if (e.session_id && (this.sessionClaudeCliIds.set(i, e.session_id), t({ claudeCliSessionId: e.session_id })), e.type === "rate_limit_event" || e.rate_limit_info) {
-						let n = e.rate_limit_info || e, r = n.utilization ?? n.unifiedWindows?.[0]?.utilization, i = n.resetsAt || n.reset_at || n.unifiedWindows?.[0]?.resetsAt;
+		u.stdout.on("data", async (n) => {
+			h += n.toString("utf-8");
+			let r = h.split("\n");
+			h = r.pop() || "";
+			for (let n of r) {
+				let r = n.trim();
+				if (!(!r || !r.startsWith("{"))) try {
+					let n = JSON.parse(r);
+					if (n.session_id && (this.sessionClaudeCliIds.set(i, n.session_id), t({ claudeCliSessionId: n.session_id })), n.type === "rate_limit_event" || n.rate_limit_info) {
+						let e = n.rate_limit_info || n, r = e.utilization ?? e.unifiedWindows?.[0]?.utilization, i = e.resetsAt || e.reset_at || e.unifiedWindows?.[0]?.resetsAt;
 						t({ rateLimitWarning: {
 							id: `rl-${Date.now()}`,
-							type: n.status === "throttled" ? "throttled" : "rate_limit",
-							title: n.status === "throttled" ? "Достигнут лимит запросов Claude Code" : "Приближение к лимиту запросов Claude Code",
-							message: n.message || `Использовано ${r ? Math.round(r * 100) : 85}% доступного лимита запросов.`,
+							type: e.status === "throttled" ? "throttled" : "rate_limit",
+							title: e.status === "throttled" ? "Достигнут лимит запросов Claude Code" : "Приближение к лимиту запросов Claude Code",
+							message: e.message || `Использовано ${r ? Math.round(r * 100) : 85}% доступного лимита запросов.`,
 							utilization: r ? Math.round(r * 100) : 85,
 							resetsAt: i ? new Date(i).toLocaleTimeString([], {
 								hour: "2-digit",
@@ -784,37 +987,99 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 							timestamp: Date.now()
 						} });
 					}
-					if (e.type === "assistant" && e.message?.content) {
-						for (let n of e.message.content) if (n.type === "text") {
-							d += n.text, t({ text: n.text });
-							let e = n.text.toLowerCase();
+					if (n.type === "assistant" && n.message?.content) {
+						for (let r of n.message.content) if (r.type === "text") {
+							d += r.text, t({ text: r.text });
+							let e = r.text.toLowerCase();
 							if (e.includes("rate limit") || e.includes("used ") && e.includes("% of your")) {
-								let e = n.text.match(/(\d+)%/), r = e ? parseInt(e[1], 10) : 85;
+								let e = r.text.match(/(\d+)%/), n = e ? parseInt(e[1], 10) : 85;
 								t({ rateLimitWarning: {
 									id: `rl-${Date.now()}`,
-									type: r >= 100 ? "throttled" : "rate_limit",
-									title: r >= 100 ? "Достигнут лимит запросов Claude Code" : `Приближение к лимиту запросов (${r}%)`,
-									message: n.text,
-									utilization: r,
+									type: n >= 100 ? "throttled" : "rate_limit",
+									title: n >= 100 ? "Достигнут лимит запросов Claude Code" : `Приближение к лимиту запросов (${n}%)`,
+									message: r.text,
+									utilization: n,
 									timestamp: Date.now()
 								} });
 							}
-						} else if (n.type === "thinking") f += n.thinking, t({ thought: n.thinking });
-						else if (n.type === "tool_use") {
-							let e = {
-								id: n.id || `tool-${Date.now()}`,
-								name: n.name,
-								args: n.input || {}
+						} else if (r.type === "thinking") f += r.thinking, t({ thought: r.thinking });
+						else if (r.type === "tool_use") {
+							let n = {
+								id: r.id || `tool-${Date.now()}`,
+								name: r.name,
+								args: r.input || {}
 							};
-							m.push(e), t({ toolCall: e });
+							if (m.push(n), t({ toolCall: n }), r.name === "AskUserQuestion" || r.name === "ask_question" || r.name === "ask_user") {
+								let e = this.parseQuestionData(r.input || {});
+								t({ approvalRequest: {
+									id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+									sessionId: i,
+									projectPath: a,
+									type: "question",
+									title: e.title || "Вопрос от Claude Code",
+									details: e.subtitle,
+									questionData: e,
+									createdAt: Date.now()
+								} });
+							} else if (r.name === "Write" || r.name === "Edit") {
+								let n = r.input?.file_path || r.input?.path || r.input?.target || "", o = e.config.autoApproveRules, s = o?.writeExcludePatterns && this.isPathExcluded(n, o.writeExcludePatterns);
+								(!e.config.autoApprove || s || o && o.allowFileWrite === !1) && t({ approvalRequest: {
+									id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+									sessionId: i,
+									projectPath: a,
+									type: "file_write",
+									title: s ? `⚠️ Файл в списке исключений: ${n}` : `Запись в файл: ${n}`,
+									filePath: n,
+									details: s ? "Файл защищен списком исключений авто-одобрения" : `Claude Code запрашивает запись в файл ${n}`,
+									createdAt: Date.now()
+								} });
+							} else if (r.name === "Read" || r.name === "read_file") {
+								let n = r.input?.file_path || r.input?.path || r.input?.target || "", o = e.config.autoApproveRules;
+								o?.readExcludePatterns && this.isPathExcluded(n, o.readExcludePatterns) && t({ approvalRequest: {
+									id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+									sessionId: i,
+									projectPath: a,
+									type: "question",
+									title: "Чтение защищенного файла",
+									details: `Файл ${n} находится в списке исключений для чтения. Разрешить Claude Code доступ?`,
+									questionData: {
+										title: "Чтение защищенного файла",
+										subtitle: `Разрешить Claude Code прочитать ${n}?`,
+										options: [{
+											id: "allow",
+											label: "Разрешить чтение",
+											description: "Предоставить доступ к файлу"
+										}, {
+											id: "deny",
+											label: "Запретить чтение",
+											description: "Заблокировать чтение"
+										}],
+										isMultiSelect: !1,
+										allowOther: !1
+									},
+									createdAt: Date.now()
+								} });
+							} else if (r.name === "Bash" || r.name === "bash") {
+								let n = r.input?.command || r.input?.cmd || "", o = e.config.autoApproveRules, s = o?.commandDenyList && this.isCommandDenied(n, o.commandDenyList);
+								(!e.config.autoApprove || s || o && o.allowCommands === !1) && t({ approvalRequest: {
+									id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+									sessionId: i,
+									projectPath: a,
+									type: "command",
+									title: s ? `⚠️ Заблокированная команда: ${n}` : `Команда терминала: ${n}`,
+									command: n,
+									details: s ? "Команда находится в списке запрещенных для авто-запуска" : `Claude Code выполняет команду ${n}`,
+									createdAt: Date.now()
+								} });
+							}
 						}
-					} else e.type === "result" && e.result && typeof e.result == "string" && !d && (d = e.result, t({ text: e.result }));
+					} else n.type === "result" && n.result && typeof n.result == "string" && !d && (d = n.result, t({ text: n.result }));
 				} catch {
-					(n.includes("rate limit") || n.includes("429 Too Many")) && t({ rateLimitWarning: {
+					(r.includes("rate limit") || r.includes("429 Too Many")) && t({ rateLimitWarning: {
 						id: `rl-${Date.now()}`,
 						type: "rate_limit",
 						title: "Предупреждение о лимитах Claude Code",
-						message: n,
+						message: r,
 						timestamp: Date.now()
 					} });
 				}

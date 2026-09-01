@@ -388,6 +388,20 @@ export interface ProjectAgentStatus {
   updatedAt: number;
 }
 
+export interface QuestionOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface QuestionData {
+  title: string;
+  subtitle?: string;
+  options: QuestionOption[];
+  isMultiSelect?: boolean;
+  allowOther?: boolean;
+}
+
 export interface ApprovalRequest {
   id: string;
   sessionId: string;
@@ -403,6 +417,7 @@ export interface ApprovalRequest {
     newContent: string;
     patch: string;
   };
+  questionData?: QuestionData;
   createdAt: number;
 }
 
@@ -446,6 +461,17 @@ export interface ClaudeAuthStatus {
   organizationName?: string;
 }
 
+export interface AutoApproveRules {
+  enabled: boolean;
+  allowCommands: boolean;
+  allowFileWrite: boolean;
+  allowFileRead: boolean;
+  allowSubagents: boolean;
+  writeExcludePatterns: string[];
+  readExcludePatterns: string[];
+  commandDenyList: string[];
+}
+
 export interface AIProviderConfig {
   provider: 'anthropic' | 'openrouter' | 'deepseek' | 'ollama' | 'custom';
   apiKey?: string;
@@ -453,6 +479,8 @@ export interface AIProviderConfig {
   baseUrl?: string;
   temperature?: number;
   thinkingBudget?: number;
+  autoApprove?: boolean;
+  autoApproveRules?: AutoApproveRules;
 }
 
 export interface AIToolCall {

@@ -24,6 +24,20 @@ export interface ProjectAgentStatus {
   updatedAt: number;
 }
 
+export interface QuestionOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface QuestionData {
+  title: string;
+  subtitle?: string;
+  options: QuestionOption[];
+  isMultiSelect?: boolean;
+  allowOther?: boolean;
+}
+
 export interface ApprovalRequest {
   id: string;
   sessionId: string;
@@ -39,6 +53,7 @@ export interface ApprovalRequest {
     newContent: string;
     patch: string;
   };
+  questionData?: QuestionData;
   createdAt: number;
 }
 
@@ -241,6 +256,98 @@ class ClaudeBridgeService extends EventEmitter {
     }
   }
 
+  public parseQuestionData(args: Record<string, any>): QuestionData {
+    let title = args.title || 'Вопрос от ассистента';
+    let subtitle = args.question || args.prompt || args.subtitle || args.description || '';
+    let isMultiSelect = Boolean(args.is_multi_select || args.isMultiSelect || args.multiple);
+    let rawOptions: any[] = [];
+
+    if (Array.isArray(args.questions) && args.questions.length > 0) {
+      const q0 = args.questions[0];
+      if (q0.question) subtitle = q0.question;
+      if (q0.is_multi_select !== undefined) isMultiSelect = Boolean(q0.is_multi_select);
+      if (Array.isArray(q0.options)) rawOptions = q0.options;
+    } else if (Array.isArray(args.options)) {
+      rawOptions = args.options;
+    } else if (Array.isArray(args.choices)) {
+      rawOptions = args.choices;
+    }
+
+    const options: QuestionOption[] = rawOptions.map((opt, idx) => {
+      if (typeof opt === 'string') {
+        const dashIdx = opt.indexOf(' - ');
+        if (dashIdx > 0) {
+          return {
+            id: `opt-${idx}`,
+            label: opt.slice(0, dashIdx).trim(),
+            description: opt.slice(dashIdx + 3).trim()
+          };
+        }
+        return {
+          id: `opt-${idx}`,
+          label: opt,
+          description: undefined
+        };
+      } else if (typeof opt === 'object' && opt !== null) {
+        return {
+          id: opt.id || `opt-${idx}`,
+          label: opt.label || opt.text || opt.title || opt.name || `Вариант ${idx + 1}`,
+          description: opt.description || opt.desc || opt.detail
+        };
+      }
+      return {
+        id: `opt-${idx}`,
+        label: String(opt)
+      };
+    });
+
+    return {
+      title,
+      subtitle,
+      options,
+      isMultiSelect,
+      allowOther: args.allowOther ?? true
+    };
+  }
+
+  public isPathExcluded(filePath: string, patterns: string[] = []): boolean {
+    if (!filePath || !patterns || patterns.length === 0) return false;
+    const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+    const baseName = path.basename(normalized);
+
+    return patterns.some((rawPattern) => {
+      const pattern = rawPattern.trim().replace(/\\/g, '/').toLowerCase();
+      if (!pattern) return false;
+
+      if (pattern.startsWith('*') && pattern.endsWith('*')) {
+        const sub = pattern.slice(1, -1);
+        return normalized.includes(sub);
+      }
+      if (pattern.startsWith('*')) {
+        const ext = pattern.slice(1);
+        return normalized.endsWith(ext);
+      }
+      if (pattern.endsWith('*')) {
+        const prefix = pattern.slice(0, -1);
+        return normalized.startsWith(prefix) || baseName.startsWith(prefix);
+      }
+      if (pattern.startsWith('**/')) {
+        const sub = pattern.slice(3);
+        return normalized.endsWith(sub) || baseName === sub;
+      }
+      return normalized === pattern || baseName === pattern || normalized.endsWith('/' + pattern);
+    });
+  }
+
+  public isCommandDenied(command: string, denyList: string[] = []): boolean {
+    if (!command || !denyList || denyList.length === 0) return false;
+    const normCmd = command.trim().toLowerCase();
+    return denyList.some((denied) => {
+      const d = denied.trim().toLowerCase();
+      return d && normCmd.includes(d);
+    });
+  }
+
   /**
    * Run autonomous agent loop with Human-in-the-Loop approvals and subagents
    */
@@ -258,6 +365,13 @@ class ClaudeBridgeService extends EventEmitter {
     onError: (err: string) => void
   ): Promise<void> {
     const { sessionId, projectPath } = req;
+    const isMasterAutoApprove = Boolean(req.config.autoApprove);
+    const rules = req.config.autoApproveRules;
+    const canAutoCommands = isMasterAutoApprove && (rules ? rules.allowCommands !== false : true);
+    const canAutoWrite = isMasterAutoApprove && (rules ? rules.allowFileWrite !== false : true);
+    const canAutoRead = rules ? rules.allowFileRead !== false : true;
+    const canAutoSubagents = isMasterAutoApprove && (rules ? rules.allowSubagents !== false : true);
+
     this.setProjectStatus(projectPath, 'running', 'Агент анализирует задачу...');
 
     // If using Anthropic without API key, run directly via local Claude CLI subscription!
@@ -272,29 +386,69 @@ class ClaudeBridgeService extends EventEmitter {
         async (chunk) => {
           onChunk(chunk);
 
-          // If tool call generated, check if it needs approval
+          // If tool call generated, check if it needs approval or interactive question
           if (chunk.toolCall) {
             const tc = chunk.toolCall;
 
-            if (tc.name === 'run_command' || tc.name === 'bash') {
-              const cmd = tc.args.command || tc.args.cmd || '';
+            if (tc.name === 'ask_question' || tc.name === 'AskUserQuestion') {
+              const qData = this.parseQuestionData(tc.args);
               const approvalReq: ApprovalRequest = {
                 id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                 sessionId,
                 projectPath,
-                type: 'command',
-                title: `Разрешение на запуск команды: ${cmd}`,
-                command: cmd,
-                details: tc.args.explanation || 'Выполнение команды терминала',
+                type: 'question',
+                title: qData.title || 'Вопрос от ассистента',
+                details: qData.subtitle,
+                questionData: qData,
                 createdAt: Date.now()
               };
 
               onChunk({ approvalRequest: approvalReq });
               const res = await this.requestApproval(approvalReq);
+              tc.status = res.approved ? 'accepted' : 'rejected';
+              tc.result = res.text || (res.approved ? 'Подтверждено пользователем' : 'Отклонено пользователем');
+              onChunk({ toolCall: tc });
+            } else if (tc.name === 'read_file' || tc.name === 'read') {
+              const filePath = tc.args.filePath || tc.args.path || '';
+              const isExcludedFromRead = rules?.readExcludePatterns && this.isPathExcluded(filePath, rules.readExcludePatterns);
 
-              if (res.approved) {
+              if (isExcludedFromRead) {
+                const approvalReq: ApprovalRequest = {
+                  id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  sessionId,
+                  projectPath,
+                  type: 'question',
+                  title: `Разрешение на чтение защищенного файла`,
+                  details: `Файл ${filePath} находится в списке исключений для чтения. Разрешить агенту доступ?`,
+                  questionData: {
+                    title: 'Чтение защищенного файла',
+                    subtitle: `Разрешить агенту прочитать файл ${filePath}?`,
+                    options: [
+                      { id: 'allow', label: 'Разрешить чтение', description: 'Предоставить агенту содержимое файла' },
+                      { id: 'deny', label: 'Запретить чтение', description: 'Скрыть содержимое файла от агента' }
+                    ],
+                    isMultiSelect: false,
+                    allowOther: false
+                  },
+                  createdAt: Date.now()
+                };
+
+                onChunk({ approvalRequest: approvalReq });
+                const res = await this.requestApproval(approvalReq);
+                if (!res.approved || res.text?.includes('deny') || res.text?.includes('Запретить')) {
+                  tc.status = 'rejected';
+                  tc.result = `Доступ к чтению файла ${filePath} отклонен пользователем`;
+                  onChunk({ toolCall: tc });
+                  return;
+                }
+              }
+            } else if (tc.name === 'run_command' || tc.name === 'bash') {
+              const cmd = tc.args.command || tc.args.cmd || '';
+              const isDenied = rules?.commandDenyList && this.isCommandDenied(cmd, rules.commandDenyList);
+              const shouldAutoRun = canAutoCommands && !isDenied;
+
+              if (shouldAutoRun) {
                 this.setProjectStatus(projectPath, 'running', `Выполняется: ${cmd}`);
-                // Execute command with real-time streaming output
                 try {
                   let liveOutput = '';
                   const execOut = await this.executeSubprocess(cmd, projectPath, (chunkText) => {
@@ -312,11 +466,92 @@ class ClaudeBridgeService extends EventEmitter {
                   onChunk({ toolCall: tc });
                 }
               } else {
-                tc.status = 'rejected';
-                tc.result = `Отклонено пользователем: ${res.text || 'Без комментария'}`;
-                onChunk({ toolCall: tc });
+                const approvalReq: ApprovalRequest = {
+                  id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  sessionId,
+                  projectPath,
+                  type: 'command',
+                  title: isDenied ? `⚠️ Заблокированная команда требует подтверждения: ${cmd}` : `Разрешение на запуск команды: ${cmd}`,
+                  command: cmd,
+                  details: tc.args.explanation || (isDenied ? 'Команда находится в списке запрещенных для авто-запуска' : 'Выполнение команды терминала'),
+                  createdAt: Date.now()
+                };
+
+                onChunk({ approvalRequest: approvalReq });
+                const res = await this.requestApproval(approvalReq);
+
+                if (res.approved) {
+                  this.setProjectStatus(projectPath, 'running', `Выполняется: ${cmd}`);
+                  try {
+                    let liveOutput = '';
+                    const execOut = await this.executeSubprocess(cmd, projectPath, (chunkText) => {
+                      liveOutput += chunkText;
+                      tc.status = 'running';
+                      tc.result = liveOutput;
+                      onChunk({ toolCall: { ...tc } });
+                    });
+                    tc.status = 'accepted';
+                    tc.result = execOut;
+                    onChunk({ toolCall: tc });
+                  } catch (e: any) {
+                    tc.status = 'error';
+                    tc.result = `Error: ${e.message}`;
+                    onChunk({ toolCall: tc });
+                  }
+                } else {
+                  tc.status = 'rejected';
+                  tc.result = `Отклонено пользователем: ${res.text || 'Без комментария'}`;
+                  onChunk({ toolCall: tc });
+                }
               }
               this.setProjectStatus(projectPath, 'running', 'Обработка результатов...');
+            } else if (tc.name === 'write_file' || tc.name === 'write_to_file') {
+              const filePath = tc.args.filePath || tc.args.path || '';
+              const content = tc.args.content || '';
+              const isExcluded = rules?.writeExcludePatterns && this.isPathExcluded(filePath, rules.writeExcludePatterns);
+              const shouldAutoWrite = canAutoWrite && !isExcluded;
+
+              if (shouldAutoWrite) {
+                await aiAgentService.applyDiff(projectPath, filePath, content);
+                tc.status = 'accepted';
+                tc.result = `Файл ${filePath} успешно записан`;
+                onChunk({ toolCall: tc });
+              } else {
+                let oldContent = '';
+                const fullPath = path.isAbsolute(filePath) ? filePath : path.join(projectPath, filePath);
+                if (existsSync(fullPath)) {
+                  try {
+                    oldContent = await fs.readFile(fullPath, 'utf-8');
+                  } catch {}
+                }
+                const patch = aiAgentService.generateDiff(oldContent, content, filePath);
+                tc.diff = { filePath, oldContent, newContent: content, patch };
+
+                const approvalReq: ApprovalRequest = {
+                  id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                  sessionId,
+                  projectPath,
+                  type: 'file_write',
+                  title: isExcluded ? `⚠️ Файл в списке исключений: ${filePath}` : `Разрешение на запись файла: ${filePath}`,
+                  filePath,
+                  details: isExcluded ? 'Файл защищен списком исключений авто-одобрения' : (tc.args.explanation || 'Изменение содержимого файла'),
+                  diff: tc.diff,
+                  createdAt: Date.now()
+                };
+
+                onChunk({ approvalRequest: approvalReq, toolCall: tc });
+                const res = await this.requestApproval(approvalReq);
+                if (res.approved) {
+                  await aiAgentService.applyDiff(projectPath, filePath, content);
+                  tc.status = 'accepted';
+                  tc.result = `Файл ${filePath} успешно сохранен`;
+                  onChunk({ toolCall: tc });
+                } else {
+                  tc.status = 'rejected';
+                  tc.result = `Отклонено пользователем: ${res.text || 'Без комментария'}`;
+                  onChunk({ toolCall: tc });
+                }
+              }
             } else if (tc.name === 'spawn_subagent' || tc.name === 'dispatch_agent') {
               const subTask = tc.args.task || tc.args.prompt || 'Подзадача';
               const subagentId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -391,6 +626,7 @@ class ClaudeBridgeService extends EventEmitter {
     if (req.config.model && req.config.model !== 'default') {
       cliArgs.push('--model', req.config.model);
     }
+    cliArgs.push('--dangerously-skip-permissions');
     cliArgs.push('--output-format', 'stream-json', '--verbose');
 
     const child = spawn(
@@ -484,6 +720,87 @@ class ClaudeBridgeService extends EventEmitter {
                 };
                 toolCalls.push(tc);
                 onChunk({ toolCall: tc });
+
+                // Detect interactive questions or tool approvals
+                if (item.name === 'AskUserQuestion' || item.name === 'ask_question' || item.name === 'ask_user') {
+                  const qData = this.parseQuestionData(item.input || {});
+                  const approvalReq: ApprovalRequest = {
+                    id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                    sessionId,
+                    projectPath,
+                    type: 'question',
+                    title: qData.title || 'Вопрос от Claude Code',
+                    details: qData.subtitle,
+                    questionData: qData,
+                    createdAt: Date.now()
+                  };
+                  onChunk({ approvalRequest: approvalReq });
+                } else if (item.name === 'Write' || item.name === 'Edit') {
+                  const filePath = item.input?.file_path || item.input?.path || item.input?.target || '';
+                  const rules = req.config.autoApproveRules;
+                  const isExcluded = rules?.writeExcludePatterns && this.isPathExcluded(filePath, rules.writeExcludePatterns);
+                  const shouldPrompt = !req.config.autoApprove || isExcluded || (rules && rules.allowFileWrite === false);
+
+                  if (shouldPrompt) {
+                    const approvalReq: ApprovalRequest = {
+                      id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                      sessionId,
+                      projectPath,
+                      type: 'file_write',
+                      title: isExcluded ? `⚠️ Файл в списке исключений: ${filePath}` : `Запись в файл: ${filePath}`,
+                      filePath,
+                      details: isExcluded ? 'Файл защищен списком исключений авто-одобрения' : `Claude Code запрашивает запись в файл ${filePath}`,
+                      createdAt: Date.now()
+                    };
+                    onChunk({ approvalRequest: approvalReq });
+                  }
+                } else if (item.name === 'Read' || item.name === 'read_file') {
+                  const filePath = item.input?.file_path || item.input?.path || item.input?.target || '';
+                  const rules = req.config.autoApproveRules;
+                  const isExcluded = rules?.readExcludePatterns && this.isPathExcluded(filePath, rules.readExcludePatterns);
+
+                  if (isExcluded) {
+                    const approvalReq: ApprovalRequest = {
+                      id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                      sessionId,
+                      projectPath,
+                      type: 'question',
+                      title: `Чтение защищенного файла`,
+                      details: `Файл ${filePath} находится в списке исключений для чтения. Разрешить Claude Code доступ?`,
+                      questionData: {
+                        title: 'Чтение защищенного файла',
+                        subtitle: `Разрешить Claude Code прочитать ${filePath}?`,
+                        options: [
+                          { id: 'allow', label: 'Разрешить чтение', description: 'Предоставить доступ к файлу' },
+                          { id: 'deny', label: 'Запретить чтение', description: 'Заблокировать чтение' }
+                        ],
+                        isMultiSelect: false,
+                        allowOther: false
+                      },
+                      createdAt: Date.now()
+                    };
+                    onChunk({ approvalRequest: approvalReq });
+                  }
+                } else if (item.name === 'Bash' || item.name === 'bash') {
+                  const cmd = item.input?.command || item.input?.cmd || '';
+                  const rules = req.config.autoApproveRules;
+                  const isDenied = rules?.commandDenyList && this.isCommandDenied(cmd, rules.commandDenyList);
+                  const shouldPrompt = !req.config.autoApprove || isDenied || (rules && rules.allowCommands === false);
+
+                  if (shouldPrompt) {
+                    const approvalReq: ApprovalRequest = {
+                      id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                      sessionId,
+                      projectPath,
+                      type: 'command',
+                      title: isDenied ? `⚠️ Заблокированная команда: ${cmd}` : `Команда терминала: ${cmd}`,
+                      command: cmd,
+                      details: isDenied ? 'Команда находится в списке запрещенных для авто-запуска' : `Claude Code выполняет команду ${cmd}`,
+                      createdAt: Date.now()
+                    };
+                    onChunk({ approvalRequest: approvalReq });
+                  }
+                }
               }
             }
           } else if (event.type === 'result') {

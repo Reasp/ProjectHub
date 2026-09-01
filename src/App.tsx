@@ -117,7 +117,7 @@ export const App: React.FC = () => {
   ]);
 
   return (
-    <div className="flex h-screen w-screen bg-[#0f1117] text-slate-100 overflow-hidden font-sans select-none">
+    <div className="flex h-screen w-screen bg-[#0f1117] text-slate-100 overflow-hidden font-sans">
       {/* Left Sidebar */}
       <Sidebar />
 

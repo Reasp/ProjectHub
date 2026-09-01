@@ -13,7 +13,8 @@ import {
   GitFork,
   Settings,
   Trash2,
-  Activity
+  Activity,
+  ShieldCheck
 } from 'lucide-react';
 import { useAIStudioStore, type AISession } from '../../store/useAIStudioStore';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -222,6 +223,28 @@ export const AIStudioView: React.FC = () => {
             onSelectModel={(model) => saveConfig({ ...config, model })}
           />
 
+          {/* Auto-Approve Quick Toggle */}
+          <button
+            type="button"
+            onClick={() => saveConfig({ ...config, autoApprove: !config.autoApprove })}
+            title={config.autoApprove ? t.aiStudio.autoApproveOn : t.aiStudio.autoApproveOff}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition ${
+              config.autoApprove
+                ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-300 shadow-sm'
+                : 'bg-slate-800/80 border-slate-700/60 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <ShieldCheck className={`w-3.5 h-3.5 ${config.autoApprove ? 'text-emerald-400' : 'text-slate-400'}`} />
+            <span className="hidden xl:inline">{t.aiStudio.autoApprove}</span>
+            <span
+              className={`px-1 py-0.2 rounded text-[9px] font-mono font-bold uppercase ${
+                config.autoApprove ? 'bg-emerald-500/30 text-emerald-200' : 'bg-slate-700/80 text-slate-400'
+              }`}
+            >
+              {config.autoApprove ? 'ON' : 'OFF'}
+            </span>
+          </button>
+
           {/* Mode Switcher */}
           <div className="flex items-center gap-0.5 bg-[#090b10] p-0.5 rounded-lg border border-slate-800 text-[11px]">
             {(['agent', 'chat', 'architect'] as const).map((m) => (
@@ -282,7 +305,7 @@ export const AIStudioView: React.FC = () => {
       {/* 2. Main Content Split: Messages Feed + Live Activity Sidebar */}
       <div className="flex-1 flex overflow-hidden">
         {/* Messages Feed */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5 select-text">
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-8 max-w-xl mx-auto space-y-6">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-indigo-600/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-xl shadow-amber-600/10">
@@ -486,19 +509,20 @@ export const AIStudioView: React.FC = () => {
             })
           )}
 
-          {/* Pending Interactive Approval Cards (Human-in-the-Loop) */}
-          {projectApprovals.map((req) => (
+          {/* Pending Interactive Approval Cards (Queue: One at a time) */}
+          {projectApprovals.length > 0 && (
             <InteractiveApprovalCard
-              key={req.id}
-              request={req}
+              key={projectApprovals[0].id}
+              request={projectApprovals[0]}
+              queueInfo={{ current: 1, total: projectApprovals.length }}
               onApprove={(customText) =>
-                sendApprovalResponse(projectPath, req.id, true, customText)
+                sendApprovalResponse(projectPath, projectApprovals[0].id, true, customText)
               }
               onReject={(customText) =>
-                sendApprovalResponse(projectPath, req.id, false, customText)
+                sendApprovalResponse(projectPath, projectApprovals[0].id, false, customText)
               }
             />
-          ))}
+          )}
 
           <div ref={messagesEndRef} />
         </div>

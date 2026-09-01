@@ -9,7 +9,8 @@ import type {
   ApprovalRequest,
   SubagentInfo,
   RateLimitWarning,
-  ProjectAgentStatus
+  ProjectAgentStatus,
+  AutoApproveRules
 } from '../types/electron';
 
 export interface AISession {
@@ -62,11 +63,24 @@ interface AIStudioState {
   rejectDiff: (projectPath: string, messageId: string, toolId: string) => void;
 }
 
+export const DEFAULT_AUTO_APPROVE_RULES: AutoApproveRules = {
+  enabled: true,
+  allowCommands: true,
+  allowFileWrite: true,
+  allowFileRead: true,
+  allowSubagents: true,
+  writeExcludePatterns: ['.env*', '**/*.key', '**/*.pem', 'infra.config.json'],
+  readExcludePatterns: ['.env*', '**/*.key', '**/*.pem', '**/id_rsa*'],
+  commandDenyList: ['rm -rf', 'git push', 'git reset --hard', 'del /f /s /q']
+};
+
 const DEFAULT_CONFIG: AIProviderConfig = {
   provider: 'anthropic',
   model: 'default',
   temperature: 0.7,
-  thinkingBudget: 2048
+  thinkingBudget: 2048,
+  autoApprove: false,
+  autoApproveRules: DEFAULT_AUTO_APPROVE_RULES
 };
 
 function createInitialSession(): AISession {

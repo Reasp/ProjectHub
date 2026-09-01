@@ -82,7 +82,7 @@ export const DiffReviewCard: React.FC<DiffReviewCardProps> = ({
       </div>
 
       {/* Diff Code View */}
-      <div className="p-3 bg-[#0a0c13] font-mono text-[11px] leading-relaxed max-h-72 overflow-y-auto overflow-x-auto text-slate-300">
+      <div className="p-3 bg-[#0a0c13] font-mono text-[11px] leading-relaxed max-h-72 overflow-y-auto overflow-x-auto text-slate-300 select-text">
         <pre className="whitespace-pre">
           {patchLines.map((line, idx) => {
             const isAdd = line.startsWith('+') && !line.startsWith('+++');

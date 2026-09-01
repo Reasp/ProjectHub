@@ -5,6 +5,17 @@ import os from 'node:os';
 import { searchProjectDocs } from './ragSearch.js';
 import matter from 'gray-matter';
 
+export interface AutoApproveRules {
+  enabled: boolean;
+  allowCommands: boolean;
+  allowFileWrite: boolean;
+  allowFileRead: boolean;
+  allowSubagents: boolean;
+  writeExcludePatterns: string[];
+  readExcludePatterns: string[];
+  commandDenyList: string[];
+}
+
 export interface AIProviderConfig {
   provider: 'anthropic' | 'openrouter' | 'deepseek' | 'ollama' | 'custom';
   apiKey?: string;
@@ -12,6 +23,8 @@ export interface AIProviderConfig {
   baseUrl?: string;
   temperature?: number;
   thinkingBudget?: number;
+  autoApprove?: boolean;
+  autoApproveRules?: AutoApproveRules;
 }
 
 export interface AIToolCall {
@@ -548,6 +561,31 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
             query: { type: 'string', description: 'Поисковый запрос на естественном языке' }
           },
           required: ['query']
+        }
+      },
+      {
+        name: 'ask_question',
+        description: 'Задать интерактивный вопрос пользователю с выбором вариантов (радиокнопки, чекбоксы, свой вариант)',
+        input_schema: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Краткий заголовок вопроса (например, "Что делаем?")' },
+            question: { type: 'string', description: 'Развернутый текст вопроса пользователю' },
+            options: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  label: { type: 'string', description: 'Название варианта ответа' },
+                  description: { type: 'string', description: 'Подробное описание или действие для этого варианта' }
+                },
+                required: ['label']
+              },
+              description: 'Список вариантов ответа (от 2 до 10 вариантов)'
+            },
+            is_multi_select: { type: 'boolean', description: 'Если true — множественный выбор (чекбоксы), если false — одиночный (радиокнопки)' }
+          },
+          required: ['question', 'options']
         }
       }
     ];
