@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type {
   AIProviderConfig,
   AIMessage,
@@ -6,7 +7,8 @@ import type {
   AIStreamRequest,
   ClaudeAuthStatus,
   ApprovalRequest,
-  SubagentInfo
+  SubagentInfo,
+  RateLimitWarning
 } from '../types/electron';
 
 export interface AISession {
@@ -14,6 +16,7 @@ export interface AISession {
   title: string;
   createdAt: number;
   messages: AIMessage[];
+  claudeCliSessionId?: string;
 }
 
 interface AIStudioState {
@@ -26,13 +29,15 @@ interface AIStudioState {
   isSettingsOpen: boolean;
   claudeAuth: ClaudeAuthStatus | null;
 
-  // Subagents & Human Approvals
+  // Subagents & Human Approvals & Rate Limits
   pendingApprovals: Record<string, ApprovalRequest[]>; // projectPath -> active requests
   subagents: Record<string, SubagentInfo[]>; // projectPath -> active subagents
+  rateLimitWarnings: Record<string, RateLimitWarning | null>; // projectPath -> active warning
   isSubagentsPanelOpen: boolean;
   setIsSubagentsPanelOpen: (open: boolean) => void;
   sendApprovalResponse: (projectPath: string, requestId: string, approved: boolean, text?: string) => Promise<void>;
   fetchSubagents: (projectPath: string) => Promise<void>;
+  dismissRateLimitWarning: (projectPath: string) => void;
 
   // Actions
   fetchConfig: () => Promise<void>;
@@ -53,7 +58,7 @@ interface AIStudioState {
 
 const DEFAULT_CONFIG: AIProviderConfig = {
   provider: 'anthropic',
-  model: 'claude-3-7-sonnet-20250219',
+  model: 'default',
   temperature: 0.7,
   thinkingBudget: 2048
 };
@@ -68,422 +73,496 @@ function createInitialSession(): AISession {
   };
 }
 
-export const useAIStudioStore = create<AIStudioState>((set, get) => ({
-  sessions: {},
-  activeSessionId: {},
-  isStreaming: false,
-  activeStreamSessionId: null,
-  config: DEFAULT_CONFIG,
-  mode: 'agent',
-  isSettingsOpen: false,
-  claudeAuth: null,
-  pendingApprovals: {},
-  subagents: {},
-  isSubagentsPanelOpen: false,
+export const useAIStudioStore = create<AIStudioState>()(
+  persist(
+    (set, get) => ({
+      sessions: {},
+      activeSessionId: {},
+      isStreaming: false,
+      activeStreamSessionId: null,
+      config: DEFAULT_CONFIG,
+      mode: 'agent',
+      isSettingsOpen: false,
+      claudeAuth: null,
+      pendingApprovals: {},
+      subagents: {},
+      rateLimitWarnings: {},
+      isSubagentsPanelOpen: false,
 
-  setIsSubagentsPanelOpen: (isSubagentsPanelOpen) => set({ isSubagentsPanelOpen }),
+      setIsSubagentsPanelOpen: (isSubagentsPanelOpen) => set({ isSubagentsPanelOpen }),
 
-  fetchSubagents: async (projectPath: string) => {
-    if (window.api?.getSubagents) {
-      try {
-        const list = await window.api.getSubagents(projectPath);
+      dismissRateLimitWarning: (projectPath: string) => {
         set((state) => ({
-          subagents: {
-            ...state.subagents,
-            [projectPath]: list
+          rateLimitWarnings: {
+            ...state.rateLimitWarnings,
+            [projectPath]: null
           }
         }));
-      } catch (e) {
-        console.error('Failed to fetch subagents:', e);
-      }
-    }
-  },
+      },
 
-  sendApprovalResponse: async (projectPath: string, requestId: string, approved: boolean, text?: string) => {
-    if (window.api?.sendApprovalResponse) {
-      try {
-        await window.api.sendApprovalResponse(requestId, { approved, text });
+      fetchSubagents: async (projectPath: string) => {
+        if (window.api?.getSubagents) {
+          try {
+            const list = await window.api.getSubagents(projectPath);
+            set((state) => ({
+              subagents: {
+                ...state.subagents,
+                [projectPath]: list
+              }
+            }));
+          } catch (e) {
+            console.error('Failed to fetch subagents:', e);
+          }
+        }
+      },
+
+      sendApprovalResponse: async (projectPath: string, requestId: string, approved: boolean, text?: string) => {
+        if (window.api?.sendApprovalResponse) {
+          try {
+            await window.api.sendApprovalResponse(requestId, { approved, text });
+            set((state) => {
+              const current = state.pendingApprovals[projectPath] || [];
+              return {
+                pendingApprovals: {
+                  ...state.pendingApprovals,
+                  [projectPath]: current.filter((r) => r.id !== requestId)
+                }
+              };
+            });
+          } catch (e) {
+            console.error('Failed to send approval response:', e);
+          }
+        }
+      },
+
+      fetchConfig: async () => {
+        if (window.api?.getAIConfig) {
+          try {
+            const loaded = await window.api.getAIConfig();
+            if (loaded) {
+              set((state) => ({
+                config: {
+                  ...state.config,
+                  ...loaded
+                }
+              }));
+            }
+          } catch (err) {
+            console.error('Failed to fetch AI config:', err);
+          }
+        }
+      },
+
+      fetchClaudeAuth: async () => {
+        if (window.api?.getClaudeAuthStatus) {
+          try {
+            const auth = await window.api.getClaudeAuthStatus();
+            set({ claudeAuth: auth });
+          } catch (err) {
+            console.error('Failed to fetch Claude auth status:', err);
+          }
+        }
+      },
+
+      startClaudeLogin: async () => {
+        if (window.api?.startClaudeLogin) {
+          try {
+            await window.api.startClaudeLogin();
+          } catch (err) {
+            console.error('Failed to start Claude login:', err);
+          }
+        }
+      },
+
+      saveConfig: async (config: AIProviderConfig) => {
+        set({ config });
+        if (window.api?.saveAIConfig) {
+          try {
+            await window.api.saveAIConfig(config);
+          } catch (err) {
+            console.error('Failed to save AI config:', err);
+          }
+        }
+      },
+
+      setMode: (mode) => set({ mode }),
+      setIsSettingsOpen: (isSettingsOpen) => set({ isSettingsOpen }),
+
+      createSession: (projectPath: string, initialTitle?: string) => {
+        const existing = get().sessions[projectPath] || [];
+        const newSession: AISession = {
+          id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          title: initialTitle || `Диалог ${existing.length + 1}`,
+          createdAt: Date.now(),
+          messages: []
+        };
+
         set((state) => {
-          const current = state.pendingApprovals[projectPath] || [];
+          const current = state.sessions[projectPath] || [];
           return {
-            pendingApprovals: {
-              ...state.pendingApprovals,
-              [projectPath]: current.filter((r) => r.id !== requestId)
+            sessions: {
+              ...state.sessions,
+              [projectPath]: [...current, newSession]
+            },
+            activeSessionId: {
+              ...state.activeSessionId,
+              [projectPath]: newSession.id
             }
           };
         });
-      } catch (e) {
-        console.error('Failed to send approval response:', e);
-      }
-    }
-  },
 
-  fetchConfig: async () => {
-    if (window.api?.getAIConfig) {
-      try {
-        const loaded = await window.api.getAIConfig();
-        if (loaded) set({ config: loaded });
-      } catch (err) {
-        console.error('Failed to fetch AI config:', err);
-      }
-    }
-  },
+        return newSession.id;
+      },
 
-  fetchClaudeAuth: async () => {
-    if (window.api?.getClaudeAuthStatus) {
-      try {
-        const auth = await window.api.getClaudeAuthStatus();
-        set({ claudeAuth: auth });
-      } catch (err) {
-        console.error('Failed to fetch Claude auth status:', err);
-      }
-    }
-  },
-
-  startClaudeLogin: async () => {
-    if (window.api?.startClaudeLogin) {
-      try {
-        await window.api.startClaudeLogin();
-      } catch (err) {
-        console.error('Failed to start Claude login:', err);
-      }
-    }
-  },
-
-  saveConfig: async (config: AIProviderConfig) => {
-    set({ config });
-    if (window.api?.saveAIConfig) {
-      try {
-        await window.api.saveAIConfig(config);
-      } catch (err) {
-        console.error('Failed to save AI config:', err);
-      }
-    }
-  },
-
-  setMode: (mode) => set({ mode }),
-  setIsSettingsOpen: (isSettingsOpen) => set({ isSettingsOpen }),
-
-  createSession: (projectPath: string, initialTitle?: string) => {
-    const newSession: AISession = {
-      id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      title: initialTitle || 'Новый диалог',
-      createdAt: Date.now(),
-      messages: []
-    };
-
-    set((state) => {
-      const existing = state.sessions[projectPath] || [];
-      return {
-        sessions: {
-          ...state.sessions,
-          [projectPath]: [...existing, newSession]
-        },
-        activeSessionId: {
-          ...state.activeSessionId,
-          [projectPath]: newSession.id
-        }
-      };
-    });
-
-    return newSession.id;
-  },
-
-  switchSession: (projectPath: string, sessionId: string) => {
-    set((state) => ({
-      activeSessionId: {
-        ...state.activeSessionId,
-        [projectPath]: sessionId
-      }
-    }));
-  },
-
-  closeSession: (projectPath: string, sessionId: string) => {
-    set((state) => {
-      const existing = state.sessions[projectPath] || [];
-      const filtered = existing.filter((s) => s.id !== sessionId);
-
-      if (filtered.length === 0) {
-        const fresh = createInitialSession();
-        return {
-          sessions: {
-            ...state.sessions,
-            [projectPath]: [fresh]
-          },
+      switchSession: (projectPath: string, sessionId: string) => {
+        set((state) => ({
           activeSessionId: {
             ...state.activeSessionId,
-            [projectPath]: fresh.id
+            [projectPath]: sessionId
           }
-        };
-      }
+        }));
+      },
 
-      let currentActive = state.activeSessionId[projectPath];
-      if (currentActive === sessionId) {
-        currentActive = filtered[filtered.length - 1].id;
-      }
+      closeSession: (projectPath: string, sessionId: string) => {
+        set((state) => {
+          const existing = state.sessions[projectPath] || [];
+          const filtered = existing.filter((s) => s.id !== sessionId);
 
-      return {
-        sessions: {
-          ...state.sessions,
-          [projectPath]: filtered
-        },
-        activeSessionId: {
-          ...state.activeSessionId,
-          [projectPath]: currentActive
-        }
-      };
-    });
-  },
-
-  clearSession: (projectPath: string, sessionId?: string) => {
-    set((state) => {
-      const targetSessionId = sessionId || state.activeSessionId[projectPath];
-      const existing = state.sessions[projectPath] || [];
-
-      const updated = existing.map((s) =>
-        s.id === targetSessionId ? { ...s, messages: [], title: 'Новый диалог' } : s
-      );
-
-      return {
-        sessions: {
-          ...state.sessions,
-          [projectPath]: updated
-        }
-      };
-    });
-  },
-
-  abortStream: async () => {
-    const { activeStreamSessionId } = get();
-    if (activeStreamSessionId && window.api?.abortAIStream) {
-      await window.api.abortAIStream(activeStreamSessionId);
-      set({ isStreaming: false, activeStreamSessionId: null });
-    }
-  },
-
-  sendMessage: async (projectPath: string, text: string) => {
-    if (!text.trim() || get().isStreaming || !window.api?.streamAIChat) return;
-
-    let activeSessionId = get().activeSessionId[projectPath];
-    let projectSessions = get().sessions[projectPath] || [];
-
-    if (!activeSessionId || !projectSessions.some((s) => s.id === activeSessionId)) {
-      activeSessionId = get().createSession(projectPath);
-      projectSessions = get().sessions[projectPath] || [];
-    }
-
-    const currentSession = projectSessions.find((s) => s.id === activeSessionId)!;
-    const currentMessages = currentSession.messages || [];
-
-    const userMsg: AIMessage = {
-      id: `msg-${Date.now()}`,
-      role: 'user',
-      content: text.trim(),
-      timestamp: new Date().toISOString()
-    };
-
-    const assistantMsgId = `asst-${Date.now() + 1}`;
-    const initialAssistantMsg: AIMessage = {
-      id: assistantMsgId,
-      role: 'assistant',
-      content: '',
-      thought: '',
-      toolCalls: [],
-      timestamp: new Date().toISOString()
-    };
-
-    const updatedMessages = [...currentMessages, userMsg, initialAssistantMsg];
-
-    // Derive auto-title if session was 'Новый диалог'
-    let sessionTitle = currentSession.title;
-    if (sessionTitle === 'Новый диалог' || sessionTitle === 'New Chat') {
-      const cleaned = text.replace(/[\n\r]+/g, ' ').trim();
-      sessionTitle = cleaned.length > 28 ? `${cleaned.slice(0, 26)}...` : cleaned;
-    }
-
-    set((state) => {
-      const pSessions = state.sessions[projectPath] || [];
-      const updated = pSessions.map((s) =>
-        s.id === activeSessionId
-          ? { ...s, title: sessionTitle, messages: updatedMessages }
-          : s
-      );
-
-      return {
-        sessions: {
-          ...state.sessions,
-          [projectPath]: updated
-        },
-        isStreaming: true,
-        activeStreamSessionId: assistantMsgId
-      };
-    });
-
-    const streamId = assistantMsgId;
-
-    // Listen to streaming events
-    const unsubChunk = window.api.onAIChunk(streamId, (chunk) => {
-      set((state) => {
-        const pSessions = state.sessions[projectPath] || [];
-        const sIdx = pSessions.findIndex((s) => s.id === activeSessionId);
-        if (sIdx === -1) return state;
-
-        const targetSession = { ...pSessions[sIdx] };
-        const msgs = [...targetSession.messages];
-        const mIdx = msgs.findIndex((m) => m.id === assistantMsgId);
-        if (mIdx === -1) return state;
-
-        const target = { ...msgs[mIdx] };
-        if (chunk.text) {
-          target.content = (target.content || '') + chunk.text;
-        }
-        if (chunk.thought) {
-          target.thought = (target.thought || '') + chunk.thought;
-        }
-        if (chunk.toolCall) {
-          target.toolCalls = [...(target.toolCalls || []), chunk.toolCall];
-        }
-
-        msgs[mIdx] = target;
-        targetSession.messages = msgs;
-
-        const newSessions = [...pSessions];
-        newSessions[sIdx] = targetSession;
-
-        let newPendingApprovals = state.pendingApprovals;
-        if (chunk.approvalRequest) {
-          const currentList = state.pendingApprovals[projectPath] || [];
-          if (!currentList.some((r) => r.id === chunk.approvalRequest!.id)) {
-            newPendingApprovals = {
-              ...state.pendingApprovals,
-              [projectPath]: [...currentList, chunk.approvalRequest]
+          if (filtered.length === 0) {
+            const fresh = createInitialSession();
+            return {
+              sessions: {
+                ...state.sessions,
+                [projectPath]: [fresh]
+              },
+              activeSessionId: {
+                ...state.activeSessionId,
+                [projectPath]: fresh.id
+              }
             };
           }
-        }
 
-        let newSubagents = state.subagents;
-        if (chunk.subagent) {
-          const currentSub = state.subagents[projectPath] || [];
-          const idx = currentSub.findIndex((s) => s.id === chunk.subagent!.id);
-          const updated = [...currentSub];
-          if (idx >= 0) {
-            updated[idx] = chunk.subagent;
-          } else {
-            updated.push(chunk.subagent);
+          let currentActive = state.activeSessionId[projectPath];
+          if (currentActive === sessionId) {
+            currentActive = filtered[filtered.length - 1].id;
           }
-          newSubagents = {
-            ...state.subagents,
-            [projectPath]: updated
+
+          return {
+            sessions: {
+              ...state.sessions,
+              [projectPath]: filtered
+            },
+            activeSessionId: {
+              ...state.activeSessionId,
+              [projectPath]: currentActive
+            }
           };
+        });
+      },
+
+      clearSession: (projectPath: string, sessionId?: string) => {
+        set((state) => {
+          const targetSessionId = sessionId || state.activeSessionId[projectPath];
+          const existing = state.sessions[projectPath] || [];
+
+          const updated = existing.map((s) =>
+            s.id === targetSessionId
+              ? { ...s, messages: [], title: 'Новый диалог', claudeCliSessionId: undefined }
+              : s
+          );
+
+          return {
+            sessions: {
+              ...state.sessions,
+              [projectPath]: updated
+            }
+          };
+        });
+      },
+
+      abortStream: async () => {
+        const { activeStreamSessionId } = get();
+        if (activeStreamSessionId && window.api?.abortAIStream) {
+          await window.api.abortAIStream(activeStreamSessionId);
+          set({ isStreaming: false, activeStreamSessionId: null });
+        }
+      },
+
+      sendMessage: async (projectPath: string, text: string) => {
+        if (!text.trim() || get().isStreaming || !window.api?.streamAIChat) return;
+
+        let activeSessionId = get().activeSessionId[projectPath];
+        let projectSessions = get().sessions[projectPath] || [];
+
+        if (!activeSessionId || !projectSessions.some((s) => s.id === activeSessionId)) {
+          activeSessionId = get().createSession(projectPath);
+          projectSessions = get().sessions[projectPath] || [];
         }
 
-        return {
-          sessions: {
-            ...state.sessions,
-            [projectPath]: newSessions
-          },
-          pendingApprovals: newPendingApprovals,
-          subagents: newSubagents
+        const currentSession = projectSessions.find((s) => s.id === activeSessionId)!;
+        const currentMessages = currentSession.messages || [];
+
+        const userMsg: AIMessage = {
+          id: `msg-${Date.now()}`,
+          role: 'user',
+          content: text.trim(),
+          timestamp: new Date().toISOString()
         };
-      });
-    });
 
-    const unsubComplete = window.api.onAIComplete(streamId, (completedMsg) => {
-      set((state) => {
-        const pSessions = state.sessions[projectPath] || [];
-        const sIdx = pSessions.findIndex((s) => s.id === activeSessionId);
-        if (sIdx === -1) return state;
-
-        const targetSession = { ...pSessions[sIdx] };
-        const msgs = [...targetSession.messages];
-        const mIdx = msgs.findIndex((m) => m.id === assistantMsgId);
-        if (mIdx === -1) return state;
-
-        msgs[mIdx] = {
-          ...completedMsg,
+        const assistantMsgId = `asst-${Date.now() + 1}`;
+        const initialAssistantMsg: AIMessage = {
           id: assistantMsgId,
-          toolCalls: completedMsg.toolCalls || msgs[mIdx].toolCalls
+          role: 'assistant',
+          content: '',
+          thought: '',
+          toolCalls: [],
+          timestamp: new Date().toISOString()
         };
 
-        targetSession.messages = msgs;
+        const updatedMessages = [...currentMessages, userMsg, initialAssistantMsg];
 
-        const newSessions = [...pSessions];
-        newSessions[sIdx] = targetSession;
+        // Derive auto-title if session was 'Новый диалог' or 'Диалог X'
+        let sessionTitle = currentSession.title;
+        if (sessionTitle === 'Новый диалог' || sessionTitle.startsWith('Диалог ')) {
+          const cleaned = text.replace(/[\n\r]+/g, ' ').trim();
+          sessionTitle = cleaned.length > 28 ? `${cleaned.slice(0, 26)}...` : cleaned;
+        }
 
-        return {
-          sessions: {
-            ...state.sessions,
-            [projectPath]: newSessions
-          },
-          isStreaming: false,
-          activeStreamSessionId: null
+        set((state) => {
+          const pSessions = state.sessions[projectPath] || [];
+          const updated = pSessions.map((s) =>
+            s.id === activeSessionId
+              ? { ...s, title: sessionTitle, messages: updatedMessages }
+              : s
+          );
+
+          return {
+            sessions: {
+              ...state.sessions,
+              [projectPath]: updated
+            },
+            isStreaming: true,
+            activeStreamSessionId: activeSessionId
+          };
+        });
+
+        const streamId = activeSessionId;
+
+        // Listen to streaming events
+        const unsubChunk = window.api.onAIChunk(streamId, (chunk) => {
+          set((state) => {
+            const pSessions = state.sessions[projectPath] || [];
+            const sIdx = pSessions.findIndex((s) => s.id === activeSessionId);
+            if (sIdx === -1) return state;
+
+            const targetSession = { ...pSessions[sIdx] };
+            if (chunk.claudeCliSessionId) {
+              targetSession.claudeCliSessionId = chunk.claudeCliSessionId;
+            }
+
+            const msgs = [...targetSession.messages];
+            const mIdx = msgs.findIndex((m) => m.id === assistantMsgId);
+            if (mIdx === -1) return state;
+
+            const target = { ...msgs[mIdx] };
+            if (chunk.text) {
+              target.content = (target.content || '') + chunk.text;
+            }
+            if (chunk.thought) {
+              target.thought = (target.thought || '') + chunk.thought;
+            }
+            if (chunk.toolCall) {
+              target.toolCalls = [...(target.toolCalls || []), chunk.toolCall];
+            }
+
+            msgs[mIdx] = target;
+            targetSession.messages = msgs;
+
+            const newSessions = [...pSessions];
+            newSessions[sIdx] = targetSession;
+
+            let newPendingApprovals = state.pendingApprovals;
+            if (chunk.approvalRequest) {
+              const currentList = state.pendingApprovals[projectPath] || [];
+              if (!currentList.some((r) => r.id === chunk.approvalRequest!.id)) {
+                newPendingApprovals = {
+                  ...state.pendingApprovals,
+                  [projectPath]: [...currentList, chunk.approvalRequest]
+                };
+              }
+            }
+
+            let newSubagents = state.subagents;
+            if (chunk.subagent) {
+              const currentSub = state.subagents[projectPath] || [];
+              const idx = currentSub.findIndex((s) => s.id === chunk.subagent!.id);
+              const updated = [...currentSub];
+              if (idx >= 0) {
+                updated[idx] = chunk.subagent;
+              } else {
+                updated.push(chunk.subagent);
+              }
+              newSubagents = {
+                ...state.subagents,
+                [projectPath]: updated
+              };
+            }
+
+            let newRateLimitWarnings = state.rateLimitWarnings;
+            if (chunk.rateLimitWarning) {
+              newRateLimitWarnings = {
+                ...state.rateLimitWarnings,
+                [projectPath]: chunk.rateLimitWarning
+              };
+            }
+
+            return {
+              sessions: {
+                ...state.sessions,
+                [projectPath]: newSessions
+              },
+              pendingApprovals: newPendingApprovals,
+              subagents: newSubagents,
+              rateLimitWarnings: newRateLimitWarnings
+            };
+          });
+        });
+
+        const unsubComplete = window.api.onAIComplete(streamId, (completedMsg) => {
+          set((state) => {
+            const pSessions = state.sessions[projectPath] || [];
+            const sIdx = pSessions.findIndex((s) => s.id === activeSessionId);
+            if (sIdx === -1) return state;
+
+            const targetSession = { ...pSessions[sIdx] };
+            const msgs = [...targetSession.messages];
+            const mIdx = msgs.findIndex((m) => m.id === assistantMsgId);
+            if (mIdx === -1) return state;
+
+            msgs[mIdx] = {
+              ...completedMsg,
+              id: assistantMsgId,
+              toolCalls: completedMsg.toolCalls || msgs[mIdx].toolCalls
+            };
+
+            targetSession.messages = msgs;
+
+            const newSessions = [...pSessions];
+            newSessions[sIdx] = targetSession;
+
+            return {
+              sessions: {
+                ...state.sessions,
+                [projectPath]: newSessions
+              },
+              isStreaming: false,
+              activeStreamSessionId: null
+            };
+          });
+
+          cleanup();
+        });
+
+        const unsubError = window.api.onAIError(streamId, (err) => {
+          set((state) => {
+            const pSessions = state.sessions[projectPath] || [];
+            const sIdx = pSessions.findIndex((s) => s.id === activeSessionId);
+            if (sIdx === -1) return state;
+
+            const targetSession = { ...pSessions[sIdx] };
+            const msgs = [...targetSession.messages];
+            const mIdx = msgs.findIndex((m) => m.id === assistantMsgId);
+            if (mIdx === -1) return state;
+
+            const target = { ...msgs[mIdx] };
+            target.content = `${target.content || ''}\n\n⚠️ **Ошибка**: ${err}`;
+
+            msgs[mIdx] = target;
+            targetSession.messages = msgs;
+
+            const newSessions = [...pSessions];
+            newSessions[sIdx] = targetSession;
+
+            return {
+              sessions: {
+                ...state.sessions,
+                [projectPath]: newSessions
+              },
+              isStreaming: false,
+              activeStreamSessionId: null
+            };
+          });
+
+          cleanup();
+        });
+
+        const cleanup = () => {
+          unsubChunk();
+          unsubComplete();
+          unsubError();
         };
-      });
 
-      cleanup();
-    });
-
-    const unsubError = window.api.onAIError(streamId, (err) => {
-      set((state) => {
-        const pSessions = state.sessions[projectPath] || [];
-        const sIdx = pSessions.findIndex((s) => s.id === activeSessionId);
-        if (sIdx === -1) return state;
-
-        const targetSession = { ...pSessions[sIdx] };
-        const msgs = [...targetSession.messages];
-        const mIdx = msgs.findIndex((m) => m.id === assistantMsgId);
-        if (mIdx === -1) return state;
-
-        const target = { ...msgs[mIdx] };
-        target.content = `${target.content || ''}\n\n⚠️ **Ошибка**: ${err}`;
-
-        msgs[mIdx] = target;
-        targetSession.messages = msgs;
-
-        const newSessions = [...pSessions];
-        newSessions[sIdx] = targetSession;
-
-        return {
-          sessions: {
-            ...state.sessions,
-            [projectPath]: newSessions
-          },
-          isStreaming: false,
-          activeStreamSessionId: null
+        const streamReq: AIStreamRequest = {
+          sessionId: streamId,
+          projectPath,
+          messages: [...currentMessages, userMsg],
+          config: get().config,
+          mode: get().mode,
+          claudeCliSessionId: currentSession.claudeCliSessionId
         };
-      });
 
-      cleanup();
-    });
+        try {
+          await window.api.streamAIChat(streamReq);
+        } catch (err: any) {
+          console.error('streamAIChat invocation error:', err);
+          set({ isStreaming: false, activeStreamSessionId: null });
+          cleanup();
+        }
+      },
 
-    const cleanup = () => {
-      unsubChunk();
-      unsubComplete();
-      unsubError();
-    };
+      acceptDiff: async (projectPath: string, messageId: string, toolId: string, filePath: string, newContent: string) => {
+        if (window.api?.applyAIDiff) {
+          try {
+            await window.api.applyAIDiff(projectPath, filePath, newContent);
 
-    const streamReq: AIStreamRequest = {
-      sessionId: streamId,
-      projectPath,
-      messages: [...currentMessages, userMsg],
-      config: get().config,
-      mode: get().mode
-    };
+            set((state) => {
+              const activeSessionId = state.activeSessionId[projectPath];
+              const pSessions = state.sessions[projectPath] || [];
 
-    try {
-      await window.api.streamAIChat(streamReq);
-    } catch (err: any) {
-      console.error('streamAIChat invocation error:', err);
-      set({ isStreaming: false, activeStreamSessionId: null });
-      cleanup();
-    }
-  },
+              const updated = pSessions.map((s) => {
+                if (s.id === activeSessionId) {
+                  return {
+                    ...s,
+                    messages: s.messages.map((m) => {
+                      if (m.id === messageId && m.toolCalls) {
+                        return {
+                          ...m,
+                          toolCalls: m.toolCalls.map((tc) =>
+                            tc.id === toolId ? { ...tc, status: 'accepted' as const } : tc
+                          )
+                        };
+                      }
+                      return m;
+                    })
+                  };
+                }
+                return s;
+              });
 
-  acceptDiff: async (projectPath: string, messageId: string, toolId: string, filePath: string, newContent: string) => {
-    if (window.api?.applyAIDiff) {
-      try {
-        await window.api.applyAIDiff(projectPath, filePath, newContent);
+              return {
+                sessions: {
+                  ...state.sessions,
+                  [projectPath]: updated
+                }
+              };
+            });
+          } catch (e) {
+            console.error('Failed to apply diff:', e);
+          }
+        }
+      },
 
+      rejectDiff: (projectPath: string, messageId: string, toolId: string) => {
         set((state) => {
           const activeSessionId = state.activeSessionId[projectPath];
           const pSessions = state.sessions[projectPath] || [];
@@ -497,7 +576,7 @@ export const useAIStudioStore = create<AIStudioState>((set, get) => ({
                     return {
                       ...m,
                       toolCalls: m.toolCalls.map((tc) =>
-                        tc.id === toolId ? { ...tc, status: 'accepted' as const } : tc
+                        tc.id === toolId ? { ...tc, status: 'rejected' as const } : tc
                       )
                     };
                   }
@@ -515,43 +594,17 @@ export const useAIStudioStore = create<AIStudioState>((set, get) => ({
             }
           };
         });
-      } catch (err) {
-        console.error('Failed to apply diff:', err);
       }
+    }),
+    {
+      name: 'projecthub-ai-studio-storage',
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        sessions: state.sessions,
+        activeSessionId: state.activeSessionId,
+        config: state.config,
+        mode: state.mode
+      })
     }
-  },
-
-  rejectDiff: (projectPath: string, messageId: string, toolId: string) => {
-    set((state) => {
-      const activeSessionId = state.activeSessionId[projectPath];
-      const pSessions = state.sessions[projectPath] || [];
-
-      const updated = pSessions.map((s) => {
-        if (s.id === activeSessionId) {
-          return {
-            ...s,
-            messages: s.messages.map((m) => {
-              if (m.id === messageId && m.toolCalls) {
-                return {
-                  ...m,
-                  toolCalls: m.toolCalls.map((tc) =>
-                    tc.id === toolId ? { ...tc, status: 'rejected' as const } : tc
-                  )
-                };
-              }
-              return m;
-            })
-          };
-        }
-        return s;
-      });
-
-      return {
-        sessions: {
-          ...state.sessions,
-          [projectPath]: updated
-        }
-      };
-    });
-  }
-}));
+  )
+);

@@ -2,6 +2,7 @@ import * as pty from 'node-pty';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { BrowserWindow } from 'electron';
+import { PROJECT_HUB_CLAUDE_DIR } from './aiAgentService.js';
 import type { PtySession, CreatePtyOptions } from '../../src/types/electron';
 
 interface ActivePty {
@@ -59,11 +60,12 @@ class PtyService {
     const projectName = options.projectName || path.basename(options.projectPath);
     const title = options.title || (options.type === 'claude' ? `Claude: ${projectName}` : `Terminal: ${projectName}`);
 
-    // Create env copy with UTF-8 encoding support
+    // Create env copy with UTF-8 encoding support and isolated Claude config
     const env = {
       ...process.env,
       TERM: 'xterm-256color',
-      COLORTERM: 'truecolor'
+      COLORTERM: 'truecolor',
+      CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR
     };
 
     const cwd = existsSync(options.projectPath) ? options.projectPath : process.cwd();

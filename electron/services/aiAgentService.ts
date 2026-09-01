@@ -53,6 +53,7 @@ export interface ClaudeAuthStatus {
   organizationName?: string;
 }
 
+export const PROJECT_HUB_CLAUDE_DIR = path.join(os.homedir(), '.projecthub', 'claude_config');
 const CONFIG_FILE = path.join(os.homedir(), '.projecthub', 'ai-config.json');
 
 class AIAgentService {
@@ -71,25 +72,37 @@ class AIAgentService {
         console.error('Failed to create config dir:', e);
       }
     }
+    if (!existsSync(PROJECT_HUB_CLAUDE_DIR)) {
+      try {
+        fs.mkdir(PROJECT_HUB_CLAUDE_DIR, { recursive: true });
+      } catch (e) {
+        console.error('Failed to create claude config dir:', e);
+      }
+    }
   }
 
   public async getClaudeAuthStatus(): Promise<ClaudeAuthStatus> {
-    const claudeJsonPath = path.join(os.homedir(), '.claude.json');
-    if (existsSync(claudeJsonPath)) {
-      try {
-        const content = await fs.readFile(claudeJsonPath, 'utf-8');
-        const data = JSON.parse(content);
-        if (data.oauthAccount && (data.oauthAccount.emailAddress || data.oauthAccount.email)) {
-          return {
-            isLoggedIn: true,
-            email: data.oauthAccount.emailAddress || data.oauthAccount.email,
-            displayName: data.oauthAccount.displayName || data.oauthAccount.fullName,
-            seatTier: data.oauthAccount.seatTier || data.oauthAccount.billingType || 'Pro / Team',
-            organizationName: data.oauthAccount.organizationName
-          };
+    const isolatedClaudeJson = path.join(PROJECT_HUB_CLAUDE_DIR, '.claude.json');
+    const globalClaudeJson = path.join(os.homedir(), '.claude.json');
+    const targetPaths = [isolatedClaudeJson, globalClaudeJson];
+
+    for (const claudeJsonPath of targetPaths) {
+      if (existsSync(claudeJsonPath)) {
+        try {
+          const content = await fs.readFile(claudeJsonPath, 'utf-8');
+          const data = JSON.parse(content);
+          if (data.oauthAccount && (data.oauthAccount.emailAddress || data.oauthAccount.email)) {
+            return {
+              isLoggedIn: true,
+              email: data.oauthAccount.emailAddress || data.oauthAccount.email,
+              displayName: data.oauthAccount.displayName || data.oauthAccount.fullName,
+              seatTier: data.oauthAccount.seatTier || data.oauthAccount.billingType || 'Pro / Team',
+              organizationName: data.oauthAccount.organizationName
+            };
+          }
+        } catch (e) {
+          console.warn(`Failed to read ${claudeJsonPath}:`, e);
         }
-      } catch (e) {
-        console.warn('Failed to read .claude.json:', e);
       }
     }
     return { isLoggedIn: false };

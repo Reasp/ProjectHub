@@ -4,7 +4,13 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import { EventEmitter } from 'node:events';
-import { aiAgentService, type AIProviderConfig, type AIMessage, type AIToolCall } from './aiAgentService.js';
+import {
+  aiAgentService,
+  PROJECT_HUB_CLAUDE_DIR,
+  type AIProviderConfig,
+  type AIMessage,
+  type AIToolCall
+} from './aiAgentService.js';
 
 export type AgentStatusType = 'idle' | 'running' | 'waiting_approval' | 'done' | 'error';
 
@@ -119,6 +125,17 @@ export const CLAUDE_MODELS_CATALOG: ClaudeModelOption[] = [
   }
 ];
 
+export interface RateLimitWarning {
+  id: string;
+  type: 'rate_limit' | 'context_window' | 'quota_warning' | 'throttled';
+  title: string;
+  message: string;
+  utilization?: number;
+  resetsAt?: string;
+  tier?: string;
+  timestamp: number;
+}
+
 export interface ClaudeBridgeMessageChunk {
   text?: string;
   thought?: string;
@@ -126,6 +143,8 @@ export interface ClaudeBridgeMessageChunk {
   subagent?: SubagentInfo;
   approvalRequest?: ApprovalRequest;
   status?: AgentStatusType;
+  claudeCliSessionId?: string;
+  rateLimitWarning?: RateLimitWarning;
 }
 
 class ClaudeBridgeService extends EventEmitter {
@@ -232,6 +251,7 @@ class ClaudeBridgeService extends EventEmitter {
       messages: AIMessage[];
       config: AIProviderConfig;
       mode: 'agent' | 'chat' | 'architect';
+      claudeCliSessionId?: string;
     },
     onChunk: (chunk: ClaudeBridgeMessageChunk) => void,
     onComplete: (msg: AIMessage) => void,
@@ -339,6 +359,7 @@ class ClaudeBridgeService extends EventEmitter {
       messages: AIMessage[];
       config: AIProviderConfig;
       mode: 'agent' | 'chat' | 'architect';
+      claudeCliSessionId?: string;
     },
     onChunk: (chunk: ClaudeBridgeMessageChunk) => void,
     onComplete: (msg: AIMessage) => void,
@@ -356,7 +377,7 @@ class ClaudeBridgeService extends EventEmitter {
       return;
     }
 
-    const existingCliSessionId = this.sessionClaudeCliIds.get(sessionId);
+    const existingCliSessionId = req.claudeCliSessionId || this.sessionClaudeCliIds.get(sessionId);
     const cliArgs = ['-p'];
     if (existingCliSessionId) {
       cliArgs.push('--resume', existingCliSessionId);
@@ -373,7 +394,11 @@ class ClaudeBridgeService extends EventEmitter {
         cwd: projectPath,
         shell: true,
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, FORCE_COLOR: '0' }
+        env: {
+          ...process.env,
+          FORCE_COLOR: '0',
+          CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR
+        }
       }
     );
 
@@ -402,6 +427,23 @@ class ClaudeBridgeService extends EventEmitter {
 
           if (event.session_id) {
             this.sessionClaudeCliIds.set(sessionId, event.session_id);
+            onChunk({ claudeCliSessionId: event.session_id });
+          }
+
+          if (event.type === 'rate_limit_event' || event.rate_limit_info) {
+            const info = event.rate_limit_info || event;
+            const utilization = info.utilization ?? info.unifiedWindows?.[0]?.utilization;
+            const resetsAt = info.resetsAt || info.reset_at || info.unifiedWindows?.[0]?.resetsAt;
+            const warning: RateLimitWarning = {
+              id: `rl-${Date.now()}`,
+              type: info.status === 'throttled' ? 'throttled' : 'rate_limit',
+              title: info.status === 'throttled' ? 'Достигнут лимит запросов Claude Code' : 'Приближение к лимиту запросов Claude Code',
+              message: info.message || `Использовано ${utilization ? Math.round(utilization * 100) : 85}% доступного лимита запросов.`,
+              utilization: utilization ? Math.round(utilization * 100) : 85,
+              resetsAt: resetsAt ? new Date(resetsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined,
+              timestamp: Date.now()
+            };
+            onChunk({ rateLimitWarning: warning });
           }
 
           if (event.type === 'assistant' && event.message?.content) {
@@ -409,6 +451,22 @@ class ClaudeBridgeService extends EventEmitter {
               if (item.type === 'text') {
                 accumulatedText += item.text;
                 onChunk({ text: item.text });
+
+                // Check text for rate limit warning phrases
+                const lowerText = item.text.toLowerCase();
+                if (lowerText.includes('rate limit') || (lowerText.includes('used ') && lowerText.includes('% of your'))) {
+                  const matchPercent = item.text.match(/(\d+)%/);
+                  const percent = matchPercent ? parseInt(matchPercent[1], 10) : 85;
+                  const warning: RateLimitWarning = {
+                    id: `rl-${Date.now()}`,
+                    type: percent >= 100 ? 'throttled' : 'rate_limit',
+                    title: percent >= 100 ? 'Достигнут лимит запросов Claude Code' : `Приближение к лимиту запросов (${percent}%)`,
+                    message: item.text,
+                    utilization: percent,
+                    timestamp: Date.now()
+                  };
+                  onChunk({ rateLimitWarning: warning });
+                }
               } else if (item.type === 'thinking') {
                 accumulatedThought += item.thinking;
                 onChunk({ thought: item.thinking });
@@ -429,14 +487,36 @@ class ClaudeBridgeService extends EventEmitter {
             }
           }
         } catch {
-          // ignore non-json line
+          // Check non-json line for warning
+          if (trimmed.includes('rate limit') || trimmed.includes('429 Too Many')) {
+            const warning: RateLimitWarning = {
+              id: `rl-${Date.now()}`,
+              type: 'rate_limit',
+              title: 'Предупреждение о лимитах Claude Code',
+              message: trimmed,
+              timestamp: Date.now()
+            };
+            onChunk({ rateLimitWarning: warning });
+          }
         }
       }
     });
 
     let stderrOutput = '';
     child.stderr.on('data', (data) => {
-      stderrOutput += data.toString();
+      const chunkStr = data.toString();
+      stderrOutput += chunkStr;
+
+      if (chunkStr.includes('rate limit') || chunkStr.includes('429 Too Many')) {
+        const warning: RateLimitWarning = {
+          id: `rl-${Date.now()}`,
+          type: 'rate_limit',
+          title: 'Предупреждение о лимитах Claude Code',
+          message: chunkStr.trim(),
+          timestamp: Date.now()
+        };
+        onChunk({ rateLimitWarning: warning });
+      }
     });
 
     child.on('close', (code) => {

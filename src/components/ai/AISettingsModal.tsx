@@ -9,7 +9,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  ShieldCheck
 } from 'lucide-react';
 import { useAIStudioStore } from '../../store/useAIStudioStore';
 import type { AIProviderConfig } from '../../types/electron';
@@ -146,9 +147,12 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                     {claudeAuth.seatTier || 'Pro / Team'}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Ваш аккаунт Claude.ai готов к работе во всех модулях Claude Studio и Claude CLI.
-                </p>
+                <div className="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>
+                    Изолированный профиль ProjectHub (<code className="text-amber-300">~/.projecthub/claude_config</code>) полностью отделен от Rider / VS Code.
+                  </span>
+                </div>
                 <div className="pt-1 flex items-center gap-2">
                   <button
                     type="button"
@@ -156,7 +160,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                     className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-xs transition flex items-center gap-1.5"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Открыть личный кабинет Claude.ai</span>
+                    <span>Сменить или перепривязать аккаунт Claude.ai</span>
                   </button>
                 </div>
               </div>
@@ -165,6 +169,12 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                 <p className="text-[11px] text-slate-300 leading-relaxed">
                   Если у вас есть подписка <strong>Claude.ai Pro / Team / Max</strong>, вы можете авторизоваться через браузер без отдельного API-ключа.
                 </p>
+                <div className="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>
+                    Изолированный профиль ProjectHub не затронет ваш рабочий аккаунт в Rider / терминале.
+                  </span>
+                </div>
                 <div className="pt-1 flex items-center gap-2">
                   <button
                     type="button"

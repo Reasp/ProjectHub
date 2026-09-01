@@ -360,6 +360,8 @@ export interface IElectronAPI {
       approvalRequest?: ApprovalRequest;
       subagent?: SubagentInfo;
       status?: AgentStatusType;
+      claudeCliSessionId?: string;
+      rateLimitWarning?: RateLimitWarning;
     }) => void
   ) => () => void;
   onAIComplete: (sessionId: string, callback: (message: AIMessage) => void) => () => void;
@@ -425,6 +427,17 @@ export interface ClaudeModelOption {
   family: 'default' | 'sonnet' | 'opus' | 'haiku' | 'fable';
 }
 
+export interface RateLimitWarning {
+  id: string;
+  type: 'rate_limit' | 'context_window' | 'quota_warning' | 'throttled';
+  title: string;
+  message: string;
+  utilization?: number;
+  resetsAt?: string;
+  tier?: string;
+  timestamp: number;
+}
+
 export interface ClaudeAuthStatus {
   isLoggedIn: boolean;
   email?: string;
@@ -471,6 +484,7 @@ export interface AIStreamRequest {
   messages: AIMessage[];
   config: AIProviderConfig;
   mode: 'chat' | 'agent' | 'architect';
+  claudeCliSessionId?: string;
 }
 
 export interface PtySession {

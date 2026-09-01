@@ -623,7 +623,12 @@ ipcMain.handle('milestones:delete', async (_event, filePath: string) => {
 // 10. Interactive PTY Terminals (Claude Code & Multi-tab Shell)
 import { ptyService } from './services/ptyService';
 import type { CreatePtyOptions } from '../src/types/electron';
-import { aiAgentService, type AIProviderConfig, type AIStreamRequest } from './services/aiAgentService';
+import {
+  aiAgentService,
+  PROJECT_HUB_CLAUDE_DIR,
+  type AIProviderConfig,
+  type AIStreamRequest
+} from './services/aiAgentService';
 
 ipcMain.handle('pty:create', async (_event, options: CreatePtyOptions) => {
   return await ptyService.createSession(options);
@@ -659,8 +664,33 @@ ipcMain.handle('ai:getClaudeAuthStatus', async () => {
 });
 
 ipcMain.handle('ai:startClaudeLogin', async () => {
-  shell.openExternal('https://claude.ai/login');
-  return true;
+  try {
+    const isWin = process.platform === 'win32';
+    if (isWin) {
+      spawn('cmd.exe', ['/c', 'start', 'cmd.exe', '/k', 'claude auth login'], {
+        detached: true,
+        shell: true,
+        env: {
+          ...process.env,
+          CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR
+        }
+      });
+    } else {
+      spawn('claude', ['auth', 'login'], {
+        detached: true,
+        shell: true,
+        env: {
+          ...process.env,
+          CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR
+        }
+      });
+    }
+    return true;
+  } catch (e) {
+    console.error('Failed to start claude auth login process:', e);
+    shell.openExternal('https://claude.ai/login');
+    return false;
+  }
 });
 
 ipcMain.handle('ai:abortStream', async (_event, sessionId: string) => {

@@ -27,6 +27,7 @@ import { InteractiveApprovalCard } from './InteractiveApprovalCard';
 import { SubagentsPanel } from './SubagentsPanel';
 import { PromptInputArea } from './PromptInputArea';
 import { ModelSelectorDropdown } from './ModelSelectorDropdown';
+import { RateLimitWarningBanner } from './RateLimitWarningBanner';
 
 export const AIStudioView: React.FC = () => {
   const { t } = useTranslation();
@@ -41,6 +42,8 @@ export const AIStudioView: React.FC = () => {
     claudeAuth,
     pendingApprovals,
     subagents,
+    rateLimitWarnings,
+    dismissRateLimitWarning,
     isSubagentsPanelOpen,
     setIsSubagentsPanelOpen,
     sendApprovalResponse,
@@ -71,6 +74,7 @@ export const AIStudioView: React.FC = () => {
   const messages = currentSession?.messages || [];
   const projectApprovals = pendingApprovals[projectPath] || [];
   const projectSubagents = subagents[projectPath] || [];
+  const projectRateLimitWarning = rateLimitWarnings[projectPath] || null;
 
   useEffect(() => {
     fetchConfig();
@@ -257,6 +261,17 @@ export const AIStudioView: React.FC = () => {
             onClose={() => setIsSubagentsPanelOpen(false)}
           />
         </div>
+      )}
+
+      {/* Rate Limit & Quota Warning Banner */}
+      {projectRateLimitWarning && (
+        <RateLimitWarningBanner
+          warning={projectRateLimitWarning}
+          config={config}
+          onSelectModel={(model) => saveConfig({ ...config, model })}
+          onClearSession={() => clearSession(projectPath, currentSessionId)}
+          onDismiss={() => dismissRateLimitWarning(projectPath)}
+        />
       )}
 
       {/* 2. Messages Feed */}
