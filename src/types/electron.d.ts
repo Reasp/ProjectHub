@@ -1,3 +1,19 @@
+export interface ActionDefinition {
+  name: string;
+  command: string;
+  autoOpenUrl?: string;
+  requiresConfirmation?: boolean;
+  env?: Record<string, string>;
+  cwd?: string;
+}
+
+export interface ProjectActionConfig {
+  run: ActionDefinition;
+  deploy: ActionDefinition;
+  test: ActionDefinition;
+  customActions?: Array<ActionDefinition & { id: string }>;
+}
+
 export interface RagStatus {
   ready: boolean;
   chunksCount?: number;
@@ -268,6 +284,10 @@ export interface IElectronAPI {
   onProcessLogChunk: (callback: (data: { processId: string; text: string }) => void) => () => void;
   onProcessStatusChanged: (callback: (process: ManagedProcess) => void) => () => void;
 
+  // Action Runner & Script Config (.projecthub.json)
+  getActionConfig: (projectPath: string) => Promise<ProjectActionConfig>;
+  saveActionConfig: (projectPath: string, config: ProjectActionConfig) => Promise<boolean>;
+
   // Vector RAG & Knowledge Search
   searchDocs: (options: RagSearchOptions) => Promise<RagSearchResult[]>;
   getRagStats: (projectPath: string) => Promise<{ hasIndex: boolean; chunksCount: number; lastModified?: string }>;
@@ -309,6 +329,13 @@ export interface IElectronAPI {
   getGitRepoDetails: (projectPath: string) => Promise<GitRepoDetails | null>;
   checkoutBranch: (projectPath: string, branchName: string, createNew?: boolean) => Promise<boolean>;
   createBranch: (projectPath: string, branchName: string) => Promise<boolean>;
+  deleteBranch: (projectPath: string, branchName: string, force?: boolean) => Promise<boolean>;
+  mergeBranch: (projectPath: string, branchName: string) => Promise<{ success: boolean; error?: string }>;
+  fetchRemote: (projectPath: string) => Promise<boolean>;
+  pullRemote: (projectPath: string) => Promise<{ success: boolean; error?: string }>;
+  pushRemote: (projectPath: string) => Promise<{ success: boolean; error?: string }>;
+  discardFileChanges: (projectPath: string, filePath: string) => Promise<boolean>;
+  getDiffBetween: (projectPath: string, targetA: string, targetB?: string, filePath?: string) => Promise<string>;
   stageFile: (projectPath: string, filePath: string) => Promise<boolean>;
   unstageFile: (projectPath: string, filePath: string) => Promise<boolean>;
   stageAll: (projectPath: string) => Promise<boolean>;
@@ -368,13 +395,28 @@ export interface IElectronAPI {
   onAIComplete: (sessionId: string, callback: (message: AIMessage) => void) => () => void;
   onAIError: (sessionId: string, callback: (error: string) => void) => () => void;
 
-  // File Helpers
+  // File Explorer & Helpers
+  readDirectoryTree: (projectPath: string, subDir?: string, maxDepth?: number) => Promise<FileTreeNode[]>;
+  readFileContent: (projectPath: string, relativePath: string) => Promise<string>;
+  saveFileContent: (projectPath: string, relativePath: string, content: string) => Promise<boolean>;
+  createFileOrFolder: (projectPath: string, relativePath: string, isDirectory?: boolean) => Promise<boolean>;
+  deleteFileOrFolder: (projectPath: string, relativePath: string) => Promise<boolean>;
   readFile: (projectPath: string, relativePath: string) => Promise<string>;
   writeFile: (projectPath: string, relativePath: string, content: string) => Promise<boolean>;
   listFiles: (projectPath: string, subDir?: string) => Promise<Array<{ name: string; isDirectory: boolean; relativePath: string }>>;
 
   // System
   getPlatform: () => Promise<string>;
+}
+
+export interface FileTreeNode {
+  name: string;
+  path: string;
+  relativePath: string;
+  isDirectory: boolean;
+  size?: number;
+  extension?: string;
+  children?: FileTreeNode[];
 }
 
 export type AgentStatusType = 'idle' | 'running' | 'waiting_approval' | 'done' | 'error';

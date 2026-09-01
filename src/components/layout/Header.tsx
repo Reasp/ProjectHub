@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { ActionRunnerBar } from '../actions/ActionRunnerBar';
 
 export const Header: React.FC = () => {
   const { language, setLanguage, t } = useTranslation();
@@ -163,37 +164,12 @@ export const Header: React.FC = () => {
         )}
       </div>
 
-      {/* Right: Actions & Process Controls */}
+      {/* Right: Action Runner & System Controls */}
       <div className="flex items-center gap-2 shrink-0 flex-nowrap">
-        {/* Quick Dev Server Control Button */}
-        {devProcess ? (
-          <button
-            onClick={() => stopProcessAction(devProcess.id)}
-            title={t.header.stopDev}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/70 text-xs font-semibold text-rose-300 border border-rose-800/50 shadow-md shadow-rose-950/20 transition whitespace-nowrap shrink-0"
-          >
-            <Square className="w-3 h-3 text-rose-400 fill-rose-400 shrink-0" />
-            <span className="hidden lg:inline">{t.header.stopDev}</span>
-          </button>
-        ) : (
-          <button
-            onClick={() => startProcessAction('npm run dev', 'dev')}
-            title={t.header.startDev}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/50 hover:bg-emerald-900/60 text-xs font-semibold text-emerald-300 border border-emerald-800/50 shadow-md shadow-emerald-950/20 transition whitespace-nowrap shrink-0"
-          >
-            <Play className="w-3 h-3 text-emerald-400 fill-emerald-400 shrink-0" />
-            <span className="hidden lg:inline">{t.header.startDev}</span>
-          </button>
-        )}
+        {/* Configurable Action Runner (Run, Deploy, Test, Settings) */}
+        <ActionRunnerBar />
 
-        <button
-          onClick={() => startProcessAction('npm run index-docs', 'index-docs')}
-          title={t.header.indexRag}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition whitespace-nowrap shrink-0"
-        >
-          <RefreshCw className="w-3 h-3 text-indigo-400 shrink-0" />
-          <span className="hidden 2xl:inline">{t.header.indexRag}</span>
-        </button>
+        <div className="w-px h-6 bg-slate-800 mx-0.5 shrink-0" />
 
         <div className="w-px h-6 bg-slate-800 mx-1 shrink-0" />
 

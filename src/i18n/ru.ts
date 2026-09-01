@@ -80,6 +80,7 @@ export const ru: TranslationDictionary = {
     tasks: 'Задачи & Backlog',
     milestones: 'План & Milestones',
     git: 'Репозиторий Git',
+    files: 'Файлы & Проводник',
     prs: 'Pull Requests',
     docs: 'База знаний & ADR',
     analytics: 'Аналитика',

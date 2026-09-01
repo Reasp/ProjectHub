@@ -57,6 +57,12 @@ const api: IElectronAPI = {
     };
   },
 
+  // Action Runner & Script Config (.projecthub.json)
+  getActionConfig: (projectPath: string) =>
+    ipcRenderer.invoke('actions:getConfig', projectPath),
+  saveActionConfig: (projectPath: string, config: any) =>
+    ipcRenderer.invoke('actions:saveConfig', projectPath, config),
+
   // Vector RAG & Knowledge Search
   searchDocs: (options: RagSearchOptions) =>
     ipcRenderer.invoke('rag:search', options),
@@ -113,6 +119,20 @@ const api: IElectronAPI = {
     ipcRenderer.invoke('git:checkout', projectPath, branchName, createNew),
   createBranch: (projectPath: string, branchName: string) =>
     ipcRenderer.invoke('git:createBranch', projectPath, branchName),
+  deleteBranch: (projectPath: string, branchName: string, force?: boolean) =>
+    ipcRenderer.invoke('git:deleteBranch', projectPath, branchName, force),
+  mergeBranch: (projectPath: string, branchName: string) =>
+    ipcRenderer.invoke('git:mergeBranch', projectPath, branchName),
+  fetchRemote: (projectPath: string) =>
+    ipcRenderer.invoke('git:fetchRemote', projectPath),
+  pullRemote: (projectPath: string) =>
+    ipcRenderer.invoke('git:pullRemote', projectPath),
+  pushRemote: (projectPath: string) =>
+    ipcRenderer.invoke('git:pushRemote', projectPath),
+  discardFileChanges: (projectPath: string, filePath: string) =>
+    ipcRenderer.invoke('git:discardFileChanges', projectPath, filePath),
+  getDiffBetween: (projectPath: string, targetA: string, targetB?: string, filePath?: string) =>
+    ipcRenderer.invoke('git:getDiffBetween', projectPath, targetA, targetB, filePath),
   stageFile: (projectPath: string, filePath: string) =>
     ipcRenderer.invoke('git:stageFile', projectPath, filePath),
   unstageFile: (projectPath: string, filePath: string) =>
@@ -221,7 +241,17 @@ const api: IElectronAPI = {
     };
   },
 
-  // File helpers
+  // File Explorer & Helpers
+  readDirectoryTree: (projectPath: string, subDir?: string, maxDepth?: number) =>
+    ipcRenderer.invoke('files:readTree', projectPath, subDir, maxDepth),
+  readFileContent: (projectPath: string, relativePath: string) =>
+    ipcRenderer.invoke('files:readContent', projectPath, relativePath),
+  saveFileContent: (projectPath: string, relativePath: string, content: string) =>
+    ipcRenderer.invoke('files:saveContent', projectPath, relativePath, content),
+  createFileOrFolder: (projectPath: string, relativePath: string, isDirectory = false) =>
+    ipcRenderer.invoke('files:create', projectPath, relativePath, isDirectory),
+  deleteFileOrFolder: (projectPath: string, relativePath: string) =>
+    ipcRenderer.invoke('files:delete', projectPath, relativePath),
   readFile: (projectPath: string, relativePath: string) =>
     ipcRenderer.invoke('file:readFile', projectPath, relativePath),
   writeFile: (projectPath: string, relativePath: string, content: string) =>

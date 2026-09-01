@@ -80,6 +80,7 @@ export interface TranslationDictionary {
     tasks: string;
     milestones: string;
     git: string;
+    files: string;
     prs: string;
     docs: string;
     analytics: string;

@@ -483,6 +483,17 @@ ipcMain.handle('process:tailLog', async (_event, projectPath: string, processNam
   return await processManager.tailProjectLog(projectPath, processName, lines);
 });
 
+// 4b. Action Runner & Script Configuration (.projecthub.json)
+import { actionConfigService, type ProjectActionConfig } from './services/actionConfigService';
+
+ipcMain.handle('actions:getConfig', async (_event, projectPath: string) => {
+  return await actionConfigService.getConfig(projectPath);
+});
+
+ipcMain.handle('actions:saveConfig', async (_event, projectPath: string, config: ProjectActionConfig) => {
+  return await actionConfigService.saveConfig(projectPath, config);
+});
+
 // 5. Vector RAG & Knowledge Search
 import { searchProjectDocs, getProjectRagStats } from './services/ragSearch';
 import type { RagSearchOptions } from '../src/types/electron';
@@ -558,6 +569,34 @@ ipcMain.handle('git:commit', async (_event, projectPath: string, message: string
 
 ipcMain.handle('git:getFileDiff', async (_event, projectPath: string, filePath: string, staged = false) => {
   return await gitService.getFileDiff(projectPath, filePath, staged);
+});
+
+ipcMain.handle('git:deleteBranch', async (_event, projectPath: string, branchName: string, force = false) => {
+  return await gitService.deleteBranch(projectPath, branchName, force);
+});
+
+ipcMain.handle('git:mergeBranch', async (_event, projectPath: string, branchName: string) => {
+  return await gitService.mergeBranch(projectPath, branchName);
+});
+
+ipcMain.handle('git:fetchRemote', async (_event, projectPath: string) => {
+  return await gitService.fetchRemote(projectPath);
+});
+
+ipcMain.handle('git:pullRemote', async (_event, projectPath: string) => {
+  return await gitService.pullRemote(projectPath);
+});
+
+ipcMain.handle('git:pushRemote', async (_event, projectPath: string) => {
+  return await gitService.pushRemote(projectPath);
+});
+
+ipcMain.handle('git:discardFileChanges', async (_event, projectPath: string, filePath: string) => {
+  return await gitService.discardFileChanges(projectPath, filePath);
+});
+
+ipcMain.handle('git:getDiffBetween', async (_event, projectPath: string, targetA: string, targetB?: string, filePath?: string) => {
+  return await gitService.getDiffBetween(projectPath, targetA, targetB, filePath);
 });
 
 // 7. Pull & Merge Requests
@@ -753,30 +792,43 @@ ipcMain.handle('claudeBridge:getAvailableModels', async () => {
 });
 
 // 12. File System Helpers for AI & Explorer
+import { fileService } from './services/fileService';
+
+ipcMain.handle('files:readTree', async (_event, projectPath: string, subDir = '', maxDepth = 6) => {
+  return await fileService.readTree(projectPath, subDir, maxDepth);
+});
+
+ipcMain.handle('files:readContent', async (_event, projectPath: string, relativePath: string) => {
+  return await fileService.readFileContent(projectPath, relativePath);
+});
+
+ipcMain.handle('files:saveContent', async (_event, projectPath: string, relativePath: string, content: string) => {
+  return await fileService.saveFileContent(projectPath, relativePath, content);
+});
+
+ipcMain.handle('files:create', async (_event, projectPath: string, relativePath: string, isDirectory = false) => {
+  return await fileService.createFileOrFolder(projectPath, relativePath, isDirectory);
+});
+
+ipcMain.handle('files:delete', async (_event, projectPath: string, relativePath: string) => {
+  return await fileService.deleteFileOrFolder(projectPath, relativePath);
+});
+
 ipcMain.handle('file:readFile', async (_event, projectPath: string, relativePath: string) => {
-  const targetPath = path.isAbsolute(relativePath) ? relativePath : path.join(projectPath, relativePath);
-  return await fs.readFile(targetPath, 'utf-8');
+  return await fileService.readFileContent(projectPath, relativePath);
 });
 
 ipcMain.handle('file:writeFile', async (_event, projectPath: string, relativePath: string, content: string) => {
-  const targetPath = path.isAbsolute(relativePath) ? relativePath : path.join(projectPath, relativePath);
-  await fs.mkdir(path.dirname(targetPath), { recursive: true });
-  await fs.writeFile(targetPath, content, 'utf-8');
-  return true;
+  return await fileService.saveFileContent(projectPath, relativePath, content);
 });
 
 ipcMain.handle('file:listFiles', async (_event, projectPath: string, subDir?: string) => {
-  const targetDir = subDir ? path.join(projectPath, subDir) : projectPath;
-  try {
-    const entries = await fs.readdir(targetDir, { withFileTypes: true });
-    return entries.map((e) => ({
-      name: e.name,
-      isDirectory: e.isDirectory(),
-      relativePath: subDir ? path.join(subDir, e.name) : e.name
-    }));
-  } catch (err) {
-    return [];
-  }
+  const tree = await fileService.readTree(projectPath, subDir || '', 1);
+  return tree.map((t) => ({
+    name: t.name,
+    isDirectory: t.isDirectory,
+    relativePath: t.relativePath
+  }));
 });
 
 ipcMain.handle('system:getPlatform', async () => {

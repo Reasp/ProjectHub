@@ -5,6 +5,7 @@ import { ProjectWorkspace } from './components/projects/ProjectWorkspace';
 import { TerminalPanel } from './components/terminal/TerminalPanel';
 import { OmniSearchModal } from './components/search/OmniSearchModal';
 import { HotkeysHelpModal } from './components/layout/HotkeysHelpModal';
+import { VoiceControlWidget } from './components/voice/VoiceControlWidget';
 import { useProjectStore } from './store/useProjectStore';
 
 export const App: React.FC = () => {
@@ -76,6 +77,9 @@ export const App: React.FC = () => {
         } else if (key === 'g') {
           e.preventDefault();
           setActiveTab('git');
+        } else if (key === 'e') {
+          e.preventDefault();
+          setActiveTab('files');
         } else if (key === 'p' && !e.shiftKey) {
           e.preventDefault();
           setActiveTab('prs');
@@ -146,6 +150,9 @@ export const App: React.FC = () => {
         isOpen={isHotkeysHelpOpen}
         onClose={() => setHotkeysHelpOpen(false)}
       />
+
+      {/* Global Voice Control Widget (STT/TTS) */}
+      <VoiceControlWidget />
     </div>
   );
 };

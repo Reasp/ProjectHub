@@ -191,6 +191,110 @@ class GitService {
     }
   }
 
+  async deleteBranch(projectPath: string, branchName: string, force = false): Promise<boolean> {
+    try {
+      const git = simpleGit(projectPath);
+      await git.deleteLocalBranch(branchName, force);
+      this.broadcastGitChanged(projectPath);
+      return true;
+    } catch (e) {
+      console.error(`Failed to delete branch ${branchName}:`, e);
+      return false;
+    }
+  }
+
+  async mergeBranch(projectPath: string, branchName: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const git = simpleGit(projectPath);
+      await git.merge([branchName]);
+      this.broadcastGitChanged(projectPath);
+      return { success: true };
+    } catch (e: any) {
+      console.error(`Failed to merge ${branchName}:`, e);
+      return { success: false, error: e?.message || String(e) };
+    }
+  }
+
+  async fetchRemote(projectPath: string): Promise<boolean> {
+    try {
+      const git = simpleGit(projectPath);
+      await git.fetch();
+      this.broadcastGitChanged(projectPath);
+      return true;
+    } catch (e) {
+      console.error(`Failed to fetch remotes for ${projectPath}:`, e);
+      return false;
+    }
+  }
+
+  async pullRemote(projectPath: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const git = simpleGit(projectPath);
+      await git.pull();
+      this.broadcastGitChanged(projectPath);
+      return { success: true };
+    } catch (e: any) {
+      console.error(`Failed to pull for ${projectPath}:`, e);
+      return { success: false, error: e?.message || String(e) };
+    }
+  }
+
+  async pushRemote(projectPath: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const git = simpleGit(projectPath);
+      await git.push();
+      this.broadcastGitChanged(projectPath);
+      return { success: true };
+    } catch (e: any) {
+      console.error(`Failed to push for ${projectPath}:`, e);
+      return { success: false, error: e?.message || String(e) };
+    }
+  }
+
+  async discardFileChanges(projectPath: string, filePath: string): Promise<boolean> {
+    try {
+      const git = simpleGit(projectPath);
+      // Unstage if staged
+      try {
+        await git.reset(['HEAD', filePath]);
+      } catch {}
+      // Discard checkout changes
+      try {
+        await git.checkout(['--', filePath]);
+      } catch {
+        // If untracked file, remove it
+        const full = path.join(projectPath, filePath);
+        if (existsSync(full)) {
+          await fs.rm(full, { force: true, recursive: true });
+        }
+      }
+      this.broadcastGitChanged(projectPath);
+      return true;
+    } catch (e) {
+      console.error(`Failed to discard changes for ${filePath}:`, e);
+      return false;
+    }
+  }
+
+  async getDiffBetween(projectPath: string, targetA: string, targetB?: string, filePath?: string): Promise<string> {
+    try {
+      const git = simpleGit(projectPath);
+      const args: string[] = [];
+      if (targetB) {
+        args.push(`${targetA}..${targetB}`);
+      } else {
+        args.push(targetA);
+      }
+      if (filePath) {
+        args.push('--', filePath);
+      }
+      return await git.diff(args);
+    } catch (e) {
+      console.error(`Failed to get diff between ${targetA} and ${targetB}:`, e);
+      return '';
+    }
+  }
+
   async getFileDiff(projectPath: string, filePath: string, staged = false): Promise<string> {
     try {
       const git = simpleGit(projectPath);

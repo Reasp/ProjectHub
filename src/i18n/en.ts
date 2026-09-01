@@ -80,6 +80,7 @@ export const en: TranslationDictionary = {
     tasks: 'Tasks & Backlog',
     milestones: 'Roadmap & Milestones',
     git: 'Git Repository',
+    files: 'Files & Explorer',
     prs: 'Pull Requests',
     docs: 'Docs & ADR',
     analytics: 'Analytics',

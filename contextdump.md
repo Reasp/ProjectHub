@@ -46,21 +46,21 @@ tags: ["context", "architecture", "project-hub", "status", "git", "pull-requests
 17. **Брендовая айдентика и сборка**: Сгенерирована официальная иконка (Neon Cyber Nexus) без рамок и надписей с повышенным контрастом в многослойном `.ico` и `.png` (256/128/64/48/32/16px), настроена иконка исполняемого файла `.exe`, заголовок окна и логотип в приложении.
 18. **Стандарты документации Backlog.md и вставки изображений**: Введена строгая валидация формата документов (`doc-<id> - <Title>.md`) и решений (`decision-<id> - <Title>.md`), а также единые стандарты вставки изображений (`infra-dev.md`, Правила 13 и 15).
 19. **Обязательная быстрая сборка распакованного десктопного приложения**: Введено Правило 14 (`infra-dev.md`), предписывающее собирать распакованный бинарник `release/win-unpacked/ProjectHub.exe` (`npm run pack:win`) без медленной портабл-упаковки.
-20. **Комплексное ревью, аудит безопасности и дорожная карта v2.0** (`doc-6`): Проведен аудит всех 17 модулей, выявлены риски Command Injection, SafeStorage для API-ключей, Path Traversal и утечек дескрипторов Watcher. Спроектированы 5 ключевых модулей следующего поколения:
-    - **Git Diffs & Branches**: Менеджер веток (создание, checkout, merge, remote fetch/pull/push) и Split/Unified Diff Viewer с синтаксической подсветкой.
-    - **Action Runner (Run / Deploy)**: Конфигурируемые кнопки быстрого запуска и деплоя с параметрами команд из `.projecthub.json`.
-    - **Голосовое управление (Voice Control STT/TTS)**: Голосовые команды навигации, диктовка промптов в Claude AI Studio и голосовой ответ.
-    - **ProjectHub Native MCP Server**: Встроенный сервер MCP, экспортирующий API ProjectHub для внешних AI-агентов (Claude Code, Antigravity, Cursor).
-    - **File Explorer с Git-индикацией**: Дерево файлов проекта с цветными бейджами модифицированных (`[M]`), добавленных (`[A]`), удаленных (`[D]`) и неотслеживаемых файлов (`[?]`) со встроенным просмотром и быстрым вызовом Diff.
+20. **Комплексное ревью, аудит безопасности и внедрение модулей v2.0** (`doc-6`): Реализованы и протестированы все 5 ключевых модулей нового поколения:
+    - **Git Diffs & Branches**: Менеджер веток (создание, checkout, merge, удаление, remote fetch/pull/push), построчный Split/Unified Diff Viewer с синтаксической подсветкой и сравнение произвольных веток.
+    - **Action Runner (Run / Deploy / Test)**: Конфигурируемые кнопки быстрого запуска dev-сервера, деплоя и тестов с сохранением настроек в `.projecthub.json` и модальным окном настроек.
+    - **Интерактивный File Explorer с Git-индикацией**: Дерево файлов с цветными бейджами `[M]`, `[A]`, `[D]`, `[?]`, счетчиками изменений в папках, быстрым редактором кода и встроенным Diff.
+    - **ProjectHub Native MCP Server**: Встроенный сервер MCP (`scripts/mcp-server.mjs`, `npm run mcp-server`), экспортирующий API ProjectHub для внешних AI-агентов (Claude Code, Antigravity, Cursor, Windsurf).
+    - **Голосовое управление (Voice Control STT/TTS)**: Распознавание русской и английской речи, голосовые команды навигации и запуска действий, синтез речи (TTS) и плавающий виджет `VoiceControlWidget` (`Ctrl+Shift+V`).
 
 ---
 
 ## 3. Выбранный технологический стек
 
 - **Платформа десктопа**: **Electron + Vite + React 19 + TypeScript**
-- **Git & Diff Движок**: **simple-git** + кастомный синтаксический diff-парсер.
+- **Git & Diff Движок**: **simple-git** + кастомный синтаксический Split/Unified diff-парсер.
 - **Стилизация и UI-система**: **Tailwind CSS v4 + Lucide React Icons** (премиальный темный интерфейс).
 - **Управление состоянием**: **Zustand** (хранилище проектов, задач, майлстоунов, PR, процессов и логов).
-- **RAG & AI**: **LanceDB** + локальный коннектор **Ollama** (`http://127.0.0.1:11434/api/generate`).
-- **Voice & Multimodal (v2.0)**: **Web Speech API** + **Whisper** + **SpeechSynthesis**.
-- **Ecosystem (v2.0)**: **ProjectHub Native MCP Server** (TypeScript MCP SDK).
+- **RAG & AI**: **LanceDB** + локальный коннектор **Ollama** (`http://127.0.0.1:11434/api/generate`) + Claude AI Studio (Anthropic, OpenRouter, DeepSeek).
+- **Voice & Multimodal (v2.0)**: **Web Speech API** (STT) + **SpeechSynthesis** (TTS) с парсером команд.
+- **Ecosystem & Interoperability (v2.0)**: **ProjectHub Native MCP Server** (`@modelcontextprotocol/sdk`).

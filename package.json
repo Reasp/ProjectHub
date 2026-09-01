@@ -24,6 +24,7 @@
     "lightrag-index": "node scripts/lightrag/run.mjs index_docs.py",
     "lightrag-query": "node scripts/lightrag/run.mjs query.py",
     "lightrag-server": "node scripts/lightrag/lightrag-server.mjs",
+    "mcp-server": "node scripts/mcp-server.mjs",
     "web": "node scripts/web.mjs"
   },
   "build": {

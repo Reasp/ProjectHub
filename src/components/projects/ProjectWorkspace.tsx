@@ -3,6 +3,7 @@ import {
   Kanban,
   Target,
   GitBranch,
+  FolderTree,
   GitPullRequest,
   BookOpen,
   Cpu,
@@ -16,6 +17,7 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { KanbanBoard } from '../kanban/KanbanBoard';
 import { MilestonesRoadmapView } from '../milestones/MilestonesRoadmapView';
 import { GitInspector } from '../git/GitInspector';
+import { FileExplorer } from '../explorer/FileExplorer';
 import { PullRequestView } from '../pr/PullRequestView';
 import { DocsRagView } from '../docs/DocsRagView';
 import { ProjectAnalyticsView } from '../analytics/ProjectAnalyticsView';
@@ -30,6 +32,7 @@ export const ProjectWorkspace: React.FC = () => {
     { id: 'kanban', label: t.tabs.tasks, shortLabel: t.tabs.tasks.split(' ')[0], hotkey: 'Ctrl+B', icon: Kanban },
     { id: 'milestones', label: t.tabs.milestones, shortLabel: t.tabs.milestones.split(' ')[0], hotkey: 'Ctrl+M', icon: Target },
     { id: 'git', label: t.tabs.git, shortLabel: 'Git', hotkey: 'Ctrl+G', icon: GitBranch },
+    { id: 'files', label: t.tabs.files, shortLabel: 'Files', hotkey: 'Ctrl+E', icon: FolderTree },
     { id: 'prs', label: t.tabs.prs, shortLabel: 'PR', hotkey: 'Ctrl+P', icon: GitPullRequest },
     { id: 'docs', label: t.tabs.docs, shortLabel: 'Docs', hotkey: 'Ctrl+D', icon: BookOpen },
     { id: 'analytics', label: t.tabs.analytics, shortLabel: 'Analytics', hotkey: 'Ctrl+A', icon: BarChart2 },
@@ -84,6 +87,7 @@ export const ProjectWorkspace: React.FC = () => {
         {activeTab === 'kanban' && <KanbanBoard />}
         {activeTab === 'milestones' && <MilestonesRoadmapView />}
         {activeTab === 'git' && <GitInspector />}
+        {activeTab === 'files' && <FileExplorer />}
         {activeTab === 'prs' && <PullRequestView />}
         {activeTab === 'docs' && <DocsRagView />}
         {activeTab === 'analytics' && <ProjectAnalyticsView />}

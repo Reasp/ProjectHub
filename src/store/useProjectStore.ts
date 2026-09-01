@@ -27,7 +27,7 @@ interface ProjectState {
   gitRepoDetails: GitRepoDetails | null;
   gitSelectedFile: string | null;
   gitDiffContent: string;
-  activeTab: 'kanban' | 'milestones' | 'git' | 'prs' | 'docs' | 'analytics' | 'ai' | 'claude-cli' | 'processes';
+  activeTab: 'kanban' | 'milestones' | 'git' | 'files' | 'prs' | 'docs' | 'analytics' | 'ai' | 'claude-cli' | 'processes';
   taskViewMode: 'kanban' | 'list';
   selectedLabelFilter: string | null;
   selectedMilestoneFilter: string | null;
@@ -96,7 +96,7 @@ interface ProjectState {
   selectProject: (project: ProjectInfo | null) => void;
   setTasks: (tasks: BacklogTask[]) => void;
   setGitLogs: (logs: GitCommit[]) => void;
-  setActiveTab: (tab: 'kanban' | 'milestones' | 'git' | 'prs' | 'docs' | 'analytics' | 'ai' | 'claude-cli' | 'processes') => void;
+  setActiveTab: (tab: 'kanban' | 'milestones' | 'git' | 'files' | 'prs' | 'docs' | 'analytics' | 'ai' | 'claude-cli' | 'processes') => void;
   setTaskViewMode: (mode: 'kanban' | 'list') => void;
   setSelectedLabelFilter: (label: string | null) => void;
   setIsLoading: (loading: boolean) => void;
@@ -148,6 +148,13 @@ interface ProjectState {
   loadGitRepoDetails: (project: ProjectInfo) => Promise<void>;
   gitCheckoutBranch: (branchName: string, createNew?: boolean) => Promise<boolean>;
   gitCreateBranch: (branchName: string) => Promise<boolean>;
+  gitDeleteBranch: (branchName: string, force?: boolean) => Promise<boolean>;
+  gitMergeBranch: (branchName: string) => Promise<{ success: boolean; error?: string }>;
+  gitFetchRemote: () => Promise<boolean>;
+  gitPullRemote: () => Promise<{ success: boolean; error?: string }>;
+  gitPushRemote: () => Promise<{ success: boolean; error?: string }>;
+  gitDiscardFileChanges: (filePath: string) => Promise<boolean>;
+  gitLoadDiffBetween: (targetA: string, targetB?: string, filePath?: string) => Promise<string>;
   gitStageFile: (filePath: string) => Promise<boolean>;
   gitUnstageFile: (filePath: string) => Promise<boolean>;
   gitStageAll: () => Promise<boolean>;
@@ -728,6 +735,124 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     } catch (e) {
       console.error('Failed to create branch:', e);
       return false;
+    }
+  },
+
+  gitDeleteBranch: async (branchName: string, force = false) => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return false;
+    try {
+      const ok = await window.api.deleteBranch(project.path, branchName, force);
+      if (ok) {
+        get().addTerminalLog(`[Git] Удалена ветка: ${branchName}`);
+        await get().loadGitRepoDetails(project);
+      }
+      return ok;
+    } catch (e) {
+      console.error('Failed to delete branch:', e);
+      return false;
+    }
+  },
+
+  gitMergeBranch: async (branchName: string) => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return { success: false, error: 'No active project' };
+    try {
+      const res = await window.api.mergeBranch(project.path, branchName);
+      if (res.success) {
+        get().addTerminalLog(`[Git] Ветка ${branchName} успешно объединена в текущую ветку`);
+        await get().loadGitRepoDetails(project);
+      } else {
+        get().addTerminalLog(`[Git Ошибка] Слияние ветки ${branchName} завершилось ошибкой: ${res.error}`);
+      }
+      return res;
+    } catch (e: any) {
+      console.error('Failed to merge branch:', e);
+      return { success: false, error: e?.message || String(e) };
+    }
+  },
+
+  gitFetchRemote: async () => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return false;
+    try {
+      const ok = await window.api.fetchRemote(project.path);
+      if (ok) {
+        get().addTerminalLog(`[Git] Выполнен git fetch`);
+        await get().loadGitRepoDetails(project);
+      }
+      return ok;
+    } catch (e) {
+      console.error('Failed to fetch remotes:', e);
+      return false;
+    }
+  },
+
+  gitPullRemote: async () => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return { success: false, error: 'No active project' };
+    try {
+      const res = await window.api.pullRemote(project.path);
+      if (res.success) {
+        get().addTerminalLog(`[Git] Выполнен git pull — изменения получены`);
+        await get().loadGitRepoDetails(project);
+      } else {
+        get().addTerminalLog(`[Git Ошибка] pull завершился ошибкой: ${res.error}`);
+      }
+      return res;
+    } catch (e: any) {
+      console.error('Failed to pull:', e);
+      return { success: false, error: e?.message || String(e) };
+    }
+  },
+
+  gitPushRemote: async () => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return { success: false, error: 'No active project' };
+    try {
+      const res = await window.api.pushRemote(project.path);
+      if (res.success) {
+        get().addTerminalLog(`[Git] Выполнен git push — коммиты отправлены в удаленный репозиторий`);
+        await get().loadGitRepoDetails(project);
+      } else {
+        get().addTerminalLog(`[Git Ошибка] push завершился ошибкой: ${res.error}`);
+      }
+      return res;
+    } catch (e: any) {
+      console.error('Failed to push:', e);
+      return { success: false, error: e?.message || String(e) };
+    }
+  },
+
+  gitDiscardFileChanges: async (filePath: string) => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return false;
+    try {
+      const ok = await window.api.discardFileChanges(project.path, filePath);
+      if (ok) {
+        get().addTerminalLog(`[Git] Отменены изменения в файле: ${filePath}`);
+        await get().loadGitRepoDetails(project);
+        if (get().gitSelectedFile === filePath) {
+          set({ gitSelectedFile: null, gitDiffContent: '' });
+        }
+      }
+      return ok;
+    } catch (e) {
+      console.error('Failed to discard changes:', e);
+      return false;
+    }
+  },
+
+  gitLoadDiffBetween: async (targetA: string, targetB?: string, filePath?: string) => {
+    const project = get().selectedProject;
+    if (!window.api || !project) return '';
+    try {
+      const diff = await window.api.getDiffBetween(project.path, targetA, targetB, filePath);
+      set({ gitDiffContent: diff });
+      return diff;
+    } catch (e) {
+      console.error('Failed to get diff between:', e);
+      return '';
     }
   },
 
