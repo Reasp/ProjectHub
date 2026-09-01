@@ -467,10 +467,15 @@ export const useAIStudioStore = create<AIStudioState>()(
             const mIdx = msgs.findIndex((m) => m.id === assistantMsgId);
             if (mIdx === -1) return state;
 
+            const finalTools = (completedMsg.toolCalls || msgs[mIdx].toolCalls || []).map((tc) => ({
+              ...tc,
+              status: tc.status === 'running' || !tc.status ? (tc.diff ? 'pending' : 'done') : tc.status
+            }));
+
             msgs[mIdx] = {
               ...completedMsg,
               id: assistantMsgId,
-              toolCalls: completedMsg.toolCalls || msgs[mIdx].toolCalls
+              toolCalls: finalTools.length > 0 ? finalTools : undefined
             };
 
             targetSession.messages = msgs;

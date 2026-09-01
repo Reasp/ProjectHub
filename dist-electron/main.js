@@ -428,7 +428,10 @@ var E = c.join(g.homedir(), ".projecthub", "claude_config"), D = c.join(g.homedi
 			role: "assistant",
 			content: m,
 			thought: h || void 0,
-			toolCalls: g.length > 0 ? g : void 0,
+			toolCalls: g.length > 0 ? g.map((e) => ({
+				...e,
+				status: e.status || (e.diff ? "pending" : "done")
+			})) : void 0,
 			timestamp: (/* @__PURE__ */ new Date()).toISOString()
 		});
 	}
@@ -834,7 +837,10 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 					role: "assistant",
 					content: d,
 					thought: f,
-					toolCalls: m,
+					toolCalls: m.map((e) => ({
+						...e,
+						status: e.status || "done"
+					})),
 					timestamp: (/* @__PURE__ */ new Date()).toISOString()
 				};
 				this.setProjectStatus(a, "done", "Задача успешно выполнена"), n(e);

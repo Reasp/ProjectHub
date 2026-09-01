@@ -533,7 +533,10 @@ class ClaudeBridgeService extends EventEmitter {
           role: 'assistant',
           content: accumulatedText,
           thought: accumulatedThought,
-          toolCalls,
+          toolCalls: toolCalls.map((tc) => ({
+            ...tc,
+            status: tc.status || 'done'
+          })),
           timestamp: new Date().toISOString()
         };
         this.setProjectStatus(projectPath, 'done', 'Задача успешно выполнена');

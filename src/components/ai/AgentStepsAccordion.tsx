@@ -39,8 +39,8 @@ export const AgentStepsAccordion: React.FC<AgentStepsAccordionProps> = ({
   if (!toolCalls || toolCalls.length === 0) return null;
 
   const totalCount = toolCalls.length;
-  const completedCount = toolCalls.filter((tc) => tc.status === 'accepted' || tc.status === 'done').length;
-  const runningCount = toolCalls.filter((tc) => tc.status === 'running' || !tc.status || tc.status === 'pending').length;
+  const completedCount = toolCalls.filter((tc) => tc.status === 'accepted' || tc.status === 'done' || (!tc.diff && (!tc.status || tc.status === 'pending'))).length;
+  const runningCount = toolCalls.filter((tc) => tc.status === 'running').length;
   const hasPendingDiff = toolCalls.some((tc) => tc.diff && (!tc.status || tc.status === 'pending'));
 
   const toggleTool = (toolId: string) => {
@@ -165,7 +165,7 @@ export const AgentStepsAccordion: React.FC<AgentStepsAccordionProps> = ({
                         <AlertCircle className="w-3 h-3" />
                         {t.common.failed}
                       </span>
-                    ) : isDone ? (
+                    ) : isDone || !tool.status || (!tool.diff && tool.status === 'pending') ? (
                       <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
                         <CheckCircle2 className="w-3 h-3" />
                         {t.common.completed}

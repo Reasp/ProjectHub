@@ -364,7 +364,10 @@ class AIAgentService {
       role: 'assistant',
       content: fullText,
       thought: fullThought || undefined,
-      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls.map((tc) => ({
+        ...tc,
+        status: tc.status || (tc.diff ? 'pending' : 'done')
+      })) : undefined,
       timestamp: new Date().toISOString()
     });
   }
