@@ -27,6 +27,7 @@ import { ModelSelectorDropdown } from './ModelSelectorDropdown';
 import { RateLimitWarningBanner } from './RateLimitWarningBanner';
 import { AgentStepsAccordion } from './AgentStepsAccordion';
 import { LiveActivitySidebar } from './LiveActivitySidebar';
+import { MarkdownViewer } from '../common/MarkdownViewer';
 
 export const AIStudioView: React.FC = () => {
   const { t } = useTranslation();
@@ -471,7 +472,11 @@ export const AIStudioView: React.FC = () => {
                       }`}
                     >
                       {msg.content ? (
-                        <div className="whitespace-pre-wrap font-sans">{msg.content}</div>
+                        isUser ? (
+                          <div className="whitespace-pre-wrap font-sans">{msg.content}</div>
+                        ) : (
+                          <MarkdownViewer content={msg.content} emptyMessage={null} className="text-slate-200" />
+                        )
                       ) : isStreaming && !msg.thought && (!msg.toolCalls || msg.toolCalls.length === 0) ? (
                         <div className="flex items-center gap-1.5 text-amber-400 py-1 font-mono">
                           <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />

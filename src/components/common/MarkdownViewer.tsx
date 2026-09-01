@@ -5,18 +5,24 @@ import { Copy, Check, Info, AlertTriangle, AlertCircle, Lightbulb, Flame } from 
 interface MarkdownViewerProps {
   content: string;
   className?: string;
+  emptyMessage?: string | null;
 }
 
-export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({ content, className = '' }) => {
+export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
+  content,
+  className = '',
+  emptyMessage = 'Документ пуст'
+}) => {
   if (!content || !content.trim()) {
-    return <div className="text-xs text-slate-500 italic p-4">Документ пуст</div>;
+    if (emptyMessage === null) return null;
+    return <div className="text-xs text-slate-500 italic p-4">{emptyMessage}</div>;
   }
 
   // Parse markdown into high-level blocks
   const blocks = parseMarkdownBlocks(content);
 
   return (
-    <div className={`space-y-4 text-xs text-slate-200 leading-relaxed font-sans select-text ${className}`}>
+    <div className={`space-y-3.5 text-xs text-slate-200 leading-relaxed font-sans select-text ${className}`}>
       {blocks.map((block, idx) => (
         <BlockRenderer key={idx} block={block} />
       ))}
