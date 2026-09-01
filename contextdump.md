@@ -46,6 +46,12 @@ tags: ["context", "architecture", "project-hub", "status", "git", "pull-requests
 17. **Брендовая айдентика и сборка**: Сгенерирована официальная иконка (Neon Cyber Nexus) без рамок и надписей с повышенным контрастом в многослойном `.ico` и `.png` (256/128/64/48/32/16px), настроена иконка исполняемого файла `.exe`, заголовок окна и логотип в приложении.
 18. **Стандарты документации Backlog.md и вставки изображений**: Введена строгая валидация формата документов (`doc-<id> - <Title>.md`) и решений (`decision-<id> - <Title>.md`), а также единые стандарты вставки изображений (`infra-dev.md`, Правила 13 и 15).
 19. **Обязательная быстрая сборка распакованного десктопного приложения**: Введено Правило 14 (`infra-dev.md`), предписывающее собирать распакованный бинарник `release/win-unpacked/ProjectHub.exe` (`npm run pack:win`) без медленной портабл-упаковки.
+20. **Комплексное ревью, аудит безопасности и дорожная карта v2.0** (`doc-6`): Проведен аудит всех 17 модулей, выявлены риски Command Injection, SafeStorage для API-ключей, Path Traversal и утечек дескрипторов Watcher. Спроектированы 5 ключевых модулей следующего поколения:
+    - **Git Diffs & Branches**: Менеджер веток (создание, checkout, merge, remote fetch/pull/push) и Split/Unified Diff Viewer с синтаксической подсветкой.
+    - **Action Runner (Run / Deploy)**: Конфигурируемые кнопки быстрого запуска и деплоя с параметрами команд из `.projecthub.json`.
+    - **Голосовое управление (Voice Control STT/TTS)**: Голосовые команды навигации, диктовка промптов в Claude AI Studio и голосовой ответ.
+    - **ProjectHub Native MCP Server**: Встроенный сервер MCP, экспортирующий API ProjectHub для внешних AI-агентов (Claude Code, Antigravity, Cursor).
+    - **File Explorer с Git-индикацией**: Дерево файлов проекта с цветными бейджами модифицированных (`[M]`), добавленных (`[A]`), удаленных (`[D]`) и неотслеживаемых файлов (`[?]`) со встроенным просмотром и быстрым вызовом Diff.
 
 ---
 
@@ -56,3 +62,5 @@ tags: ["context", "architecture", "project-hub", "status", "git", "pull-requests
 - **Стилизация и UI-система**: **Tailwind CSS v4 + Lucide React Icons** (премиальный темный интерфейс).
 - **Управление состоянием**: **Zustand** (хранилище проектов, задач, майлстоунов, PR, процессов и логов).
 - **RAG & AI**: **LanceDB** + локальный коннектор **Ollama** (`http://127.0.0.1:11434/api/generate`).
+- **Voice & Multimodal (v2.0)**: **Web Speech API** + **Whisper** + **SpeechSynthesis**.
+- **Ecosystem (v2.0)**: **ProjectHub Native MCP Server** (TypeScript MCP SDK).
