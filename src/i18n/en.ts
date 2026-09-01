@@ -350,6 +350,8 @@ export const en: TranslationDictionary = {
     loggedInAs: 'Logged in via Claude.ai',
     loginClaude: 'Log in to Claude.ai',
     loginClaudeTitle: 'Log in to your Claude.ai account (Pro / Team without API key)',
+    logoutClaude: 'Log Out',
+    logoutClaudeTitle: 'Log out from Claude.ai account',
     useSubscriptionTitle: 'Using a Claude.ai Pro / Team subscription?',
     useSubscriptionDesc: 'Log in via browser without entering an API key.',
     welcomeTitle: 'Claude AI Studio',

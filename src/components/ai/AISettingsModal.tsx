@@ -17,7 +17,8 @@ import {
   Plus,
   Trash2,
   SlidersHorizontal,
-  Lock
+  Lock,
+  LogOut
 } from 'lucide-react';
 import { useAIStudioStore, DEFAULT_AUTO_APPROVE_RULES } from '../../store/useAIStudioStore';
 import type { AIProviderConfig, AutoApproveRules } from '../../types/electron';
@@ -63,7 +64,7 @@ const MODEL_PRESETS: Record<string, string[]> = {
 
 export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
-  const { config, saveConfig, claudeAuth, startClaudeLogin, fetchClaudeAuth } = useAIStudioStore();
+  const { config, saveConfig, claudeAuth, startClaudeLogin, claudeLogout, fetchClaudeAuth } = useAIStudioStore();
 
   const [activeTab, setActiveTab] = useState<'general' | 'autoApprove'>('general');
   const [form, setForm] = useState<AIProviderConfig>({
@@ -274,6 +275,18 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                       >
                         <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                         <span>{t.aiStudio.loginClaude}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await claudeLogout();
+                          await fetchClaudeAuth();
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 font-medium text-xs transition flex items-center gap-1.5"
+                        title={t.aiStudio.logoutClaudeTitle}
+                      >
+                        <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                        <span>{t.aiStudio.logoutClaude}</span>
                       </button>
                     </div>
                   </div>

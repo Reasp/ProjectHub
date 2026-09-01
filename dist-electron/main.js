@@ -290,6 +290,31 @@ var E = c.join(g.homedir(), ".projecthub", "claude_config"), D = c.join(g.homedi
 		}
 		return { isLoggedIn: !1 };
 	}
+	async claudeLogout() {
+		let e = [c.join(E, ".claude.json"), c.join(g.homedir(), ".claude.json")];
+		for (let t of e) if (d(t)) try {
+			let e = await u.readFile(t, "utf-8"), n = JSON.parse(e);
+			n.oauthAccount && (delete n.oauthAccount, delete n.primaryApiKey, await u.writeFile(t, JSON.stringify(n, null, 2), "utf-8"));
+		} catch (e) {
+			console.warn(`Failed to clean oauthAccount from ${t}:`, e);
+		}
+		try {
+			let e = c.join(E, ".credentials.json");
+			d(e) && await u.unlink(e);
+		} catch {}
+		try {
+			process.platform === "win32" ? p("cmd.exe", ["/c", "claude auth logout"], { env: {
+				...process.env,
+				CLAUDE_CONFIG_DIR: E
+			} }) : p("claude", ["auth", "logout"], { env: {
+				...process.env,
+				CLAUDE_CONFIG_DIR: E
+			} });
+		} catch (e) {
+			console.warn("Failed to spawn claude auth logout:", e);
+		}
+		return !0;
+	}
 	async getConfig() {
 		try {
 			if (d(D)) {
@@ -3234,7 +3259,7 @@ o.handle("backlog:getTasks", async (e, t) => {
 	} catch (e) {
 		return console.error("Failed to start claude auth login process:", e), s.openExternal("https://claude.ai/login"), !1;
 	}
-}), o.handle("ai:abortStream", async (e, t) => (O.abortStream(t), A.abortSession(t), !0)), o.handle("ai:applyDiff", async (e, t, n, r) => await O.applyDiff(t, n, r)), o.handle("ai:streamChat", async (e, t) => {
+}), o.handle("ai:claudeLogout", async () => await O.claudeLogout()), o.handle("ai:abortStream", async (e, t) => (O.abortStream(t), A.abortSession(t), !0)), o.handle("ai:applyDiff", async (e, t, n, r) => await O.applyDiff(t, n, r)), o.handle("ai:streamChat", async (e, t) => {
 	if (!Z) return;
 	let n = Z;
 	A.runAgentTask(t, (e) => {

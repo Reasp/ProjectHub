@@ -51,6 +51,7 @@ interface AIStudioState {
   saveConfig: (config: AIProviderConfig) => Promise<void>;
   fetchClaudeAuth: () => Promise<void>;
   startClaudeLogin: () => Promise<void>;
+  claudeLogout: () => Promise<void>;
   setMode: (mode: 'chat' | 'agent' | 'architect') => void;
   setIsSettingsOpen: (open: boolean) => void;
   createSession: (projectPath: string, initialTitle?: string) => string;
@@ -203,6 +204,17 @@ export const useAIStudioStore = create<AIStudioState>()(
             await window.api.startClaudeLogin();
           } catch (err) {
             console.error('Failed to start Claude login:', err);
+          }
+        }
+      },
+
+      claudeLogout: async () => {
+        if (window.api?.claudeLogout) {
+          try {
+            await window.api.claudeLogout();
+            set({ claudeAuth: { isLoggedIn: false } });
+          } catch (err) {
+            console.error('Failed to log out from Claude:', err);
           }
         }
       },

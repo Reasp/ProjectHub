@@ -350,6 +350,8 @@ export const ru: TranslationDictionary = {
     loggedInAs: 'Авторизован через Claude.ai',
     loginClaude: 'Войти в Claude.ai',
     loginClaudeTitle: 'Войти в свой аккаунт Claude.ai (Pro / Team без API-ключа)',
+    logoutClaude: 'Выйти из аккаунта',
+    logoutClaudeTitle: 'Выйти из авторизованного аккаунта Claude.ai',
     useSubscriptionTitle: 'Используете подписку Claude.ai Pro / Team?',
     useSubscriptionDesc: 'Войдите в аккаунт через браузер без ввода API-ключа.',
     welcomeTitle: 'Claude AI Studio',

@@ -350,6 +350,8 @@ export interface TranslationDictionary {
     loggedInAs: string;
     loginClaude: string;
     loginClaudeTitle: string;
+    logoutClaude: string;
+    logoutClaudeTitle: string;
     useSubscriptionTitle: string;
     useSubscriptionDesc: string;
     welcomeTitle: string;

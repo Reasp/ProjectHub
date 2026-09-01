@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawn } from 'node:child_process';
 import { searchProjectDocs } from './ragSearch.js';
 import matter from 'gray-matter';
 
@@ -119,6 +120,58 @@ class AIAgentService {
       }
     }
     return { isLoggedIn: false };
+  }
+
+  public async claudeLogout(): Promise<boolean> {
+    const isolatedClaudeJson = path.join(PROJECT_HUB_CLAUDE_DIR, '.claude.json');
+    const globalClaudeJson = path.join(os.homedir(), '.claude.json');
+    const targetPaths = [isolatedClaudeJson, globalClaudeJson];
+
+    for (const claudeJsonPath of targetPaths) {
+      if (existsSync(claudeJsonPath)) {
+        try {
+          const content = await fs.readFile(claudeJsonPath, 'utf-8');
+          const data = JSON.parse(content);
+          if (data.oauthAccount) {
+            delete data.oauthAccount;
+            delete data.primaryApiKey;
+            await fs.writeFile(claudeJsonPath, JSON.stringify(data, null, 2), 'utf-8');
+          }
+        } catch (e) {
+          console.warn(`Failed to clean oauthAccount from ${claudeJsonPath}:`, e);
+        }
+      }
+    }
+
+    try {
+      const credsFile = path.join(PROJECT_HUB_CLAUDE_DIR, '.credentials.json');
+      if (existsSync(credsFile)) {
+        await fs.unlink(credsFile);
+      }
+    } catch {}
+
+    try {
+      const isWin = process.platform === 'win32';
+      if (isWin) {
+        spawn('cmd.exe', ['/c', 'claude auth logout'], {
+          env: {
+            ...process.env,
+            CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR
+          }
+        });
+      } else {
+        spawn('claude', ['auth', 'logout'], {
+          env: {
+            ...process.env,
+            CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to spawn claude auth logout:', e);
+    }
+
+    return true;
   }
 
   public async getConfig(): Promise<AIProviderConfig> {

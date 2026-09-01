@@ -693,6 +693,10 @@ ipcMain.handle('ai:startClaudeLogin', async () => {
   }
 });
 
+ipcMain.handle('ai:claudeLogout', async () => {
+  return await aiAgentService.claudeLogout();
+});
+
 ipcMain.handle('ai:abortStream', async (_event, sessionId: string) => {
   aiAgentService.abortStream(sessionId);
   claudeBridgeService.abortSession(sessionId);

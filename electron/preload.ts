@@ -167,6 +167,7 @@ const api: IElectronAPI = {
   saveAIConfig: (config: any) => ipcRenderer.invoke('ai:saveConfig', config),
   getClaudeAuthStatus: () => ipcRenderer.invoke('ai:getClaudeAuthStatus'),
   startClaudeLogin: () => ipcRenderer.invoke('ai:startClaudeLogin'),
+  claudeLogout: () => ipcRenderer.invoke('ai:claudeLogout'),
   streamAIChat: (request: any) => ipcRenderer.invoke('ai:streamChat', request),
   abortAIStream: (sessionId: string) => ipcRenderer.invoke('ai:abortStream', sessionId),
   applyAIDiff: (projectPath: string, relativePath: string, newContent: string) =>

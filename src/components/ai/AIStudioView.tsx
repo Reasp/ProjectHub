@@ -14,7 +14,8 @@ import {
   Settings,
   Trash2,
   Activity,
-  ShieldCheck
+  ShieldCheck,
+  LogOut
 } from 'lucide-react';
 import { useAIStudioStore, type AISession } from '../../store/useAIStudioStore';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -55,6 +56,7 @@ export const AIStudioView: React.FC = () => {
     fetchConfig,
     fetchClaudeAuth,
     startClaudeLogin,
+    claudeLogout,
     saveConfig,
     dismissRateLimitWarning,
     setMode,
@@ -175,19 +177,31 @@ export const AIStudioView: React.FC = () => {
 
         {/* Studio Controls Header Right */}
         <div className="flex items-center gap-2 pb-1 pr-2">
-          {/* Claude.ai Auth Status Button */}
+          {/* Claude.ai Auth Status & Logout Button Group */}
           {claudeAuth?.isLoggedIn ? (
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              title={`${t.aiStudio.loggedInAs}: ${claudeAuth.email} (${claudeAuth.seatTier || 'Pro'})`}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 text-[11px] font-medium transition shrink-0"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <span className="font-bold text-xs text-amber-400">✳</span>
-              <span className="max-w-[120px] lg:max-w-[180px] truncate font-sans text-[10px]">
-                {claudeAuth.email}
-              </span>
-            </button>
+            <div className="flex items-center bg-amber-500/10 border border-amber-500/30 rounded-lg p-0.5 shrink-0">
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                title={`${t.aiStudio.loggedInAs}: ${claudeAuth.email} (${claudeAuth.seatTier || 'Pro'})`}
+                className="flex items-center gap-1.5 px-2 py-1 text-amber-300 hover:text-amber-200 hover:bg-amber-500/15 rounded-md text-[11px] font-medium transition"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <span className="font-bold text-xs text-amber-400">✳</span>
+                <span className="max-w-[110px] lg:max-w-[170px] truncate font-sans text-[10px]">
+                  {claudeAuth.email}
+                </span>
+              </button>
+              <button
+                onClick={async () => {
+                  await claudeLogout();
+                  await fetchClaudeAuth();
+                }}
+                title={t.aiStudio.logoutClaudeTitle}
+                className="p-1 rounded-md text-slate-400 hover:text-rose-300 hover:bg-rose-500/20 transition ml-0.5"
+              >
+                <LogOut className="w-3 h-3" />
+              </button>
+            </div>
           ) : (
             <button
               onClick={() => startClaudeLogin()}
@@ -323,11 +337,22 @@ export const AIStudioView: React.FC = () => {
 
                 {/* Claude.ai Account Status Card */}
                 {claudeAuth?.isLoggedIn ? (
-                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 text-xs">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <div className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 text-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                     <span>
                       {t.aiStudio.loggedInAs}: <strong>{claudeAuth.email}</strong> ({claudeAuth.seatTier || 'Pro / Team'})
                     </span>
+                    <button
+                      onClick={async () => {
+                        await claudeLogout();
+                        await fetchClaudeAuth();
+                      }}
+                      title={t.aiStudio.logoutClaudeTitle}
+                      className="ml-2 px-2 py-0.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[10px] font-semibold border border-rose-500/30 transition flex items-center gap-1"
+                    >
+                      <LogOut className="w-2.5 h-2.5 text-rose-400" />
+                      <span>{t.aiStudio.logoutClaude}</span>
+                    </button>
                   </div>
                 ) : (
                   <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-left">

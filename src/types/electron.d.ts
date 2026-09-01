@@ -338,6 +338,7 @@ export interface IElectronAPI {
   saveAIConfig: (config: AIProviderConfig) => Promise<void>;
   getClaudeAuthStatus: () => Promise<ClaudeAuthStatus>;
   startClaudeLogin: () => Promise<boolean>;
+  claudeLogout: () => Promise<boolean>;
   streamAIChat: (request: AIStreamRequest) => Promise<boolean>;
   abortAIStream: (sessionId: string) => Promise<boolean>;
   applyAIDiff: (projectPath: string, relativePath: string, newContent: string) => Promise<boolean>;
