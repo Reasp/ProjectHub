@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ShieldAlert, Check, X, Terminal, FileCode, MessageSquare, CornerDownLeft } from 'lucide-react';
+import { ShieldAlert, Check, X, Terminal, CornerDownLeft } from 'lucide-react';
 import type { ApprovalRequest } from '../../types/electron';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface InteractiveApprovalCardProps {
   request: ApprovalRequest;
@@ -13,6 +14,7 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
   onApprove,
   onReject
 }) => {
+  const { t } = useTranslation();
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -36,10 +38,10 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
         <div className="flex-1 min-w-0 space-y-2.5">
           <div className="flex items-center justify-between gap-2">
             <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-              <span>⚠️ Запрос подтверждения действия (Human-in-the-Loop)</span>
+              <span>⚠️ {t.aiStudio.approval.title}</span>
             </h4>
             <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono">
-              Требуется решение
+              Human-in-the-Loop
             </span>
           </div>
 
@@ -68,7 +70,7 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
                 type="text"
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                placeholder="Необязательный комментарий или уточнение агенту..."
+                placeholder={t.aiStudio.approval.optionalComment}
                 className="w-full bg-[#0d0f17] border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition pr-8"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !isSubmitting) {
@@ -89,7 +91,7 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
               className="flex-1 px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 disabled:opacity-50 text-white font-semibold text-xs shadow-md shadow-emerald-700/20 flex items-center justify-center gap-1.5 transition active:scale-[0.98]"
             >
               <Check className="w-4 h-4" />
-              <span>Разрешить выполнение</span>
+              <span>{t.aiStudio.approval.allowOnce}</span>
             </button>
 
             <button
@@ -99,7 +101,7 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
               className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-700/60 border border-slate-700 disabled:opacity-50 text-slate-300 font-medium text-xs flex items-center justify-center gap-1.5 transition active:scale-[0.98]"
             >
               <X className="w-4 h-4" />
-              <span>Отклонить</span>
+              <span>{t.aiStudio.approval.deny}</span>
             </button>
           </div>
         </div>

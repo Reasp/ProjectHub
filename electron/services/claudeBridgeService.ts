@@ -294,9 +294,15 @@ class ClaudeBridgeService extends EventEmitter {
 
               if (res.approved) {
                 this.setProjectStatus(projectPath, 'running', `Выполняется: ${cmd}`);
-                // Execute command
+                // Execute command with real-time streaming output
                 try {
-                  const execOut = await this.executeSubprocess(cmd, projectPath);
+                  let liveOutput = '';
+                  const execOut = await this.executeSubprocess(cmd, projectPath, (chunkText) => {
+                    liveOutput += chunkText;
+                    tc.status = 'running';
+                    tc.result = liveOutput;
+                    onChunk({ toolCall: { ...tc } });
+                  });
                   tc.status = 'accepted';
                   tc.result = execOut;
                   onChunk({ toolCall: tc });
@@ -546,7 +552,7 @@ class ClaudeBridgeService extends EventEmitter {
     });
   }
 
-  private executeSubprocess(command: string, cwd: string): Promise<string> {
+  private executeSubprocess(command: string, cwd: string, onOutput?: (chunk: string) => void): Promise<string> {
     return new Promise((resolve, reject) => {
       const isWin = process.platform === 'win32';
       const shell = isWin ? 'powershell.exe' : '/bin/bash';
@@ -559,10 +565,14 @@ class ClaudeBridgeService extends EventEmitter {
 
       let output = '';
       child.stdout.on('data', (data) => {
-        output += data.toString();
+        const text = data.toString();
+        output += text;
+        onOutput?.(text);
       });
       child.stderr.on('data', (data) => {
-        output += data.toString();
+        const text = data.toString();
+        output += text;
+        onOutput?.(text);
       });
 
       child.on('close', (code) => {

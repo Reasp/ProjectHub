@@ -45,7 +45,7 @@ export const DiffReviewCard: React.FC<DiffReviewCardProps> = ({
           <FileCode className="w-4 h-4 text-indigo-400" />
           <span className="font-semibold text-indigo-300">{diff.filePath}</span>
           <span className="text-[10px] text-slate-500">
-            ({toolCall.args.explanation || 'File modification'})
+            ({toolCall.args.explanation || t.aiStudio.diffReview.fileModification})
           </span>
         </div>
 
@@ -53,12 +53,12 @@ export const DiffReviewCard: React.FC<DiffReviewCardProps> = ({
           {status === 'accepted' ? (
             <span className="flex items-center gap-1 text-emerald-400 bg-emerald-950/40 border border-emerald-800/60 px-2 py-0.5 rounded text-[11px] font-medium font-mono">
               <CheckCircle2 className="w-3 h-3" />
-              Принято (Applied)
+              {t.aiStudio.diffReview.applied}
             </span>
           ) : status === 'rejected' ? (
             <span className="flex items-center gap-1 text-rose-400 bg-rose-950/40 border border-rose-800/60 px-2 py-0.5 rounded text-[11px] font-medium font-mono">
               <XCircle className="w-3 h-3" />
-              Отклонено (Rejected)
+              {t.aiStudio.diffReview.rejected}
             </span>
           ) : (
             <div className="flex items-center gap-1.5">
@@ -67,14 +67,14 @@ export const DiffReviewCard: React.FC<DiffReviewCardProps> = ({
                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-rose-950/40 hover:text-rose-300 text-slate-400 border border-slate-700/80 transition text-[11px] font-medium"
               >
                 <X className="w-3 h-3" />
-                Отклонить
+                {t.aiStudio.diffReview.reject}
               </button>
               <button
                 onClick={() => onAccept(messageId, toolCall.id, diff.filePath, diff.newContent)}
                 className="flex items-center gap-1 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium shadow-md shadow-emerald-600/20 transition text-[11px]"
               >
                 <Check className="w-3.5 h-3.5" />
-                Принять правки
+                {t.aiStudio.diffReview.acceptChanges}
               </button>
             </div>
           )}

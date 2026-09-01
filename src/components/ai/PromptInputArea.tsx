@@ -1,6 +1,7 @@
 import React, { useState, useRef, memo } from 'react';
 import { Send, Square, CheckSquare, GitBranch, BookOpen } from 'lucide-react';
 import type { BacklogTask, GitRepoDetails } from '../../types/electron';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface PromptInputAreaProps {
   mode: 'agent' | 'chat' | 'architect';
@@ -12,13 +13,13 @@ interface PromptInputAreaProps {
 }
 
 export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
-  mode,
   isStreaming,
   tasks,
   gitRepoDetails,
   onSend,
   onAbort
 }) => {
+  const { t } = useTranslation();
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -62,7 +63,7 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
       {/* Context Attachment Pills */}
       <div className="flex items-center gap-2 text-xs flex-wrap">
         <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
-          Прикрепить контекст:
+          {t.aiStudio.input.contextTags}:
         </span>
         <button
           type="button"
@@ -83,7 +84,7 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
         <button
           type="button"
           onClick={() => handleInsertContext('docs')}
-          className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#161a29] border border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-[11px] text-slate-300 transition"
+          className="flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#161a29] border border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/10 text-[11px] text-slate-300 transition"
         >
           <BookOpen className="w-3 h-3 text-purple-400" />
           @Docs
@@ -108,7 +109,7 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
             e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px`;
           }}
           onKeyDown={handleKeyDown}
-          placeholder="Спросите Claude Code о проекте или опишите задачу..."
+          placeholder={t.aiStudio.input.placeholder}
           className="flex-1 bg-transparent text-xs text-white placeholder:text-slate-500 focus:outline-none resize-none font-sans px-2 py-1 leading-relaxed max-h-44"
         />
 
@@ -117,10 +118,10 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
             type="button"
             onClick={onAbort}
             className="p-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-medium shadow-md shadow-rose-600/20 transition flex items-center gap-1 shrink-0 text-xs"
-            title="Остановить генерацию"
+            title={t.aiStudio.input.stop}
           >
             <Square className="w-3.5 h-3.5 fill-current" />
-            <span>Стоп</span>
+            <span>{t.aiStudio.input.stop}</span>
           </button>
         ) : (
           <button
@@ -128,7 +129,7 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
             onClick={handleSend}
             disabled={!input.trim()}
             className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-md shadow-indigo-600/20 transition disabled:opacity-40 disabled:hover:bg-indigo-600 shrink-0"
-            title="Отправить запрос (Enter)"
+            title={`${t.aiStudio.input.send} (Enter)`}
           >
             <Send className="w-4 h-4" />
           </button>

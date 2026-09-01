@@ -279,10 +279,10 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
         {/* Footer */}
         <div className="px-4 py-2.5 bg-[#10131e] border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
           <div className="flex items-center gap-3">
-            <span>↑↓ Навигация</span>
-            <span>↵ Выбрать</span>
+            <span>↑↓ {t.search.navigate}</span>
+            <span>↵ {t.search.select}</span>
           </div>
-          <span>Найдено совпадений: {results.length}</span>
+          <span>{t.search.matchesFound}: {results.length}</span>
         </div>
       </div>
     </div>

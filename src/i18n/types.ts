@@ -25,6 +25,17 @@ export interface TranslationDictionary {
     openTerminal: string;
     copied: string;
     copy: string;
+    restart: string;
+    initializing: string;
+    applied: string;
+    rejected: string;
+    accept: string;
+    reject: string;
+    expand: string;
+    collapse: string;
+    running: string;
+    completed: string;
+    failed: string;
   };
   sidebar: {
     title: string;
@@ -45,6 +56,11 @@ export interface TranslationDictionary {
     projectsCount: string;
     uncommittedCount: string;
     templateStandard: string;
+    inFavorites: string;
+    addToFavorites: string;
+    refreshMetadata: string;
+    removeFromCatalog: string;
+    confirmRemoveProject: string;
   };
   header: {
     noProjectSelected: string;
@@ -166,6 +182,12 @@ export interface TranslationDictionary {
     prTitle: string;
     draft: string;
     createPRButton: string;
+    allChecksPassed: string;
+    checksFailed: string;
+    checksRunning: string;
+    openOnGitHub: string;
+    author: string;
+    created: string;
   };
   prs: {
     title: string;
@@ -269,6 +291,7 @@ export interface TranslationDictionary {
     showTasks: string;
     hideTasks: string;
     viewOnBoard: string;
+    confirmDelete: string;
   };
   analytics: {
     title: string;
@@ -307,6 +330,114 @@ export interface TranslationDictionary {
     stopped: string;
     exited: string;
   };
+  claudeCli: {
+    title: string;
+    running: string;
+    exited: string;
+    cwd: string;
+    restart: string;
+    restartTitle: string;
+    initializing: string;
+  };
+  aiStudio: {
+    newChat: string;
+    newSession: string;
+    closeSession: string;
+    clearSession: string;
+    settings: string;
+    subagents: string;
+    subagentsTitle: string;
+    loggedInAs: string;
+    loginClaude: string;
+    loginClaudeTitle: string;
+    useSubscriptionTitle: string;
+    useSubscriptionDesc: string;
+    welcomeTitle: string;
+    welcomeDesc: string;
+    thinkingProcess: string;
+    generating: string;
+    promptCards: {
+      backlogPlan: string;
+      backlogPlanDesc: string;
+      adrCreate: string;
+      adrCreateDesc: string;
+      auditRefactor: string;
+      auditRefactorDesc: string;
+      gitCommit: string;
+      gitCommitDesc: string;
+    };
+    input: {
+      placeholder: string;
+      stop: string;
+      send: string;
+      agentMode: string;
+      chatMode: string;
+      adrMode: string;
+      contextTags: string;
+    };
+    steps: {
+      title: string;
+      actionsCount: string;
+      completed: string;
+      running: string;
+      pendingDiff: string;
+      viewArgs: string;
+      viewResult: string;
+      liveConsole: string;
+      hideDetails: string;
+      showDetails: string;
+      noOutput: string;
+    };
+    activity: {
+      title: string;
+      agentWorking: string;
+      subagentsActive: string;
+      compilationRunning: string;
+      liveTerminalOutput: string;
+      noActivity: string;
+      clearOutput: string;
+      copyOutput: string;
+      elapsed: string;
+      showSidebar: string;
+      hideSidebar: string;
+    };
+    diffReview: {
+      applied: string;
+      rejected: string;
+      reject: string;
+      acceptChanges: string;
+      fileModification: string;
+    };
+    approval: {
+      title: string;
+      commandTitle: string;
+      fileWriteTitle: string;
+      approve: string;
+      reject: string;
+      optionalComment: string;
+      allowOnce: string;
+      deny: string;
+    };
+    rateLimit: {
+      bannerTitle: string;
+      switchProvider: string;
+      clearContext: string;
+      dismiss: string;
+    };
+    settingsModal: {
+      title: string;
+      subtitle: string;
+      provider: string;
+      model: string;
+      apiKey: string;
+      baseUrl: string;
+      temperature: string;
+      thinkingBudget: string;
+      save: string;
+      saved: string;
+      accountInfo: string;
+    };
+  };
   hotkeys: {
     title: string;
     subtitle: string;
@@ -334,6 +465,9 @@ export interface TranslationDictionary {
     globalScope: string;
     projectScope: string;
     noResults: string;
+    navigate: string;
+    select: string;
+    matchesFound: string;
   };
   scanSettings: {
     title: string;
@@ -360,5 +494,22 @@ export interface TranslationDictionary {
     back: string;
     next: string;
     createButton: string;
+    creating: string;
+    stepCopying: string;
+    stepSetup: string;
+    stepRegister: string;
+    selectModules: string;
+    modulesDesc: string;
+    featureDocsRag: string;
+    featureDocsRagDesc: string;
+    featureEnvTools: string;
+    featureEnvToolsDesc: string;
+    featureBacklogMcp: string;
+    featureBacklogMcpDesc: string;
+    featureBootstrap: string;
+    featureBootstrapDesc: string;
+    featureLightrag: string;
+    featureLightragDesc: string;
+    heavyBadge: string;
   };
 }

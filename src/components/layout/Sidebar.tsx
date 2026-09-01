@@ -209,7 +209,7 @@ export const Sidebar: React.FC = () => {
                           ? 'text-amber-400'
                           : 'text-slate-600 hover:text-slate-300 opacity-0 group-hover:opacity-100'
                       }`}
-                      title={project.favorite ? 'В избранном' : 'Добавить в избранное'}
+                      title={project.favorite ? t.sidebar.inFavorites : t.sidebar.addToFavorites}
                     >
                       <Star className={`w-3.5 h-3.5 ${project.favorite ? 'fill-amber-400' : ''}`} />
                     </button>
@@ -220,7 +220,7 @@ export const Sidebar: React.FC = () => {
                         refreshSingleProject(project.path);
                       }}
                       className="p-1 rounded hover:bg-slate-800 text-slate-500 hover:text-slate-300 transition opacity-0 group-hover:opacity-100"
-                      title="Обновить метаданные проекта"
+                      title={t.sidebar.refreshMetadata}
                     >
                       <RefreshCw className="w-3 h-3" />
                     </button>
@@ -228,12 +228,12 @@ export const Sidebar: React.FC = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm(`Удалить проект "${project.name}" из каталога Hub? (Файлы на диске затронуты не будут)`)) {
+                        if (confirm(t.sidebar.confirmRemoveProject.replace('{name}', project.name))) {
                           removeProjectFromCatalog(project.path);
                         }
                       }}
                       className="p-1 rounded hover:bg-rose-950/40 text-slate-500 hover:text-rose-400 transition opacity-0 group-hover:opacity-100"
-                      title="Удалить из каталога"
+                      title={t.sidebar.removeFromCatalog}
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>

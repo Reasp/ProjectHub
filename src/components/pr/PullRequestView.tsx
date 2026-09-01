@@ -82,21 +82,21 @@ export const PullRequestView: React.FC = () => {
     switch (status) {
       case 'SUCCESS':
         return (
-          <span className="flex items-center gap-1 text-[10px] text-emerald-400" title="Все CI проверки пройдены">
+          <span className="flex items-center gap-1 text-[10px] text-emerald-400" title={t.pr.allChecksPassed}>
             <CheckCircle2 className="w-3 h-3" />
             CI Passed
           </span>
         );
       case 'FAILURE':
         return (
-          <span className="flex items-center gap-1 text-[10px] text-rose-400" title="Ошибка в CI проверках">
+          <span className="flex items-center gap-1 text-[10px] text-rose-400" title={t.pr.checksFailed}>
             <XCircle className="w-3 h-3" />
             CI Failed
           </span>
         );
       case 'PENDING':
         return (
-          <span className="flex items-center gap-1 text-[10px] text-amber-400" title="CI проверки выполняются">
+          <span className="flex items-center gap-1 text-[10px] text-amber-400" title={t.pr.checksRunning}>
             <Clock className="w-3 h-3 animate-spin" />
             CI Running
           </span>
@@ -260,7 +260,7 @@ export const PullRequestView: React.FC = () => {
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 font-medium text-xs transition shrink-0"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
-                      Открыть на GitHub
+                      {t.pr.openOnGitHub}
                     </button>
                   )}
                 </div>
@@ -278,9 +278,9 @@ export const PullRequestView: React.FC = () => {
                     </span>
                   </div>
                   <span>•</span>
-                  <span>Автор: <b className="text-slate-300 font-medium">{selectedPR.author}</b></span>
+                  <span>{t.pr.author}: <b className="text-slate-300 font-medium">{selectedPR.author}</b></span>
                   <span>•</span>
-                  <span>Создан: {new Date(selectedPR.createdAt).toLocaleDateString()}</span>
+                  <span>{t.pr.created}: {new Date(selectedPR.createdAt).toLocaleDateString()}</span>
                 </div>
 
                 {/* Sub-tabs: Overview / Diff */}

@@ -7,13 +7,13 @@ import {
   Sparkles,
   Server,
   CheckCircle2,
-  AlertCircle,
   Eye,
   EyeOff,
   ShieldCheck
 } from 'lucide-react';
 import { useAIStudioStore } from '../../store/useAIStudioStore';
 import type { AIProviderConfig } from '../../types/electron';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface AISettingsModalProps {
   isOpen: boolean;
@@ -54,6 +54,7 @@ const MODEL_PRESETS: Record<string, string[]> = {
 };
 
 export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const { config, saveConfig, claudeAuth, startClaudeLogin, fetchClaudeAuth } = useAIStudioStore();
 
   const [form, setForm] = useState<AIProviderConfig>(config);
@@ -103,8 +104,8 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
               <Sparkles className="w-4 h-4 text-amber-300" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Настройки Claude AI Studio & Провайдеров</h2>
-              <p className="text-xs text-slate-400">Конфигурация ключей API, моделей и параметров генерации</p>
+              <h2 className="text-sm font-semibold text-white">{t.aiStudio.settingsModal.title}</h2>
+              <p className="text-xs text-slate-400">{t.aiStudio.settingsModal.subtitle}</p>
             </div>
           </div>
           <button
@@ -120,7 +121,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
           {savedSuccess && (
             <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/50 flex items-center gap-2 text-emerald-300">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Настройки успешно сохранены!</span>
+              <span>{t.aiStudio.settingsModal.saved}</span>
             </div>
           )}
 
@@ -129,10 +130,10 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-amber-300 font-semibold text-xs">
                 <span className="text-sm font-bold">✳</span>
-                <span>Подписка Claude.ai (OAuth Web Login без API-ключа)</span>
+                <span>{t.aiStudio.settingsModal.accountInfo} (Claude.ai OAuth)</span>
               </div>
               <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono">
-                {claudeAuth?.isLoggedIn ? '● АКТИВЕН' : 'НЕ АВТОРИЗОВАН'}
+                {claudeAuth?.isLoggedIn ? '● ACTIVE' : 'NOT LOGGED IN'}
               </span>
             </div>
 
@@ -141,7 +142,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                 <div className="flex items-center gap-2 text-xs text-slate-200">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
                   <span>
-                    Вы авторизованы как: <strong className="text-amber-300">{claudeAuth.email}</strong>
+                    {t.aiStudio.loggedInAs}: <strong className="text-amber-300">{claudeAuth.email}</strong>
                   </span>
                   <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
                     {claudeAuth.seatTier || 'Pro / Team'}
@@ -150,7 +151,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                 <div className="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-900/60 p-2 rounded-lg border border-slate-800">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span>
-                    Изолированный профиль ProjectHub (<code className="text-amber-300">~/.projecthub/claude_config</code>) полностью отделен от Rider / VS Code.
+                    Isolated ProjectHub config (<code className="text-amber-300">~/.projecthub/claude_config</code>)
                   </span>
                 </div>
                 <div className="pt-1 flex items-center gap-2">
@@ -160,21 +161,15 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                     className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-medium text-xs transition flex items-center gap-1.5"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Сменить или перепривязать аккаунт Claude.ai</span>
+                    <span>{t.aiStudio.loginClaude}</span>
                   </button>
                 </div>
               </div>
             ) : (
               <div className="space-y-2">
                 <p className="text-[11px] text-slate-300 leading-relaxed">
-                  Если у вас есть подписка <strong>Claude.ai Pro / Team / Max</strong>, вы можете авторизоваться через браузер без отдельного API-ключа.
+                  {t.aiStudio.useSubscriptionDesc}
                 </p>
-                <div className="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-900/60 p-2 rounded-lg border border-slate-800">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>
-                    Изолированный профиль ProjectHub не затронет ваш рабочий аккаунт в Rider / терминале.
-                  </span>
-                </div>
                 <div className="pt-1 flex items-center gap-2">
                   <button
                     type="button"
@@ -182,7 +177,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                     className="px-4 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs shadow-md shadow-amber-600/20 transition flex items-center gap-1.5"
                   >
                     <span className="font-bold text-xs">✳</span>
-                    <span>Войти через Claude.ai (Web Login)</span>
+                    <span>{t.aiStudio.loginClaude}</span>
                   </button>
                 </div>
               </div>
@@ -192,7 +187,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
           {/* Provider Selector Tabs */}
           <div>
             <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] block mb-2">
-              Или настройте прямой доступ через API Ключ:
+              {t.aiStudio.settingsModal.provider}:
             </label>
             <div className="grid grid-cols-3 gap-2">
               <button
@@ -205,7 +200,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                 }`}
               >
                 <span className="font-semibold text-xs text-amber-300">Anthropic Claude</span>
-                <span className="text-[10px] text-slate-400">Официальный API Claude 3.7</span>
+                <span className="text-[10px] text-slate-400">Claude 3.7 Sonnet</span>
               </button>
 
               <button
@@ -217,8 +212,8 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                     : 'bg-[#161928] border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
                 }`}
               >
-                <span className="font-semibold text-xs text-indigo-300">OpenRouter (РФ/Мир)</span>
-                <span className="text-[10px] text-slate-400">Все модели без VPN</span>
+                <span className="font-semibold text-xs text-indigo-300">OpenRouter</span>
+                <span className="text-[10px] text-slate-400">Multi-Model Proxy</span>
               </button>
 
               <button
@@ -231,7 +226,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                 }`}
               >
                 <span className="font-semibold text-xs text-blue-300">DeepSeek API</span>
-                <span className="text-[10px] text-slate-400">V3 & R1 модели</span>
+                <span className="text-[10px] text-slate-400">V3 & R1</span>
               </button>
 
               <button
@@ -243,8 +238,8 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                     : 'bg-[#161928] border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
                 }`}
               >
-                <span className="font-semibold text-xs text-emerald-300">Локальная Ollama</span>
-                <span className="text-[10px] text-slate-400">100% Offline режим</span>
+                <span className="font-semibold text-xs text-emerald-300">Local Ollama</span>
+                <span className="text-[10px] text-slate-400">100% Offline</span>
               </button>
 
               <button
@@ -267,7 +262,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
             <div>
               <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] block mb-1.5 flex items-center gap-1.5">
                 <Key className="w-3.5 h-3.5 text-indigo-400" />
-                API Ключ ({form.provider.toUpperCase()}) *
+                {t.aiStudio.settingsModal.apiKey} ({form.provider.toUpperCase()})
               </label>
               <div className="relative">
                 <input
@@ -291,9 +286,6 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                   {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
               </div>
-              <p className="text-[10px] text-slate-500 mt-1">
-                Ключ сохраняется локально в зашифрованном файле <code>~/.projecthub/ai-config.json</code>
-              </p>
             </div>
           )}
 
@@ -302,7 +294,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
             <div>
               <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] block mb-1.5 flex items-center gap-1.5">
                 <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-                Модель
+                {t.aiStudio.settingsModal.model}
               </label>
               <input
                 type="text"
@@ -310,7 +302,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                 value={form.model}
                 onChange={(e) => setForm({ ...form, model: e.target.value })}
                 className="w-full bg-[#161928] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
-                placeholder="Имя модели..."
+                placeholder="Model name..."
               />
               <datalist id="model-options">
                 {(MODEL_PRESETS[form.provider] || []).map((m) => (
@@ -324,7 +316,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
               <div>
                 <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] block mb-1.5 flex items-center gap-1.5">
                   <Server className="w-3.5 h-3.5 text-indigo-400" />
-                  Base URL
+                  {t.aiStudio.settingsModal.baseUrl}
                 </label>
                 <input
                   type="text"
@@ -343,7 +335,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
               <div className="flex items-center justify-between mb-1.5">
                 <span className="font-medium text-slate-300 flex items-center gap-1.5">
                   <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-                  Температура генерации
+                  {t.aiStudio.settingsModal.temperature}
                 </span>
                 <span className="font-mono text-indigo-400 font-semibold">{form.temperature ?? 0.7}</span>
               </div>
@@ -363,9 +355,9 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="font-medium text-slate-300 flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    Бюджет рассуждений (Thinking Budget)
+                    {t.aiStudio.settingsModal.thinkingBudget}
                   </span>
-                  <span className="font-mono text-amber-400 font-semibold">{form.thinkingBudget || 0} токенов</span>
+                  <span className="font-mono text-amber-400 font-semibold">{form.thinkingBudget || 0} tokens</span>
                 </div>
                 <input
                   type="range"
@@ -387,14 +379,14 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
               onClick={onClose}
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition"
             >
-              Отмена
+              {t.common.cancel}
             </button>
             <button
               type="submit"
               className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-lg shadow-indigo-600/20 transition flex items-center gap-1.5"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              Сохранить настройки
+              {t.aiStudio.settingsModal.save}
             </button>
           </div>
         </form>

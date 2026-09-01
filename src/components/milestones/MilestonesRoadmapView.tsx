@@ -47,7 +47,7 @@ export const MilestonesRoadmapView: React.FC = () => {
   };
 
   const handleDelete = async (m: Milestone) => {
-    if (window.confirm(`Вы действительно хотите удалить майлстоун "${m.title}"?`)) {
+    if (window.confirm(t.milestones.confirmDelete.replace('{title}', m.title))) {
       await deleteMilestoneAction(m.filePath);
     }
   };

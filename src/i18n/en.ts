@@ -24,7 +24,18 @@ export const en: TranslationDictionary = {
     openInCode: 'Open in VS Code',
     openTerminal: 'Open Terminal',
     copied: 'Copied to clipboard!',
-    copy: 'Copy'
+    copy: 'Copy',
+    restart: 'Restart',
+    initializing: 'Initializing...',
+    applied: 'Applied',
+    rejected: 'Rejected',
+    accept: 'Accept',
+    reject: 'Reject',
+    expand: 'Expand',
+    collapse: 'Collapse',
+    running: 'Running',
+    completed: 'Completed',
+    failed: 'Failed'
   },
   sidebar: {
     title: 'Project Catalog',
@@ -44,7 +55,12 @@ export const en: TranslationDictionary = {
     tasksCount: 'tasks',
     projectsCount: 'projects',
     uncommittedCount: 'changes',
-    templateStandard: 'ProjectTemplate Standard'
+    templateStandard: 'ProjectTemplate Standard',
+    inFavorites: 'In Favorites',
+    addToFavorites: 'Add to Favorites',
+    refreshMetadata: 'Refresh project metadata',
+    removeFromCatalog: 'Remove from Catalog',
+    confirmRemoveProject: 'Remove project "{name}" from Hub catalog? (Files on disk will not be affected)'
   },
   header: {
     noProjectSelected: 'No project selected',
@@ -165,7 +181,13 @@ export const en: TranslationDictionary = {
     baseBranch: 'Base Branch',
     prTitle: 'PR Title',
     draft: 'Create as Draft Pull Request',
-    createPRButton: 'Publish PR'
+    createPRButton: 'Publish PR',
+    allChecksPassed: 'All CI checks passed',
+    checksFailed: 'CI checks failed',
+    checksRunning: 'CI checks in progress',
+    openOnGitHub: 'Open on GitHub',
+    author: 'Author',
+    created: 'Created'
   },
   prs: {
     title: 'Pull Requests',
@@ -268,7 +290,8 @@ export const en: TranslationDictionary = {
     createMilestoneButton: 'Save Milestone',
     showTasks: 'Show tasks',
     hideTasks: 'Hide tasks',
-    viewOnBoard: 'View on Kanban'
+    viewOnBoard: 'View on Kanban',
+    confirmDelete: 'Are you sure you want to delete milestone "{title}"?'
   },
   analytics: {
     title: 'Project Analytics & Health',
@@ -307,6 +330,114 @@ export const en: TranslationDictionary = {
     stopped: 'Stopped',
     exited: 'Exited'
   },
+  claudeCli: {
+    title: 'Claude Code CLI (Interactive PTY)',
+    running: '● RUNNING',
+    exited: '○ EXITED',
+    cwd: 'cwd',
+    restart: 'Restart',
+    restartTitle: 'Restart Claude Code CLI Process',
+    initializing: 'Initializing Claude Code session...'
+  },
+  aiStudio: {
+    newChat: 'New Chat',
+    newSession: 'New Session',
+    closeSession: 'Close session',
+    clearSession: 'Clear current conversation (/clear)',
+    settings: 'Settings',
+    subagents: 'Subagents',
+    subagentsTitle: 'Subagent tree & dispatch controls',
+    loggedInAs: 'Logged in via Claude.ai',
+    loginClaude: 'Log in to Claude.ai',
+    loginClaudeTitle: 'Log in to your Claude.ai account (Pro / Team without API key)',
+    useSubscriptionTitle: 'Using a Claude.ai Pro / Team subscription?',
+    useSubscriptionDesc: 'Log in via browser without entering an API key.',
+    welcomeTitle: 'Claude AI Studio',
+    welcomeDesc: 'Interactive GUI assistant with direct support for Claude 3.7 Sonnet, OpenRouter, DeepSeek, and local Ollama. Open multiple independent sessions above.',
+    thinkingProcess: 'Thinking Process',
+    generating: 'Generating response...',
+    promptCards: {
+      backlogPlan: 'Backlog Task Plan',
+      backlogPlanDesc: 'Analyze DoD and formulate implementation plan',
+      adrCreate: 'Create ADR Decision',
+      adrCreateDesc: 'Architectural record in backlog/decisions',
+      auditRefactor: 'Audit & Refactor',
+      auditRefactorDesc: 'Find bottlenecks and generate code diffs',
+      gitCommit: 'Git Commit Assistant',
+      gitCommitDesc: 'Generate conventional commit message'
+    },
+    input: {
+      placeholder: 'Ask a question or describe a task (e.g. Implement auth, Refactor store)...',
+      stop: 'Stop Generation',
+      send: 'Send',
+      agentMode: '⚡ Agent',
+      chatMode: '💬 Chat',
+      adrMode: '🏛️ ADR',
+      contextTags: 'Context Tags'
+    },
+    steps: {
+      title: 'Agent Steps & Tool Calls',
+      actionsCount: 'actions',
+      completed: 'completed',
+      running: 'running',
+      pendingDiff: 'diff review required',
+      viewArgs: 'Arguments',
+      viewResult: 'Output Result',
+      liveConsole: 'Live Console Stream',
+      hideDetails: 'Hide Details',
+      showDetails: 'Show Details',
+      noOutput: 'No output data'
+    },
+    activity: {
+      title: 'Execution Activity',
+      agentWorking: 'Agent is executing task...',
+      subagentsActive: 'active subagents',
+      compilationRunning: 'Running build/compilation...',
+      liveTerminalOutput: 'Live Terminal & Process Stream',
+      noActivity: 'No active background processes',
+      clearOutput: 'Clear Output',
+      copyOutput: 'Copy Output',
+      elapsed: 'Elapsed',
+      showSidebar: 'Show Activity Panel',
+      hideSidebar: 'Hide Activity Panel'
+    },
+    diffReview: {
+      applied: 'Applied',
+      rejected: 'Rejected',
+      reject: 'Reject',
+      acceptChanges: 'Accept Changes',
+      fileModification: 'File modification'
+    },
+    approval: {
+      title: 'Action Approval Required',
+      commandTitle: 'Permission to run shell command',
+      fileWriteTitle: 'Permission to modify file',
+      approve: 'Allow',
+      reject: 'Reject',
+      optionalComment: 'Optional feedback or modification...',
+      allowOnce: 'Allow Action',
+      deny: 'Deny Action'
+    },
+    rateLimit: {
+      bannerTitle: 'Claude Code Rate Limit & Quota Notice',
+      switchProvider: 'Switch to OpenRouter / DeepSeek',
+      clearContext: 'Clear Context (/clear)',
+      dismiss: 'Dismiss Notice'
+    },
+    settingsModal: {
+      title: 'AI Studio Configuration',
+      subtitle: 'Configure LLM provider, reasoning budget, and model endpoints',
+      provider: 'AI Provider',
+      model: 'Model Name / ID',
+      apiKey: 'API Key',
+      baseUrl: 'Custom Base URL',
+      temperature: 'Temperature',
+      thinkingBudget: 'Thinking Budget (tokens)',
+      save: 'Save Settings',
+      saved: 'Saved successfully',
+      accountInfo: 'Claude.ai Account Status'
+    }
+  },
   hotkeys: {
     title: 'Keyboard Shortcuts',
     subtitle: 'Boost your productivity with ProjectHub keyboard commands',
@@ -333,7 +464,10 @@ export const en: TranslationDictionary = {
     placeholder: 'Semantic search across docs, decisions, and tasks...',
     globalScope: 'All projects',
     projectScope: 'Project',
-    noResults: 'No results found for'
+    noResults: 'No results found for',
+    navigate: 'Navigate',
+    select: 'Select',
+    matchesFound: 'Matches found'
   },
   scanSettings: {
     title: 'Project Catalog & Auto-Discovery',
@@ -359,6 +493,23 @@ export const en: TranslationDictionary = {
     initGit: 'Initialize local Git repository (`git init`)',
     back: 'Back',
     next: 'Next',
-    createButton: 'Create Project'
+    createButton: 'Create Project',
+    creating: 'Creating project...',
+    stepCopying: 'Copying ProjectTemplate structure...',
+    stepSetup: 'Configuring parameters and running setup...',
+    stepRegister: 'Registering project in Hub catalog...',
+    selectModules: 'Select Template Modules & Features',
+    modulesDesc: 'All selected features will be configured in infra.config.json and synced with AI agents.',
+    featureDocsRag: 'Documentation Vector RAG (`docsRag`)',
+    featureDocsRagDesc: 'Semantic search across backlog/docs/ and decisions/ powered by LanceDB',
+    featureEnvTools: 'Process Manager (`envTools`)',
+    featureEnvToolsDesc: 'Manage dev servers, PID tracking, and logs via MCP',
+    featureBacklogMcp: 'Backlog.md MCP Server (`backlogMcp`)',
+    featureBacklogMcpDesc: 'Direct AI agent access to tasks, milestones, and ADR decisions',
+    featureBootstrap: 'Cross-platform Bootstrap (`bootstrap`)',
+    featureBootstrapDesc: 'Automated dependency setup scripts for Windows / macOS / Linux',
+    featureLightrag: 'LightRAG Documentation Graph (`lightrag`)',
+    featureLightragDesc: 'Build knowledge entity graph via local Ollama (requires Python)',
+    heavyBadge: 'Heavy'
   }
 };

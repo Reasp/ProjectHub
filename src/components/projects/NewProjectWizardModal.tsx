@@ -87,7 +87,7 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
     setErrorMessage(null);
 
     try {
-      setCurrentCreationStep('Копирование структуры шаблона ProjectTemplate...');
+      setCurrentCreationStep(t.wizard.stepCopying);
       await new Promise((r) => setTimeout(r, 400));
 
       const options: CreateProjectOptions = {
@@ -97,10 +97,10 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
         initGit
       };
 
-      setCurrentCreationStep('Параметризация конфигураций и запуск setup...');
+      setCurrentCreationStep(t.wizard.stepSetup);
       const createdProject = await window.api.createProjectFromTemplate(options);
 
-      setCurrentCreationStep('Регистрация проекта в каталоге Hub...');
+      setCurrentCreationStep(t.wizard.stepRegister);
       await fetchProjects();
       selectProject(createdProject);
       setActiveTab('kanban');
@@ -109,7 +109,7 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
       onClose();
     } catch (err: any) {
       console.error('Project creation failed:', err);
-      setErrorMessage(err.message || 'Произошла ошибка при создании проекта.');
+      setErrorMessage(err.message || 'Error creating project');
       setIsCreating(false);
     }
   };
@@ -214,10 +214,10 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
             <div className="space-y-4">
               <div>
                 <h4 className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] mb-1">
-                  Выберите модули и возможности шаблона
+                  {t.wizard.selectModules}
                 </h4>
                 <p className="text-slate-400 text-[11px]">
-                  Все выбранные опции будут сконфигурированы в <code>infra.config.json</code> и согласованы с агентами.
+                  {t.wizard.modulesDesc}
                 </p>
               </div>
 
@@ -237,10 +237,10 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
                     </div>
                     <div>
                       <span className="font-semibold text-xs text-slate-200 block">
-                        Vector RAG по документации (`docsRag`)
+                        {t.wizard.featureDocsRag}
                       </span>
                       <span className="text-[11px] text-slate-400">
-                        Семантический поиск по <code>backlog/docs/</code> и <code>decisions/</code> через LanceDB
+                        {t.wizard.featureDocsRagDesc}
                       </span>
                     </div>
                   </div>
@@ -267,10 +267,10 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
                     </div>
                     <div>
                       <span className="font-semibold text-xs text-slate-200 block">
-                        Менеджер процессов (`envTools`)
+                        {t.wizard.featureEnvTools}
                       </span>
                       <span className="text-[11px] text-slate-400">
-                        Управление dev-серверами, трекинг pid'ов и логов через MCP
+                        {t.wizard.featureEnvToolsDesc}
                       </span>
                     </div>
                   </div>
@@ -297,10 +297,10 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
                     </div>
                     <div>
                       <span className="font-semibold text-xs text-slate-200 block">
-                        Backlog.md MCP Сервер (`backlogMcp`)
+                        {t.wizard.featureBacklogMcp}
                       </span>
                       <span className="text-[11px] text-slate-400">
-                        Прямой доступ AI-агентов к задачам, майлстоунам и решениям
+                        {t.wizard.featureBacklogMcpDesc}
                       </span>
                     </div>
                   </div>
@@ -327,10 +327,10 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
                     </div>
                     <div>
                       <span className="font-semibold text-xs text-slate-200 block">
-                        Кроссплатформенный Bootstrap (`bootstrap`)
+                        {t.wizard.featureBootstrap}
                       </span>
                       <span className="text-[11px] text-slate-400">
-                        Скрипты быстрой установки зависимостей окружения под Windows / macOS / Linux
+                        {t.wizard.featureBootstrapDesc}
                       </span>
                     </div>
                   </div>
@@ -357,13 +357,13 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
                     </div>
                     <div>
                       <span className="font-semibold text-xs text-slate-200 flex items-center gap-1.5">
-                        LightRAG Knowledge Graph (`lightrag`)
+                        {t.wizard.featureLightrag}
                         <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300">
-                          Тяжелая
+                          {t.wizard.heavyBadge}
                         </span>
                       </span>
                       <span className="text-[11px] text-slate-400">
-                        Построение графа сущностей документации через локальную Ollama (требует Python)
+                        {t.wizard.featureLightragDesc}
                       </span>
                     </div>
                   </div>
@@ -384,7 +384,7 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
                 <Loader2 className="w-7 h-7 animate-spin" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-white">Создание проекта {projectName}...</h3>
+                <h3 className="text-sm font-semibold text-white">{t.wizard.creating}</h3>
                 <p className="text-xs text-slate-400 font-mono mt-1">{currentCreationStep}</p>
               </div>
             </div>

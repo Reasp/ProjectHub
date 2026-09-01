@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Bot, Terminal, RefreshCw, Sparkles, ExternalLink } from 'lucide-react';
+import { Bot, RefreshCw } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { PtyTabTerminal } from '../terminal/PtyTabTerminal';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -10,7 +10,6 @@ export const ClaudeCliView: React.FC = () => {
     selectedProject,
     ptySessions,
     activePtySessionId,
-    setActivePtySessionId,
     createPtySessionAction,
     closePtySessionAction
   } = useProjectStore();
@@ -58,13 +57,17 @@ export const ClaudeCliView: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-xs font-semibold text-white">Claude Code CLI (Interactive PTY)</h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/15 border border-emerald-500/30 text-emerald-300">
-                {activeSession?.status === 'running' ? '● RUNNING' : '○ EXITED'}
+              <h3 className="text-xs font-semibold text-white">{t.claudeCli.title}</h3>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono border ${
+                activeSession?.status === 'running'
+                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                  : 'bg-slate-800 border-slate-700 text-slate-400'
+              }`}>
+                {activeSession?.status === 'running' ? t.claudeCli.running : t.claudeCli.exited}
               </span>
             </div>
             <p className="text-[10px] text-slate-400 font-mono truncate max-w-md">
-              cwd: {selectedProject.path}
+              {t.claudeCli.cwd}: {selectedProject.path}
             </p>
           </div>
         </div>
@@ -72,11 +75,11 @@ export const ClaudeCliView: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={handleRestartSession}
-            title="Перезапустить процесс Claude Code"
+            title={t.claudeCli.restartTitle}
             className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700/80 text-[11px] font-medium transition"
           >
             <RefreshCw className="w-3 h-3 text-indigo-400" />
-            <span>Перезапустить</span>
+            <span>{t.claudeCli.restart}</span>
           </button>
         </div>
       </div>
@@ -90,7 +93,7 @@ export const ClaudeCliView: React.FC = () => {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center text-slate-500">
             <Bot className="w-10 h-10 text-slate-700 mb-2 animate-bounce" />
-            <p className="text-xs text-slate-400">Инициализация сессии Claude Code...</p>
+            <p className="text-xs text-slate-400">{t.claudeCli.initializing}</p>
           </div>
         )}
       </div>

@@ -8,7 +8,8 @@ import type {
   ClaudeAuthStatus,
   ApprovalRequest,
   SubagentInfo,
-  RateLimitWarning
+  RateLimitWarning,
+  ProjectAgentStatus
 } from '../types/electron';
 
 export interface AISession {
@@ -33,8 +34,13 @@ interface AIStudioState {
   pendingApprovals: Record<string, ApprovalRequest[]>; // projectPath -> active requests
   subagents: Record<string, SubagentInfo[]>; // projectPath -> active subagents
   rateLimitWarnings: Record<string, RateLimitWarning | null>; // projectPath -> active warning
+  projectStatuses: Record<string, ProjectAgentStatus>; // projectPath -> status
+  liveOutputs: Record<string, string>; // projectPath -> console output string
   isSubagentsPanelOpen: boolean;
+  isActivitySidebarOpen: boolean;
   setIsSubagentsPanelOpen: (open: boolean) => void;
+  setIsActivitySidebarOpen: (open: boolean) => void;
+  clearLiveOutput: (projectPath: string) => void;
   sendApprovalResponse: (projectPath: string, requestId: string, approved: boolean, text?: string) => Promise<void>;
   fetchSubagents: (projectPath: string) => Promise<void>;
   dismissRateLimitWarning: (projectPath: string) => void;
@@ -87,9 +93,22 @@ export const useAIStudioStore = create<AIStudioState>()(
       pendingApprovals: {},
       subagents: {},
       rateLimitWarnings: {},
+      projectStatuses: {},
+      liveOutputs: {},
       isSubagentsPanelOpen: false,
+      isActivitySidebarOpen: false,
 
       setIsSubagentsPanelOpen: (isSubagentsPanelOpen) => set({ isSubagentsPanelOpen }),
+      setIsActivitySidebarOpen: (isActivitySidebarOpen) => set({ isActivitySidebarOpen }),
+
+      clearLiveOutput: (projectPath: string) => {
+        set((state) => ({
+          liveOutputs: {
+            ...state.liveOutputs,
+            [projectPath]: ''
+          }
+        }));
+      },
 
       dismissRateLimitWarning: (projectPath: string) => {
         set((state) => ({
@@ -416,6 +435,14 @@ export const useAIStudioStore = create<AIStudioState>()(
               };
             }
 
+            let newLiveOutputs = state.liveOutputs;
+            if (chunk.toolCall?.result && typeof chunk.toolCall.result === 'string') {
+              newLiveOutputs = {
+                ...state.liveOutputs,
+                [projectPath]: chunk.toolCall.result
+              };
+            }
+
             return {
               sessions: {
                 ...state.sessions,
@@ -423,7 +450,8 @@ export const useAIStudioStore = create<AIStudioState>()(
               },
               pendingApprovals: newPendingApprovals,
               subagents: newSubagents,
-              rateLimitWarnings: newRateLimitWarnings
+              rateLimitWarnings: newRateLimitWarnings,
+              liveOutputs: newLiveOutputs
             };
           });
         });

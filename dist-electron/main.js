@@ -693,8 +693,10 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 						if (o.approved) {
 							this.setProjectStatus(a, "running", `Выполняется: ${e}`);
 							try {
-								let r = await this.executeSubprocess(e, a);
-								n.status = "accepted", n.result = r, t({ toolCall: n });
+								let r = "", i = await this.executeSubprocess(e, a, (e) => {
+									r += e, n.status = "running", n.result = r, t({ toolCall: { ...n } });
+								});
+								n.status = "accepted", n.result = i, t({ toolCall: n });
 							} catch (e) {
 								n.status = "error", n.result = `Error: ${e.message}`, t({ toolCall: n });
 							}
@@ -844,9 +846,9 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 			this.activeProcesses.delete(i), this.setProjectStatus(a, "error", e.message), r(e.message);
 		});
 	}
-	executeSubprocess(e, t) {
-		return new Promise((n, r) => {
-			let i = process.platform === "win32", a = p(i ? "powershell.exe" : "/bin/bash", i ? [
+	executeSubprocess(e, t, n) {
+		return new Promise((r, i) => {
+			let a = process.platform === "win32", o = p(a ? "powershell.exe" : "/bin/bash", a ? [
 				"-NoProfile",
 				"-NonInteractive",
 				"-Command",
@@ -857,15 +859,17 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 					...process.env,
 					FORCE_COLOR: "0"
 				}
-			}), o = "";
-			a.stdout.on("data", (e) => {
-				o += e.toString();
-			}), a.stderr.on("data", (e) => {
-				o += e.toString();
-			}), a.on("close", (e) => {
-				n(e === 0 ? o || "Команда успешно выполнена (код 0)" : `Команда завершилась с кодом ${e}:\n${o}`);
-			}), a.on("error", (e) => {
-				r(e);
+			}), s = "";
+			o.stdout.on("data", (e) => {
+				let t = e.toString();
+				s += t, n?.(t);
+			}), o.stderr.on("data", (e) => {
+				let t = e.toString();
+				s += t, n?.(t);
+			}), o.on("close", (e) => {
+				r(e === 0 ? s || "Команда успешно выполнена (код 0)" : `Команда завершилась с кодом ${e}:\n${s}`);
+			}), o.on("error", (e) => {
+				i(e);
 			});
 		});
 	}

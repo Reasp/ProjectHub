@@ -1,6 +1,7 @@
 import React from 'react';
-import { GitFork, CheckCircle2, Clock, XCircle, Loader2, Bot } from 'lucide-react';
+import { GitFork, CheckCircle2, XCircle, Loader2, Bot } from 'lucide-react';
 import type { SubagentInfo } from '../../types/electron';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface SubagentsPanelProps {
   subagents: SubagentInfo[];
@@ -8,13 +9,15 @@ interface SubagentsPanelProps {
 }
 
 export const SubagentsPanel: React.FC<SubagentsPanelProps> = ({ subagents, onClose }) => {
+  const { t } = useTranslation();
+
   return (
     <div className="bg-[#10131d] border border-slate-800 rounded-xl p-4 space-y-3 shadow-xl">
       <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
         <div className="flex items-center gap-2">
           <GitFork className="w-4 h-4 text-indigo-400" />
           <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-            Дерево подагентов (Subagents)
+            {t.aiStudio.subagents}
           </h4>
           <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-mono font-medium">
             {subagents.length}
@@ -27,7 +30,7 @@ export const SubagentsPanel: React.FC<SubagentsPanelProps> = ({ subagents, onClo
             onClick={onClose}
             className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded hover:bg-slate-800 transition"
           >
-            Скрыть
+            {t.common.close}
           </button>
         )}
       </div>
@@ -35,10 +38,7 @@ export const SubagentsPanel: React.FC<SubagentsPanelProps> = ({ subagents, onClo
       {subagents.length === 0 ? (
         <div className="text-center py-6 text-slate-500 text-xs">
           <Bot className="w-8 h-8 text-slate-700 mx-auto mb-2 opacity-50" />
-          <p>Нет активных подагентов в этой сессии.</p>
-          <p className="text-[11px] text-slate-600 mt-0.5">
-            Подагенты запускаются Claude Studio автоматически для параллельных подзадач.
-          </p>
+          <p>{t.aiStudio.activity.noActivity}</p>
         </div>
       ) : (
         <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
@@ -56,17 +56,17 @@ export const SubagentsPanel: React.FC<SubagentsPanelProps> = ({ subagents, onClo
                 {sub.status === 'running' ? (
                   <span className="inline-flex items-center gap-1 text-[11px] text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>Выполняется</span>
+                    <span>{t.common.running}</span>
                   </span>
                 ) : sub.status === 'completed' ? (
                   <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                     <CheckCircle2 className="w-3 h-3" />
-                    <span>Завершен</span>
+                    <span>{t.common.completed}</span>
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-[11px] text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
                     <XCircle className="w-3 h-3" />
-                    <span>Ошибка</span>
+                    <span>{t.common.failed}</span>
                   </span>
                 )}
               </div>
@@ -77,7 +77,7 @@ export const SubagentsPanel: React.FC<SubagentsPanelProps> = ({ subagents, onClo
 
               {sub.progress && (
                 <p className="text-[10px] text-slate-400 italic">
-                  Статус: {sub.progress}
+                  {t.common.status}: {sub.progress}
                 </p>
               )}
             </div>

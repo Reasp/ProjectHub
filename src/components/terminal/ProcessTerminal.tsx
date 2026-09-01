@@ -1,14 +1,16 @@
 import React from 'react';
-import { Terminal, Trash2, X, Play, Square, RefreshCw } from 'lucide-react';
+import { Terminal, Trash2, X } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 
 export const ProcessTerminal: React.FC = () => {
+  const { t } = useTranslation();
   const { isTerminalOpen, toggleTerminal, terminalLogs, selectedProject } = useProjectStore();
 
   if (!isTerminalOpen) return null;
 
   const clearLogs = () => {
-    useProjectStore.setState({ terminalLogs: ['[ProjectHub] Логи очищены.'] });
+    useProjectStore.setState({ terminalLogs: ['[ProjectHub] Logs cleared.'] });
   };
 
   return (
@@ -18,21 +20,21 @@ export const ProcessTerminal: React.FC = () => {
         <div className="flex items-center gap-2">
           <Terminal className="w-3.5 h-3.5 text-indigo-400" />
           <span className="text-xs font-semibold text-slate-300">
-            Консоль процессов: {selectedProject?.name || 'Система'}
+            {t.terminal.processLogs}: {selectedProject?.name || 'System'}
           </span>
         </div>
 
         <div className="flex items-center gap-1">
           <button
             onClick={clearLogs}
-            title="Очистить вывод"
+            title={t.terminal.clearLog}
             className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={toggleTerminal}
-            title="Закрыть консоль"
+            title={t.terminal.close}
             className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
           >
             <X className="w-3.5 h-3.5" />

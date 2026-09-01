@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { AlertTriangle, Clock, ChevronDown, ChevronUp, X, Zap, Trash2, Info } from 'lucide-react';
+import { AlertTriangle, Clock, ChevronDown, ChevronUp, X, Zap, Trash2 } from 'lucide-react';
 import type { RateLimitWarning, AIProviderConfig } from '../../types/electron';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface RateLimitWarningBannerProps {
   warning: RateLimitWarning;
@@ -17,6 +18,7 @@ export const RateLimitWarningBanner: React.FC<RateLimitWarningBannerProps> = ({
   onClearSession,
   onDismiss
 }) => {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const utilization = warning.utilization ?? 85;
@@ -52,7 +54,7 @@ export const RateLimitWarningBanner: React.FC<RateLimitWarningBannerProps> = ({
 
           <div className="flex items-center gap-2 flex-wrap min-w-0">
             <span className="font-semibold text-xs text-white tracking-wide">
-              {warning.title || 'Предупреждение о лимитах запросов'}
+              {warning.title || t.aiStudio.rateLimit.bannerTitle}
             </span>
             <span
               className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold border ${
@@ -61,13 +63,13 @@ export const RateLimitWarningBanner: React.FC<RateLimitWarningBannerProps> = ({
                   : 'bg-amber-500/30 text-amber-300 border-amber-500/40'
               }`}
             >
-              Использовано {utilization}%
+              {utilization}%
             </span>
 
             {warning.resetsAt && (
               <span className="hidden sm:flex items-center gap-1 text-[10px] text-slate-300 bg-black/30 px-2 py-0.5 rounded-md border border-slate-700/50">
                 <Clock className="w-3 h-3 text-slate-400" />
-                Сброс: {warning.resetsAt}
+                <span>{warning.resetsAt}</span>
               </span>
             )}
           </div>
@@ -80,7 +82,7 @@ export const RateLimitWarningBanner: React.FC<RateLimitWarningBannerProps> = ({
             onClick={() => setIsExpanded(!isExpanded)}
             className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/20 hover:bg-black/40 text-slate-300 hover:text-white text-[11px] font-medium transition"
           >
-            <span>{isExpanded ? 'Свернуть' : 'Подробнее'}</span>
+            <span>{isExpanded ? t.common.collapse : t.common.expand}</span>
             {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
 
@@ -88,7 +90,7 @@ export const RateLimitWarningBanner: React.FC<RateLimitWarningBannerProps> = ({
             type="button"
             onClick={onDismiss}
             className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition"
-            title="Закрыть уведомление"
+            title={t.aiStudio.rateLimit.dismiss}
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -101,7 +103,7 @@ export const RateLimitWarningBanner: React.FC<RateLimitWarningBannerProps> = ({
           {/* Progress Bar */}
           <div className="space-y-1">
             <div className="flex justify-between text-[11px] font-mono text-slate-300">
-              <span>Загрузка квоты Claude Code</span>
+              <span>Claude Code Quota</span>
               <span className="font-bold">{utilization}% / 100%</span>
             </div>
             <div className="w-full h-2 bg-black/50 rounded-full overflow-hidden border border-slate-800">
@@ -115,8 +117,7 @@ export const RateLimitWarningBanner: React.FC<RateLimitWarningBannerProps> = ({
           </div>
 
           <p className="text-xs text-slate-300 leading-relaxed font-sans">
-            {warning.message ||
-              'Вы приближаетесь к максимальному часовому лимиту вызовов модели по текущей подписке. Чтобы избежать прерывания работы, вы можете временно переключиться на быструю модель Haiku или очистить историю текущей сессии.'}
+            {warning.message}
           </p>
 
           {/* Quick Recommendations & Action Buttons */}
@@ -128,7 +129,7 @@ export const RateLimitWarningBanner: React.FC<RateLimitWarningBannerProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/40 text-emerald-200 border border-emerald-500/40 text-xs font-medium transition disabled:opacity-50"
             >
               <Zap className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Переключить на Haiku 4.5 (быстрая квота)</span>
+              <span>Haiku 4.5</span>
             </button>
 
             <button
@@ -137,7 +138,7 @@ export const RateLimitWarningBanner: React.FC<RateLimitWarningBannerProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium transition"
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-              <span>Очистить контекст диалога (/clear)</span>
+              <span>{t.aiStudio.rateLimit.clearContext}</span>
             </button>
           </div>
         </div>
