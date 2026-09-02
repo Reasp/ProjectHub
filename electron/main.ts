@@ -10,6 +10,7 @@ import type { ProjectInfo, BacklogTask, GitCommit, ScanOptions } from '../src/ty
 import { projectRegistry } from './services/projectRegistry';
 import { inspectProject, scanDirectories } from './services/projectScanner';
 import { claudeBridgeService } from './services/claudeBridgeService';
+import { localWhisperService } from './services/localWhisperService';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -831,6 +832,14 @@ ipcMain.handle('file:listFiles', async (_event, projectPath: string, subDir?: st
   }));
 });
 
+ipcMain.handle('voice:transcribeLocal', async (_event, { audioData, language }) => {
+  return await localWhisperService.transcribe(audioData, language);
+});
+
+ipcMain.handle('voice:getLocalWhisperStatus', async () => {
+  return localWhisperService.getState();
+});
+
 ipcMain.handle('system:getPlatform', async () => {
   return process.platform;
 });
@@ -840,7 +849,11 @@ app.on('before-quit', () => {
   ptyService.cleanupAll();
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  // Initialize Local Whisper in non-blocking background task
+  localWhisperService.initBackground();
+});
 
 
 

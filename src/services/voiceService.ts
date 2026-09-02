@@ -1,8 +1,8 @@
-// Voice Speech-to-Text (STT) and Text-to-Speech (TTS) Service with Whisper & Web Speech API support
+// Voice Speech-to-Text (STT) and Text-to-Speech (TTS) Service with Local Whisper & Web Speech API support
 
 export type VoiceState = 'idle' | 'recording' | 'transcribing' | 'listening' | 'speaking' | 'error';
 export type VoiceEngine = 'whisper' | 'webspeech';
-export type WhisperProvider = 'groq' | 'openai' | 'local';
+export type WhisperProvider = 'local' | 'groq' | 'openai';
 
 export interface VoiceConfig {
   engine: VoiceEngine;
@@ -16,9 +16,9 @@ export interface VoiceConfig {
 
 const DEFAULT_CONFIG: VoiceConfig = {
   engine: 'whisper',
-  whisperProvider: 'groq',
+  whisperProvider: 'local', // Default: Local Whisper ONNX Model in background
   whisperApiKey: '',
-  whisperModel: 'whisper-large-v3',
+  whisperModel: 'Xenova/whisper-base',
   whisperEndpoint: 'http://127.0.0.1:8000/v1/audio/transcriptions',
   language: 'ru',
   ttsEnabled: true
@@ -32,6 +32,9 @@ class VoiceService {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private mediaStream: MediaStream | null = null;
+  private audioContext: AudioContext | null = null;
+  private audioProcessor: ScriptProcessorNode | null = null;
+  private pcmSamples: Float32Array[] = [];
 
   // Web Speech API fallback
   private recognition: any = null;
@@ -109,7 +112,7 @@ class VoiceService {
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // 1. Web Speech API Initialization
+  // 1. Web Speech API Fallback
   // ─────────────────────────────────────────────────────────────────
   private initWebSpeech() {
     if (typeof window !== 'undefined') {
@@ -162,7 +165,7 @@ class VoiceService {
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // 2. Audio Capture (MediaRecorder for Whisper)
+  // 2. Audio Capture (PCM AudioContext + MediaRecorder)
   // ─────────────────────────────────────────────────────────────────
   async startWhisperRecording(): Promise<boolean> {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -173,15 +176,39 @@ class VoiceService {
 
     try {
       this.audioChunks = [];
+      this.pcmSamples = [];
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true
+          autoGainControl: true,
+          channelCount: 1
         }
       });
       this.mediaStream = stream;
 
+      // 1. AudioContext for 16kHz PCM capture (for local Whisper)
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      this.audioContext = ctx;
+
+      const source = ctx.createMediaStreamSource(stream);
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+      this.audioProcessor = processor;
+
+      processor.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        // Resample to 16kHz if needed
+        const sampleRate = ctx.sampleRate;
+        const resampled = this.resampleTo16k(inputData, sampleRate);
+        this.pcmSamples.push(new Float32Array(resampled));
+      };
+
+      source.connect(processor);
+      processor.connect(ctx.destination);
+
+      // 2. MediaRecorder for Cloud Whisper fallback
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/webm')
@@ -207,38 +234,74 @@ class VoiceService {
         this.setState('error');
       };
 
-      recorder.start(250); // Collect data chunks every 250ms
+      recorder.start(250);
       return true;
     } catch (err) {
       console.error('[VoiceService] Failed to start audio recording:', err);
+      this.cleanupAudio();
       this.setState('error');
       return false;
     }
   }
 
+  private resampleTo16k(audioData: Float32Array, origSampleRate: number): Float32Array {
+    if (origSampleRate === 16000) {
+      return audioData;
+    }
+    const ratio = origSampleRate / 16000;
+    const newLength = Math.round(audioData.length / ratio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < result.length) {
+      const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+      let accum = 0;
+      let count = 0;
+      for (let i = offsetBuffer; i < nextOffsetBuffer && i < audioData.length; i++) {
+        accum += audioData[i];
+        count++;
+      }
+      result[offsetResult] = count > 0 ? accum / count : 0;
+      offsetResult++;
+      offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
+  }
+
   async stopWhisperRecording(): Promise<string | null> {
-    if (!this.mediaRecorder || this.state !== 'recording') {
+    if (this.state !== 'recording') {
       return null;
     }
 
     return new Promise((resolve) => {
-      const recorder = this.mediaRecorder!;
+      // Merge PCM buffers
+      let totalLength = 0;
+      for (const chunk of this.pcmSamples) {
+        totalLength += chunk.length;
+      }
+      const fullPcm = new Float32Array(totalLength);
+      let offset = 0;
+      for (const chunk of this.pcmSamples) {
+        fullPcm.set(chunk, offset);
+        offset += chunk.length;
+      }
 
-      recorder.onstop = async () => {
-        const audioBlob = new Blob(this.audioChunks, { type: recorder.mimeType });
-        this.cleanupAudio();
+      const audioBlob = new Blob(this.audioChunks, {
+        type: this.mediaRecorder?.mimeType || 'audio/webm'
+      });
 
-        if (audioBlob.size < 1000) {
-          // Audio too short / empty
-          this.setState('idle');
-          resolve(null);
-          return;
-        }
+      this.cleanupAudio();
 
-        this.setState('transcribing');
+      if (totalLength < 1600 && audioBlob.size < 1000) {
+        this.setState('idle');
+        resolve(null);
+        return;
+      }
 
-        try {
-          const transcript = await this.transcribeWithWhisper(audioBlob);
+      this.setState('transcribing');
+
+      this.executeTranscription(fullPcm, audioBlob)
+        .then((transcript) => {
           this.setState('idle');
           if (transcript && transcript.trim()) {
             const cleanText = transcript.trim();
@@ -247,39 +310,61 @@ class VoiceService {
           } else {
             resolve(null);
           }
-        } catch (err: any) {
-          console.error('[VoiceService] Whisper transcription error:', err);
+        })
+        .catch((err) => {
+          console.error('[VoiceService] Transcription failed:', err);
           this.setState('error');
           resolve(null);
-        }
-      };
-
-      try {
-        recorder.stop();
-      } catch (err) {
-        console.error('[VoiceService] Error stopping recorder:', err);
-        this.cleanupAudio();
-        this.setState('idle');
-        resolve(null);
-      }
+        });
     });
   }
 
   private cleanupAudio() {
+    if (this.audioProcessor) {
+      this.audioProcessor.disconnect();
+      this.audioProcessor = null;
+    }
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      this.audioContext.close().catch(() => {});
+      this.audioContext = null;
+    }
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach((track) => track.stop());
       this.mediaStream = null;
+    }
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      try {
+        this.mediaRecorder.stop();
+      } catch {}
     }
     this.mediaRecorder = null;
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // 3. Whisper STT Transcription (Groq / OpenAI / Local)
+  // 3. Transcription Execution (Local Whisper vs Cloud API)
   // ─────────────────────────────────────────────────────────────────
-  async transcribeWithWhisper(audioBlob: Blob): Promise<string> {
+  private async executeTranscription(pcmSamples: Float32Array, audioBlob: Blob): Promise<string> {
+    const { whisperProvider, language } = this.config;
+
+    // 1. Local Whisper ONNX in Electron Background
+    if (whisperProvider === 'local' && window.api?.transcribeLocalWhisper) {
+      try {
+        const res = await window.api.transcribeLocalWhisper(pcmSamples, language);
+        if (res?.text) {
+          return res.text;
+        }
+      } catch (err) {
+        console.warn('[VoiceService] Local Whisper invocation failed, trying cloud fallback:', err);
+      }
+    }
+
+    // 2. Cloud Whisper (Groq / OpenAI) or Local Endpoint
+    return await this.transcribeWithCloudWhisper(audioBlob);
+  }
+
+  private async transcribeWithCloudWhisper(audioBlob: Blob): Promise<string> {
     const { whisperProvider, whisperApiKey, whisperEndpoint, whisperModel, language } = this.config;
 
-    // Try to resolve API key from AI Studio config in localStorage if not set in voice settings
     let apiKey = whisperApiKey?.trim();
     if (!apiKey && typeof window !== 'undefined') {
       try {
@@ -301,10 +386,6 @@ class VoiceService {
       model = whisperModel || 'whisper-1';
     } else if (whisperProvider === 'local') {
       endpoint = whisperEndpoint || 'http://127.0.0.1:8000/v1/audio/transcriptions';
-      model = whisperModel || 'whisper-large-v3';
-    } else {
-      // Groq (default for ultra-fast response)
-      endpoint = 'https://api.groq.com/openai/v1/audio/transcriptions';
       model = whisperModel || 'whisper-large-v3';
     }
 
@@ -361,7 +442,7 @@ class VoiceService {
   }
 
   async stopListening(): Promise<string | null> {
-    if (this.config.engine === 'whisper' || this.mediaRecorder) {
+    if (this.config.engine === 'whisper' || this.audioContext || this.mediaRecorder) {
       return this.stopWhisperRecording();
     } else {
       if (this.recognition && this.state === 'listening') {
@@ -395,7 +476,7 @@ class VoiceService {
         return;
       }
 
-      window.speechSynthesis.cancel(); // Stop any active speech
+      window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = (lang || this.config.language) === 'en' ? 'en-US' : 'ru-RU';
       utterance.rate = 1.08;

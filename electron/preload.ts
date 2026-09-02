@@ -259,6 +259,14 @@ const api: IElectronAPI = {
   listFiles: (projectPath: string, subDir?: string) =>
     ipcRenderer.invoke('file:listFiles', projectPath, subDir),
 
+  // Local Whisper STT Engine
+  transcribeLocalWhisper: (audioData: number[] | Float32Array, language?: 'ru' | 'en') =>
+    ipcRenderer.invoke('voice:transcribeLocal', {
+      audioData: Array.isArray(audioData) ? audioData : Array.from(audioData),
+      language
+    }),
+  getLocalWhisperStatus: () => ipcRenderer.invoke('voice:getLocalWhisperStatus'),
+
   // System
   getPlatform: () => ipcRenderer.invoke('system:getPlatform')
 };

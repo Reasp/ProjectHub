@@ -405,6 +405,10 @@ export interface IElectronAPI {
   writeFile: (projectPath: string, relativePath: string, content: string) => Promise<boolean>;
   listFiles: (projectPath: string, subDir?: string) => Promise<Array<{ name: string; isDirectory: boolean; relativePath: string }>>;
 
+  // Local Whisper STT Engine
+  transcribeLocalWhisper: (audioData: number[] | Float32Array, language?: 'ru' | 'en') => Promise<{ text: string; timeMs: number }>;
+  getLocalWhisperStatus: () => Promise<{ status: 'unloaded' | 'loading' | 'ready' | 'error'; model: string; error?: string; loadTimeMs?: number }>;
+
   // System
   getPlatform: () => Promise<string>;
 }

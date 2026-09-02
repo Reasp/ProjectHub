@@ -359,17 +359,24 @@ export const VoiceControlWidget: React.FC = () => {
                       value={voiceConfig.whisperProvider}
                       onChange={(e) => {
                         const prov = e.target.value as WhisperProvider;
-                        const model = prov === 'openai' ? 'whisper-1' : 'whisper-large-v3';
+                        const model = prov === 'openai' ? 'whisper-1' : prov === 'groq' ? 'whisper-large-v3' : 'Xenova/whisper-base';
                         voiceService.saveConfig({ whisperProvider: prov, whisperModel: model });
                         setVoiceConfig((c) => ({ ...c, whisperProvider: prov, whisperModel: model }));
                       }}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
                     >
-                      <option value="groq">Groq Whisper (whisper-large-v3, сверхбыстрый ~200мс)</option>
-                      <option value="openai">OpenAI Whisper (whisper-1)</option>
-                      <option value="local">Локальный сервер (whisper.cpp / custom API)</option>
+                      <option value="local">Встроенный локальный Whisper (Фоновый поток ONNX, 100% офлайн)</option>
+                      <option value="groq">Groq Whisper (whisper-large-v3, облачный ~200мс)</option>
+                      <option value="openai">OpenAI Whisper (whisper-1, облачный)</option>
                     </select>
                   </div>
+
+                  {voiceConfig.whisperProvider === 'local' && (
+                    <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-[11px] text-indigo-300 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Локальная модель загружается в отдельном потоке и работает полностью автономно без интернета.</span>
+                    </div>
+                  )}
 
                   {/* API Key */}
                   {voiceConfig.whisperProvider !== 'local' && (

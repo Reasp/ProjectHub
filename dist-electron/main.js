@@ -1170,6 +1170,72 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 		});
 	}
 }(), A = new class {
+	status = "unloaded";
+	modelName = "Xenova/whisper-base";
+	cacheDir;
+	pipelinePromise = null;
+	asrPipeline = null;
+	errorMessage;
+	loadStartTime = 0;
+	loadTimeMs;
+	constructor() {
+		this.cacheDir = c.join(g.homedir(), ".cache", "projecthub", "whisper");
+	}
+	getState() {
+		return {
+			status: this.status,
+			model: this.modelName,
+			cacheDir: this.cacheDir,
+			error: this.errorMessage,
+			loadTimeMs: this.loadTimeMs
+		};
+	}
+	initBackground() {
+		this.status !== "loading" && this.status !== "ready" && (this.status = "loading", this.loadStartTime = Date.now(), console.log(`[LocalWhisper] Starting background initialization for model: ${this.modelName}`), this.getPipeline().then(() => {
+			this.status = "ready", this.loadTimeMs = Date.now() - this.loadStartTime, console.log(`[LocalWhisper] Model is ready in background (${this.loadTimeMs}ms)`);
+		}).catch((e) => {
+			this.status = "error", this.errorMessage = e?.message || String(e), console.warn("[LocalWhisper] Background model pre-load error:", e);
+		}));
+	}
+	async getPipeline() {
+		return this.asrPipeline ? this.asrPipeline : (this.pipelinePromise ||= (async () => {
+			try {
+				await u.mkdir(this.cacheDir, { recursive: !0 });
+				let e = await import("./transformers.node-COFdxZ8y.js");
+				e.env && (e.env.cacheDir = this.cacheDir, e.env.allowLocalModels = !0), console.log(`[LocalWhisper] Loading pipeline with cache at ${this.cacheDir}...`);
+				let t = await e.pipeline("automatic-speech-recognition", this.modelName, { dtype: "fp32" });
+				return this.asrPipeline = t, t;
+			} catch (e) {
+				throw this.pipelinePromise = null, e;
+			}
+		})(), this.pipelinePromise);
+	}
+	async transcribe(e, t = "ru") {
+		let n = Date.now();
+		try {
+			let r = await this.getPipeline();
+			this.status = "ready";
+			let i = e instanceof Float32Array ? e : new Float32Array(e);
+			if (i.length < 1600) return {
+				text: "",
+				timeMs: Date.now() - n
+			};
+			console.log(`[LocalWhisper] Transcribing ${i.length} samples (${(i.length / 16e3).toFixed(2)}s) in language: ${t}...`);
+			let a = ((await r(i, {
+				language: t === "en" ? "english" : "russian",
+				task: "transcribe",
+				chunk_length_s: 30,
+				stride_length_s: 5
+			}))?.text || "").trim(), o = Date.now() - n;
+			return console.log(`[LocalWhisper] Transcription completed in ${o}ms: "${a}"`), {
+				text: a,
+				timeMs: o
+			};
+		} catch (e) {
+			throw console.error("[LocalWhisper] Transcription error:", e), this.status = "error", this.errorMessage = e?.message || String(e), e;
+		}
+	}
+}(), j = new class {
 	watcher = null;
 	currentPath = null;
 	debounceTimer = null;
@@ -1200,7 +1266,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 	unwatch() {
 		this.watcher &&= (this.watcher.close(), null), this.currentPath = null;
 	}
-}(), j = "F:\\ProjectTemplate", M = /* @__PURE__ */ new Set([
+}(), M = "F:\\ProjectTemplate", te = /* @__PURE__ */ new Set([
 	"node_modules",
 	".git",
 	".rag-index",
@@ -1218,18 +1284,18 @@ async function N(e, t) {
 	let n = await u.readdir(e, { withFileTypes: !0 });
 	for (let r of n) {
 		let n = c.join(e, r.name), i = c.join(t, r.name), a = r.name.toLowerCase();
-		M.has(a) || (r.isDirectory() ? await N(n, i) : r.isFile() && await u.copyFile(n, i));
+		te.has(a) || (r.isDirectory() ? await N(n, i) : r.isFile() && await u.copyFile(n, i));
 	}
 }
-async function te(e) {
-	let t = e || j;
+async function ne(e) {
+	let t = e || M;
 	return {
 		available: d(t),
 		path: t
 	};
 }
-async function ne(e) {
-	let t = e.templateSource || j;
+async function re(e) {
+	let t = e.templateSource || M;
 	if (!d(t)) throw Error(`Директория шаблона не найдена: ${t}`);
 	let n = c.normalize(e.targetDir);
 	if (d(n)) {
@@ -1469,7 +1535,7 @@ var P = new class {
 			return console.error(`Failed to save ${n}:`, e), !1;
 		}
 	}
-}(), re = "Xenova/all-MiniLM-L6-v2", L = null, R = null, z = null;
+}(), ie = "Xenova/all-MiniLM-L6-v2", L = null, R = null, z = null;
 async function B() {
 	if (!R) try {
 		R = await import("@lancedb/lancedb");
@@ -1478,7 +1544,7 @@ async function B() {
 	}
 	return R;
 }
-async function ie() {
+async function ae() {
 	if (!z) try {
 		z = await import("./transformers.node-COFdxZ8y.js"), z.env && (z.env.cacheDir = c.join(process.cwd(), ".rag-cache"));
 	} catch (e) {
@@ -1486,17 +1552,17 @@ async function ie() {
 	}
 	return z;
 }
-async function ae() {
+async function oe() {
 	if (!L) {
-		let e = await ie();
+		let e = await ae();
 		if (!e) return null;
-		L = e.pipeline("feature-extraction", re, { dtype: "fp32" });
+		L = e.pipeline("feature-extraction", ie, { dtype: "fp32" });
 	}
 	return L;
 }
-async function oe(e) {
+async function se(e) {
 	try {
-		let t = await ae();
+		let t = await oe();
 		if (!t) return null;
 		let n = await t(e, {
 			pooling: "mean",
@@ -1508,7 +1574,7 @@ async function oe(e) {
 		return console.warn("[RAG] Embedding failed:", e), null;
 	}
 }
-async function se(e) {
+async function ce(e) {
 	let t = [], n = [
 		{
 			dir: c.join(e, "backlog", "docs"),
@@ -1543,7 +1609,7 @@ async function se(e) {
 		category: "doc"
 	}), t;
 }
-async function ce(e) {
+async function le(e) {
 	let t = e.query?.trim();
 	if (!t) return [];
 	let n = e.mode || "all", r = e.limit || 15, i = e.global ?? !1, a = [];
@@ -1564,7 +1630,7 @@ async function ce(e) {
 				if (a) {
 					let s = await a.connect(n), l = await s.tableNames(), u = l.includes("docs") ? "docs" : l[0];
 					if (u) {
-						let n = await s.openTable(u), a = await oe([t]);
+						let n = await s.openTable(u), a = await se([t]);
 						if (a && a[0]) {
 							let t = await n.search(a[0]).limit(r).toArray();
 							for (let n of t) {
@@ -1589,7 +1655,7 @@ async function ce(e) {
 			}
 		}
 		if (n === "text" || n === "all") try {
-			let n = await se(i), r = t.toLowerCase();
+			let n = await ce(i), r = t.toLowerCase();
 			for (let t of n) {
 				let n = await u.readFile(t.filePath, "utf-8"), a = m(n), s = a.data?.title || c.basename(t.filePath, ".md"), l = a.content, d = s.toLowerCase().includes(r), f = l.toLowerCase().indexOf(r);
 				if (d || f !== -1) {
@@ -1617,7 +1683,7 @@ async function ce(e) {
 	}
 	return o.sort((e, t) => t.score - e.score), o.slice(0, r);
 }
-async function le(e) {
+async function ue(e) {
 	let t = c.join(e, ".rag-index");
 	if (!d(t)) return {
 		hasIndex: !1,
@@ -2070,10 +2136,10 @@ var V = new class {
 }();
 //#endregion
 //#region electron/services/docsService.ts
-function ue(e) {
+function de(e) {
 	return e.toLowerCase().trim().replace(/[^\w\sа-яё\-]/gi, "").replace(/[\s_]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
 }
-async function de(e) {
+async function fe(e) {
 	let t = [], n = c.normalize(e), r = c.join(n, "backlog", "decisions");
 	if (d(r)) try {
 		let e = await u.readdir(r);
@@ -2135,17 +2201,17 @@ async function de(e) {
 	}
 	return t.sort((e, t) => e.title.localeCompare(t.title));
 }
-async function fe(e) {
+async function pe(e) {
 	let t = c.normalize(e);
 	if (!d(t)) throw Error(`Файл не найден: ${t}`);
 	return await u.readFile(t, "utf-8");
 }
-async function pe(e, t) {
+async function me(e, t) {
 	let n = c.normalize(e), r = c.dirname(n);
 	return d(r) || await u.mkdir(r, { recursive: !0 }), await u.writeFile(n, t, "utf-8"), !0;
 }
-async function me(e, t) {
-	let n = c.normalize(e), r = t.type || "doc", i = t.title.trim(), a = ue(i), o, s, l = t.content;
+async function he(e, t) {
+	let n = c.normalize(e), r = t.type || "doc", i = t.title.trim(), a = de(i), o, s, l = t.content;
 	if (r === "decision") {
 		o = c.join(n, "backlog", "decisions"), await u.mkdir(o, { recursive: !0 });
 		let e = 1;
@@ -2232,10 +2298,10 @@ date: "${e}"
 }
 //#endregion
 //#region electron/services/milestoneService.ts
-function he(e) {
+function ge(e) {
 	return e.toLowerCase().trim().replace(/[^\w\sа-яё\-]/gi, "").replace(/[\s_]+/g, "-").replace(/^-+|-+$/g, "") || "milestone";
 }
-async function ge(e) {
+async function _e(e) {
 	let t = [], n = c.normalize(e), r = c.join(n, "backlog", "milestones"), i = c.join(n, "backlog", "tasks"), a = /* @__PURE__ */ new Map();
 	if (d(i)) try {
 		let e = await u.readdir(i);
@@ -2282,10 +2348,10 @@ async function ge(e) {
 	}
 	return t;
 }
-async function _e(e, t) {
+async function ve(e, t) {
 	let n = c.normalize(e), r = c.join(n, "backlog", "milestones");
 	await u.mkdir(r, { recursive: !0 });
-	let i = t.title.trim(), a = he(i), o = 1;
+	let i = t.title.trim(), a = ge(i), o = 1;
 	try {
 		let e = await u.readdir(r);
 		for (let t of e) {
@@ -2320,7 +2386,7 @@ async function _e(e, t) {
 		}
 	};
 }
-async function ve(e, t) {
+async function W(e, t) {
 	let n = c.normalize(e);
 	if (!d(n)) return !1;
 	let r = await u.readFile(n, "utf-8"), i = m(r);
@@ -2334,7 +2400,7 @@ async function ye(e) {
 }
 //#endregion
 //#region node_modules/node-pty/lib/utils.js
-var W = /* @__PURE__ */ n(((t) => {
+var G = /* @__PURE__ */ n(((t) => {
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.loadNativeModule = t.assign = void 0;
 	function n(e) {
 		return [...arguments].slice(1).forEach(function(t) {
@@ -2363,7 +2429,7 @@ var W = /* @__PURE__ */ n(((t) => {
 		throw Error("Failed to load native module: " + t + ".node, checked: " + n.join(", ") + ": " + i);
 	}
 	t.loadNativeModule = r;
-})), G = /* @__PURE__ */ n(((e) => {
+})), K = /* @__PURE__ */ n(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.EventEmitter2 = void 0, e.EventEmitter2 = function() {
 		function e() {
 			this._listeners = [];
@@ -2387,9 +2453,9 @@ var W = /* @__PURE__ */ n(((t) => {
 			for (var n = 0; n < t.length; n++) t[n].call(void 0, e);
 		}, e;
 	}();
-})), K = /* @__PURE__ */ n(((t) => {
+})), q = /* @__PURE__ */ n(((t) => {
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.Terminal = t.DEFAULT_ROWS = t.DEFAULT_COLS = void 0;
-	var n = e("events"), r = G();
+	var n = e("events"), r = K();
 	t.DEFAULT_COLS = 80, t.DEFAULT_ROWS = 24;
 	var i = "", a = "";
 	t.Terminal = function() {
@@ -2601,7 +2667,7 @@ var W = /* @__PURE__ */ n(((t) => {
 		}
 	};
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.ConoutConnection = void 0;
-	var i = e("worker_threads"), a = be(), o = e("path"), s = G(), c = 1e3;
+	var i = e("worker_threads"), a = be(), o = e("path"), s = K(), c = 1e3;
 	t.ConoutConnection = function() {
 		function e(e, t) {
 			var n = this;
@@ -2644,7 +2710,7 @@ var W = /* @__PURE__ */ n(((t) => {
 	}();
 })), Se = /* @__PURE__ */ n(((t) => {
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.argsToCommandLine = t.WindowsPtyAgent = void 0;
-	var n = e("fs"), r = e("os"), i = e("path"), a = e("child_process"), o = e("net"), s = xe(), c = W(), l, u, d = 1e3;
+	var n = e("fs"), r = e("os"), i = e("path"), a = e("child_process"), o = e("net"), s = xe(), c = G(), l, u, d = 1e3;
 	t.WindowsPtyAgent = function() {
 		function e(e, t, r, a, d, p, m, h, g, _) {
 			var v = this;
@@ -2808,7 +2874,7 @@ var W = /* @__PURE__ */ n(((t) => {
 		};
 	})();
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.WindowsTerminal = void 0;
-	var n = K(), r = Se(), i = W(), a = "cmd.exe", o = "Windows Shell";
+	var n = q(), r = Se(), i = G(), a = "cmd.exe", o = "Windows Shell";
 	e.WindowsTerminal = function(e) {
 		t(s, e);
 		function s(t, s, c) {
@@ -2913,7 +2979,7 @@ var W = /* @__PURE__ */ n(((t) => {
 		};
 	})();
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.UnixTerminal = void 0;
-	var r = e("fs"), i = e("path"), a = e("tty"), o = K(), s = W(), c = s.loadNativeModule("pty"), l = c.module, u = c.dir + "/spawn-helper";
+	var r = e("fs"), i = e("path"), a = e("tty"), o = q(), s = G(), c = s.loadNativeModule("pty"), l = c.module, u = c.dir + "/spawn-helper";
 	u = i.resolve(__dirname, u), u = u.replace("app.asar", "app.asar.unpacked"), u = u.replace("node_modules.asar", "node_modules.asar.unpacked");
 	var d = "sh", f = "xterm", p = 200;
 	t.UnixTerminal = function(e) {
@@ -3042,7 +3108,7 @@ var W = /* @__PURE__ */ n(((t) => {
 	}();
 })), Te = /* @__PURE__ */ t((/* @__PURE__ */ n(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.native = e.open = e.createTerminal = e.fork = e.spawn = void 0;
-	var t = W(), n = process.platform === "win32" ? Ce().WindowsTerminal : we().UnixTerminal;
+	var t = G(), n = process.platform === "win32" ? Ce().WindowsTerminal : we().UnixTerminal;
 	function r(e, t, r) {
 		return new n(e, t, r);
 	}
@@ -3059,7 +3125,7 @@ var W = /* @__PURE__ */ n(((t) => {
 		return n.open(e);
 	}
 	e.open = o, e.native = process.platform === "win32" ? null : t.loadNativeModule("pty").module;
-})))(), 1), q = new class {
+})))(), 1), J = new class {
 	sessions = /* @__PURE__ */ new Map();
 	broadcastData(e, t) {
 		for (let n of r.getAllWindows()) n.isDestroyed() || n.webContents.send("pty:data", {
@@ -3146,7 +3212,7 @@ var W = /* @__PURE__ */ n(((t) => {
 		} catch {}
 		this.sessions.clear();
 	}
-}(), J = /* @__PURE__ */ new Set([
+}(), Ee = /* @__PURE__ */ new Set([
 	"node_modules",
 	".git",
 	"dist",
@@ -3174,7 +3240,7 @@ var W = /* @__PURE__ */ n(((t) => {
 		try {
 			let t = await u.readdir(a, { withFileTypes: !0 }), o = [];
 			for (let s of t) {
-				if (J.has(s.name)) continue;
+				if (Ee.has(s.name)) continue;
 				let t = c.join(a, s.name), l = c.relative(i, t).replace(/\\/g, "/");
 				if (s.isDirectory()) {
 					let i = await this.readTree(e, l, n, r + 1);
@@ -3234,7 +3300,7 @@ var W = /* @__PURE__ */ n(((t) => {
 			force: !0
 		}), !0;
 	}
-}(), Ee = l(import.meta.url), X = c.dirname(Ee);
+}(), De = l(import.meta.url), X = c.dirname(De);
 process.env.DIST = c.join(X, "../dist"), process.env.VITE_PUBLIC = i.isPackaged ? process.env.DIST : c.join(X, "../public");
 var Z = null, Q = process.env.VITE_DEV_SERVER_URL;
 k.on("statusChanged", (e) => {
@@ -3311,9 +3377,9 @@ i.on("window-all-closed", () => {
 		t
 	], { detached: !0 });
 }), o.handle("backlog:watchProject", async (e, t) => {
-	A.watch(t, Z);
+	j.watch(t, Z);
 });
-function De(e) {
+function Oe(e) {
 	let t = [], n = e.split("\n"), r = !1, i = [], a = !1;
 	for (let e of n) {
 		let n = e.trim();
@@ -3341,12 +3407,12 @@ function De(e) {
 o.handle("backlog:getTasks", async (e, t) => {
 	let n = c.join(t, "backlog", "tasks");
 	if (!d(n)) return [];
-	A.watch(t, Z);
+	j.watch(t, Z);
 	let r = [];
 	try {
 		let e = await u.readdir(n);
 		for (let t of e) if (t.endsWith(".md")) {
-			let e = c.join(n, t), i = await u.readFile(e, "utf-8"), a = m(i), { criteria: o, description: s } = De(a.content);
+			let e = c.join(n, t), i = await u.readFile(e, "utf-8"), a = m(i), { criteria: o, description: s } = Oe(a.content);
 			r.push({
 				id: a.data.id || c.basename(t, ".md").split("-")[0].trim(),
 				title: a.data.title || c.basename(t, ".md"),
@@ -3448,7 +3514,7 @@ o.handle("backlog:getTasks", async (e, t) => {
 	} catch (e) {
 		return console.error("Failed to create task:", e), null;
 	}
-}), o.handle("template:createProject", async (e, t) => await ne(t)), o.handle("template:checkAvailable", async (e, t) => await te(t)), o.handle("process:start", async (e, t, n, r) => await P.startProcess(t, n, r)), o.handle("process:stop", async (e, t) => await P.stopProcess(t)), o.handle("process:list", async (e, t) => await P.listProcessesForProject(t)), o.handle("process:tailLog", async (e, t, n, r = 100) => await P.tailProjectLog(t, n, r)), o.handle("actions:getConfig", async (e, t) => await I.getConfig(t)), o.handle("actions:saveConfig", async (e, t, n) => await I.saveConfig(t, n)), o.handle("rag:search", async (e, t) => await ce(t)), o.handle("rag:getStats", async (e, t) => await le(t)), o.handle("git:getLog", async (e, t, n = 30) => {
+}), o.handle("template:createProject", async (e, t) => await re(t)), o.handle("template:checkAvailable", async (e, t) => await ne(t)), o.handle("process:start", async (e, t, n, r) => await P.startProcess(t, n, r)), o.handle("process:stop", async (e, t) => await P.stopProcess(t)), o.handle("process:list", async (e, t) => await P.listProcessesForProject(t)), o.handle("process:tailLog", async (e, t, n, r = 100) => await P.tailProjectLog(t, n, r)), o.handle("actions:getConfig", async (e, t) => await I.getConfig(t)), o.handle("actions:saveConfig", async (e, t, n) => await I.saveConfig(t, n)), o.handle("rag:search", async (e, t) => await le(t)), o.handle("rag:getStats", async (e, t) => await ue(t)), o.handle("git:getLog", async (e, t, n = 30) => {
 	try {
 		return d(c.join(t, ".git")) ? (await h(t).log({ maxCount: n })).all.map((e) => ({
 			hash: e.hash,
@@ -3466,7 +3532,7 @@ o.handle("backlog:getTasks", async (e, t) => {
 	} catch (e) {
 		return console.error(`Git status error for ${t}:`, e), null;
 	}
-}), o.handle("git:getRepoDetails", async (e, t) => await V.getRepoDetails(t)), o.handle("git:checkout", async (e, t, n, r = !1) => await V.checkoutBranch(t, n, r)), o.handle("git:createBranch", async (e, t, n) => await V.createBranch(t, n)), o.handle("git:stageFile", async (e, t, n) => await V.stageFile(t, n)), o.handle("git:unstageFile", async (e, t, n) => await V.unstageFile(t, n)), o.handle("git:stageAll", async (e, t) => await V.stageAll(t)), o.handle("git:commit", async (e, t, n, r = !1) => await V.commitChanges(t, n, r)), o.handle("git:getFileDiff", async (e, t, n, r = !1) => await V.getFileDiff(t, n, r)), o.handle("git:deleteBranch", async (e, t, n, r = !1) => await V.deleteBranch(t, n, r)), o.handle("git:mergeBranch", async (e, t, n) => await V.mergeBranch(t, n)), o.handle("git:fetchRemote", async (e, t) => await V.fetchRemote(t)), o.handle("git:pullRemote", async (e, t) => await V.pullRemote(t)), o.handle("git:pushRemote", async (e, t) => await V.pushRemote(t)), o.handle("git:discardFileChanges", async (e, t, n) => await V.discardFileChanges(t, n)), o.handle("git:getDiffBetween", async (e, t, n, r, i) => await V.getDiffBetween(t, n, r, i)), o.handle("pr:getProviderInfo", async (e, t) => await U.getProviderInfo(t)), o.handle("pr:list", async (e, t, n) => await U.listPullRequests(t, n)), o.handle("pr:create", async (e, t, n) => await U.createPullRequest(t, n)), o.handle("pr:getDiff", async (e, t, n) => await U.getPRDiff(t, n)), o.handle("docs:list", async (e, t) => await de(t)), o.handle("docs:read", async (e, t) => await fe(t)), o.handle("docs:save", async (e, t, n) => await pe(t, n)), o.handle("docs:create", async (e, t, n) => await me(t, n)), o.handle("milestones:list", async (e, t) => await ge(t)), o.handle("milestones:create", async (e, t, n) => await _e(t, n)), o.handle("milestones:save", async (e, t, n) => await ve(t, n)), o.handle("milestones:delete", async (e, t) => await ye(t)), o.handle("pty:create", async (e, t) => await q.createSession(t)), o.handle("pty:write", async (e, t, n) => q.write(t, n)), o.handle("pty:resize", async (e, t, n, r) => q.resize(t, n, r)), o.handle("pty:kill", async (e, t) => q.kill(t)), o.handle("pty:list", async () => q.listSessions()), o.handle("ai:getConfig", async () => await O.getConfig()), o.handle("ai:saveConfig", async (e, t) => await O.saveConfig(t)), o.handle("ai:getClaudeAuthStatus", async () => await O.getClaudeAuthStatus()), o.handle("ai:startClaudeLogin", async () => {
+}), o.handle("git:getRepoDetails", async (e, t) => await V.getRepoDetails(t)), o.handle("git:checkout", async (e, t, n, r = !1) => await V.checkoutBranch(t, n, r)), o.handle("git:createBranch", async (e, t, n) => await V.createBranch(t, n)), o.handle("git:stageFile", async (e, t, n) => await V.stageFile(t, n)), o.handle("git:unstageFile", async (e, t, n) => await V.unstageFile(t, n)), o.handle("git:stageAll", async (e, t) => await V.stageAll(t)), o.handle("git:commit", async (e, t, n, r = !1) => await V.commitChanges(t, n, r)), o.handle("git:getFileDiff", async (e, t, n, r = !1) => await V.getFileDiff(t, n, r)), o.handle("git:deleteBranch", async (e, t, n, r = !1) => await V.deleteBranch(t, n, r)), o.handle("git:mergeBranch", async (e, t, n) => await V.mergeBranch(t, n)), o.handle("git:fetchRemote", async (e, t) => await V.fetchRemote(t)), o.handle("git:pullRemote", async (e, t) => await V.pullRemote(t)), o.handle("git:pushRemote", async (e, t) => await V.pushRemote(t)), o.handle("git:discardFileChanges", async (e, t, n) => await V.discardFileChanges(t, n)), o.handle("git:getDiffBetween", async (e, t, n, r, i) => await V.getDiffBetween(t, n, r, i)), o.handle("pr:getProviderInfo", async (e, t) => await U.getProviderInfo(t)), o.handle("pr:list", async (e, t, n) => await U.listPullRequests(t, n)), o.handle("pr:create", async (e, t, n) => await U.createPullRequest(t, n)), o.handle("pr:getDiff", async (e, t, n) => await U.getPRDiff(t, n)), o.handle("docs:list", async (e, t) => await fe(t)), o.handle("docs:read", async (e, t) => await pe(t)), o.handle("docs:save", async (e, t, n) => await me(t, n)), o.handle("docs:create", async (e, t, n) => await he(t, n)), o.handle("milestones:list", async (e, t) => await _e(t)), o.handle("milestones:create", async (e, t, n) => await ve(t, n)), o.handle("milestones:save", async (e, t, n) => await W(t, n)), o.handle("milestones:delete", async (e, t) => await ye(t)), o.handle("pty:create", async (e, t) => await J.createSession(t)), o.handle("pty:write", async (e, t, n) => J.write(t, n)), o.handle("pty:resize", async (e, t, n, r) => J.resize(t, n, r)), o.handle("pty:kill", async (e, t) => J.kill(t)), o.handle("pty:list", async () => J.listSessions()), o.handle("ai:getConfig", async () => await O.getConfig()), o.handle("ai:saveConfig", async (e, t) => await O.saveConfig(t)), o.handle("ai:getClaudeAuthStatus", async () => await O.getClaudeAuthStatus()), o.handle("ai:startClaudeLogin", async () => {
 	try {
 		return process.platform === "win32" ? p("cmd.exe", [
 			"/c",
@@ -3506,8 +3572,10 @@ o.handle("backlog:getTasks", async (e, t) => {
 	name: e.name,
 	isDirectory: e.isDirectory,
 	relativePath: e.relativePath
-}))), o.handle("system:getPlatform", async () => process.platform), i.on("before-quit", () => {
-	P.cleanupAll(), q.cleanupAll();
-}), i.whenReady().then($);
+}))), o.handle("voice:transcribeLocal", async (e, { audioData: t, language: n }) => await A.transcribe(t, n)), o.handle("voice:getLocalWhisperStatus", async () => A.getState()), o.handle("system:getPlatform", async () => process.platform), i.on("before-quit", () => {
+	P.cleanupAll(), J.cleanupAll();
+}), i.whenReady().then(() => {
+	$(), A.initBackground();
+});
 //#endregion
 export {};
