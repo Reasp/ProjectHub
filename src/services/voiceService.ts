@@ -1,6 +1,15 @@
-// Voice Speech-to-Text (STT) and Text-to-Speech (TTS) Service with Local Whisper & Web Speech API support
+// Continuous Hands-Free (Talon Voice style) Voice STT & TTS Service
+// Multi-threaded pipeline: Audio Capture (Thread 1) -> VAD & Chunking (Thread 2) -> Worker Whisper (Thread 3)
 
-export type VoiceState = 'idle' | 'recording' | 'transcribing' | 'listening' | 'speaking' | 'error';
+export type VoiceState =
+  | 'idle'
+  | 'listening_handsfree'
+  | 'speech_detected'
+  | 'transcribing'
+  | 'recording_manual'
+  | 'speaking'
+  | 'error';
+
 export type VoiceEngine = 'whisper' | 'webspeech';
 export type WhisperProvider = 'local' | 'groq' | 'openai';
 
@@ -12,16 +21,20 @@ export interface VoiceConfig {
   whisperEndpoint: string;
   language: 'ru' | 'en';
   ttsEnabled: boolean;
+  handsFree: boolean; // Continuous listening without touching buttons
+  vadSilenceThresholdMs: number; // Silence duration before cutting chunk (default: 480ms)
 }
 
 const DEFAULT_CONFIG: VoiceConfig = {
   engine: 'whisper',
-  whisperProvider: 'local', // Default: Local Whisper ONNX Model in background
+  whisperProvider: 'local',
   whisperApiKey: '',
   whisperModel: 'Xenova/whisper-base',
   whisperEndpoint: 'http://127.0.0.1:8000/v1/audio/transcriptions',
   language: 'ru',
-  ttsEnabled: true
+  ttsEnabled: true,
+  handsFree: true, // Hands-Free by default
+  vadSilenceThresholdMs: 480
 };
 
 const STORAGE_KEY = 'projecthub_voice_config';
@@ -29,19 +42,32 @@ const STORAGE_KEY = 'projecthub_voice_config';
 class VoiceService {
   private config: VoiceConfig = DEFAULT_CONFIG;
   private state: VoiceState = 'idle';
-  private mediaRecorder: MediaRecorder | null = null;
-  private audioChunks: Blob[] = [];
-  private mediaStream: MediaStream | null = null;
+
+  // Audio Context & VAD State
   private audioContext: AudioContext | null = null;
+  private mediaStream: MediaStream | null = null;
   private audioProcessor: ScriptProcessorNode | null = null;
-  private pcmSamples: Float32Array[] = [];
+
+  // VAD & Pre-roll Ring Buffer (250ms at 16kHz = 4000 samples)
+  private readonly PRE_ROLL_SIZE = 4000;
+  private preRollBuffer: Float32Array = new Float32Array(this.PRE_ROLL_SIZE);
+  private preRollIndex = 0;
+  private preRollFilled = false;
+
+  private isSpeaking = false;
+  private speechStartTime = 0;
+  private lastSoundTime = 0;
+  private currentPhraseChunks: Float32Array[] = [];
+  private noiseFloor = 0.005;
 
   // Web Speech API fallback
   private recognition: any = null;
   private isWebSpeechSupported = false;
 
+  // Callbacks
   private onResultCallback?: (transcript: string, isFinal: boolean) => void;
   private onStateChangeCallback?: (state: VoiceState) => void;
+  private onAudioLevelCallback?: (level: number, isSpeaking: boolean) => void;
 
   constructor() {
     this.loadConfig();
@@ -56,7 +82,7 @@ class VoiceService {
         this.config = { ...DEFAULT_CONFIG, ...JSON.parse(stored) };
       }
     } catch (e) {
-      console.warn('[VoiceService] Failed to load config from storage:', e);
+      console.warn('[VoiceService] Failed to load config:', e);
     }
   }
 
@@ -91,12 +117,13 @@ class VoiceService {
     return this.state;
   }
 
-  get isRecording(): boolean {
-    return this.state === 'recording' || this.state === 'listening';
-  }
-
-  get isBusy(): boolean {
-    return this.state === 'transcribing' || this.state === 'speaking';
+  get isListening(): boolean {
+    return (
+      this.state === 'listening_handsfree' ||
+      this.state === 'speech_detected' ||
+      this.state === 'transcribing' ||
+      this.state === 'recording_manual'
+    );
   }
 
   onResult(callback: (transcript: string, isFinal: boolean) => void) {
@@ -105,6 +132,10 @@ class VoiceService {
 
   onStateChange(callback: (state: VoiceState) => void) {
     this.onStateChangeCallback = callback;
+  }
+
+  onAudioLevel(callback: (level: number, isSpeaking: boolean) => void) {
+    this.onAudioLevelCallback = callback;
   }
 
   setLanguage(lang: 'ru' | 'en') {
@@ -127,7 +158,7 @@ class VoiceService {
         this.recognition.lang = this.config.language === 'ru' ? 'ru-RU' : 'en-US';
 
         this.recognition.onstart = () => {
-          this.setState('listening');
+          this.setState('listening_handsfree');
         };
 
         this.recognition.onresult = (event: any) => {
@@ -156,7 +187,7 @@ class VoiceService {
         };
 
         this.recognition.onend = () => {
-          if (this.state === 'listening') {
+          if (this.isListening) {
             this.setState('idle');
           }
         };
@@ -165,18 +196,18 @@ class VoiceService {
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // 2. Audio Capture (PCM AudioContext + MediaRecorder)
+  // 2. Continuous Hands-Free Audio Stream (Talon Voice style)
   // ─────────────────────────────────────────────────────────────────
-  async startWhisperRecording(): Promise<boolean> {
+  async startHandsFreeListening(): Promise<boolean> {
+    if (this.isListening) return true;
+
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      console.error('[VoiceService] getUserMedia is not supported in this environment');
       this.setState('error');
       return false;
     }
 
     try {
-      this.audioChunks = [];
-      this.pcmSamples = [];
+      this.resetVAD();
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -188,181 +219,191 @@ class VoiceService {
       });
       this.mediaStream = stream;
 
-      // 1. AudioContext for 16kHz PCM capture (for local Whisper)
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new AudioCtx();
       this.audioContext = ctx;
 
       const source = ctx.createMediaStreamSource(stream);
+      // Process 4096 frames at a time
       const processor = ctx.createScriptProcessor(4096, 1, 1);
       this.audioProcessor = processor;
 
       processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
-        // Resample to 16kHz if needed
-        const sampleRate = ctx.sampleRate;
-        const resampled = this.resampleTo16k(inputData, sampleRate);
-        this.pcmSamples.push(new Float32Array(resampled));
+        const resampled16k = this.resampleTo16k(inputData, ctx.sampleRate);
+        this.processAudioChunkVAD(resampled16k);
       };
 
       source.connect(processor);
       processor.connect(ctx.destination);
 
-      // 2. MediaRecorder for Cloud Whisper fallback
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : 'audio/ogg';
-
-      const recorder = new MediaRecorder(stream, { mimeType });
-      this.mediaRecorder = recorder;
-
-      recorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          this.audioChunks.push(event.data);
-        }
-      };
-
-      recorder.onstart = () => {
-        this.setState('recording');
-      };
-
-      recorder.onerror = (e) => {
-        console.error('[VoiceService] MediaRecorder error:', e);
-        this.cleanupAudio();
-        this.setState('error');
-      };
-
-      recorder.start(250);
+      this.setState('listening_handsfree');
+      console.log('[VoiceService] Continuous Hands-Free listening active (Talon Voice style)');
       return true;
     } catch (err) {
-      console.error('[VoiceService] Failed to start audio recording:', err);
+      console.error('[VoiceService] Failed to start hands-free listening:', err);
       this.cleanupAudio();
       this.setState('error');
       return false;
     }
   }
 
-  private resampleTo16k(audioData: Float32Array, origSampleRate: number): Float32Array {
-    if (origSampleRate === 16000) {
-      return audioData;
-    }
-    const ratio = origSampleRate / 16000;
-    const newLength = Math.round(audioData.length / ratio);
-    const result = new Float32Array(newLength);
-    let offsetResult = 0;
-    let offsetBuffer = 0;
-    while (offsetResult < result.length) {
-      const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
-      let accum = 0;
-      let count = 0;
-      for (let i = offsetBuffer; i < nextOffsetBuffer && i < audioData.length; i++) {
-        accum += audioData[i];
-        count++;
-      }
-      result[offsetResult] = count > 0 ? accum / count : 0;
-      offsetResult++;
-      offsetBuffer = nextOffsetBuffer;
-    }
-    return result;
+  private resetVAD() {
+    this.isSpeaking = false;
+    this.speechStartTime = 0;
+    this.lastSoundTime = 0;
+    this.currentPhraseChunks = [];
+    this.preRollIndex = 0;
+    this.preRollFilled = false;
+    this.preRollBuffer.fill(0);
   }
 
-  async stopWhisperRecording(): Promise<string | null> {
-    if (this.state !== 'recording') {
-      return null;
+  /**
+   * Continuous VAD processor with sliding window RMS & adaptive noise floor
+   */
+  private processAudioChunkVAD(chunk: Float32Array) {
+    if (chunk.length === 0) return;
+
+    // 1. Calculate RMS energy
+    let sumSquares = 0;
+    for (let i = 0; i < chunk.length; i++) {
+      sumSquares += chunk[i] * chunk[i];
+    }
+    const rms = Math.sqrt(sumSquares / chunk.length);
+
+    // 2. Adaptive threshold
+    if (!this.isSpeaking) {
+      this.noiseFloor = this.noiseFloor * 0.95 + rms * 0.05;
+    }
+    const speechThreshold = Math.max(0.012, this.noiseFloor * 2.8);
+    const hasSound = rms > speechThreshold;
+    const now = Date.now();
+
+    // Visual audio feedback level [0..1]
+    const normalizedLevel = Math.min(1, rms * 15);
+    this.onAudioLevelCallback?.(normalizedLevel, this.isSpeaking);
+
+    // 3. Pre-roll ring buffer (maintains last 250ms of audio before speech)
+    if (!this.isSpeaking) {
+      for (let i = 0; i < chunk.length; i++) {
+        this.preRollBuffer[this.preRollIndex] = chunk[i];
+        this.preRollIndex = (this.preRollIndex + 1) % this.PRE_ROLL_SIZE;
+        if (this.preRollIndex === 0) this.preRollFilled = true;
+      }
     }
 
-    return new Promise((resolve) => {
-      // Merge PCM buffers
-      let totalLength = 0;
-      for (const chunk of this.pcmSamples) {
-        totalLength += chunk.length;
-      }
-      const fullPcm = new Float32Array(totalLength);
-      let offset = 0;
-      for (const chunk of this.pcmSamples) {
-        fullPcm.set(chunk, offset);
-        offset += chunk.length;
+    // 4. Speech Start Detection
+    if (hasSound && !this.isSpeaking) {
+      this.isSpeaking = true;
+      this.speechStartTime = now;
+      this.lastSoundTime = now;
+      this.setState('speech_detected');
+
+      // Prepend pre-roll buffer so we don't cut off leading consonants
+      const preRoll = this.getPreRollSamples();
+      this.currentPhraseChunks = [preRoll, new Float32Array(chunk)];
+      return;
+    }
+
+    // 5. During Speech
+    if (this.isSpeaking) {
+      this.currentPhraseChunks.push(new Float32Array(chunk));
+
+      if (hasSound) {
+        this.lastSoundTime = now;
       }
 
-      const audioBlob = new Blob(this.audioChunks, {
-        type: this.mediaRecorder?.mimeType || 'audio/webm'
+      const silenceDuration = now - this.lastSoundTime;
+      const totalPhraseDuration = now - this.speechStartTime;
+
+      // 6. Speech End Detection (silence threshold reached or max phrase 12s)
+      if (silenceDuration > this.config.vadSilenceThresholdMs || totalPhraseDuration > 12000) {
+        this.finalizeAndDispatchPhrase();
+      }
+    }
+  }
+
+  private getPreRollSamples(): Float32Array {
+    const out = new Float32Array(this.PRE_ROLL_SIZE);
+    if (!this.preRollFilled) {
+      out.set(this.preRollBuffer.subarray(0, this.preRollIndex), 0);
+      return out.subarray(0, this.preRollIndex);
+    }
+    const part1 = this.preRollBuffer.subarray(this.preRollIndex);
+    const part2 = this.preRollBuffer.subarray(0, this.preRollIndex);
+    out.set(part1, 0);
+    out.set(part2, part1.length);
+    return out;
+  }
+
+  /**
+   * Finalizes phrase, sends it to the background Whisper thread,
+   * while keeping the audio capture thread running uninterrupted!
+   */
+  private finalizeAndDispatchPhrase() {
+    this.isSpeaking = false;
+    this.setState('transcribing');
+
+    // Merge chunks
+    let totalSamples = 0;
+    for (const ch of this.currentPhraseChunks) {
+      totalSamples += ch.length;
+    }
+
+    const fullPhrase = new Float32Array(totalSamples);
+    let offset = 0;
+    for (const ch of this.currentPhraseChunks) {
+      fullPhrase.set(ch, offset);
+      offset += ch.length;
+    }
+
+    this.currentPhraseChunks = [];
+
+    // Ignore tiny blips (< 0.28s)
+    if (totalSamples < 4500) {
+      this.setState('listening_handsfree');
+      return;
+    }
+
+    console.log(`[VoiceService] Hands-Free phrase captured (${(totalSamples / 16000).toFixed(2)}s). Dispatching to Whisper worker...`);
+
+    this.dispatchToWhisper(fullPhrase)
+      .then((text) => {
+        if (text && text.trim()) {
+          const clean = text.trim();
+          console.log(`[VoiceService] ✓ Hands-Free transcript: "${clean}"`);
+          this.onResultCallback?.(clean, true);
+        }
+      })
+      .catch((err) => {
+        console.error('[VoiceService] Transcription error in hands-free stream:', err);
+      })
+      .finally(() => {
+        // Return to listening state without ever stopping the microphone stream!
+        if (this.isListening) {
+          this.setState('listening_handsfree');
+        }
       });
-
-      this.cleanupAudio();
-
-      if (totalLength < 1600 && audioBlob.size < 1000) {
-        this.setState('idle');
-        resolve(null);
-        return;
-      }
-
-      this.setState('transcribing');
-
-      this.executeTranscription(fullPcm, audioBlob)
-        .then((transcript) => {
-          this.setState('idle');
-          if (transcript && transcript.trim()) {
-            const cleanText = transcript.trim();
-            this.onResultCallback?.(cleanText, true);
-            resolve(cleanText);
-          } else {
-            resolve(null);
-          }
-        })
-        .catch((err) => {
-          console.error('[VoiceService] Transcription failed:', err);
-          this.setState('error');
-          resolve(null);
-        });
-    });
   }
 
-  private cleanupAudio() {
-    if (this.audioProcessor) {
-      this.audioProcessor.disconnect();
-      this.audioProcessor = null;
-    }
-    if (this.audioContext && this.audioContext.state !== 'closed') {
-      this.audioContext.close().catch(() => {});
-      this.audioContext = null;
-    }
-    if (this.mediaStream) {
-      this.mediaStream.getTracks().forEach((track) => track.stop());
-      this.mediaStream = null;
-    }
-    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      try {
-        this.mediaRecorder.stop();
-      } catch {}
-    }
-    this.mediaRecorder = null;
-  }
-
-  // ─────────────────────────────────────────────────────────────────
-  // 3. Transcription Execution (Local Whisper vs Cloud API)
-  // ─────────────────────────────────────────────────────────────────
-  private async executeTranscription(pcmSamples: Float32Array, audioBlob: Blob): Promise<string> {
+  private async dispatchToWhisper(pcmSamples: Float32Array): Promise<string> {
     const { whisperProvider, language } = this.config;
 
-    // 1. Local Whisper ONNX in Electron Background
+    // 1. Local Whisper in isolated Worker thread (Primary)
     if (whisperProvider === 'local' && window.api?.transcribeLocalWhisper) {
       try {
         const res = await window.api.transcribeLocalWhisper(pcmSamples, language);
-        if (res?.text) {
-          return res.text;
-        }
+        if (res?.text) return res.text;
       } catch (err) {
-        console.warn('[VoiceService] Local Whisper invocation failed, trying cloud fallback:', err);
+        console.warn('[VoiceService] Local Whisper worker failed, checking cloud fallback:', err);
       }
     }
 
-    // 2. Cloud Whisper (Groq / OpenAI) or Local Endpoint
-    return await this.transcribeWithCloudWhisper(audioBlob);
+    // 2. Cloud Whisper Fallback (WAV buffer)
+    return await this.transcribePcmWithCloud(pcmSamples);
   }
 
-  private async transcribeWithCloudWhisper(audioBlob: Blob): Promise<string> {
+  private async transcribePcmWithCloud(pcmSamples: Float32Array): Promise<string> {
     const { whisperProvider, whisperApiKey, whisperEndpoint, whisperModel, language } = this.config;
 
     let apiKey = whisperApiKey?.trim();
@@ -389,9 +430,9 @@ class VoiceService {
       model = whisperModel || 'whisper-large-v3';
     }
 
+    const wavBlob = this.encodeWav(pcmSamples, 16000);
     const formData = new FormData();
-    const fileExt = audioBlob.type.includes('ogg') ? 'ogg' : 'webm';
-    formData.append('file', audioBlob, `audio.${fileExt}`);
+    formData.append('file', wavBlob, 'speech.wav');
     formData.append('model', model);
     if (language) {
       formData.append('language', language === 'ru' ? 'ru' : 'en');
@@ -418,56 +459,98 @@ class VoiceService {
     return data.text || '';
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  // 4. Unified Start / Stop / Toggle Controls
-  // ─────────────────────────────────────────────────────────────────
-  async startListening(): Promise<boolean> {
-    if (this.isRecording) return true;
+  private encodeWav(samples: Float32Array, sampleRate: number): Blob {
+    const buffer = new ArrayBuffer(44 + samples.length * 2);
+    const view = new DataView(buffer);
 
-    if (this.config.engine === 'whisper') {
-      return this.startWhisperRecording();
-    } else {
-      if (!this.isWebSpeechSupported || !this.recognition) {
-        console.warn('[VoiceService] WebSpeech is not supported, switching to Whisper');
-        return this.startWhisperRecording();
+    const writeString = (offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
       }
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + samples.length * 2, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 1, true); // Mono
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeString(36, 'data');
+    view.setUint32(40, samples.length * 2, true);
+
+    let offset = 44;
+    for (let i = 0; i < samples.length; i++, offset += 2) {
+      const s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
+
+    return new Blob([buffer], { type: 'audio/wav' });
+  }
+
+  private resampleTo16k(audioData: Float32Array, origSampleRate: number): Float32Array {
+    if (origSampleRate === 16000) return audioData;
+    const ratio = origSampleRate / 16000;
+    const newLength = Math.round(audioData.length / ratio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < result.length) {
+      const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+      let accum = 0;
+      let count = 0;
+      for (let i = offsetBuffer; i < nextOffsetBuffer && i < audioData.length; i++) {
+        accum += audioData[i];
+        count++;
+      }
+      result[offsetResult] = count > 0 ? accum / count : 0;
+      offsetResult++;
+      offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
+  }
+
+  stopListening() {
+    this.cleanupAudio();
+    if (this.recognition) {
       try {
-        this.recognition.start();
-        return true;
-      } catch (err) {
-        console.error('[VoiceService] WebSpeech start error:', err);
-        return false;
-      }
+        this.recognition.stop();
+      } catch {}
+    }
+    this.setState('idle');
+  }
+
+  private cleanupAudio() {
+    if (this.audioProcessor) {
+      this.audioProcessor.disconnect();
+      this.audioProcessor = null;
+    }
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      this.audioContext.close().catch(() => {});
+      this.audioContext = null;
+    }
+    if (this.mediaStream) {
+      this.mediaStream.getTracks().forEach((t) => t.stop());
+      this.mediaStream = null;
     }
   }
 
-  async stopListening(): Promise<string | null> {
-    if (this.config.engine === 'whisper' || this.audioContext || this.mediaRecorder) {
-      return this.stopWhisperRecording();
-    } else {
-      if (this.recognition && this.state === 'listening') {
-        try {
-          this.recognition.stop();
-        } catch (err) {
-          console.error('[VoiceService] WebSpeech stop error:', err);
-        }
-      }
-      this.setState('idle');
-      return null;
-    }
-  }
-
-  async toggleListening(): Promise<boolean> {
-    if (this.isRecording) {
-      await this.stopListening();
+  toggleHandsFree(): boolean {
+    if (this.isListening) {
+      this.stopListening();
       return false;
     } else {
-      return await this.startListening();
+      this.startHandsFreeListening();
+      return true;
     }
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // 5. Text-To-Speech (TTS) Synthesis
+  // 3. Text-To-Speech (TTS) Synthesis
   // ─────────────────────────────────────────────────────────────────
   speak(text: string, lang?: 'ru' | 'en'): Promise<void> {
     return new Promise((resolve) => {
@@ -479,22 +562,11 @@ class VoiceService {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = (lang || this.config.language) === 'en' ? 'en-US' : 'ru-RU';
-      utterance.rate = 1.08;
+      utterance.rate = 1.1;
       utterance.pitch = 1.0;
 
-      utterance.onstart = () => {
-        if (this.state === 'idle') this.setState('speaking');
-      };
-
-      utterance.onend = () => {
-        if (this.state === 'speaking') this.setState('idle');
-        resolve();
-      };
-
-      utterance.onerror = () => {
-        if (this.state === 'speaking') this.setState('idle');
-        resolve();
-      };
+      utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
 
       window.speechSynthesis.speak(utterance);
     });

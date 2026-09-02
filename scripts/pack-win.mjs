@@ -14,6 +14,15 @@ console.log('🚀 Быстрая сборка распакованного пр�
 console.log('📦 Сборка frontend & electron...');
 execSync('npm run build', { stdio: 'inherit', cwd: rootDir });
 
+// 1.1. Copy worker scripts to dist-electron
+const srcWorkers = path.join(rootDir, 'electron', 'workers');
+const destWorkers = path.join(rootDir, 'dist-electron', 'workers');
+if (fs.existsSync(srcWorkers)) {
+  fs.mkdirSync(destWorkers, { recursive: true });
+  fs.cpSync(srcWorkers, destWorkers, { recursive: true });
+  console.log('📦 Воркеры скопированы в dist-electron/workers');
+}
+
 // 2. Try packaging directly first, or use tempOutputDir on EBUSY
 let usedTemp = false;
 try {

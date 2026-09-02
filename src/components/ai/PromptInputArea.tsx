@@ -43,18 +43,12 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
     };
   }, []);
 
-  const isRecording = voiceState === 'recording' || voiceState === 'listening';
+  const isHandsFree = voiceService.isListening;
+  const isSpeech = voiceState === 'speech_detected';
   const isTranscribing = voiceState === 'transcribing';
 
-  const handleToggleVoiceDictation = async () => {
-    if (isRecording) {
-      const result = await voiceService.stopListening();
-      if (result) {
-        setInput((prev) => (prev ? `${prev} ${result.trim()}` : result.trim()));
-      }
-    } else {
-      await voiceService.startListening();
-    }
+  const handleToggleVoiceDictation = () => {
+    voiceService.toggleHandsFree();
   };
 
   const handleSend = () => {
@@ -127,16 +121,16 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
         </div>
 
         {/* Live Audio Status */}
-        {isRecording && (
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 text-[11px] animate-pulse">
-            <Radio className="w-3 h-3" />
-            <span>Запись промпта (Whisper)...</span>
+        {isSpeech && (
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] animate-pulse">
+            <Radio className="w-3 h-3 text-emerald-400" />
+            <span>Слушаю речь (Talon Voice)...</span>
           </div>
         )}
         {isTranscribing && (
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[11px] animate-pulse">
-            <Zap className="w-3 h-3" />
-            <span>Транскрибация Whisper...</span>
+            <Zap className="w-3 h-3 text-amber-400 animate-spin" />
+            <span>Инференс Whisper...</span>
           </div>
         )}
       </div>
@@ -159,7 +153,7 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
             e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px`;
           }}
           onKeyDown={handleKeyDown}
-          placeholder={isRecording ? 'Слушаю вас... Говорите текст промпта' : t.aiStudio.input.placeholder}
+          placeholder={isHandsFree ? 'Talon Voice активен: говорите текст вслух без кнопок...' : t.aiStudio.input.placeholder}
           className="flex-1 bg-transparent text-xs text-white placeholder:text-slate-500 focus:outline-none resize-none font-sans px-2 py-1 leading-relaxed max-h-44"
         />
 
@@ -168,13 +162,15 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
           type="button"
           onClick={handleToggleVoiceDictation}
           className={`p-2 rounded-xl transition flex items-center justify-center shrink-0 ${
-            isRecording
-              ? 'bg-rose-600 text-white ring-2 ring-rose-500/40 animate-pulse'
+            isSpeech
+              ? 'bg-emerald-600 text-white ring-2 ring-emerald-500/40 animate-pulse'
               : isTranscribing
               ? 'bg-amber-600 text-white animate-bounce'
+              : isHandsFree
+              ? 'bg-indigo-600 text-white ring-2 ring-indigo-500/40'
               : 'bg-[#121522] border border-slate-700 hover:border-indigo-500/70 text-slate-400 hover:text-indigo-400'
           }`}
-          title={isRecording ? 'Остановить запись и транскрибировать' : 'Надиктовать промпт голосом (Whisper)'}
+          title={isHandsFree ? 'Talon Voice Hands-Free активен (кликните для отключения)' : 'Включить Talon Voice диктовку промпта'}
         >
           <Mic className="w-4 h-4" />
         </button>
