@@ -12,6 +12,7 @@ import { inspectProject, scanDirectories } from './services/projectScanner';
 import { claudeBridgeService } from './services/claudeBridgeService';
 import { localWhisperService } from './services/localWhisperService';
 import { secretStorageService } from './services/secretStorageService';
+import { mcpServerService } from './services/mcpServerService';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -871,15 +872,43 @@ ipcMain.handle('secrets:deleteSecret', async (_event, key: string) => {
   return await secretStorageService.deleteSecret(key);
 });
 
+// Remote MCP Server IPC Handlers
+ipcMain.handle('mcp:getStatus', async () => {
+  return mcpServerService.getStatus();
+});
+
+ipcMain.handle('mcp:toggleServer', async (_event, enable: boolean) => {
+  if (enable) {
+    await mcpServerService.start();
+  } else {
+    await mcpServerService.stop();
+  }
+  return mcpServerService.getStatus();
+});
+
+ipcMain.handle('mcp:regenerateToken', async () => {
+  return mcpServerService.regenerateToken();
+});
+
+ipcMain.handle('mcp:setAppState', async (_event, state: { activeProject?: any; activeTab?: string }) => {
+  mcpServerService.setAppState(state);
+  return true;
+});
+
 app.on('before-quit', () => {
   processManager.cleanupAll();
   ptyService.cleanupAll();
+  mcpServerService.stop().catch(() => {});
 });
 
 app.whenReady().then(() => {
   createWindow();
   // Initialize Local Whisper in non-blocking background task
   localWhisperService.initBackground();
+  // Start Built-in Remote Control MCP Server on 127.0.0.1:42042
+  mcpServerService.start().catch((err) => {
+    console.error('[Main] Failed to auto-start Remote MCP server:', err);
+  });
 });
 
 

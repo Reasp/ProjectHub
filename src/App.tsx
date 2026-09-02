@@ -7,11 +7,16 @@ import { OmniSearchModal } from './components/search/OmniSearchModal';
 import { HotkeysHelpModal } from './components/layout/HotkeysHelpModal';
 import { VoiceControlWidget } from './components/voice/VoiceControlWidget';
 import { useProjectStore } from './store/useProjectStore';
+import { useAIStudioStore } from './store/useAIStudioStore';
+import { Bot } from 'lucide-react';
 
 export const App: React.FC = () => {
   const {
+    projects,
     fetchProjects,
     selectedProject,
+    selectProject,
+    activeTab,
     setActiveTab,
     toggleTerminal,
     isHotkeysHelpOpen,
@@ -21,10 +26,77 @@ export const App: React.FC = () => {
   } = useProjectStore();
 
   const [isOmniSearchOpen, setIsOmniSearchOpen] = useState(false);
+  const [remoteActionToast, setRemoteActionToast] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
+
+  // Sync state with built-in MCP server
+  useEffect(() => {
+    if (window.api?.setMcpAppState) {
+      window.api.setMcpAppState({
+        activeProject: selectedProject ? { name: selectedProject.name, path: selectedProject.path } : null,
+        activeTab
+      });
+    }
+  }, [selectedProject, activeTab]);
+
+  // Handle remote actions from external MCP clients (Claude Code, Cursor, Antigravity)
+  useEffect(() => {
+    if (!window.api?.onRemoteAction) return;
+
+    const unsub = window.api.onRemoteAction((action) => {
+      console.log('[App] Remote MCP Action received:', action);
+
+      if (action.type === 'switch_project') {
+        const query = (action.payload?.query || '').toLowerCase().trim();
+        if (query && projects.length > 0) {
+          const matched = projects.find((p) => {
+            const pName = p.name.toLowerCase();
+            const pPath = p.path.toLowerCase();
+            return pName === query || pPath === query || pName.includes(query) || pPath.includes(query);
+          });
+          if (matched) {
+            selectProject(matched);
+            showRemoteToast(`Внешний агент открыл проект «${matched.name}»`);
+          }
+        }
+      } else if (action.type === 'switch_tab') {
+        const tab = action.payload?.tab;
+        if (tab) {
+          setActiveTab(tab);
+          showRemoteToast(`Внешний агент переключил вкладку на «${tab}»`);
+        }
+      } else if (action.type === 'send_studio_prompt') {
+        const { prompt, sendImmediately } = action.payload || {};
+        if (prompt && selectedProject) {
+          setActiveTab('ai');
+          showRemoteToast(`Внешний агент передал промпт в Claude Studio`);
+          if (sendImmediately) {
+            useAIStudioStore.getState().sendMessage(selectedProject.path, prompt);
+          }
+        }
+      } else if (action.type === 'approve_action') {
+        const { requestId, approved, reason } = action.payload || {};
+        if (selectedProject) {
+          const list = useAIStudioStore.getState().pendingApprovals[selectedProject.path] || [];
+          const top = requestId ? list.find((a) => a.id === requestId) : list[0];
+          if (top) {
+            useAIStudioStore.getState().sendApprovalResponse(selectedProject.path, top.id, approved, reason);
+            showRemoteToast(`Внешний агент ${approved ? 'одобрил' : 'отклонил'} действие`);
+          }
+        }
+      }
+    });
+
+    return unsub;
+  }, [projects, selectedProject, selectProject, setActiveTab]);
+
+  const showRemoteToast = (msg: string) => {
+    setRemoteActionToast(msg);
+    setTimeout(() => setRemoteActionToast(null), 4000);
+  };
 
   // Global Keyboard Shortcuts
   useEffect(() => {
@@ -153,6 +225,14 @@ export const App: React.FC = () => {
 
       {/* Global Voice Control Widget (STT/TTS) */}
       <VoiceControlWidget />
+
+      {/* Remote MCP Action Toast Notification */}
+      {remoteActionToast && (
+        <div className="fixed top-16 right-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-indigo-950/95 border border-indigo-500/60 shadow-2xl text-xs text-white backdrop-blur-md animate-in slide-in-from-top-3 duration-200">
+          <Bot className="w-4 h-4 text-indigo-400 shrink-0 animate-pulse" />
+          <span className="font-medium">{remoteActionToast}</span>
+        </div>
+      )}
     </div>
   );
 };

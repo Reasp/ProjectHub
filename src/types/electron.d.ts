@@ -419,6 +419,13 @@ export interface IElectronAPI {
   saveEncryptedSecret: (key: string, value: string) => Promise<boolean>;
   getEncryptedSecret: (key: string) => Promise<string | null>;
   deleteEncryptedSecret: (key: string) => Promise<boolean>;
+
+  // Remote MCP Server
+  getMcpStatus: () => Promise<{ isRunning: boolean; port: number; activeSessions: number; token: string; url: string }>;
+  toggleMcpServer: (enable: boolean) => Promise<{ isRunning: boolean; port: number; activeSessions: number; token: string; url: string }>;
+  regenerateMcpToken: () => Promise<string>;
+  setMcpAppState: (state: { activeProject?: any; activeTab?: string }) => Promise<boolean>;
+  onRemoteAction: (callback: (action: { type: string; payload: any }) => void) => () => void;
 }
 
 export interface FileTreeNode {

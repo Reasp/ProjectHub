@@ -276,7 +276,20 @@ const api: IElectronAPI = {
   decryptSecret: (cipherText: string) => ipcRenderer.invoke('secrets:decrypt', cipherText),
   saveEncryptedSecret: (key: string, value: string) => ipcRenderer.invoke('secrets:setSecret', { key, value }),
   getEncryptedSecret: (key: string) => ipcRenderer.invoke('secrets:getSecret', key),
-  deleteEncryptedSecret: (key: string) => ipcRenderer.invoke('secrets:deleteSecret', key)
+  deleteEncryptedSecret: (key: string) => ipcRenderer.invoke('secrets:deleteSecret', key),
+
+  // Remote MCP Server (External Agent Control)
+  getMcpStatus: () => ipcRenderer.invoke('mcp:getStatus'),
+  toggleMcpServer: (enable: boolean) => ipcRenderer.invoke('mcp:toggleServer', enable),
+  regenerateMcpToken: () => ipcRenderer.invoke('mcp:regenerateToken'),
+  setMcpAppState: (state: { activeProject?: any; activeTab?: string }) => ipcRenderer.invoke('mcp:setAppState', state),
+  onRemoteAction: (callback: (action: { type: string; payload: any }) => void) => {
+    const handler = (_event: any, action: any) => callback(action);
+    ipcRenderer.on('mcp:remoteAction', handler);
+    return () => {
+      ipcRenderer.removeListener('mcp:remoteAction', handler);
+    };
+  }
 };
 
 contextBridge.exposeInMainWorld('api', api);

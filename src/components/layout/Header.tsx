@@ -17,6 +17,7 @@ import {
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { ActionRunnerBar } from '../actions/ActionRunnerBar';
+import { McpServerStatusBadge } from '../mcp/McpServerStatusBadge';
 
 export const Header: React.FC = () => {
   const { language, setLanguage, t } = useTranslation();
@@ -41,8 +42,10 @@ export const Header: React.FC = () => {
     return (
       <header className="h-14 border-b border-slate-800/80 px-6 flex items-center justify-between bg-[#12151f]/80">
         <span className="text-xs text-slate-500">{t.header.selectProjectHint}</span>
-        {/* Language Switcher */}
-        <div className="flex items-center gap-1 bg-[#181c2b] p-1 rounded-lg border border-slate-800 text-xs">
+        <div className="flex items-center gap-2">
+          <McpServerStatusBadge />
+          {/* Language Switcher */}
+          <div className="flex items-center gap-1 bg-[#181c2b] p-1 rounded-lg border border-slate-800 text-xs">
           <Globe className="w-3.5 h-3.5 text-indigo-400 mx-1" />
           <button
             onClick={() => setLanguage('en')}
@@ -64,6 +67,7 @@ export const Header: React.FC = () => {
           >
             RU
           </button>
+          </div>
         </div>
       </header>
     );
@@ -205,6 +209,9 @@ export const Header: React.FC = () => {
           <TerminalSquare className="w-3.5 h-3.5 shrink-0" />
           <span className="hidden lg:inline">{t.header.console}</span>
         </button>
+
+        {/* MCP Remote Control Status Badge */}
+        <McpServerStatusBadge />
 
         {/* Language Switcher */}
         <div className="flex items-center gap-0.5 bg-[#181c2b] p-0.5 rounded-lg border border-slate-800 text-xs shrink-0">
