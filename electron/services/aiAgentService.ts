@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { searchProjectDocs } from './ragSearch.js';
+import { secretStorageService } from './secretStorageService.js';
 import matter from 'gray-matter';
 
 export interface AutoApproveRules {
@@ -178,7 +179,11 @@ class AIAgentService {
     try {
       if (existsSync(CONFIG_FILE)) {
         const raw = await fs.readFile(CONFIG_FILE, 'utf-8');
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.apiKey) {
+          parsed.apiKey = secretStorageService.decrypt(parsed.apiKey);
+        }
+        return parsed;
       }
     } catch (err) {
       console.warn('Failed to load AI config, using defaults:', err);
@@ -194,7 +199,11 @@ class AIAgentService {
 
   public async saveConfig(config: AIProviderConfig): Promise<void> {
     this.ensureConfigDir();
-    await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+    const toSave = { ...config };
+    if (toSave.apiKey) {
+      toSave.apiKey = secretStorageService.encrypt(toSave.apiKey);
+    }
+    await fs.writeFile(CONFIG_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
   }
 
   public abortStream(sessionId: string): void {

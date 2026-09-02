@@ -661,7 +661,10 @@ export const useAIStudioStore = create<AIStudioState>()(
       partialize: (state) => ({
         sessions: state.sessions,
         activeSessionId: state.activeSessionId,
-        config: state.config,
+        config: {
+          ...state.config,
+          apiKey: undefined // Не сохраняем API-ключ в открытом виде в localStorage — защищено через safeStorage (DPAPI)
+        },
         mode: state.mode
       })
     }

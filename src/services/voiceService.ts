@@ -74,12 +74,18 @@ class VoiceService {
     this.initWebSpeech();
   }
 
-  private loadConfig() {
+  private async loadConfig() {
     if (typeof window === 'undefined') return;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         this.config = { ...DEFAULT_CONFIG, ...JSON.parse(stored) };
+      }
+      if (window.api?.getEncryptedSecret) {
+        const encKey = await window.api.getEncryptedSecret('whisperApiKey');
+        if (encKey) {
+          this.config.whisperApiKey = encKey;
+        }
       }
     } catch (e) {
       console.warn('[VoiceService] Failed to load config:', e);
@@ -90,7 +96,12 @@ class VoiceService {
     this.config = { ...this.config, ...newConfig };
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.config));
+        if (newConfig.whisperApiKey !== undefined && window.api?.saveEncryptedSecret) {
+          window.api.saveEncryptedSecret('whisperApiKey', newConfig.whisperApiKey || '');
+        }
+        // Don't keep raw API key in localStorage
+        const safeConfig = { ...this.config, whisperApiKey: '' };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(safeConfig));
       } catch (e) {
         console.error('[VoiceService] Failed to save config:', e);
       }

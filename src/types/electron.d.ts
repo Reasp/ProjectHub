@@ -411,6 +411,14 @@ export interface IElectronAPI {
 
   // System
   getPlatform: () => Promise<string>;
+
+  // SafeStorage & Secret Encryption
+  isEncryptionAvailable: () => Promise<boolean>;
+  encryptSecret: (text: string) => Promise<string>;
+  decryptSecret: (cipherText: string) => Promise<string>;
+  saveEncryptedSecret: (key: string, value: string) => Promise<boolean>;
+  getEncryptedSecret: (key: string) => Promise<string | null>;
+  deleteEncryptedSecret: (key: string) => Promise<boolean>;
 }
 
 export interface FileTreeNode {

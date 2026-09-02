@@ -411,6 +411,10 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                       {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
                   </div>
+                  <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                    <span>Ключ автоматически шифруется системным DPAPI (Electron safeStorage)</span>
+                  </div>
                 </div>
               )}
 

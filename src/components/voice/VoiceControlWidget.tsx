@@ -11,7 +11,8 @@ import {
   Activity,
   Check,
   CheckCircle2,
-  Sliders
+  Sliders,
+  ShieldCheck
 } from 'lucide-react';
 import {
   voiceService,
@@ -447,6 +448,10 @@ export const VoiceControlWidget: React.FC = () => {
                       placeholder="Автоматически из настроек AI Studio или введите ключ"
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                     />
+                    <div className="mt-1 flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
+                      <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                      <span>Ключ надёжно защищён системным шифрованием (safeStorage / DPAPI)</span>
+                    </div>
                   </div>
                 )}
               </div>

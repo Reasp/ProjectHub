@@ -268,7 +268,15 @@ const api: IElectronAPI = {
   getLocalWhisperStatus: () => ipcRenderer.invoke('voice:getLocalWhisperStatus'),
 
   // System
-  getPlatform: () => ipcRenderer.invoke('system:getPlatform')
+  getPlatform: () => ipcRenderer.invoke('system:getPlatform'),
+
+  // SafeStorage & Secret Encryption
+  isEncryptionAvailable: () => ipcRenderer.invoke('secrets:isEncryptionAvailable'),
+  encryptSecret: (text: string) => ipcRenderer.invoke('secrets:encrypt', text),
+  decryptSecret: (cipherText: string) => ipcRenderer.invoke('secrets:decrypt', cipherText),
+  saveEncryptedSecret: (key: string, value: string) => ipcRenderer.invoke('secrets:setSecret', { key, value }),
+  getEncryptedSecret: (key: string) => ipcRenderer.invoke('secrets:getSecret', key),
+  deleteEncryptedSecret: (key: string) => ipcRenderer.invoke('secrets:deleteSecret', key)
 };
 
 contextBridge.exposeInMainWorld('api', api);

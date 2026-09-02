@@ -11,6 +11,7 @@ import { projectRegistry } from './services/projectRegistry';
 import { inspectProject, scanDirectories } from './services/projectScanner';
 import { claudeBridgeService } from './services/claudeBridgeService';
 import { localWhisperService } from './services/localWhisperService';
+import { secretStorageService } from './services/secretStorageService';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -842,6 +843,32 @@ ipcMain.handle('voice:getLocalWhisperStatus', async () => {
 
 ipcMain.handle('system:getPlatform', async () => {
   return process.platform;
+});
+
+// SafeStorage & Secret Encryption IPC Handlers
+ipcMain.handle('secrets:isEncryptionAvailable', async () => {
+  return secretStorageService.isEncryptionAvailable();
+});
+
+ipcMain.handle('secrets:encrypt', async (_event, text: string) => {
+  return secretStorageService.encrypt(text);
+});
+
+ipcMain.handle('secrets:decrypt', async (_event, cipherText: string) => {
+  return secretStorageService.decrypt(cipherText);
+});
+
+ipcMain.handle('secrets:setSecret', async (_event, { key, value }: { key: string; value: string }) => {
+  await secretStorageService.setSecret(key, value);
+  return true;
+});
+
+ipcMain.handle('secrets:getSecret', async (_event, key: string) => {
+  return await secretStorageService.getSecret(key);
+});
+
+ipcMain.handle('secrets:deleteSecret', async (_event, key: string) => {
+  return await secretStorageService.deleteSecret(key);
 });
 
 app.on('before-quit', () => {
