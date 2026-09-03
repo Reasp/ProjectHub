@@ -24,6 +24,7 @@ export interface AISession {
 interface AIStudioState {
   sessions: Record<string, AISession[]>; // projectPath -> list of sessions
   activeSessionId: Record<string, string>; // projectPath -> active sessionId
+  lastActiveSessionId: Record<string, string>; // projectPath -> previous active sessionId
   isStreaming: boolean;
   activeStreamSessionId: string | null;
   config: AIProviderConfig;
@@ -56,7 +57,13 @@ interface AIStudioState {
   setIsSettingsOpen: (open: boolean) => void;
   createSession: (projectPath: string, initialTitle?: string) => string;
   switchSession: (projectPath: string, sessionId: string) => void;
+  switchSessionByIndex: (projectPath: string, index: number) => void;
+  switchToNextSession: (projectPath: string) => void;
+  switchToPrevSession: (projectPath: string) => void;
+  switchToLastActiveSession: (projectPath: string) => void;
   closeSession: (projectPath: string, sessionId: string) => void;
+  closeCurrentSession: (projectPath: string) => void;
+  renameSession: (projectPath: string, sessionId: string, newTitle: string) => void;
   clearSession: (projectPath: string, sessionId?: string) => void;
   sendMessage: (projectPath: string, text: string) => Promise<void>;
   abortStream: () => Promise<void>;
@@ -99,6 +106,7 @@ export const useAIStudioStore = create<AIStudioState>()(
     (set, get) => ({
       sessions: {},
       activeSessionId: {},
+      lastActiveSessionId: {},
       isStreaming: false,
       activeStreamSessionId: null,
       config: DEFAULT_CONFIG,
@@ -260,12 +268,74 @@ export const useAIStudioStore = create<AIStudioState>()(
       },
 
       switchSession: (projectPath: string, sessionId: string) => {
+        const cur = get().activeSessionId[projectPath];
         set((state) => ({
+          lastActiveSessionId: cur && cur !== sessionId
+            ? { ...state.lastActiveSessionId, [projectPath]: cur }
+            : state.lastActiveSessionId,
           activeSessionId: {
             ...state.activeSessionId,
             [projectPath]: sessionId
           }
         }));
+      },
+
+      switchSessionByIndex: (projectPath: string, index: number) => {
+        const sessions = get().sessions[projectPath] || [];
+        if (index >= 0 && index < sessions.length) {
+          get().switchSession(projectPath, sessions[index].id);
+        }
+      },
+
+      switchToNextSession: (projectPath: string) => {
+        const sessions = get().sessions[projectPath] || [];
+        if (sessions.length <= 1) return;
+        const curId = get().activeSessionId[projectPath];
+        const curIdx = sessions.findIndex((s) => s.id === curId);
+        const nextIdx = (curIdx + 1) % sessions.length;
+        get().switchSession(projectPath, sessions[nextIdx].id);
+      },
+
+      switchToPrevSession: (projectPath: string) => {
+        const sessions = get().sessions[projectPath] || [];
+        if (sessions.length <= 1) return;
+        const curId = get().activeSessionId[projectPath];
+        const curIdx = sessions.findIndex((s) => s.id === curId);
+        const prevIdx = (curIdx - 1 + sessions.length) % sessions.length;
+        get().switchSession(projectPath, sessions[prevIdx].id);
+      },
+
+      switchToLastActiveSession: (projectPath: string) => {
+        const lastId = get().lastActiveSessionId[projectPath];
+        const sessions = get().sessions[projectPath] || [];
+        if (lastId && sessions.some((s) => s.id === lastId)) {
+          get().switchSession(projectPath, lastId);
+        } else {
+          get().switchToPrevSession(projectPath);
+        }
+      },
+
+      closeCurrentSession: (projectPath: string) => {
+        const curId = get().activeSessionId[projectPath];
+        if (curId) {
+          get().closeSession(projectPath, curId);
+        }
+      },
+
+      renameSession: (projectPath: string, sessionId: string, newTitle: string) => {
+        const cleanTitle = newTitle.trim();
+        if (!cleanTitle) return;
+        set((state) => {
+          const projectSessions = state.sessions[projectPath] || [];
+          return {
+            sessions: {
+              ...state.sessions,
+              [projectPath]: projectSessions.map((s) =>
+                s.id === sessionId ? { ...s, title: cleanTitle } : s
+              )
+            }
+          };
+        });
       },
 
       closeSession: (projectPath: string, sessionId: string) => {

@@ -450,6 +450,9 @@ export interface TranslationDictionary {
     newChat: string;
     newSession: string;
     closeSession: string;
+    renameSession: string;
+    renamePrompt: string;
+    chatVoiceHint: string;
     clearSession: string;
     settings: string;
     subagents: string;

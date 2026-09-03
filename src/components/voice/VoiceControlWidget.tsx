@@ -38,6 +38,11 @@ export const VoiceControlWidget: React.FC = () => {
     activeSessionId,
     createSession,
     switchSession,
+    switchSessionByIndex,
+    switchToNextSession,
+    switchToPrevSession,
+    switchToLastActiveSession,
+    closeCurrentSession,
     sendMessage,
     pendingApprovals,
     sendApprovalResponse
@@ -101,27 +106,87 @@ export const VoiceControlWidget: React.FC = () => {
     if (cmd.type === 'ai_control') {
       const projectPath = selectedProject?.path;
 
-      // A. Create new AI Session
-      if (cmd.intent === 'create_ai_session' && projectPath) {
+      // A. Create new Chat / Session: «новый чат», «создай чат»
+      if ((cmd.intent === 'create_ai_session' || cmd.intent === 'new_ai_session') && projectPath) {
         setActiveTab('ai');
         createSession(projectPath);
+        const feedback = language === 'ru' ? 'Создан новый чат' : 'Created new chat session';
+        setLastFeedback(feedback);
+        if (config.ttsEnabled) voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
+        return;
+      }
+
+      // B. Close Current Chat / Session: «закрой чат», «закрой сессию»
+      else if (cmd.intent === 'close_ai_session' && projectPath) {
+        setActiveTab('ai');
+        closeCurrentSession(projectPath);
+        const feedback = language === 'ru' ? 'Чат закрыт' : 'Chat session closed';
+        setLastFeedback(feedback);
+        if (config.ttsEnabled) voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
+        return;
+      }
+
+      // C. Cyclic Chat Navigation: «следующий чат», «предыдущий чат», «прошлый чат / назад»
+      else if (cmd.intent === 'switch_session_next' && projectPath) {
+        setActiveTab('ai');
+        switchToNextSession(projectPath);
+        return;
+      }
+
+      else if (cmd.intent === 'switch_session_prev' && projectPath) {
+        setActiveTab('ai');
+        switchToPrevSession(projectPath);
+        return;
+      }
+
+      else if (cmd.intent === 'switch_session_last' && projectPath) {
+        setActiveTab('ai');
+        switchToLastActiveSession(projectPath);
+        return;
+      }
+
+      // D. Switch Studio Session by index (1..N or last): «чат 1», «сессия 2», «первый чат»
+      else if ((cmd.intent === 'switch_session_index' || cmd.intent === 'switch_ai_session') && projectPath) {
+        setActiveTab('ai');
+        let idx = cmd.payload?.sessionIndex ?? 0;
+        const projectSessions = sessions[projectPath] || [];
+        if (idx === -1) {
+          idx = Math.max(0, projectSessions.length - 1);
+        }
+        if (projectSessions[idx]) {
+          switchSession(projectPath, projectSessions[idx].id);
+          const feedback = language === 'ru'
+            ? `Открыт ${projectSessions[idx].title || `чат ${idx + 1}`}`
+            : `Switched to ${projectSessions[idx].title || `chat ${idx + 1}`}`;
+          setLastFeedback(feedback);
+          if (config.ttsEnabled) voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
+        }
+        return;
+      }
+
+      // E. Search & Switch Studio Session by Title: «открой чат [X]», «перейди в чат [X]»
+      else if (cmd.intent === 'navigate_ai_session' && projectPath) {
+        setActiveTab('ai');
+        const query = (cmd.payload?.sessionTitle || '').toLowerCase().trim();
+        const projectSessions = sessions[projectPath] || [];
+        const matched = projectSessions.find((s) => {
+          const tName = (s.title || '').toLowerCase();
+          return tName === query || tName.includes(query) || query.includes(tName);
+        });
+        if (matched) {
+          switchSession(projectPath, matched.id);
+          const feedback = language === 'ru'
+            ? `Открыт чат ${matched.title}`
+            : `Switched to ${matched.title}`;
+          setLastFeedback(feedback);
+          if (config.ttsEnabled) voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
+        }
+        return;
       }
 
       // Open Claude Code Usage & Limits
       else if (cmd.intent === 'show_claude_usage') {
         window.dispatchEvent(new CustomEvent('projecthub:open-claude-usage'));
-      }
-
-      // B. Switch Studio Tab / Session by index (0, 1, 2...)
-      else if (cmd.intent === 'switch_ai_session' && projectPath) {
-        setActiveTab('ai');
-        const projectSessions = sessions[projectPath] || [];
-        const targetIdx = cmd.payload?.sessionIndex ?? 0;
-        if (projectSessions[targetIdx]) {
-          switchSession(projectPath, projectSessions[targetIdx].id);
-        } else if (projectSessions.length > 0) {
-          switchSession(projectPath, projectSessions[0].id);
-        }
       }
 
       // C. Send / Dictate Prompt

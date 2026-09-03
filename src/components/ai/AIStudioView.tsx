@@ -15,7 +15,8 @@ import {
   Trash2,
   Activity,
   ShieldCheck,
-  LogOut
+  LogOut,
+  Pencil
 } from 'lucide-react';
 import { useAIStudioStore, type AISession } from '../../store/useAIStudioStore';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -65,6 +66,7 @@ export const AIStudioView: React.FC = () => {
     createSession,
     switchSession,
     closeSession,
+    renameSession,
     clearSession,
     sendMessage,
     abortStream,
@@ -127,35 +129,76 @@ export const AIStudioView: React.FC = () => {
       {/* 1. Multi-Session Tabs Bar (VS Code Extension Style) */}
       <div className="bg-[#12141f] border-b border-slate-800/90 flex items-center justify-between px-2 pt-1.5 shrink-0 select-none relative z-30">
         <div className="flex items-center gap-1 overflow-x-auto max-w-[45%] lg:max-w-[55%] pb-1 scrollbar-none">
-          {projectSessions.map((session) => {
+          {projectSessions.map((session, idx) => {
             const isActive = session.id === currentSessionId;
+            const tabNumber = idx + 1;
 
             return (
               <div
                 key={session.id}
                 onClick={() => switchSession(projectPath, session.id)}
-                className={`group flex items-center gap-2 px-3 py-1.5 rounded-t-lg border-t-2 text-xs font-medium cursor-pointer transition whitespace-nowrap max-w-xs ${
+                className={`group flex items-center gap-1.5 px-2.5 py-1.5 rounded-t-lg border-t-2 text-xs font-medium cursor-pointer transition whitespace-nowrap max-w-xs ${
                   isActive
                     ? 'bg-[#181b2a] border-amber-500 text-slate-100 shadow-sm ring-1 ring-slate-800/40'
                     : 'bg-[#141624]/60 border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#161928]'
                 }`}
+                title={`${session.title || t.aiStudio.newChat} — Скажите: «Чат ${tabNumber}» или «Сессия ${tabNumber}»`}
               >
+                {/* Voice / Tab Order Badge */}
+                <span
+                  className={`text-[10px] font-mono px-1 py-0.2 rounded border transition ${
+                    isActive
+                      ? 'bg-amber-500/25 text-amber-200 border-amber-500/50 font-bold'
+                      : 'bg-slate-800/80 text-slate-400 border-slate-700/60 group-hover:text-slate-200'
+                  }`}
+                  title={`Голосовая команда: «Чат ${tabNumber}»`}
+                >
+                  {tabNumber}
+                </span>
+
                 {/* Claude Anthropic Orange Spark Icon */}
                 <div className="w-3.5 h-3.5 flex items-center justify-center shrink-0">
                   <span className="text-amber-500 font-bold text-xs">✳</span>
                 </div>
 
-                <span className="truncate text-xs font-sans" title={session.title}>
+                <span
+                  className="truncate text-xs font-sans max-w-[120px]"
+                  title={session.title}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    const newTitle = window.prompt(t.aiStudio.renamePrompt || 'Название чата / сессии:', session.title);
+                    if (newTitle !== null) {
+                      renameSession(projectPath, session.id, newTitle);
+                    }
+                  }}
+                >
                   {session.title || t.aiStudio.newChat}
                 </span>
 
+                {/* Rename Session Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const newTitle = window.prompt(t.aiStudio.renamePrompt || 'Название чата / сессии:', session.title);
+                    if (newTitle !== null) {
+                      renameSession(projectPath, session.id, newTitle);
+                    }
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-700/80 text-slate-400 hover:text-amber-300 transition shrink-0"
+                  title={t.aiStudio.renameSession || 'Переименовать диалог'}
+                >
+                  <Pencil className="w-2.5 h-2.5" />
+                </button>
+
+                {/* Close Session Button */}
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     closeSession(projectPath, session.id);
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-700/80 text-slate-400 hover:text-white transition ml-1 shrink-0"
+                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-700/80 text-slate-400 hover:text-white transition shrink-0"
                   title={t.aiStudio.closeSession}
                 >
                   <X className="w-3 h-3" />

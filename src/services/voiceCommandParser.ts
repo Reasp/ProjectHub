@@ -117,24 +117,108 @@ export function parseVoiceCommand(text: string): ParsedVoiceCommand {
     };
   }
 
-  // B. Switch Studio Tab / Session by Number: «вкладка 1», «вкладка 2», «первая вкладка», «диалог 2»
+  // B. Close Current Chat / Session: «закрой чат», «закрой сессию», «close chat», «close session»
   if (
-    normalized.includes('вкладка') ||
-    normalized.includes('вкладку') ||
-    normalized.includes('диалог') ||
-    normalized.includes('сессия') ||
-    normalized.includes('сессию') ||
-    normalized.includes('tab')
+    /^(закрой чат|закрыть чат|закрой сессию|закрыть сессию|закрой диалог|закрыть диалог|close chat|close session)$/i.test(normalized) ||
+    normalized.startsWith('закрой чат') ||
+    normalized.startsWith('закрой сессию') ||
+    normalized.startsWith('закрыть чат') ||
+    normalized.startsWith('close chat') ||
+    normalized.startsWith('close session')
   ) {
-    const numIdx = parseNumberWord(normalized);
-    if (numIdx !== null) {
+    return {
+      type: 'ai_control',
+      intent: 'close_ai_session',
+      feedbackText: 'Закрываю текущий чат'
+    };
+  }
+
+  // C. New Chat / Session: «новый чат», «создай чат», «новая сессия», «new chat», «create chat»
+  if (
+    /^(новый чат|создай чат|создать чат|новая сессия|создай сессию|создать сессию|новый диалог|new chat|create chat|new session)$/i.test(normalized) ||
+    normalized === 'новый чат' ||
+    normalized === 'создай чат' ||
+    normalized === 'new chat'
+  ) {
+    return {
+      type: 'ai_control',
+      intent: 'new_ai_session',
+      feedbackText: 'Создаю новый чат'
+    };
+  }
+
+  // D. Cyclic Chat Navigation: «следующий чат», «предыдущий чат», «прошлый чат / назад»
+  if (
+    normalized.includes('следующий чат') ||
+    normalized.includes('следующая сессия') ||
+    normalized.includes('следующий диалог') ||
+    normalized.includes('next chat') ||
+    normalized.includes('next session')
+  ) {
+    return {
+      type: 'ai_control',
+      intent: 'switch_session_next',
+      feedbackText: 'Переключаю на следующий чат'
+    };
+  }
+
+  if (
+    normalized.includes('предыдущий чат') ||
+    normalized.includes('предыдущая сессия') ||
+    normalized.includes('предыдущий диалог') ||
+    normalized.includes('previous chat') ||
+    normalized.includes('prev chat') ||
+    normalized.includes('prev session')
+  ) {
+    return {
+      type: 'ai_control',
+      intent: 'switch_session_prev',
+      feedbackText: 'Переключаю на предыдущий чат'
+    };
+  }
+
+  if (
+    normalized === 'прошлый чат' ||
+    normalized === 'прошлая сессия' ||
+    normalized === 'назад к чату' ||
+    normalized === 'вернись к чату' ||
+    normalized === 'back chat' ||
+    normalized === 'last chat'
+  ) {
+    return {
+      type: 'ai_control',
+      intent: 'switch_session_last',
+      feedbackText: 'Возвращаюсь к предыдущему чату'
+    };
+  }
+
+  // E. Switch Chat / Session by Number (1..N, Ordinals): «чат 1», «сессия 2», «первый чат», «последняя сессия»
+  const chatIndexMatch = normalized.match(/^(?:чат|сессия|сессию|диалог|chat|session|dialog)\s+(?:номер\s+)?(.+)$/i) ||
+                         normalized.match(/^(.+?)\s+(?:чат|сессия|сессию|диалог|chat|session|dialog)$/i);
+
+  if (chatIndexMatch && chatIndexMatch[1]) {
+    const candidateText = chatIndexMatch[1].trim();
+    const parsedIdx = parseNumberWord(candidateText);
+    if (parsedIdx !== null) {
       return {
         type: 'ai_control',
-        intent: 'switch_ai_session',
-        payload: { sessionIndex: numIdx },
-        feedbackText: `Переключаю на вкладку ${numIdx + 1}`
+        intent: 'switch_session_index',
+        payload: { sessionIndex: parsedIdx },
+        feedbackText: parsedIdx === -1 ? 'Открываю последний чат' : `Переключаю на чат ${parsedIdx + 1}`
       };
     }
+  }
+
+  // F. Search Chat / Session by Title: «перейди в чат [X]», «открой чат [X]», «чат [X]»
+  const chatTitleMatch = raw.match(/^(?:перейди в чат|переключи на чат|открой чат|чат|open chat|switch to chat)\s+(.+)$/i);
+  if (chatTitleMatch && chatTitleMatch[1]) {
+    const targetQuery = chatTitleMatch[1].trim();
+    return {
+      type: 'ai_control',
+      intent: 'navigate_ai_session',
+      payload: { sessionTitle: targetQuery },
+      feedbackText: `Перехожу в чат ${targetQuery}`
+    };
   }
 
   // ─────────────────────────────────────────────────────────────────
