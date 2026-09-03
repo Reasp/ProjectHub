@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Kanban,
   Target,
@@ -10,7 +10,12 @@ import {
   Layers,
   Sparkles,
   BarChart2,
-  Bot
+  Bot,
+  SlidersHorizontal,
+  ChevronDown,
+  Eye,
+  EyeOff,
+  GripVertical
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -23,23 +28,79 @@ import { DocsRagView } from '../docs/DocsRagView';
 import { ProjectAnalyticsView } from '../analytics/ProjectAnalyticsView';
 import { AIStudioView } from '../ai/AIStudioView';
 import { ClaudeCliView } from '../claude/ClaudeCliView';
+import { useWorkspaceTabs, type WorkspaceTabId } from '../../hooks/useWorkspaceTabs';
+import { WorkspaceTabsConfigModal } from './WorkspaceTabsConfigModal';
+
+interface ContextMenuState {
+  isOpen: boolean;
+  x: number;
+  y: number;
+  tabId: WorkspaceTabId | null;
+}
 
 export const ProjectWorkspace: React.FC = () => {
   const { t } = useTranslation();
   const { selectedProject, activeTab, setActiveTab } = useProjectStore();
 
-  const tabs = [
-    { id: 'kanban', label: t.tabs.tasks, shortLabel: t.tabs.tasks.split(' ')[0], hotkey: 'Ctrl+B', icon: Kanban },
-    { id: 'milestones', label: t.tabs.milestones, shortLabel: t.tabs.milestones.split(' ')[0], hotkey: 'Ctrl+M', icon: Target },
-    { id: 'git', label: t.tabs.git, shortLabel: 'Git', hotkey: 'Ctrl+G', icon: GitBranch },
-    { id: 'files', label: t.tabs.files, shortLabel: 'Files', hotkey: 'Ctrl+E', icon: FolderTree },
-    { id: 'prs', label: t.tabs.prs, shortLabel: 'PR', hotkey: 'Ctrl+P', icon: GitPullRequest },
-    { id: 'docs', label: t.tabs.docs, shortLabel: 'Docs', hotkey: 'Ctrl+D', icon: BookOpen },
-    { id: 'analytics', label: t.tabs.analytics, shortLabel: 'Analytics', hotkey: 'Ctrl+A', icon: BarChart2 },
-    { id: 'ai', label: t.tabs.ai, shortLabel: 'Claude Studio', hotkey: 'Ctrl+I', icon: Sparkles },
-    { id: 'claude-cli', label: t.tabs.claudeCli, shortLabel: 'Claude CLI', hotkey: 'Ctrl+T', icon: Bot },
-    { id: 'processes', label: t.tabs.processes, shortLabel: 'Processes', hotkey: 'Ctrl+\\', icon: Cpu }
-  ] as const;
+  const {
+    tabsConfig,
+    visibleTabs,
+    hiddenTabs,
+    toggleTabVisibility,
+    reorderTabs,
+    moveTab,
+    resetToDefault,
+    showAllTabs
+  } = useWorkspaceTabs();
+
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [isHiddenDropdownOpen, setIsHiddenDropdownOpen] = useState(false);
+  const [draggedTabId, setDraggedTabId] = useState<WorkspaceTabId | null>(null);
+  const [dragOverTabId, setDragOverTabId] = useState<WorkspaceTabId | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    tabId: null
+  });
+
+  const hiddenDropdownRef = useRef<HTMLDivElement>(null);
+
+  // If the active tab becomes hidden, automatically select the first visible tab
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some((vt) => vt.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id as any);
+    }
+  }, [visibleTabs, activeTab, setActiveTab]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (hiddenDropdownRef.current && !hiddenDropdownRef.current.contains(e.target as Node)) {
+        setIsHiddenDropdownOpen(false);
+      }
+      setContextMenu((prev) => (prev.isOpen ? { ...prev, isOpen: false } : prev));
+    };
+
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, []);
+
+  const tabDefs: Record<
+    WorkspaceTabId,
+    { label: string; shortLabel: string; hotkey: string; icon: React.ComponentType<{ className?: string }> }
+  > = {
+    kanban: { label: t.tabs.tasks, shortLabel: t.tabs.tasks.split(' ')[0], hotkey: 'Ctrl+B', icon: Kanban },
+    milestones: { label: t.tabs.milestones, shortLabel: t.tabs.milestones.split(' ')[0], hotkey: 'Ctrl+M', icon: Target },
+    git: { label: t.tabs.git, shortLabel: 'Git', hotkey: 'Ctrl+G', icon: GitBranch },
+    files: { label: t.tabs.files, shortLabel: 'Files', hotkey: 'Ctrl+E', icon: FolderTree },
+    prs: { label: t.tabs.prs, shortLabel: 'PR', hotkey: 'Ctrl+P', icon: GitPullRequest },
+    docs: { label: t.tabs.docs, shortLabel: 'Docs', hotkey: 'Ctrl+D', icon: BookOpen },
+    analytics: { label: t.tabs.analytics, shortLabel: 'Analytics', hotkey: 'Ctrl+A', icon: BarChart2 },
+    ai: { label: t.tabs.ai, shortLabel: 'Claude Studio', hotkey: 'Ctrl+I', icon: Sparkles },
+    'claude-cli': { label: t.tabs.claudeCli, shortLabel: 'Claude CLI', hotkey: 'Ctrl+T', icon: Bot },
+    processes: { label: t.tabs.processes, shortLabel: 'Processes', hotkey: 'Ctrl+\\', icon: Cpu }
+  };
 
   if (!selectedProject) {
     return (
@@ -48,39 +109,211 @@ export const ProjectWorkspace: React.FC = () => {
           <Layers className="w-8 h-8" />
         </div>
         <h2 className="text-lg font-semibold text-white mb-2">{t.header.selectProjectHint}</h2>
-        <p className="text-xs text-slate-400 max-w-md mb-6">
-          {t.sidebar.noProjectsFound}
-        </p>
+        <p className="text-xs text-slate-400 max-w-md mb-6">{t.sidebar.noProjectsFound}</p>
       </div>
     );
   }
 
+  // Handle Drag & Drop reordering on the main tab strip
+  const handleDragStart = (e: React.DragEvent, id: WorkspaceTabId) => {
+    setDraggedTabId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: WorkspaceTabId) => {
+    e.preventDefault();
+    if (draggedTabId && draggedTabId !== id) {
+      setDragOverTabId(id);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetId: WorkspaceTabId) => {
+    e.preventDefault();
+    if (draggedTabId && draggedTabId !== targetId) {
+      const fromIndex = tabsConfig.findIndex((t) => t.id === draggedTabId);
+      const toIndex = tabsConfig.findIndex((t) => t.id === targetId);
+      if (fromIndex !== -1 && toIndex !== -1) {
+        reorderTabs(fromIndex, toIndex);
+      }
+    }
+    setDraggedTabId(null);
+    setDragOverTabId(null);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, id: WorkspaceTabId) => {
+    e.preventDefault();
+    setContextMenu({
+      isOpen: true,
+      x: e.clientX,
+      y: e.clientY,
+      tabId: id
+    });
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#0f1117]">
-      {/* Navigation Sub-header */}
-      <div className="px-6 border-b border-slate-800/80 bg-[#12151f]/40 flex items-center gap-1 shrink-0 flex-nowrap overflow-x-auto">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
+      {/* Navigation Sub-header with Customizable Tabs */}
+      <div className="px-6 border-b border-slate-800/80 bg-[#12151f]/40 flex items-center justify-between shrink-0">
+        {/* Main Tab Strip */}
+        <div className="flex items-center gap-1 flex-nowrap overflow-x-auto custom-scrollbar flex-1 py-0.5">
+          {visibleTabs.map((tabItem) => {
+            const def = tabDefs[tabItem.id];
+            if (!def) return null;
+            const Icon = def.icon;
+            const isActive = activeTab === tabItem.id;
+            const isDragOver = dragOverTabId === tabItem.id;
 
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              title={`${tab.label} (${tab.hotkey})`}
-              className={`flex items-center gap-2 px-3.5 py-3 text-xs font-medium border-b-2 transition relative shrink-0 whitespace-nowrap ${
-                isActive
-                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
-                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden xl:inline">{tab.label}</span>
-              <span className="hidden md:inline xl:hidden">{tab.shortLabel}</span>
-            </button>
-          );
-        })}
+            return (
+              <button
+                key={tabItem.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, tabItem.id)}
+                onDragOver={(e) => handleDragOver(e, tabItem.id)}
+                onDragLeave={() => {
+                  if (dragOverTabId === tabItem.id) setDragOverTabId(null);
+                }}
+                onDrop={(e) => handleDrop(e, tabItem.id)}
+                onContextMenu={(e) => handleContextMenu(e, tabItem.id)}
+                onClick={() => setActiveTab(tabItem.id as any)}
+                title={`${def.label} (${def.hotkey}) · Перетащите для смены порядка, правый клик для настройки`}
+                className={`flex items-center gap-2 px-3.5 py-3 text-xs font-medium border-b-2 transition relative shrink-0 whitespace-nowrap select-none group cursor-pointer ${
+                  isActive
+                    ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
+                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
+                } ${isDragOver ? 'border-l-2 border-l-indigo-400 pl-2 bg-indigo-500/10' : ''}`}
+              >
+                <Icon className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden xl:inline">{def.label}</span>
+                <span className="hidden md:inline xl:hidden">{def.shortLabel}</span>
+
+                {/* Subtle drag grip handle on hover */}
+                <span className="opacity-0 group-hover:opacity-40 transition -mr-1">
+                  <GripVertical className="w-3 h-3 text-slate-400" />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Right Controls: Hidden Tabs Dropdown & Customize Tabs Button */}
+        <div className="flex items-center gap-1.5 shrink-0 pl-3 border-l border-slate-800/60 py-1.5">
+          {/* Hidden Tabs Dropdown (if any tabs are hidden) */}
+          {hiddenTabs.length > 0 && (
+            <div className="relative" ref={hiddenDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsHiddenDropdownOpen(!isHiddenDropdownOpen)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 text-[11px] font-medium transition"
+                title="Скрытые вкладки"
+              >
+                <EyeOff className="w-3 h-3 text-amber-400" />
+                <span className="hidden sm:inline">Ещё</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-slate-900 font-mono text-[9px] text-amber-300">
+                  {hiddenTabs.length}
+                </span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+
+              {isHiddenDropdownOpen && (
+                <div className="absolute right-0 top-full mt-1.5 w-52 bg-[#121522] border border-slate-700/80 rounded-xl shadow-2xl py-1.5 z-50 animate-in fade-in slide-in-from-top-1 text-xs">
+                  <div className="px-3 py-1 text-[10px] uppercase font-bold tracking-wider text-slate-500 border-b border-slate-800 mb-1">
+                    Скрытые вкладки
+                  </div>
+                  {hiddenTabs.map((hTab) => {
+                    const def = tabDefs[hTab.id];
+                    if (!def) return null;
+                    const Icon = def.icon;
+                    return (
+                      <div
+                        key={hTab.id}
+                        className="flex items-center justify-between px-3 py-1.5 hover:bg-slate-800/70 transition group"
+                      >
+                        <button
+                          onClick={() => {
+                            setActiveTab(hTab.id as any);
+                            setIsHiddenDropdownOpen(false);
+                          }}
+                          className="flex items-center gap-2 text-slate-300 hover:text-white flex-1 text-left truncate"
+                        >
+                          <Icon className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                          <span className="truncate">{def.label}</span>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleTabVisibility(hTab.id);
+                          }}
+                          title="Вернуть на панель"
+                          className="p-1 rounded text-slate-500 hover:text-emerald-300 hover:bg-slate-700 transition"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <div className="border-t border-slate-800/80 mt-1 pt-1 px-1">
+                    <button
+                      onClick={() => {
+                        setIsHiddenDropdownOpen(false);
+                        setIsConfigModalOpen(true);
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] text-indigo-300 hover:bg-indigo-600/20 transition font-medium"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                      <span>Настроить все вкладки...</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Customize Tabs Button */}
+          <button
+            type="button"
+            onClick={() => setIsConfigModalOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#181c2b] hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-[11px] font-medium transition"
+            title="Настройка меню вкладок (изменить порядок, скрыть ненужные)"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="hidden lg:inline">Настроить</span>
+          </button>
+        </div>
       </div>
+
+      {/* Tab Context Menu */}
+      {contextMenu.isOpen && contextMenu.tabId && (
+        <div
+          style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+          className="fixed z-[10000] w-48 bg-[#121522] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs text-slate-200 animate-in fade-in duration-75 select-none"
+        >
+          <button
+            onClick={() => {
+              if (contextMenu.tabId) {
+                toggleTabVisibility(contextMenu.tabId);
+              }
+              setContextMenu((prev) => ({ ...prev, isOpen: false }));
+            }}
+            disabled={visibleTabs.length <= 1}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition disabled:opacity-40 text-left"
+          >
+            <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+            <span>Скрыть вкладку</span>
+          </button>
+          <div className="h-px bg-slate-800 my-1" />
+          <button
+            onClick={() => {
+              setContextMenu((prev) => ({ ...prev, isOpen: false }));
+              setIsConfigModalOpen(true);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition text-left"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Настроить вкладки...</span>
+          </button>
+        </div>
+      )}
 
       {/* Tab View Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -98,12 +331,22 @@ export const ProjectWorkspace: React.FC = () => {
           <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
             <Cpu className="w-12 h-12 text-indigo-400/40 mb-3" />
             <h3 className="text-sm font-semibold text-white mb-1">{t.terminal.processLogs}</h3>
-            <p className="text-xs text-slate-400 max-w-sm">
-              {t.terminal.welcomeDesc}
-            </p>
+            <p className="text-xs text-slate-400 max-w-sm">{t.terminal.welcomeDesc}</p>
           </div>
         )}
       </div>
+
+      {/* Workspace Tabs Settings Modal */}
+      <WorkspaceTabsConfigModal
+        isOpen={isConfigModalOpen}
+        onClose={() => setIsConfigModalOpen(false)}
+        tabsConfig={tabsConfig}
+        onToggleVisibility={toggleTabVisibility}
+        onReorder={reorderTabs}
+        onMoveTab={moveTab}
+        onReset={resetToDefault}
+        onShowAll={showAllTabs}
+      />
     </div>
   );
 };
