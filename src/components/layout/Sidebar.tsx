@@ -17,7 +17,9 @@ import {
   BookOpen,
   Activity,
   FileCode,
-  MoreVertical
+  MoreVertical,
+  Zap,
+  Power
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -37,6 +39,10 @@ export const Sidebar: React.FC = () => {
     setSearchQuery,
     filterOnlyFavorites,
     setFilterOnlyFavorites,
+    activeProjectPaths,
+    filterOnlyActive,
+    setFilterOnlyActive,
+    toggleProjectActive,
     addProjectByPath,
     removeProjectFromCatalog,
     toggleFavoriteProject,
@@ -62,6 +68,7 @@ export const Sidebar: React.FC = () => {
       p.path.toLowerCase().includes(searchQuery.toLowerCase());
     if (!matchesSearch) return false;
     if (filterOnlyFavorites && !p.favorite) return false;
+    if (filterOnlyActive && !activeProjectPaths.includes(p.path)) return false;
     return true;
   });
 
@@ -125,22 +132,47 @@ export const Sidebar: React.FC = () => {
             />
           </div>
 
-          <div className="flex items-center justify-between pt-0.5">
-            <button
-              onClick={() => setFilterOnlyFavorites(!filterOnlyFavorites)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition ${
-                filterOnlyFavorites
-                  ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
-                  : 'bg-slate-800/60 hover:bg-slate-800 border border-slate-700/40 text-slate-400'
-              }`}
-            >
-              <Star
-                className={`w-3 h-3 ${filterOnlyFavorites ? 'fill-amber-400 text-amber-400' : ''}`}
-              />
-              {filterOnlyFavorites ? t.sidebar.favoritesOnly : t.common.all}
-            </button>
+          <div className="flex items-center justify-between pt-0.5 gap-1.5">
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setFilterOnlyFavorites(!filterOnlyFavorites)}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition ${
+                  filterOnlyFavorites
+                    ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
+                    : 'bg-slate-800/60 hover:bg-slate-800 border border-slate-700/40 text-slate-400'
+                }`}
+                title={filterOnlyFavorites ? t.common.all : t.sidebar.favoritesOnly}
+              >
+                <Star
+                  className={`w-3 h-3 ${filterOnlyFavorites ? 'fill-amber-400 text-amber-400' : ''}`}
+                />
+                <span className="hidden sm:inline">{filterOnlyFavorites ? t.sidebar.favoritesOnly : t.common.all}</span>
+              </button>
 
-            <span className="text-[11px] text-slate-500 font-mono">
+              <button
+                onClick={() => setFilterOnlyActive(!filterOnlyActive)}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition ${
+                  filterOnlyActive
+                    ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 shadow-sm'
+                    : 'bg-slate-800/60 hover:bg-slate-800 border border-slate-700/40 text-slate-400'
+                }`}
+                title={filterOnlyActive ? t.common.all : t.sidebar.activeOnly}
+              >
+                <Zap
+                  className={`w-3 h-3 ${filterOnlyActive ? 'fill-emerald-400 text-emerald-400' : 'text-slate-400'}`}
+                />
+                <span>{t.sidebar.activeOnly}</span>
+                {activeProjectPaths.length > 0 && (
+                  <span className={`px-1 py-0.2 rounded-full text-[9px] font-mono ${
+                    filterOnlyActive ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-900 text-slate-400'
+                  }`}>
+                    {activeProjectPaths.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            <span className="text-[11px] text-slate-500 font-mono shrink-0">
               {filteredProjects.length} / {projects.length}
             </span>
           </div>
@@ -162,6 +194,7 @@ export const Sidebar: React.FC = () => {
 
           {filteredProjects.map((project) => {
             const isSelected = selectedProject?.path === project.path;
+            const isSessionActive = activeProjectPaths.includes(project.path);
             const todoCount = project.taskCounts?.todo || 0;
             const inProgressCount = project.taskCounts?.inProgress || 0;
             const reviewCount = project.taskCounts?.review || 0;
@@ -183,11 +216,19 @@ export const Sidebar: React.FC = () => {
                 {/* Top Row: Name, Star, and Actions */}
                 <div className="flex items-center justify-between gap-1.5">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <FolderGit2
-                      className={`w-4 h-4 shrink-0 ${
-                        isSelected ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'
-                      }`}
-                    />
+                    <div className="relative shrink-0">
+                      <FolderGit2
+                        className={`w-4 h-4 ${
+                          isSelected ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'
+                        }`}
+                      />
+                      {isSessionActive && (
+                        <span
+                          className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400"
+                          title={t.sidebar.projectActive}
+                        />
+                      )}
+                    </div>
                     <span
                       className={`font-semibold text-xs truncate ${
                         isSelected ? 'text-white' : 'text-slate-200'
@@ -199,6 +240,22 @@ export const Sidebar: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
+                    {/* Session Activate / Deactivate Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleProjectActive(project);
+                      }}
+                      className={`p-1 rounded hover:bg-slate-800 transition ${
+                        isSessionActive
+                          ? 'text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 hover:bg-rose-950/40 hover:text-rose-400 hover:border-rose-500/40'
+                          : 'text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100'
+                      }`}
+                      title={isSessionActive ? t.sidebar.deactivateProject : t.sidebar.activateProject}
+                    >
+                      <Power className="w-3.5 h-3.5" />
+                    </button>
+
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

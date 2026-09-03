@@ -23,34 +23,36 @@ if (fs.existsSync(srcWorkers)) {
   console.log('📦 Воркеры скопированы в dist-electron/workers');
 }
 
-// 2. Try packaging directly first, or use tempOutputDir on EBUSY
+// 2. Try packaging directly first, or use unique tempOutputDir on EBUSY
 let usedTemp = false;
+const uniqueTempOutputDir = path.join(rootDir, `release_tmp_${Date.now()}`);
+const uniqueTempUnpackedDir = path.join(uniqueTempOutputDir, 'win-unpacked');
+
 try {
   console.log('⚡ Запуск electron-builder --win --dir...');
   execSync('npx electron-builder --win --dir', { stdio: 'inherit', cwd: rootDir });
 } catch (err) {
   console.warn('⚠️ Прямая сборка в release/win-unpacked заблокирована (EBUSY/Explorer), переключаемся на временный каталог...');
   usedTemp = true;
-  if (fs.existsSync(tempOutputDir)) {
-    try {
-      fs.rmSync(tempOutputDir, { recursive: true, force: true });
-    } catch {}
-  }
-  execSync(`npx electron-builder --win --dir -c.directories.output="${tempOutputDir}"`, {
+  execSync(`npx electron-builder --win --dir -c.directories.output="${uniqueTempOutputDir}"`, {
     stdio: 'inherit',
     cwd: rootDir
   });
 }
 
 // 3. If used temp, copy files into release/win-unpacked
-if (usedTemp && fs.existsSync(tempUnpackedDir)) {
+if (usedTemp && fs.existsSync(uniqueTempUnpackedDir)) {
   console.log('📂 Синхронизация файлов в release/win-unpacked...');
   if (!fs.existsSync(targetUnpackedDir)) {
     fs.mkdirSync(targetUnpackedDir, { recursive: true });
   }
-  fs.cpSync(tempUnpackedDir, targetUnpackedDir, { recursive: true, force: true });
   try {
-    fs.rmSync(tempOutputDir, { recursive: true, force: true });
+    fs.cpSync(uniqueTempUnpackedDir, targetUnpackedDir, { recursive: true, force: true });
+  } catch (copyErr) {
+    console.warn('⚠️ Некоторые файлы заблокированы запущенным процессом (ProjectHub.exe). Для полного обновления перезапустите приложение.', copyErr.message);
+  }
+  try {
+    fs.rmSync(uniqueTempOutputDir, { recursive: true, force: true });
   } catch {}
 }
 

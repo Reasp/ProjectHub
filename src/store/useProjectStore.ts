@@ -19,6 +19,16 @@ import type {
 } from '../types/electron';
 import type { Language } from '../i18n';
 
+export interface ProjectCachedData {
+  tasks: BacklogTask[];
+  gitLogs: GitCommit[];
+  gitRepoDetails: GitRepoDetails | null;
+  docsList: DocItem[];
+  milestones: Milestone[];
+  processes: ManagedProcess[];
+  lastLoadedAt: number;
+}
+
 interface ProjectState {
   projects: ProjectInfo[];
   selectedProject: ProjectInfo | null;
@@ -35,6 +45,16 @@ interface ProjectState {
   isScanning: boolean;
   searchQuery: string;
   filterOnlyFavorites: boolean;
+
+  // Multi-Project Session & In-Memory Cache
+  projectDataCache: Record<string, ProjectCachedData>;
+  activeProjectPaths: string[];
+  filterOnlyActive: boolean;
+  setFilterOnlyActive: (filterOnlyActive: boolean) => void;
+  activateProject: (project: ProjectInfo) => void;
+  deactivateProject: (projectPath: string) => void;
+  toggleProjectActive: (project: ProjectInfo) => void;
+
   scanRoots: string[];
   isTerminalOpen: boolean;
   terminalLogs: string[];
@@ -131,7 +151,7 @@ interface ProjectState {
   removeProjectFromCatalog: (projectPath: string) => Promise<void>;
   toggleFavoriteProject: (projectPath: string) => Promise<void>;
   refreshSingleProject: (projectPath: string) => Promise<void>;
-  loadProjectData: (project: ProjectInfo) => Promise<void>;
+  loadProjectData: (project: ProjectInfo, options?: { silent?: boolean }) => Promise<void>;
   updateTaskStatusLocal: (taskId: string, newStatus: BacklogTask['status']) => Promise<void>;
   saveFullTaskLocal: (updatedTask: BacklogTask) => Promise<void>;
   deleteTaskLocal: (filePath: string) => Promise<void>;
@@ -171,6 +191,31 @@ let ptyExitCleanup: (() => void) | null = null;
 
 let agentStatusCleanup: (() => void) | null = null;
 
+const ACTIVE_PROJECTS_STORAGE_KEY = 'projecthub_active_projects';
+
+const loadInitialActiveProjects = (): string[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(ACTIVE_PROJECTS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Failed to parse active projects from localStorage:', e);
+  }
+  return [];
+};
+
+const saveActiveProjects = (paths: string[]) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(ACTIVE_PROJECTS_STORAGE_KEY, JSON.stringify(paths));
+  } catch (e) {
+    console.error('Failed to save active projects to localStorage:', e);
+  }
+};
+
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
   selectedProject: null,
@@ -186,6 +231,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isScanning: false,
   searchQuery: '',
   filterOnlyFavorites: false,
+
+  // Multi-Project Session & In-Memory Cache
+  projectDataCache: {},
+  activeProjectPaths: loadInitialActiveProjects(),
+  filterOnlyActive: false,
+
   scanRoots: [],
   isTerminalOpen: false,
   terminalLogs: ['[ProjectHub] Система инициализирована.', '[ProjectHub] Реестр проектов загружен.'],
@@ -248,10 +299,95 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setSelectedMilestoneFilter: (selectedMilestoneFilter) => set({ selectedMilestoneFilter }),
 
+  setFilterOnlyActive: (filterOnlyActive) => set({ filterOnlyActive }),
+
+  activateProject: (project: ProjectInfo) => {
+    const activePaths = get().activeProjectPaths;
+    if (!activePaths.includes(project.path)) {
+      const next = [...activePaths, project.path];
+      saveActiveProjects(next);
+      set({ activeProjectPaths: next });
+    }
+    get().selectProject(project);
+  },
+
+  deactivateProject: (projectPath: string) => {
+    const activePaths = get().activeProjectPaths;
+    const next = activePaths.filter((p) => p !== projectPath);
+    saveActiveProjects(next);
+    set({ activeProjectPaths: next });
+
+    // If deactivated project was currently active, switch to next available active project
+    if (get().selectedProject?.path === projectPath) {
+      const allProjects = get().projects;
+      const nextActive = allProjects.find((p) => next.includes(p.path));
+      if (nextActive) {
+        get().selectProject(nextActive);
+      } else if (allProjects.length > 0) {
+        get().selectProject(allProjects[0]);
+      } else {
+        set({
+          selectedProject: null,
+          selectedMilestoneFilter: null,
+          tasks: [],
+          gitLogs: [],
+          gitRepoDetails: null,
+          docsList: [],
+          milestones: [],
+          processes: []
+        });
+      }
+    }
+  },
+
+  toggleProjectActive: (project: ProjectInfo) => {
+    if (get().activeProjectPaths.includes(project.path)) {
+      get().deactivateProject(project.path);
+    } else {
+      get().activateProject(project);
+    }
+  },
+
   setProjects: (projects) => set({ projects }),
   selectProject: (selectedProject) => {
-    set({ selectedProject, selectedMilestoneFilter: null });
-    if (selectedProject) {
+    if (!selectedProject) {
+      set({ selectedProject: null, selectedMilestoneFilter: null });
+      return;
+    }
+
+    // Automatically make the selected project active in the session
+    const activePaths = get().activeProjectPaths;
+    if (!activePaths.includes(selectedProject.path)) {
+      const next = [...activePaths, selectedProject.path];
+      saveActiveProjects(next);
+      set({ activeProjectPaths: next });
+    }
+
+    // 🚀 Check in-memory cache for INSTANT (0 ms) switch
+    const cache = get().projectDataCache;
+    const cached = cache[selectedProject.path];
+
+    if (cached) {
+      // Instant synchronous UI update without any lag or spinner!
+      set({
+        selectedProject,
+        selectedMilestoneFilter: null,
+        tasks: cached.tasks,
+        gitLogs: cached.gitLogs,
+        gitRepoDetails: cached.gitRepoDetails,
+        docsList: cached.docsList,
+        milestones: cached.milestones,
+        processes: cached.processes
+      });
+
+      // Background silent revalidation to keep data fresh without resetting UI
+      get().loadProjectData(selectedProject, { silent: true });
+      get().fetchProcesses(selectedProject.path);
+      get().fetchDocs(selectedProject.path);
+      get().fetchMilestones(selectedProject.path);
+    } else {
+      // Not yet in cache - standard load
+      set({ selectedProject, selectedMilestoneFilter: null });
       get().loadProjectData(selectedProject);
       get().fetchProcesses(selectedProject.path);
       get().fetchDocs(selectedProject.path);
@@ -424,7 +560,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }
         set({ projects: list });
         if (!get().selectedProject && list.length > 0) {
-          get().selectProject(list[0]);
+          const activePaths = get().activeProjectPaths;
+          const matchedActive = list.find((p) => activePaths.includes(p.path));
+          get().selectProject(matchedActive || list[0]);
         }
       }
     } catch (e) {
@@ -553,7 +691,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  loadProjectData: async (project: ProjectInfo) => {
+  loadProjectData: async (project: ProjectInfo, options?: { silent?: boolean }) => {
     try {
       if (window.api) {
         // Setup chokidar watcher listener if not setup
@@ -562,7 +700,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
             const curProject = get().selectedProject;
             if (curProject && curProject.path.toLowerCase() === data.projectPath.toLowerCase()) {
               const freshTasks = await window.api.getTasks(curProject.path);
-              set({ tasks: freshTasks });
+              set((state) => ({
+                tasks: freshTasks,
+                projectDataCache: {
+                  ...state.projectDataCache,
+                  [curProject.path]: {
+                    ...(state.projectDataCache[curProject.path] || {
+                      gitLogs: state.gitLogs,
+                      gitRepoDetails: state.gitRepoDetails,
+                      docsList: state.docsList,
+                      milestones: state.milestones,
+                      processes: state.processes
+                    }),
+                    tasks: freshTasks,
+                    lastLoadedAt: Date.now()
+                  }
+                }
+              }));
               get().addTerminalLog(`[Backlog] Автосинхронизация задач: событие ${data.event} (${data.filePath})`);
             }
           });
@@ -594,7 +748,30 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           window.api.getTasks(project.path),
           window.api.getGitLog(project.path, 25)
         ]);
-        set({ tasks, gitLogs: logs });
+
+        const isCurrent = get().selectedProject?.path === project.path;
+        if (isCurrent) {
+          set({ tasks, gitLogs: logs });
+        }
+
+        // Update in-memory cache for instant switching
+        set((state) => {
+          const prevCached = state.projectDataCache[project.path];
+          return {
+            projectDataCache: {
+              ...state.projectDataCache,
+              [project.path]: {
+                tasks,
+                gitLogs: logs,
+                gitRepoDetails: isCurrent ? state.gitRepoDetails : (prevCached?.gitRepoDetails || null),
+                docsList: isCurrent ? state.docsList : (prevCached?.docsList || []),
+                milestones: isCurrent ? state.milestones : (prevCached?.milestones || []),
+                processes: isCurrent ? state.processes : (prevCached?.processes || []),
+                lastLoadedAt: Date.now()
+              }
+            }
+          };
+        });
 
         // Load milestones and git details
         get().fetchMilestones(project.path);
@@ -700,7 +877,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (!window.api || !project.hasGit) return;
     try {
       const details = await window.api.getGitRepoDetails(project.path);
-      set({ gitRepoDetails: details });
+      const isCurrent = get().selectedProject?.path === project.path;
+      if (isCurrent) {
+        set({ gitRepoDetails: details });
+      }
+      set((state) => {
+        const cached = state.projectDataCache[project.path];
+        if (!cached) return state;
+        return {
+          projectDataCache: {
+            ...state.projectDataCache,
+            [project.path]: {
+              ...cached,
+              gitRepoDetails: details
+            }
+          }
+        };
+      });
     } catch (e) {
       console.error('Failed to load git repo details:', e);
     }

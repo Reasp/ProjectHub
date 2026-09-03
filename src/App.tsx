@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Sidebar } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
+import { ProjectTabsBar } from './components/layout/ProjectTabsBar';
 import { ProjectWorkspace } from './components/projects/ProjectWorkspace';
 import { TerminalPanel } from './components/terminal/TerminalPanel';
 import { OmniSearchModal } from './components/search/OmniSearchModal';
@@ -201,6 +202,9 @@ export const App: React.FC = () => {
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Top Header */}
         <Header />
+
+        {/* Active Projects Session Tabs Bar */}
+        <ProjectTabsBar />
 
         {/* Workspace Area */}
         <div className="flex-1 flex flex-col overflow-hidden relative">

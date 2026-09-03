@@ -60,7 +60,19 @@ export const en: TranslationDictionary = {
     addToFavorites: 'Add to Favorites',
     refreshMetadata: 'Refresh project metadata',
     removeFromCatalog: 'Remove from Catalog',
-    confirmRemoveProject: 'Remove project "{name}" from Hub catalog? (Files on disk will not be affected)'
+    confirmRemoveProject: 'Remove project "{name}" from Hub catalog? (Files on disk will not be affected)',
+    activeOnly: 'Active',
+    activateProject: 'Activate project (open tab)',
+    deactivateProject: 'Deactivate project (close tab)',
+    projectActive: 'Active',
+    activeProjects: 'Active Projects'
+  },
+  projectTabs: {
+    closeTab: 'Close project',
+    activeProjectsCount: 'Active: {count}',
+    closeAll: 'Close all tabs',
+    switchProject: 'Switch project',
+    noActive: 'No active projects'
   },
   header: {
     noProjectSelected: 'No project selected',

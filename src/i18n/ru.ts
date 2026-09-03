@@ -60,7 +60,19 @@ export const ru: TranslationDictionary = {
     addToFavorites: 'Добавить в избранное',
     refreshMetadata: 'Обновить метаданные проекта',
     removeFromCatalog: 'Удалить из каталога',
-    confirmRemoveProject: 'Удалить проект «{name}» из каталога Hub? (Файлы на диске затронуты не будут)'
+    confirmRemoveProject: 'Удалить проект «{name}» из каталога Hub? (Файлы на диске затронуты не будут)',
+    activeOnly: 'Активные',
+    activateProject: 'Активировать проект (открыть во вкладках)',
+    deactivateProject: 'Деактивировать проект (закрыть вкладку)',
+    projectActive: 'Активен',
+    activeProjects: 'Активные проекты'
+  },
+  projectTabs: {
+    closeTab: 'Закрыть проект',
+    activeProjectsCount: 'Активно: {count}',
+    closeAll: 'Закрыть все вкладки',
+    switchProject: 'Переключить проект',
+    noActive: 'Нет активных проектов'
   },
   header: {
     noProjectSelected: 'Проект не выбран',

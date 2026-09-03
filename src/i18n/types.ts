@@ -61,6 +61,18 @@ export interface TranslationDictionary {
     refreshMetadata: string;
     removeFromCatalog: string;
     confirmRemoveProject: string;
+    activeOnly: string;
+    activateProject: string;
+    deactivateProject: string;
+    projectActive: string;
+    activeProjects: string;
+  };
+  projectTabs: {
+    closeTab: string;
+    activeProjectsCount: string;
+    closeAll: string;
+    switchProject: string;
+    noActive: string;
   };
   header: {
     noProjectSelected: string;
