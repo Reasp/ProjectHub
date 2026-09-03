@@ -176,7 +176,7 @@ export const ProjectWorkspace: React.FC = () => {
                 onDrop={(e) => handleDrop(e, tabItem.id)}
                 onContextMenu={(e) => handleContextMenu(e, tabItem.id)}
                 onClick={() => setActiveTab(tabItem.id as any)}
-                title={`${def.label} (${def.hotkey}) · Перетащите для смены порядка, правый клик для настройки`}
+                title={`${def.label} (${def.hotkey}) · ${t.tabs.dragHint}`}
                 className={`flex items-center gap-2 px-3.5 py-3 text-xs font-medium border-b-2 transition relative shrink-0 whitespace-nowrap select-none group cursor-pointer ${
                   isActive
                     ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
@@ -205,10 +205,10 @@ export const ProjectWorkspace: React.FC = () => {
                 type="button"
                 onClick={() => setIsHiddenDropdownOpen(!isHiddenDropdownOpen)}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 text-[11px] font-medium transition"
-                title="Скрытые вкладки"
+                title={t.tabs.hiddenTabsHeader}
               >
                 <EyeOff className="w-3 h-3 text-amber-400" />
-                <span className="hidden sm:inline">Ещё</span>
+                <span className="hidden sm:inline">{t.tabs.more}</span>
                 <span className="px-1.5 py-0.2 rounded-full bg-slate-900 font-mono text-[9px] text-amber-300">
                   {hiddenTabs.length}
                 </span>
@@ -218,7 +218,7 @@ export const ProjectWorkspace: React.FC = () => {
               {isHiddenDropdownOpen && (
                 <div className="absolute right-0 top-full mt-1.5 w-52 bg-[#121522] border border-slate-700/80 rounded-xl shadow-2xl py-1.5 z-50 animate-in fade-in slide-in-from-top-1 text-xs">
                   <div className="px-3 py-1 text-[10px] uppercase font-bold tracking-wider text-slate-500 border-b border-slate-800 mb-1">
-                    Скрытые вкладки
+                    {t.tabs.hiddenTabsHeader}
                   </div>
                   {hiddenTabs.map((hTab) => {
                     const def = tabDefs[hTab.id];
@@ -244,7 +244,7 @@ export const ProjectWorkspace: React.FC = () => {
                             e.stopPropagation();
                             toggleTabVisibility(hTab.id);
                           }}
-                          title="Вернуть на панель"
+                          title={t.tabs.restoreTab}
                           className="p-1 rounded text-slate-500 hover:text-emerald-300 hover:bg-slate-700 transition"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -261,7 +261,7 @@ export const ProjectWorkspace: React.FC = () => {
                       className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] text-indigo-300 hover:bg-indigo-600/20 transition font-medium"
                     >
                       <SlidersHorizontal className="w-3.5 h-3.5" />
-                      <span>Настроить все вкладки...</span>
+                      <span>{t.tabs.customizeAll}</span>
                     </button>
                   </div>
                 </div>
@@ -274,10 +274,10 @@ export const ProjectWorkspace: React.FC = () => {
             type="button"
             onClick={() => setIsConfigModalOpen(true)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#181c2b] hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-[11px] font-medium transition"
-            title="Настройка меню вкладок (изменить порядок, скрыть ненужные)"
+            title={t.tabs.modalDesc}
           >
             <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="hidden lg:inline">Настроить</span>
+            <span className="hidden lg:inline">{t.tabs.customize}</span>
           </button>
         </div>
       </div>
@@ -299,7 +299,7 @@ export const ProjectWorkspace: React.FC = () => {
             className="w-full flex items-center gap-2 px-3 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition disabled:opacity-40 text-left"
           >
             <EyeOff className="w-3.5 h-3.5 text-amber-400" />
-            <span>Скрыть вкладку</span>
+            <span>{t.tabs.hideTab}</span>
           </button>
           <div className="h-px bg-slate-800 my-1" />
           <button
@@ -310,7 +310,7 @@ export const ProjectWorkspace: React.FC = () => {
             className="w-full flex items-center gap-2 px-3 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition text-left"
           >
             <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Настроить вкладки...</span>
+            <span>{t.tabs.customizeTabs}</span>
           </button>
         </div>
       )}

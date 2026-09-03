@@ -9,9 +9,11 @@ import {
   Activity
 } from 'lucide-react';
 import { voiceService, type VoiceState, type VoiceConfig } from '../../services/voiceService';
+import { useTranslation } from '../../i18n/useTranslation';
 import { VoiceSettingsModal } from './VoiceSettingsModal';
 
 export const VoiceControlHeader: React.FC = () => {
+  const { t } = useTranslation();
   const [voiceState, setVoiceState] = useState<VoiceState>(voiceService.currentState);
   const [isSpeakingDetected, setIsSpeakingDetected] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
@@ -64,11 +66,7 @@ export const VoiceControlHeader: React.FC = () => {
               ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-sm'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
           }`}
-          title={
-            isHandsFreeActive
-              ? 'Talon Voice активен (Hands-Free). Кликните для отключения (Ctrl+Shift+V)'
-              : 'Включить непрерывный Hands-Free режим (Ctrl+Shift+V)'
-          }
+          title={isHandsFreeActive ? t.voice.activeTitle : t.voice.inactiveTitle}
         >
           {isTranscribing ? (
             <Zap className="w-3.5 h-3.5 text-amber-400 animate-spin" />
@@ -87,12 +85,12 @@ export const VoiceControlHeader: React.FC = () => {
 
           <span className="hidden xl:inline font-medium">
             {isTranscribing
-              ? 'Whisper...'
+              ? t.voice.whisper
               : isSpeech
-              ? 'Слушаю'
+              ? t.voice.listening
               : isHandsFreeActive
-              ? 'Voice'
-              : 'Voice off'}
+              ? t.voice.voiceActive
+              : t.voice.voiceOff}
           </span>
         </button>
 
@@ -105,7 +103,7 @@ export const VoiceControlHeader: React.FC = () => {
               ? 'text-indigo-400 hover:text-indigo-300 hover:bg-slate-800/60'
               : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/40'
           }`}
-          title={voiceConfig.ttsEnabled ? 'Озвучка ответов (TTS) включена' : 'Озвучка ответов (TTS) выключена'}
+          title={voiceConfig.ttsEnabled ? t.voice.ttsOn : t.voice.ttsOff}
         >
           {voiceConfig.ttsEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
         </button>
@@ -115,7 +113,7 @@ export const VoiceControlHeader: React.FC = () => {
           type="button"
           onClick={() => setIsSettingsOpen(true)}
           className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition"
-          title="Настройки Talon Voice & Whisper"
+          title={t.voice.settingsTitle}
         >
           <Settings2 className="w-3.5 h-3.5" />
         </button>

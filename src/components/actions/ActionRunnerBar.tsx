@@ -11,10 +11,12 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 import { ActionConfigModal } from './ActionConfigModal';
 import type { ProjectActionConfig } from '../../types/electron';
 
 export const ActionRunnerBar: React.FC = () => {
+  const { t } = useTranslation();
   const {
     selectedProject,
     processes,
@@ -69,7 +71,10 @@ export const ActionRunnerBar: React.FC = () => {
 
   const handleRunDeploy = async () => {
     if (config.deploy.requiresConfirmation) {
-      if (!confirm(`Запустить деплой проекта "${selectedProject.name}"?\nКоманда: ${config.deploy.command}`)) {
+      const confirmMsg = t.actions.confirmDeploy
+        .replace('{name}', selectedProject.name)
+        .replace('{command}', config.deploy.command);
+      if (!confirm(confirmMsg)) {
         return;
       }
     }
@@ -100,8 +105,8 @@ export const ActionRunnerBar: React.FC = () => {
           }`}
           title={
             runningDevProcess
-              ? `Сервер активен (PID: ${runningDevProcess.pid}). Кликните для остановки.`
-              : `Запустить ${config.run.name} (${config.run.command})`
+              ? t.actions.serverActive.replace('{pid}', String(runningDevProcess.pid))
+              : t.actions.startProcess.replace('{name}', config.run.name).replace('{command}', config.run.command)
           }
         >
           {isStartingRun ? (
@@ -109,12 +114,12 @@ export const ActionRunnerBar: React.FC = () => {
           ) : runningDevProcess ? (
             <>
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
-              <span>Стоп Dev</span>
+              <span>{t.actions.stopDev}</span>
             </>
           ) : (
             <>
               <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Запуск</span>
+              <span>{t.actions.run}</span>
             </>
           )}
         </button>
@@ -126,7 +131,7 @@ export const ActionRunnerBar: React.FC = () => {
             target="_blank"
             rel="noreferrer"
             className="ml-1 p-1.5 rounded-lg bg-emerald-950/60 border border-emerald-700/50 text-emerald-300 hover:text-white hover:bg-emerald-900 transition text-xs"
-            title={`Открыть ${config.run.autoOpenUrl}`}
+            title={`Open ${config.run.autoOpenUrl}`}
           >
             <Globe className="w-3.5 h-3.5" />
           </a>
@@ -138,36 +143,36 @@ export const ActionRunnerBar: React.FC = () => {
         onClick={handleRunDeploy}
         disabled={isStartingDeploy || Boolean(runningDeployProcess)}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-600/20 border border-indigo-500/30 hover:bg-indigo-600/30 text-indigo-300 text-xs font-medium transition disabled:opacity-50"
-        title={`Запустить деплой (${config.deploy.command})`}
+        title={t.actions.startDeploy.replace('{command}', config.deploy.command)}
       >
         {isStartingDeploy ? (
           <RefreshCw className="w-3.5 h-3.5 animate-spin" />
         ) : (
           <Rocket className="w-3.5 h-3.5 text-indigo-400" />
         )}
-        <span className="hidden sm:inline">Деплой</span>
+        <span className="hidden sm:inline">{t.actions.deploy}</span>
       </button>
 
       {/* ─── 3. TEST BUTTON ─── */}
       <button
         onClick={handleRunTest}
         disabled={isStartingTest}
-        className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition"
-        title={`Запустить тесты (${config.test.command})`}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition"
+        title={t.actions.startTest.replace('{command}', config.test.command)}
       >
         {isStartingTest ? (
           <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
         ) : (
           <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
         )}
-        <span className="hidden md:inline">Тест</span>
+        <span className="hidden md:inline">{t.actions.test}</span>
       </button>
 
       {/* ─── 4. SETTINGS MODAL TRIGGER ─── */}
       <button
         onClick={() => setIsConfigOpen(true)}
         className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
-        title="Настройка команд запуска и деплоя (.projecthub.json)"
+        title={t.actions.configure}
       >
         <Settings className="w-3.5 h-3.5" />
       </button>

@@ -95,9 +95,9 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
               <SlidersHorizontal className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Настройка меню вкладок</h3>
+              <h3 className="text-base font-bold text-white">{t.tabs.modalTitle}</h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Перетаскивайте вкладки для изменения порядка и скрывайте ненужные
+                {t.tabs.modalDesc}
               </p>
             </div>
           </div>
@@ -113,7 +113,7 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
         <div className="px-5 py-2.5 border-b border-slate-800/80 bg-[#0d101a] flex items-center justify-between text-xs text-slate-400">
           <div className="flex items-center gap-2">
             <span>
-              Отображается: <strong className="text-white font-mono">{visibleCount}</strong> из {tabsConfig.length}
+              {t.tabs.displayed}: <strong className="text-white font-mono">{visibleCount}</strong> {t.tabs.of} {tabsConfig.length}
             </span>
           </div>
 
@@ -123,14 +123,14 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
               className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1.5 text-[11px] font-medium"
             >
               <Eye className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Показать все</span>
+              <span>{t.tabs.showAll}</span>
             </button>
             <button
               onClick={onReset}
               className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition flex items-center gap-1.5 text-[11px] font-medium"
             >
               <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-              <span>Сбросить</span>
+              <span>{t.tabs.reset}</span>
             </button>
           </div>
         </div>
@@ -171,7 +171,7 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
                 {/* Left Drag Handle & Icon & Name */}
                 <div className="flex items-center gap-3 min-w-0">
                   <div
-                    title="Перетащите для изменения порядка"
+                    title={t.tabs.dragHint}
                     className="cursor-grab active:cursor-grabbing p-1 rounded hover:bg-slate-800/60 text-slate-500 group-hover:text-slate-300 transition"
                   >
                     <GripVertical className="w-4 h-4" />
@@ -192,7 +192,7 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
                       </span>
                     </div>
                     <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                      Горячая клавиша: {meta.hotkey}
+                      {t.tabs.hotkey}: {meta.hotkey}
                     </div>
                   </div>
                 </div>
@@ -203,7 +203,7 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
                   <button
                     onClick={() => onMoveTab(item.id, 'up')}
                     disabled={isFirst}
-                    title="Переместить левее / выше"
+                    title={t.tabs.moveLeft}
                     className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent transition"
                   >
                     <ChevronUp className="w-4 h-4" />
@@ -211,7 +211,7 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
                   <button
                     onClick={() => onMoveTab(item.id, 'down')}
                     disabled={isLast}
-                    title="Переместить правее / ниже"
+                    title={t.tabs.moveRight}
                     className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent transition"
                   >
                     <ChevronDown className="w-4 h-4" />
@@ -223,10 +223,10 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
                     disabled={isOnlyVisible}
                     title={
                       isOnlyVisible
-                        ? 'Нельзя скрыть последнюю видимую вкладку'
+                        ? t.tabs.cannotHideLast
                         : item.visible
-                        ? 'Скрыть вкладку'
-                        : 'Показать вкладку'
+                        ? t.tabs.hideTab
+                        : t.tabs.restoreTab
                     }
                     className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition ml-1 ${
                       item.visible
@@ -237,12 +237,12 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
                     {item.visible ? (
                       <>
                         <Eye className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Видна</span>
+                        <span className="hidden sm:inline">{t.tabs.visible}</span>
                       </>
                     ) : (
                       <>
                         <EyeOff className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Скрыта</span>
+                        <span className="hidden sm:inline">{t.tabs.hidden}</span>
                       </>
                     )}
                   </button>
@@ -255,13 +255,13 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
         {/* Modal Footer */}
         <div className="p-4 border-t border-slate-800 bg-[#121522] flex items-center justify-between">
           <span className="text-[11px] text-slate-500">
-            Вы также можете перетаскивать вкладки прямо на панели мышью
+            {t.tabs.footerHint}
           </span>
           <button
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-lg shadow-indigo-600/30 transition"
           >
-            Готово
+            {t.tabs.done}
           </button>
         </div>
       </div>

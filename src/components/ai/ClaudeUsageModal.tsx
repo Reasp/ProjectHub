@@ -17,6 +17,7 @@ import {
   Database
 } from 'lucide-react';
 import type { ClaudeUsageData } from '../../types/electron';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface ClaudeUsageModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ interface ClaudeUsageModalProps {
 }
 
 export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const [usageData, setUsageData] = useState<ClaudeUsageData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -107,13 +109,13 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-white">Claude Code · Usage & Limits</h3>
+                <h3 className="text-base font-bold text-white">{t.claudeUsage.modalTitle}</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                   {usageData?.planType || 'Subscription'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Квоты подписки, лимиты сессий и факторы потребления токенов
+                {t.claudeUsage.modalDesc}
               </p>
             </div>
           </div>
@@ -122,11 +124,11 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
             <button
               onClick={() => loadUsage(true)}
               disabled={isLoading}
-              title="Обновить данные сейчас"
+              title={t.claudeUsage.refreshTitle}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium border border-slate-700/60 transition disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
-              <span className="hidden sm:inline">Обновить</span>
+              <span className="hidden sm:inline">{t.claudeUsage.refresh}</span>
             </button>
             <button
               onClick={onClose}
@@ -148,7 +150,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
             }`}
           >
             <Zap className="w-3.5 h-3.5" />
-            Лимиты и факторы (CLI)
+            {t.claudeUsage.tabLimits}
           </button>
           <button
             onClick={() => setActiveTab('models')}
@@ -159,7 +161,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
             }`}
           >
             <Layers className="w-3.5 h-3.5" />
-            Токены моделей & Кэш
+            {t.claudeUsage.tabModels}
           </button>
           <button
             onClick={() => setActiveTab('raw')}
@@ -170,7 +172,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
             }`}
           >
             <Terminal className="w-3.5 h-3.5" />
-            Сырой вывод
+            {t.claudeUsage.tabRaw}
           </button>
         </div>
 
@@ -501,13 +503,13 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
         <div className="p-4 border-t border-slate-800/80 bg-[#121522] flex items-center justify-between text-xs">
           <div className="text-slate-500 text-[11px] flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            Синхронизировано с локальным CLI Claude Code
+            {t.claudeUsage.syncedWithCli}
           </div>
           <button
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold transition"
           >
-            Закрыть
+            {t.claudeUsage.close}
           </button>
         </div>
       </div>
