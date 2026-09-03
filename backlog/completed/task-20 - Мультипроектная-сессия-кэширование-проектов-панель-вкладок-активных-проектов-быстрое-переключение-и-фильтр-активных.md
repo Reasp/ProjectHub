@@ -3,10 +3,10 @@ id: TASK-20
 title: >-
   Мультипроектная сессия: кэширование проектов, панель вкладок активных
   проектов, быстрое переключение и фильтр активных
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-03 06:12'
-updated_date: '2026-09-03 06:19'
+updated_date: '2026-09-03 07:01'
 labels: []
 dependencies: []
 priority: high
