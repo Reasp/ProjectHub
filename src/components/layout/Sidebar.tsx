@@ -19,7 +19,8 @@ import {
   FileCode,
   MoreVertical,
   Zap,
-  Power
+  Power,
+  Mic
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -47,11 +48,22 @@ export const Sidebar: React.FC = () => {
     removeProjectFromCatalog,
     toggleFavoriteProject,
     refreshSingleProject,
+    setProjectVoiceAlias,
     projectAgentStatuses
   } = useProjectStore();
 
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+
+  const handleEditVoiceAlias = async (e: React.MouseEvent, project: any) => {
+    e.stopPropagation();
+    const promptText = t.sidebar.promptVoiceAlias;
+    const current = project.voiceAlias || '';
+    const newAlias = window.prompt(promptText, current);
+    if (newAlias !== null) {
+      await setProjectVoiceAlias(project.path, newAlias);
+    }
+  };
 
   const handleAddFolder = async () => {
     if (window.api) {
@@ -237,6 +249,14 @@ export const Sidebar: React.FC = () => {
                     >
                       {project.name}
                     </span>
+                    {project.voiceAlias && (
+                      <span
+                        className="text-[9px] font-mono px-1 py-0.2 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-700/50 shrink-0"
+                        title={`${t.sidebar.voiceAlias}: «${project.voiceAlias}»`}
+                      >
+                        «{project.voiceAlias}»
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1 shrink-0">
@@ -254,6 +274,19 @@ export const Sidebar: React.FC = () => {
                       title={isSessionActive ? t.sidebar.deactivateProject : t.sidebar.activateProject}
                     >
                       <Power className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Voice Alias Quick Edit Button */}
+                    <button
+                      onClick={(e) => handleEditVoiceAlias(e, project)}
+                      className={`p-1 rounded hover:bg-slate-800 transition ${
+                        project.voiceAlias
+                          ? 'text-indigo-400 opacity-100'
+                          : 'text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100'
+                      }`}
+                      title={project.voiceAlias ? `${t.sidebar.changeVoiceAlias}: «${project.voiceAlias}»` : t.sidebar.setVoiceAlias}
+                    >
+                      <Mic className="w-3.5 h-3.5" />
                     </button>
 
                     <button

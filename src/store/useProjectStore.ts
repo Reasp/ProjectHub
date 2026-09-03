@@ -49,11 +49,18 @@ interface ProjectState {
   // Multi-Project Session & In-Memory Cache
   projectDataCache: Record<string, ProjectCachedData>;
   activeProjectPaths: string[];
+  lastSelectedProjectPath: string | null;
   filterOnlyActive: boolean;
   setFilterOnlyActive: (filterOnlyActive: boolean) => void;
   activateProject: (project: ProjectInfo) => void;
   deactivateProject: (projectPath: string) => void;
   toggleProjectActive: (project: ProjectInfo) => void;
+  switchProjectByIndex: (index: number) => void;
+  switchToNextProject: () => void;
+  switchToPrevProject: () => void;
+  switchToLastActiveProject: () => void;
+  closeCurrentProject: () => void;
+  setProjectVoiceAlias: (projectPath: string, alias: string) => Promise<boolean>;
 
   scanRoots: string[];
   isTerminalOpen: boolean;
@@ -235,6 +242,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   // Multi-Project Session & In-Memory Cache
   projectDataCache: {},
   activeProjectPaths: loadInitialActiveProjects(),
+  lastSelectedProjectPath: null,
   filterOnlyActive: false,
 
   scanRoots: [],
@@ -348,11 +356,95 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
+  switchProjectByIndex: (index: number) => {
+    const activePaths = get().activeProjectPaths;
+    const allProjects = get().projects;
+    const activeProjects = allProjects.filter((p) => activePaths.includes(p.path));
+
+    if (index >= 0 && index < activeProjects.length) {
+      get().selectProject(activeProjects[index]);
+    }
+  },
+
+  switchToNextProject: () => {
+    const activePaths = get().activeProjectPaths;
+    const allProjects = get().projects;
+    const activeProjects = allProjects.filter((p) => activePaths.includes(p.path));
+    if (activeProjects.length <= 1) return;
+
+    const curPath = get().selectedProject?.path;
+    const curIdx = activeProjects.findIndex((p) => p.path === curPath);
+    const nextIdx = (curIdx + 1) % activeProjects.length;
+    get().selectProject(activeProjects[nextIdx]);
+  },
+
+  switchToPrevProject: () => {
+    const activePaths = get().activeProjectPaths;
+    const allProjects = get().projects;
+    const activeProjects = allProjects.filter((p) => activePaths.includes(p.path));
+    if (activeProjects.length <= 1) return;
+
+    const curPath = get().selectedProject?.path;
+    const curIdx = activeProjects.findIndex((p) => p.path === curPath);
+    const prevIdx = (curIdx - 1 + activeProjects.length) % activeProjects.length;
+    get().selectProject(activeProjects[prevIdx]);
+  },
+
+  switchToLastActiveProject: () => {
+    const lastPath = get().lastSelectedProjectPath;
+    if (!lastPath) {
+      get().switchToPrevProject();
+      return;
+    }
+    const allProjects = get().projects;
+    const matched = allProjects.find((p) => p.path === lastPath);
+    if (matched) {
+      get().selectProject(matched);
+    } else {
+      get().switchToPrevProject();
+    }
+  },
+
+  closeCurrentProject: () => {
+    const curPath = get().selectedProject?.path;
+    if (curPath) {
+      get().deactivateProject(curPath);
+    }
+  },
+
+  setProjectVoiceAlias: async (projectPath: string, alias: string) => {
+    if (!window.api?.setProjectVoiceAlias) return false;
+    try {
+      const ok = await window.api.setProjectVoiceAlias(projectPath, alias);
+      if (ok) {
+        const cleanAlias = alias.trim() || undefined;
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.path === projectPath ? { ...p, voiceAlias: cleanAlias } : p
+          ),
+          selectedProject:
+            state.selectedProject?.path === projectPath
+              ? { ...state.selectedProject, voiceAlias: cleanAlias }
+              : state.selectedProject
+        }));
+      }
+      return ok;
+    } catch (e) {
+      console.error('Failed to set project voice alias:', e);
+      return false;
+    }
+  },
+
   setProjects: (projects) => set({ projects }),
   selectProject: (selectedProject) => {
     if (!selectedProject) {
       set({ selectedProject: null, selectedMilestoneFilter: null });
       return;
+    }
+
+    const cur = get().selectedProject;
+    if (cur && cur.path !== selectedProject.path) {
+      set({ lastSelectedProjectPath: cur.path });
     }
 
     // Automatically make the selected project active in the session

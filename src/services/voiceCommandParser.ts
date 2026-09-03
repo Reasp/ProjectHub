@@ -5,19 +5,24 @@ export interface ParsedVoiceCommand {
   feedbackText: string;
 }
 
-// Helper to convert Russian ordinal / number words to numeric index (0-based)
+// Helper to convert Russian/English ordinal and number words to numeric index (0-based)
 function parseNumberWord(text: string): number | null {
   const normalized = text.toLowerCase().trim();
 
-  if (normalized.includes('1') || normalized.includes('один') || normalized.includes('перв') || normalized.includes('first')) return 0;
-  if (normalized.includes('2') || normalized.includes('два') || normalized.includes('втор') || normalized.includes('second')) return 1;
-  if (normalized.includes('3') || normalized.includes('три') || normalized.includes('трет') || normalized.includes('third')) return 2;
-  if (normalized.includes('4') || normalized.includes('четыр') || normalized.includes('четверт') || normalized.includes('fourth')) return 3;
-  if (normalized.includes('5') || normalized.includes('пят') || normalized.includes('fifth')) return 4;
-  if (normalized.includes('6') || normalized.includes('шест')) return 5;
-  if (normalized.includes('7') || normalized.includes('сед')) return 6;
-  if (normalized.includes('8') || normalized.includes('восем')) return 7;
-  if (normalized.includes('9') || normalized.includes('девят')) return 8;
+  // Words or digits 1..9 & ordinals
+  if (/\b(1|один|одну|перв\w*|first|one)\b/i.test(normalized) || normalized.includes(' 1') || normalized.endsWith('1')) return 0;
+  if (/\b(2|два|две|втор\w*|second|two)\b/i.test(normalized) || normalized.includes(' 2') || normalized.endsWith('2')) return 1;
+  if (/\b(3|три|трет\w*|third|three)\b/i.test(normalized) || normalized.includes(' 3') || normalized.endsWith('3')) return 2;
+  if (/\b(4|четыр\w*|четверт\w*|fourth|four)\b/i.test(normalized) || normalized.includes(' 4') || normalized.endsWith('4')) return 3;
+  if (/\b(5|пят\w*|fifth|five)\b/i.test(normalized) || normalized.includes(' 5') || normalized.endsWith('5')) return 4;
+  if (/\b(6|шест\w*|sixth|six)\b/i.test(normalized) || normalized.includes(' 6') || normalized.endsWith('6')) return 5;
+  if (/\b(7|семь|сед\w*|seventh|seven)\b/i.test(normalized) || normalized.includes(' 7') || normalized.endsWith('7')) return 6;
+  if (/\b(8|восем\w*|eighth|eight)\b/i.test(normalized) || normalized.includes(' 8') || normalized.endsWith('8')) return 7;
+  if (/\b(9|девят\w*|ninth|nine)\b/i.test(normalized) || normalized.includes(' 9') || normalized.endsWith('9')) return 8;
+  if (/\b(10|десят\w*|tenth|ten)\b/i.test(normalized) || normalized.includes(' 10') || normalized.endsWith('10')) return 9;
+
+  // Last / Последний
+  if (/\b(последн\w*|last)\b/i.test(normalized)) return -1;
 
   return null;
 }
@@ -148,9 +153,88 @@ export function parseVoiceCommand(text: string): ParsedVoiceCommand {
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // 4. PROJECT NAVIGATION (FUZZY SEARCH BY PROJECT NAME)
+  // 4. PROJECT NAVIGATION & MULTI-PROJECT SESSION TABS
   // ─────────────────────────────────────────────────────────────────
-  // «перейди на проект [X]», «открой проект [X]», «проект [X]», «переключи на [X]»
+  // A. Close Current Project / Tab: «закрой проект», «закрой вкладку», «close tab», «close project»
+  if (
+    /^(закрой проект|закрыть проект|закрой вкладку|закрыть вкладку|close project|close tab)$/i.test(normalized) ||
+    normalized.startsWith('закрой проект') ||
+    normalized.startsWith('закрой вкладку') ||
+    normalized.startsWith('close project') ||
+    normalized.startsWith('close tab')
+  ) {
+    return {
+      type: 'navigation',
+      intent: 'close_current_project',
+      feedbackText: 'Закрываю текущий проект'
+    };
+  }
+
+  // B. Cyclic & Relative Navigation: «следующий проект», «предыдущий проект», «прошлый проект / назад»
+  if (
+    normalized.includes('следующий проект') ||
+    normalized.includes('следующая вкладка') ||
+    normalized.includes('next project') ||
+    normalized.includes('next tab')
+  ) {
+    return {
+      type: 'navigation',
+      intent: 'switch_project_next',
+      feedbackText: 'Переключаю на следующий проект'
+    };
+  }
+
+  if (
+    normalized.includes('предыдущий проект') ||
+    normalized.includes('предыдущая вкладка') ||
+    normalized.includes('previous project') ||
+    normalized.includes('prev project') ||
+    normalized.includes('prev tab')
+  ) {
+    return {
+      type: 'navigation',
+      intent: 'switch_project_prev',
+      feedbackText: 'Переключаю на предыдущий проект'
+    };
+  }
+
+  if (
+    normalized === 'прошлый проект' ||
+    normalized === 'назад к проекту' ||
+    normalized === 'вернись к проекту' ||
+    normalized === 'вернуться назад' ||
+    normalized === 'back project' ||
+    normalized === 'last project' ||
+    normalized === 'прошлый'
+  ) {
+    return {
+      type: 'navigation',
+      intent: 'switch_project_last',
+      feedbackText: 'Возвращаюсь к предыдущему проекту'
+    };
+  }
+
+  // C. Tab / Project by Index (1..N, Ordinals): «проект 1», «вкладка 2», «первый проект», «project two»
+  // Match patterns like:
+  // «проект один», «проект 2», «вкладка 3», «первый проект», «последний проект»
+  // «project 1», «tab 2», «first project», «last project»
+  const tabIndexMatch = normalized.match(/^(?:проект|вкладка|вкладку|project|tab)\s+(?:номер\s+)?(.+)$/i) ||
+                        normalized.match(/^(.+?)\s+(?:проект|вкладка|вкладку|project|tab)$/i);
+
+  if (tabIndexMatch && tabIndexMatch[1]) {
+    const candidateText = tabIndexMatch[1].trim();
+    const parsedIdx = parseNumberWord(candidateText);
+    if (parsedIdx !== null) {
+      return {
+        type: 'navigation',
+        intent: 'switch_project_index',
+        payload: { tabIndex: parsedIdx },
+        feedbackText: parsedIdx === -1 ? 'Открываю последний проект' : `Переключаю на проект ${parsedIdx + 1}`
+      };
+    }
+  }
+
+  // D. Project Navigation by Name or Voice Alias: «перейди на проект [X]», «открой проект [X]», «проект [X]»
   const projectMatch = raw.match(/^(?:перейди на проект|переключи на проект|открой проект|проект|open project|switch to project)\s+(.+)$/i);
   if (projectMatch && projectMatch[1]) {
     const targetProjectQuery = projectMatch[1].trim();

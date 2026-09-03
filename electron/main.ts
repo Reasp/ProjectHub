@@ -162,6 +162,11 @@ ipcMain.handle('projects:toggleFavorite', async (_event, projectPath: string) =>
   return await projectRegistry.toggleFavorite(projectPath);
 });
 
+// 6.1 Set Voice Alias
+ipcMain.handle('projects:setVoiceAlias', async (_event, { projectPath, alias }: { projectPath: string; alias: string }) => {
+  return await projectRegistry.setVoiceAlias(projectPath, alias);
+});
+
 // 7. Get/Set Scan Roots
 ipcMain.handle('projects:getScanRoots', async () => {
   return await projectRegistry.getScanRoots();

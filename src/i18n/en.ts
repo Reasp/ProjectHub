@@ -65,14 +65,20 @@ export const en: TranslationDictionary = {
     activateProject: 'Activate project (open tab)',
     deactivateProject: 'Deactivate project (close tab)',
     projectActive: 'Active',
-    activeProjects: 'Active Projects'
+    activeProjects: 'Active Projects',
+    voiceAlias: 'Voice Alias',
+    setVoiceAlias: 'Set Voice Alias',
+    changeVoiceAlias: 'Change Voice Alias',
+    promptVoiceAlias: 'Enter short voice alias for this project (e.g. "hub", "bot", "backend"):',
+    voiceAliasHint: 'Enables quick voice switching: "Project {alias}"'
   },
   projectTabs: {
     closeTab: 'Close project',
     activeProjectsCount: 'Active: {count}',
     closeAll: 'Close all tabs',
     switchProject: 'Switch project',
-    noActive: 'No active projects'
+    noActive: 'No active projects',
+    voiceHint: 'Say: "Project {num}" or "Project {alias}"'
   },
   header: {
     noProjectSelected: 'No project selected',

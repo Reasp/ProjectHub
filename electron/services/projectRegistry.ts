@@ -8,6 +8,7 @@ export interface ProjectRegistryEntry {
   path: string;
   addedAt: string;
   favorite?: boolean;
+  voiceAlias?: string;
   tags?: string[];
 }
 
@@ -176,6 +177,34 @@ class ProjectRegistry {
     const config = await this.getConfig();
     const target = config.projects.find((p) => path.normalize(p.path).toLowerCase() === normalized);
     return Boolean(target?.favorite);
+  }
+
+  async setVoiceAlias(projectPath: string, alias: string): Promise<boolean> {
+    const normalized = path.normalize(projectPath).toLowerCase();
+    const config = await this.getConfig();
+    let target = config.projects.find((p) => path.normalize(p.path).toLowerCase() === normalized);
+
+    if (target) {
+      target.voiceAlias = alias.trim() || undefined;
+      await this.saveConfig(config);
+      return true;
+    } else {
+      // If project not explicitly in registry yet, add it
+      config.projects.push({
+        path: projectPath,
+        addedAt: new Date().toISOString(),
+        voiceAlias: alias.trim() || undefined
+      });
+      await this.saveConfig(config);
+      return true;
+    }
+  }
+
+  async getVoiceAlias(projectPath: string): Promise<string | undefined> {
+    const normalized = path.normalize(projectPath).toLowerCase();
+    const config = await this.getConfig();
+    const target = config.projects.find((p) => path.normalize(p.path).toLowerCase() === normalized);
+    return target?.voiceAlias;
   }
 }
 

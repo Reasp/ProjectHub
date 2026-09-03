@@ -20,6 +20,8 @@ const api: IElectronAPI = {
   getScanRoots: () => ipcRenderer.invoke('projects:getScanRoots'),
   setScanRoots: (roots: string[]) => ipcRenderer.invoke('projects:setScanRoots', roots),
   getProjectDetails: (projectPath: string) => ipcRenderer.invoke('projects:getDetails', projectPath),
+  setProjectVoiceAlias: (projectPath: string, alias: string) =>
+    ipcRenderer.invoke('projects:setVoiceAlias', { projectPath, alias }),
 
   // Documentation & ADR Decisions
   listDocs: (projectPath: string) => ipcRenderer.invoke('docs:list', projectPath),

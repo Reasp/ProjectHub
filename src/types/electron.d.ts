@@ -58,6 +58,7 @@ export interface ProjectInfo {
   gitBehind?: number;
   uncommittedCount?: number;
   lastCommit?: GitLastCommit;
+  voiceAlias?: string;
   taskCounts?: {
     total: number;
     todo: number;
@@ -265,6 +266,7 @@ export interface IElectronAPI {
   getScanRoots: () => Promise<string[]>;
   setScanRoots: (roots: string[]) => Promise<boolean>;
   getProjectDetails: (projectPath: string) => Promise<ProjectInfo | null>;
+  setProjectVoiceAlias: (projectPath: string, alias: string) => Promise<boolean>;
 
   // Documentation & ADR Decisions
   listDocs: (projectPath: string) => Promise<DocItem[]>;

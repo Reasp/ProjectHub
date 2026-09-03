@@ -49,22 +49,35 @@ export const ProjectTabsBar: React.FC = () => {
         onWheel={handleWheel}
         className="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1 h-full py-1 scroll-smooth"
       >
-        {activeProjects.map((project) => {
+        {activeProjects.map((project, idx) => {
           const isSelected = selectedProject?.path === project.path;
           const agentStatus = projectAgentStatuses[project.path];
           const uncommitted = project.uncommittedCount;
+          const tabNumber = idx + 1;
 
           return (
             <div
               key={project.path}
               onClick={() => selectProject(project)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition relative group border max-w-[200px] shrink-0 ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition relative group border max-w-[220px] shrink-0 ${
                 isSelected
                   ? 'bg-indigo-600/20 text-white border-indigo-500/40 shadow-sm'
                   : 'bg-[#141724]/60 hover:bg-[#181d2f] text-slate-400 hover:text-slate-200 border-slate-800/60'
               }`}
-              title={`${project.name} (${project.path})`}
+              title={`${project.name}${project.voiceAlias ? ` [Голос: «${project.voiceAlias}»]` : ''} — Скажите: «Проект ${tabNumber}»`}
             >
+              {/* Voice / Tab Order Badge */}
+              <span
+                className={`text-[10px] font-mono px-1 py-0.2 rounded border transition ${
+                  isSelected
+                    ? 'bg-indigo-500/30 text-indigo-200 border-indigo-500/50 font-bold'
+                    : 'bg-slate-800/80 text-slate-400 border-slate-700/60 group-hover:text-slate-200'
+                }`}
+                title={`Номер вкладки для голоса: «Проект ${tabNumber}» или «Вкладка ${tabNumber}»`}
+              >
+                {tabNumber}
+              </span>
+
               {/* Project Icon */}
               {project.hasGit ? (
                 <FolderGit2
@@ -80,8 +93,18 @@ export const ProjectTabsBar: React.FC = () => {
                 />
               )}
 
-              {/* Project Name */}
-              <span className="truncate flex-1 font-semibold">{project.name}</span>
+              {/* Project Name & Voice Alias */}
+              <div className="flex items-center gap-1 truncate flex-1 min-w-0">
+                <span className="truncate font-semibold">{project.name}</span>
+                {project.voiceAlias && (
+                  <span
+                    className="text-[9px] font-mono px-1 py-0.2 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-700/50 shrink-0"
+                    title={`Голосовое имя: «${project.voiceAlias}»`}
+                  >
+                    «{project.voiceAlias}»
+                  </span>
+                )}
+              </div>
 
               {/* Git Uncommitted Badge */}
               {uncommitted !== undefined && uncommitted > 0 && (

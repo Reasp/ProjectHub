@@ -18,6 +18,12 @@ export const VoiceControlWidget: React.FC = () => {
     projects,
     selectedProject,
     selectProject,
+    activeProjectPaths,
+    switchProjectByIndex,
+    switchToNextProject,
+    switchToPrevProject,
+    switchToLastActiveProject,
+    closeCurrentProject,
     activeTab,
     setActiveTab,
     toggleTerminal,
@@ -151,21 +157,107 @@ export const VoiceControlWidget: React.FC = () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 2. PROJECT NAVIGATION (Fuzzy Search & Select)
+    // 2. MULTI-PROJECT VOICE NAVIGATION
     // ─────────────────────────────────────────────────────────────
+    // A. Close current tab: «закрой проект», «закрой вкладку»
+    else if (cmd.type === 'navigation' && cmd.intent === 'close_current_project') {
+      const curName = selectedProject?.name || '';
+      closeCurrentProject();
+      const feedback = language === 'ru'
+        ? (curName ? `Проект «${curName}» закрыт` : 'Проект закрыт')
+        : (curName ? `Closed ${curName}` : 'Project closed');
+      setLastFeedback(feedback);
+      if (config.ttsEnabled) {
+        voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
+      }
+      return;
+    }
+
+    // B. Switch to next project: «следующий проект»
+    else if (cmd.type === 'navigation' && cmd.intent === 'switch_project_next') {
+      switchToNextProject();
+      return;
+    }
+
+    // C. Switch to previous project: «предыдущий проект»
+    else if (cmd.type === 'navigation' && cmd.intent === 'switch_project_prev') {
+      switchToPrevProject();
+      return;
+    }
+
+    // D. Switch to last active project: «прошлый проект / назад»
+    else if (cmd.type === 'navigation' && cmd.intent === 'switch_project_last') {
+      switchToLastActiveProject();
+      return;
+    }
+
+    // E. Switch to project by index (1..N or last): «проект 1», «вкладка 2», «последний проект»
+    else if (cmd.type === 'navigation' && cmd.intent === 'switch_project_index') {
+      let idx = cmd.payload?.tabIndex ?? 0;
+      const activeProjects = projects.filter((p) => activeProjectPaths.includes(p.path));
+      if (idx === -1) {
+        idx = Math.max(0, activeProjects.length - 1);
+      }
+      if (activeProjects[idx]) {
+        selectProject(activeProjects[idx]);
+        const feedback = language === 'ru'
+          ? `Открыт проект ${activeProjects[idx].name}`
+          : `Switched to ${activeProjects[idx].name}`;
+        setLastFeedback(feedback);
+        if (config.ttsEnabled) {
+          voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
+        }
+      }
+      return;
+    }
+
+    // F. Search & Select by Voice Alias or Project Name
     else if (cmd.type === 'navigation' && cmd.intent === 'navigate_project') {
       const query = (cmd.payload?.projectName || '').toLowerCase().trim();
       if (query && projects.length > 0) {
-        const matched = projects.find((p) => {
-          const pName = p.name.toLowerCase();
-          const pPath = p.path.toLowerCase();
-          return pName === query || pName.includes(query) || query.includes(pName) || pPath.includes(query);
-        });
+        const activeProjects = projects.filter((p) => activeProjectPaths.includes(p.path));
+
+        // 1) Match by voiceAlias first
+        let matched = projects.find(
+          (p) => p.voiceAlias && p.voiceAlias.toLowerCase().trim() === query
+        );
+
+        // 2) Match by voiceAlias substring
+        if (!matched) {
+          matched = projects.find(
+            (p) => p.voiceAlias && (p.voiceAlias.toLowerCase().includes(query) || query.includes(p.voiceAlias.toLowerCase()))
+          );
+        }
+
+        // 3) Match among active open tabs first
+        if (!matched) {
+          matched = activeProjects.find((p) => {
+            const pName = p.name.toLowerCase();
+            return pName === query || pName.includes(query) || query.includes(pName);
+          });
+        }
+
+        // 4) Match among all projects
+        if (!matched) {
+          matched = projects.find((p) => {
+            const pName = p.name.toLowerCase();
+            const pPath = p.path.toLowerCase();
+            return pName === query || pName.includes(query) || query.includes(pName) || pPath.includes(query);
+          });
+        }
 
         if (matched) {
           selectProject(matched);
+          const feedback = language === 'ru'
+            ? `Открыт проект ${matched.name}`
+            : `Switched to ${matched.name}`;
+          setLastFeedback(feedback);
+          if (config.ttsEnabled) {
+            voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
+          }
         }
       }
+      return;
     }
 
     // ─────────────────────────────────────────────────────────────

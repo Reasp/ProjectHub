@@ -103,7 +103,8 @@ parentPort.on('message', async (msg) => {
         language: targetLang,
         task: 'transcribe',
         chunk_length_s: 30,
-        stride_length_s: 5
+        stride_length_s: 5,
+        initial_prompt: 'ProjectHub, project, tab, switch, next, prev, back, close, проект, вкладка, следующий, предыдущий, закрой'
       });
 
       const text = (output?.text || '').trim();

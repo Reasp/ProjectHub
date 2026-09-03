@@ -66,6 +66,11 @@ export interface TranslationDictionary {
     deactivateProject: string;
     projectActive: string;
     activeProjects: string;
+    voiceAlias: string;
+    setVoiceAlias: string;
+    changeVoiceAlias: string;
+    promptVoiceAlias: string;
+    voiceAliasHint: string;
   };
   projectTabs: {
     closeTab: string;
@@ -73,6 +78,7 @@ export interface TranslationDictionary {
     closeAll: string;
     switchProject: string;
     noActive: string;
+    voiceHint: string;
   };
   header: {
     noProjectSelected: string;

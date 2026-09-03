@@ -200,6 +200,7 @@ export async function inspectProject(folderPath: string): Promise<ProjectInfo | 
     }
 
     const isFav = await projectRegistry.isFavorite(normalizedPath);
+    const voiceAlias = await projectRegistry.getVoiceAlias(normalizedPath);
 
     return {
       name: projectName,
@@ -207,6 +208,7 @@ export async function inspectProject(folderPath: string): Promise<ProjectInfo | 
       description: projectDescription,
       version: projectVersion,
       favorite: isFav,
+      voiceAlias,
       hasBacklog,
       hasInfraConfig,
       hasGit,

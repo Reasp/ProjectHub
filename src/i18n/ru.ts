@@ -65,14 +65,20 @@ export const ru: TranslationDictionary = {
     activateProject: 'Активировать проект (открыть во вкладках)',
     deactivateProject: 'Деактивировать проект (закрыть вкладку)',
     projectActive: 'Активен',
-    activeProjects: 'Активные проекты'
+    activeProjects: 'Активные проекты',
+    voiceAlias: 'Голосовое имя',
+    setVoiceAlias: 'Задать голосовое имя (псевдоним)',
+    changeVoiceAlias: 'Изменить голосовое имя',
+    promptVoiceAlias: 'Введите короткое голосовое имя для проекта (например: «хаб», «бот», «бэкенд»):',
+    voiceAliasHint: 'Позволяет быстро переключаться голосом: «Проект {alias}»'
   },
   projectTabs: {
     closeTab: 'Закрыть проект',
     activeProjectsCount: 'Активно: {count}',
     closeAll: 'Закрыть все вкладки',
     switchProject: 'Переключить проект',
-    noActive: 'Нет активных проектов'
+    noActive: 'Нет активных проектов',
+    voiceHint: 'Скажите: «Проект {num}» или «Проект {alias}»'
   },
   header: {
     noProjectSelected: 'Проект не выбран',
