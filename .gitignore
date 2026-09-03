@@ -25,6 +25,7 @@ npm-debug.log*
 
 # Build outputs
 release/
+release_tmp/
 
 # IDE
 .vscode/

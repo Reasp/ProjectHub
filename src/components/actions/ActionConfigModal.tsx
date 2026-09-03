@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Play, Rocket, FlaskConical, Plus, Trash2, Check, Save, Globe, Terminal } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Settings, Play, Rocket, FlaskConical, Plus, Trash2, Check, Save, Globe, Terminal, RefreshCw } from 'lucide-react';
 import type { ProjectActionConfig, ActionDefinition } from '../../types/electron';
 
 interface ActionConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   projectPath: string;
+  initialConfig?: ProjectActionConfig | null;
   onSaved?: () => void;
 }
 
@@ -13,22 +15,59 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
   isOpen,
   onClose,
   projectPath,
+  initialConfig,
   onSaved
 }) => {
-  const [config, setConfig] = useState<ProjectActionConfig | null>(null);
+  const [config, setConfig] = useState<ProjectActionConfig | null>(initialConfig || null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'run' | 'deploy' | 'test' | 'custom'>('run');
 
   useEffect(() => {
+    if (initialConfig) {
+      setConfig(initialConfig);
+    }
+  }, [initialConfig]);
+
+  useEffect(() => {
     if (isOpen && projectPath && window.api?.getActionConfig) {
       window.api.getActionConfig(projectPath).then(cfg => {
-        setConfig(cfg);
+        if (cfg) setConfig(cfg);
       });
     }
   }, [isOpen, projectPath]);
 
-  if (!isOpen || !config) return null;
+  // Handle Escape key to close
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  if (!config) {
+    return createPortal(
+      <div
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150 select-none"
+      >
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full shadow-2xl p-8 flex flex-col items-center justify-center gap-3">
+          <RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" />
+          <span className="text-xs text-slate-400 font-medium">Загрузка конфигурации действий...</span>
+        </div>
+      </div>,
+      document.body
+    );
+  }
 
   const handleSave = async () => {
     if (!window.api?.saveActionConfig) return;
@@ -60,8 +99,13 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
     setConfig(prev => (prev ? { ...prev, test: { ...prev.test, ...fields } } : prev));
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+  return createPortal(
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150 select-none"
+    >
       <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/60">
@@ -253,6 +297,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

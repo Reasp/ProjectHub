@@ -107,7 +107,7 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
   return (
     <div
       onKeyDown={handleKeyDown}
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-100 select-none"
+      className="fixed inset-0 z-[9999] flex items-start justify-center pt-20 p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-100 select-none"
     >
       <div className="bg-[#121520] border border-slate-700/80 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[75vh]">
         {/* Search Input Header */}

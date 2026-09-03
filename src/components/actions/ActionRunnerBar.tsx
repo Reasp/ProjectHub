@@ -177,6 +177,7 @@ export const ActionRunnerBar: React.FC = () => {
         isOpen={isConfigOpen}
         onClose={() => setIsConfigOpen(false)}
         projectPath={selectedProject.path}
+        initialConfig={config}
         onSaved={loadConfig}
       />
     </div>

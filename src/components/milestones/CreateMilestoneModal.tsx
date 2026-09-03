@@ -67,7 +67,7 @@ export const CreateMilestoneModal: React.FC<Props> = ({ isOpen, onClose, milesto
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-150">
       <div className="w-full max-w-lg bg-[#161922] border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden flex flex-col">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-[#12151e]/80">
