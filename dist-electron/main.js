@@ -19717,7 +19717,135 @@ var Eh = /* @__PURE__ */ a(((e) => {
 		} catch {}
 		this.sessions.clear();
 	}
-}(), Ih = /* @__PURE__ */ new Set([
+}(), Ih = new class {
+	cachedUsage = null;
+	lastFetchTime = 0;
+	CACHE_TTL_MS = 45e3;
+	async getUsage(e = !1) {
+		let t = Date.now();
+		if (!e && this.cachedUsage && t - this.lastFetchTime < this.CACHE_TTL_MS) return this.cachedUsage;
+		try {
+			let e = await this.fetchUsageFromCli(), n = await this.readStatsCacheFile(), r = this.parseUsageText(e), i = {
+				planType: r.planType || "Claude Code Subscription",
+				sessionLimit: r.sessionLimit,
+				weeklyLimit: r.weeklyLimit,
+				last24h: r.last24h,
+				last7d: r.last7d,
+				totalSessions: n?.totalSessions,
+				totalMessages: n?.totalMessages,
+				modelUsage: n?.modelUsage,
+				dailyActivity: n?.dailyActivity,
+				rawText: e,
+				updatedAt: t,
+				isFallback: !1
+			};
+			return this.cachedUsage = i, this.lastFetchTime = t, i;
+		} catch (e) {
+			console.warn("Failed to fetch usage from Claude CLI, falling back to stats-cache.json:", e.message);
+			let n = await this.readStatsCacheFile();
+			if (n) {
+				let e = {
+					planType: "Claude Code Subscription",
+					totalSessions: n.totalSessions,
+					totalMessages: n.totalMessages,
+					modelUsage: n.modelUsage,
+					dailyActivity: n.dailyActivity,
+					rawText: "Данные получены из локального кэша сессий Claude Code (~/.claude/stats-cache.json)",
+					updatedAt: t,
+					isFallback: !0
+				};
+				return this.cachedUsage = e, this.lastFetchTime = t, e;
+			}
+			throw Error(`Не удалось получить usage данные Claude Code: ${e.message}`);
+		}
+	}
+	fetchUsageFromCli() {
+		return new Promise((e, t) => {
+			let n = v("claude", ["-p", "/usage"], {
+				shell: !0,
+				stdio: [
+					"pipe",
+					"pipe",
+					"pipe"
+				],
+				env: {
+					...process.env,
+					FORCE_COLOR: "0",
+					CLAUDE_CONFIG_DIR: ge
+				}
+			});
+			n.stdin.end();
+			let r = "", i = "";
+			n.stdout.on("data", (e) => {
+				r += e.toString("utf-8");
+			}), n.stderr.on("data", (e) => {
+				i += e.toString("utf-8");
+			});
+			let a = setTimeout(() => {
+				n.kill(), t(/* @__PURE__ */ Error("Превышено время ожидания ответа от claude /usage"));
+			}, 12e3);
+			n.on("close", (n) => {
+				clearTimeout(a), n === 0 || r.trim().length > 0 ? e(r.trim()) : t(Error(i || `claude /usage завершился с кодом ${n}`));
+			}), n.on("error", (e) => {
+				clearTimeout(a), t(e);
+			});
+		});
+	}
+	async readStatsCacheFile() {
+		let e = [f.join(x.homedir(), ".claude", "stats-cache.json"), f.join(ge, "stats-cache.json")];
+		for (let t of e) if (g(t)) try {
+			let e = await h.readFile(t, "utf-8");
+			return JSON.parse(e);
+		} catch (e) {
+			console.warn(`Error reading ${t}:`, e);
+		}
+		return null;
+	}
+	parseUsageText(e) {
+		let t = "Claude Code Subscription";
+		e.includes("subscription") ? t = "Claude Subscription (Max Speed)" : (e.includes("usage credits") || e.includes("credits")) && (t = "Usage Credits (Pay-as-you-go)");
+		let n, r = e.match(/Current session:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^ \n\r]+(?:\s+[^ \n\r]+)*))?/i);
+		r && (n = {
+			percent: parseInt(r[1], 10),
+			resetsAt: r[2]?.trim()
+		});
+		let i, a = e.match(/Current week(?:\s*\([^\)]+\))?:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^ \n\r]+(?:\s+[^ \n\r]+)*))?/i);
+		a && (i = {
+			percent: parseInt(a[1], 10),
+			resetsAt: a[2]?.trim()
+		});
+		let o = (e) => {
+			let t = {}, n = e.match(/(\d+)\s+requests/i);
+			n && (t.requests = parseInt(n[1], 10));
+			let r = e.match(/(\d+)\s+sessions/i);
+			r && (t.sessions = parseInt(r[1], 10));
+			let i = e.match(/(\d+)%\s+of your usage was at >150k context/i);
+			i && (t.contextAbove150kPercent = parseInt(i[1], 10));
+			let a = e.match(/(\d+)%\s+of your usage came from subagent-heavy/i);
+			a && (t.subagentHeavyPercent = parseInt(a[1], 10));
+			let o = e.match(/(\d+)%\s+of your usage came from sessions active for 8\+\s*hours/i);
+			o && (t.sessionsOver8hPercent = parseInt(o[1], 10));
+			let s = (t) => {
+				let n = e.match(t);
+				return n ? n[1].split(",").map((e) => {
+					let t = e.trim().match(/^(.+?)\s+(\d+)%$/);
+					return t ? {
+						name: t[1].trim(),
+						percent: parseInt(t[2], 10)
+					} : null;
+				}).filter(Boolean) : [];
+			};
+			return t.topSkills = s(/Top skills:\s*([^\n\r]+)/i), t.topSubagents = s(/Top subagents:\s*([^\n\r]+)/i), t.topMcpServers = s(/Top MCP servers:\s*([^\n\r]+)/i), t;
+		}, s, c, l = e.indexOf("Last 24h"), u = e.indexOf("Last 7d");
+		return l !== -1 && (s = o(u === -1 ? e.slice(l) : e.slice(l, u))), u !== -1 && (c = o(e.slice(u))), {
+			planType: t,
+			sessionLimit: n,
+			weeklyLimit: i,
+			last24h: s,
+			last7d: c
+		};
+	}
+}(), Lh = /* @__PURE__ */ new Set([
 	"node_modules",
 	".git",
 	"dist",
@@ -19733,7 +19861,7 @@ var Eh = /* @__PURE__ */ a(((e) => {
 	"coverage",
 	".idea",
 	".vscode"
-]), Lh = new class {
+]), Rh = new class {
 	validateSafePath(e, t) {
 		let n = f.resolve(e), r = f.resolve(n, t);
 		if (!r.startsWith(n)) throw Error(`Access Denied: Path traversal detected outside project root (${t})`);
@@ -19745,7 +19873,7 @@ var Eh = /* @__PURE__ */ a(((e) => {
 		try {
 			let t = await h.readdir(a, { withFileTypes: !0 }), o = [];
 			for (let s of t) {
-				if (Ih.has(s.name)) continue;
+				if (Lh.has(s.name)) continue;
 				let t = f.join(a, s.name), c = f.relative(i, t).replace(/\\/g, "/");
 				if (s.isDirectory()) {
 					let i = await this.readTree(e, c, n, r + 1);
@@ -19805,17 +19933,17 @@ var Eh = /* @__PURE__ */ a(((e) => {
 			force: !0
 		}), !0;
 	}
-}(), Rh = m(import.meta.url), zh = f.dirname(Rh);
-process.env.DIST = f.join(zh, "../dist"), process.env.VITE_PUBLIC = s.isPackaged ? process.env.DIST : f.join(zh, "../public");
-var Bh = null, Vh = process.env.VITE_DEV_SERVER_URL;
+}(), zh = m(import.meta.url), Bh = f.dirname(zh);
+process.env.DIST = f.join(Bh, "../dist"), process.env.VITE_PUBLIC = s.isPackaged ? process.env.DIST : f.join(Bh, "../public");
+var Vh = null, Hh = process.env.VITE_DEV_SERVER_URL;
 be.on("statusChanged", (e) => {
-	Bh && !Bh.isDestroyed() && Bh.webContents.send("claudeBridge:statusChanged", e);
+	Vh && !Vh.isDestroyed() && Vh.webContents.send("claudeBridge:statusChanged", e);
 }), be.on("subagentUpdated", (e) => {
-	Bh && !Bh.isDestroyed() && Bh.webContents.send("claudeBridge:subagentUpdated", e);
+	Vh && !Vh.isDestroyed() && Vh.webContents.send("claudeBridge:subagentUpdated", e);
 });
-function Hh() {
-	let e = f.join(zh, "../dist"), t = f.join(e, "index.html"), n = f.join(zh, "preload.cjs"), r = f.join(zh, "preload.js"), i = g(n) ? n : r, a = f.join(zh, "../public/icon.png"), s = f.join(zh, "../build/icon.png"), c = g(a) ? a : s;
-	Bh = new o({
+function Uh() {
+	let e = f.join(Bh, "../dist"), t = f.join(e, "index.html"), n = f.join(Bh, "preload.cjs"), r = f.join(Bh, "preload.js"), i = g(n) ? n : r, a = f.join(Bh, "../public/icon.png"), s = f.join(Bh, "../build/icon.png"), c = g(a) ? a : s;
+	Vh = new o({
 		title: "ProjectHub — Панель управления проектами",
 		icon: c,
 		width: 1400,
@@ -19830,18 +19958,18 @@ function Hh() {
 			contextIsolation: !0,
 			sandbox: !1
 		}
-	}), Bh.webContents.on("console-message", (e, t, n, r, i) => {
+	}), Vh.webContents.on("console-message", (e, t, n, r, i) => {
 		console.log(`[Renderer Console: ${t}] ${n} (${i}:${r})`);
-	}), Bh.webContents.on("before-input-event", (e, t) => {
-		(t.key === "F12" || t.control && t.shift && t.key.toLowerCase() === "i") && (Bh?.webContents.toggleDevTools(), e.preventDefault());
-	}), Bh.webContents.on("did-fail-load", (e, t, n, r) => {
+	}), Vh.webContents.on("before-input-event", (e, t) => {
+		(t.key === "F12" || t.control && t.shift && t.key.toLowerCase() === "i") && (Vh?.webContents.toggleDevTools(), e.preventDefault());
+	}), Vh.webContents.on("did-fail-load", (e, t, n, r) => {
 		console.error(`[Electron] Failed to load ${r}: [${t}] ${n}`);
-	}), Vh ? Bh.loadURL(Vh) : Bh.loadFile(t);
+	}), Hh ? Vh.loadURL(Hh) : Vh.loadFile(t);
 }
 s.on("window-all-closed", () => {
-	process.platform !== "darwin" && (s.quit(), Bh = null);
+	process.platform !== "darwin" && (s.quit(), Vh = null);
 }), s.on("activate", () => {
-	o.getAllWindows().length === 0 && Hh();
+	o.getAllWindows().length === 0 && Uh();
 }), l.handle("projects:list", async () => {
 	let e = await ce.getProjects(), t = [];
 	for (let n of e) {
@@ -19853,8 +19981,8 @@ s.on("window-all-closed", () => {
 	let n = await ue(t);
 	return n ? (await ce.addProject(n.path, !1), n) : null;
 }), l.handle("projects:remove", async (e, t) => await ce.removeProject(t)), l.handle("projects:refresh", async (e, t) => await ue(t)), l.handle("projects:toggleFavorite", async (e, t) => await ce.toggleFavorite(t)), l.handle("projects:getScanRoots", async () => await ce.getScanRoots()), l.handle("projects:setScanRoots", async (e, t) => await ce.setScanRoots(t)), l.handle("projects:getDetails", async (e, t) => await ue(t)), l.handle("dialog:selectDirectory", async () => {
-	if (!Bh) return null;
-	let e = await c.showOpenDialog(Bh, {
+	if (!Vh) return null;
+	let e = await c.showOpenDialog(Vh, {
 		properties: ["openDirectory"],
 		title: "Выберите папку проекта с Backlog.md или репозиторием"
 	});
@@ -19882,9 +20010,9 @@ s.on("window-all-closed", () => {
 		t
 	], { detached: !0 });
 }), l.handle("backlog:watchProject", async (e, t) => {
-	Jm.watch(t, Bh);
+	Jm.watch(t, Vh);
 });
-function Uh(e) {
+function Wh(e) {
 	let t = [], n = e.split("\n"), r = !1, i = [], a = !1;
 	for (let e of n) {
 		let n = e.trim();
@@ -19912,12 +20040,12 @@ function Uh(e) {
 l.handle("backlog:getTasks", async (e, t) => {
 	let n = f.join(t, "backlog", "tasks");
 	if (!g(n)) return [];
-	Jm.watch(t, Bh);
+	Jm.watch(t, Vh);
 	let r = [];
 	try {
 		let e = await h.readdir(n);
 		for (let t of e) if (t.endsWith(".md")) {
-			let e = f.join(n, t), i = await h.readFile(e, "utf-8"), a = y(i), { criteria: o, description: s } = Uh(a.content);
+			let e = f.join(n, t), i = await h.readFile(e, "utf-8"), a = y(i), { criteria: o, description: s } = Wh(a.content);
 			r.push({
 				id: a.data.id || f.basename(t, ".md").split("-")[0].trim(),
 				title: a.data.title || f.basename(t, ".md"),
@@ -20064,8 +20192,8 @@ l.handle("backlog:getTasks", async (e, t) => {
 		return console.error("Failed to start claude auth login process:", e), d.openExternal("https://claude.ai/login"), !1;
 	}
 }), l.handle("ai:claudeLogout", async () => await ve.claudeLogout()), l.handle("ai:abortStream", async (e, t) => (ve.abortStream(t), be.abortSession(t), !0)), l.handle("ai:applyDiff", async (e, t, n, r) => await ve.applyDiff(t, n, r)), l.handle("ai:streamChat", async (e, t) => {
-	if (!Bh) return;
-	let n = Bh;
+	if (!Vh) return;
+	let n = Vh;
 	be.runAgentTask(t, (e) => {
 		n.isDestroyed() || n.webContents.send(`ai:chunk:${t.sessionId}`, e);
 	}, (e) => {
@@ -20073,14 +20201,14 @@ l.handle("backlog:getTasks", async (e, t) => {
 	}, (e) => {
 		n.isDestroyed() || n.webContents.send(`ai:error:${t.sessionId}`, e);
 	});
-}), l.handle("claudeBridge:getAllProjectStatuses", async () => be.getAllProjectStatuses()), l.handle("claudeBridge:getProjectStatus", async (e, t) => be.getProjectStatus(t)), l.handle("claudeBridge:sendApprovalResponse", async (e, t, n) => be.sendApprovalResponse(t, n)), l.handle("claudeBridge:getSubagents", async (e, t) => be.getSubagents(t)), l.handle("claudeBridge:getAvailableModels", async () => be.getAvailableModels()), l.handle("files:readTree", async (e, t, n = "", r = 6) => await Lh.readTree(t, n, r)), l.handle("files:readContent", async (e, t, n) => await Lh.readFileContent(t, n)), l.handle("files:saveContent", async (e, t, n, r) => await Lh.saveFileContent(t, n, r)), l.handle("files:create", async (e, t, n, r = !1) => await Lh.createFileOrFolder(t, n, r)), l.handle("files:delete", async (e, t, n) => await Lh.deleteFileOrFolder(t, n)), l.handle("file:readFile", async (e, t, n) => await Lh.readFileContent(t, n)), l.handle("file:writeFile", async (e, t, n, r) => await Lh.saveFileContent(t, n, r)), l.handle("file:listFiles", async (e, t, n) => (await Lh.readTree(t, n || "", 1)).map((e) => ({
+}), l.handle("claudeBridge:getAllProjectStatuses", async () => be.getAllProjectStatuses()), l.handle("claudeBridge:getProjectStatus", async (e, t) => be.getProjectStatus(t)), l.handle("claudeBridge:sendApprovalResponse", async (e, t, n) => be.sendApprovalResponse(t, n)), l.handle("claudeBridge:getSubagents", async (e, t) => be.getSubagents(t)), l.handle("claudeBridge:getAvailableModels", async () => be.getAvailableModels()), l.handle("claudeBridge:getUsage", async (e, t = !1) => await Ih.getUsage(t)), l.handle("files:readTree", async (e, t, n = "", r = 6) => await Rh.readTree(t, n, r)), l.handle("files:readContent", async (e, t, n) => await Rh.readFileContent(t, n)), l.handle("files:saveContent", async (e, t, n, r) => await Rh.saveFileContent(t, n, r)), l.handle("files:create", async (e, t, n, r = !1) => await Rh.createFileOrFolder(t, n, r)), l.handle("files:delete", async (e, t, n) => await Rh.deleteFileOrFolder(t, n)), l.handle("file:readFile", async (e, t, n) => await Rh.readFileContent(t, n)), l.handle("file:writeFile", async (e, t, n, r) => await Rh.saveFileContent(t, n, r)), l.handle("file:listFiles", async (e, t, n) => (await Rh.readTree(t, n || "", 1)).map((e) => ({
 	name: e.name,
 	isDirectory: e.isDirectory,
 	relativePath: e.relativePath
 }))), l.handle("voice:transcribeLocal", async (e, { audioData: t, language: n }) => await xe.transcribe(t, n)), l.handle("voice:getLocalWhisperStatus", async () => xe.getState()), l.handle("system:getPlatform", async () => process.platform), l.handle("secrets:isEncryptionAvailable", async () => he.isEncryptionAvailable()), l.handle("secrets:encrypt", async (e, t) => he.encrypt(t)), l.handle("secrets:decrypt", async (e, t) => he.decrypt(t)), l.handle("secrets:setSecret", async (e, { key: t, value: n }) => (await he.setSecret(t, n), !0)), l.handle("secrets:getSecret", async (e, t) => await he.getSecret(t)), l.handle("secrets:deleteSecret", async (e, t) => await he.deleteSecret(t)), l.handle("mcp:getStatus", async () => qm.getStatus()), l.handle("mcp:toggleServer", async (e, t) => (t ? await qm.start() : await qm.stop(), qm.getStatus())), l.handle("mcp:regenerateToken", async () => qm.regenerateToken()), l.handle("mcp:setAppState", async (e, t) => (qm.setAppState(t), !0)), s.on("before-quit", () => {
 	Km.cleanupAll(), Fh.cleanupAll(), qm.stop().catch(() => {});
 }), s.whenReady().then(() => {
-	Hh(), xe.initBackground(), qm.start().catch((e) => {
+	Uh(), xe.initBackground(), qm.start().catch((e) => {
 		console.error("[Main] Failed to auto-start Remote MCP server:", e);
 	});
 });

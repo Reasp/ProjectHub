@@ -200,6 +200,7 @@ const api: IElectronAPI = {
     ipcRenderer.invoke('claudeBridge:sendApprovalResponse', requestId, response),
   getSubagents: (projectPath: string) => ipcRenderer.invoke('claudeBridge:getSubagents', projectPath),
   getAvailableModels: () => ipcRenderer.invoke('claudeBridge:getAvailableModels'),
+  getClaudeUsage: (forceRefresh?: boolean) => ipcRenderer.invoke('claudeBridge:getUsage', forceRefresh),
 
   onProjectAgentStatusChanged: (callback: (status: any) => void) => {
     const handler = (_event: any, data: any) => callback(data);

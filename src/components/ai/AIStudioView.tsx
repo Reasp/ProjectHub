@@ -25,6 +25,7 @@ import { InteractiveApprovalCard } from './InteractiveApprovalCard';
 import { SubagentsPanel } from './SubagentsPanel';
 import { PromptInputArea } from './PromptInputArea';
 import { ModelSelectorDropdown } from './ModelSelectorDropdown';
+import { ClaudeUsageButton } from './ClaudeUsageButton';
 import { RateLimitWarningBanner } from './RateLimitWarningBanner';
 import { AgentStepsAccordion } from './AgentStepsAccordion';
 import { LiveActivitySidebar } from './LiveActivitySidebar';
@@ -237,6 +238,9 @@ export const AIStudioView: React.FC = () => {
             config={config}
             onSelectModel={(model) => saveConfig({ ...config, model })}
           />
+
+          {/* Claude Code Usage & Limits Inspection Button */}
+          <ClaudeUsageButton />
 
           {/* Auto-Approve Quick Toggle */}
           <button

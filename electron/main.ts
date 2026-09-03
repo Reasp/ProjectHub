@@ -794,6 +794,12 @@ ipcMain.handle('claudeBridge:getAvailableModels', async () => {
   return claudeBridgeService.getAvailableModels();
 });
 
+import { claudeUsageService } from './services/claudeUsageService';
+
+ipcMain.handle('claudeBridge:getUsage', async (_event, forceRefresh = false) => {
+  return await claudeUsageService.getUsage(forceRefresh);
+});
+
 // 12. File System Helpers for AI & Explorer
 import { fileService } from './services/fileService';
 

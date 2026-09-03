@@ -53,11 +53,17 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
 
   const handleSend = () => {
     if (!input.trim() || isStreaming) return;
-    const textToSend = input;
+    const textToSend = input.trim();
     setInput('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
+
+    if (textToSend.toLowerCase() === '/usage' || textToSend.toLowerCase() === '/cost') {
+      window.dispatchEvent(new CustomEvent('projecthub:open-claude-usage'));
+      return;
+    }
+
     onSend(textToSend);
   };
 

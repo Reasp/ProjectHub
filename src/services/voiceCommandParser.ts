@@ -97,6 +97,21 @@ export function parseVoiceCommand(text: string): ParsedVoiceCommand {
     };
   }
 
+  // B. Show Claude Usage & Limits: «лимиты», «лимиты клод», «покажи лимиты», «расход токенов», «покажи расход», «квота», «usage»
+  if (
+    normalized.includes('лимит') ||
+    normalized.includes('расход') ||
+    normalized.includes('квот') ||
+    normalized.includes('usage') ||
+    normalized.includes('токен')
+  ) {
+    return {
+      type: 'ai_control',
+      intent: 'show_claude_usage',
+      feedbackText: 'Открываю статистику и лимиты Claude Code'
+    };
+  }
+
   // B. Switch Studio Tab / Session by Number: «вкладка 1», «вкладка 2», «первая вкладка», «диалог 2»
   if (
     normalized.includes('вкладка') ||

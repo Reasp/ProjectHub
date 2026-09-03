@@ -101,6 +101,11 @@ export const VoiceControlWidget: React.FC = () => {
         createSession(projectPath);
       }
 
+      // Open Claude Code Usage & Limits
+      else if (cmd.intent === 'show_claude_usage') {
+        window.dispatchEvent(new CustomEvent('projecthub:open-claude-usage'));
+      }
+
       // B. Switch Studio Tab / Session by index (0, 1, 2...)
       else if (cmd.intent === 'switch_ai_session' && projectPath) {
         setActiveTab('ai');

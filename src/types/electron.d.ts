@@ -376,6 +376,7 @@ export interface IElectronAPI {
   sendApprovalResponse: (requestId: string, response: { approved: boolean; text?: string }) => Promise<boolean>;
   getSubagents: (projectPath: string) => Promise<SubagentInfo[]>;
   getAvailableModels: () => Promise<ClaudeModelOption[]>;
+  getClaudeUsage: (forceRefresh?: boolean) => Promise<ClaudeUsageData>;
   onProjectAgentStatusChanged: (callback: (status: ProjectAgentStatus) => void) => () => void;
   onSubagentUpdated: (callback: (subagent: SubagentInfo) => void) => () => void;
 
@@ -596,6 +597,55 @@ export interface CreatePtyOptions {
   title?: string;
   cols?: number;
   rows?: number;
+}
+
+export interface ClaudeUsageLimitWindow {
+  percent: number;
+  resetsAt?: string;
+}
+
+export interface ClaudeUsageBreakdownItem {
+  name: string;
+  percent: number;
+}
+
+export interface ClaudeUsageBreakdown {
+  requests?: number;
+  sessions?: number;
+  contextAbove150kPercent?: number;
+  subagentHeavyPercent?: number;
+  sessionsOver8hPercent?: number;
+  topSkills?: ClaudeUsageBreakdownItem[];
+  topSubagents?: ClaudeUsageBreakdownItem[];
+  topMcpServers?: ClaudeUsageBreakdownItem[];
+}
+
+export interface ClaudeModelTokenStats {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  costUSD?: number;
+}
+
+export interface ClaudeUsageData {
+  planType: string;
+  sessionLimit?: ClaudeUsageLimitWindow;
+  weeklyLimit?: ClaudeUsageLimitWindow;
+  last24h?: ClaudeUsageBreakdown;
+  last7d?: ClaudeUsageBreakdown;
+  totalSessions?: number;
+  totalMessages?: number;
+  modelUsage?: Record<string, ClaudeModelTokenStats>;
+  dailyActivity?: {
+    date: string;
+    messageCount: number;
+    sessionCount: number;
+    toolCallCount: number;
+  }[];
+  rawText?: string;
+  updatedAt: number;
+  isFallback?: boolean;
 }
 
 declare global {
