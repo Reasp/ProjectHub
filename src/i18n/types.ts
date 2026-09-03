@@ -116,6 +116,34 @@ export interface TranslationDictionary {
     ttsOn: string;
     ttsOff: string;
     settingsTitle: string;
+    voiceBadges: {
+      tasks: string;
+      milestones: string;
+      git: string;
+      files: string;
+      prs: string;
+      docs: string;
+      analytics: string;
+      studio: string;
+      claudeCli: string;
+      processes: string;
+      code: string;
+      folder: string;
+      terminal: string;
+      limits: string;
+      help: string;
+      startDev: string;
+      stopDev: string;
+      deploy: string;
+      test: string;
+      newChat: string;
+      closeChat: string;
+      nextProject: string;
+      prevProject: string;
+      closeProject: string;
+      approve: string;
+      reject: string;
+    };
   };
   claudeUsage: {
     modalTitle: string;

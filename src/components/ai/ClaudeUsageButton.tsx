@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Gauge } from 'lucide-react';
 import { ClaudeUsageModal } from './ClaudeUsageModal';
+import { VoiceBadge } from '../voice/VoiceBadge';
+import { useTranslation } from '../../i18n/useTranslation';
 import type { ClaudeUsageData } from '../../types/electron';
 
 interface ClaudeUsageButtonProps {
@@ -12,6 +14,7 @@ export const ClaudeUsageButton: React.FC<ClaudeUsageButtonProps> = ({
   className = '',
   showText = true
 }) => {
+  const { t } = useTranslation();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [usage, setUsage] = useState<ClaudeUsageData | null>(null);
 
@@ -77,6 +80,7 @@ export const ClaudeUsageButton: React.FC<ClaudeUsageButtonProps> = ({
             {highestPercent}%
           </span>
         )}
+        <VoiceBadge command={t.voice.voiceBadges.limits} />
       </button>
 
       <ClaudeUsageModal

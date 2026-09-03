@@ -457,12 +457,80 @@ export function parseVoiceCommand(text: string): ParsedVoiceCommand {
   if (
     normalized.includes('терминал') ||
     normalized.includes('консоль') ||
-    normalized.includes('логи')
+    normalized.includes('логи') ||
+    normalized === 'terminal' ||
+    normalized === 'console'
   ) {
     return {
       type: 'navigation',
       intent: 'toggle_terminal',
       feedbackText: 'Переключаю панель терминала'
+    };
+  }
+
+  // Quick Action Commands: VS Code, Folder/Explorer, Help/Hotkeys, Omni Search, Refresh
+  if (
+    /^(код|открой код|открыть код|vs code|vscode|open code|open in code)$/i.test(normalized) ||
+    normalized === 'код' ||
+    normalized === 'открой код' ||
+    normalized === 'vs code' ||
+    normalized === 'vscode'
+  ) {
+    return {
+      type: 'action',
+      intent: 'open_code',
+      feedbackText: 'Открываю проект в VS Code'
+    };
+  }
+
+  if (
+    /^(папка|проводник|открой папку|открыть папку|открой проводник|открыть проводник|open folder|folder|explorer)$/i.test(normalized) ||
+    normalized === 'папка' ||
+    normalized === 'открой папку' ||
+    normalized === 'проводник' ||
+    normalized === 'folder'
+  ) {
+    return {
+      type: 'action',
+      intent: 'open_explorer',
+      feedbackText: 'Открываю папку проекта в проводнике'
+    };
+  }
+
+  if (
+    /^(справка|помощь|горячие клавиши|хоткеи|help|hotkeys)$/i.test(normalized) ||
+    normalized === 'справка' ||
+    normalized === 'помощь' ||
+    normalized === 'help'
+  ) {
+    return {
+      type: 'action',
+      intent: 'open_help',
+      feedbackText: 'Открываю справку по горячим клавишам'
+    };
+  }
+
+  if (
+    /^(поиск|найти|омни поиск|search|find)$/i.test(normalized) ||
+    normalized === 'поиск' ||
+    normalized === 'search'
+  ) {
+    return {
+      type: 'action',
+      intent: 'open_search',
+      feedbackText: 'Открываю глобальный поиск'
+    };
+  }
+
+  if (
+    /^(обнови|обновить|перезагрузи|перезагрузить|refresh)$/i.test(normalized) ||
+    normalized === 'обнови' ||
+    normalized === 'refresh'
+  ) {
+    return {
+      type: 'action',
+      intent: 'refresh_project',
+      feedbackText: 'Обновляю статус проекта и Git'
     };
   }
 

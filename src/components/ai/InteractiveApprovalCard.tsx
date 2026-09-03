@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { ApprovalRequest, QuestionOption } from '../../types/electron';
 import { useTranslation } from '../../i18n/useTranslation';
+import { VoiceBadge } from '../voice/VoiceBadge';
 
 interface InteractiveApprovalCardProps {
   request: ApprovalRequest;
@@ -29,7 +30,7 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
   onApprove,
   onReject
 }) => {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -193,9 +194,10 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
                       <div className={`text-xs font-semibold ${isSelected ? 'text-white' : 'text-slate-200'}`}>
                         {opt.label}
                       </div>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60 shrink-0" title="Голосовая команда: «Вариант ${optIdx + 1}»">
-                        Вариант {optIdx + 1}
-                      </span>
+                      <VoiceBadge
+                        command={language === 'ru' ? `вариант ${optIdx + 1}` : `option ${optIdx + 1}`}
+                        variant={isSelected ? 'emerald' : 'indigo'}
+                      />
                     </div>
                     {opt.description && (
                       <div className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
@@ -381,7 +383,7 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
             >
               <Check className="w-4 h-4" />
               <span>{t.aiStudio.approval.allowOnce}</span>
-              <span className="text-[10px] opacity-75 font-normal ml-1">(🎤 «Одобрить»)</span>
+              <VoiceBadge command={t.voice.voiceBadges.approve} variant="emerald" />
             </button>
 
             <button
@@ -393,7 +395,7 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
             >
               <X className="w-4 h-4" />
               <span>{t.aiStudio.approval.deny}</span>
-              <span className="text-[10px] opacity-75 font-normal ml-1">(🎤 «Отклонить»)</span>
+              <VoiceBadge command={t.voice.voiceBadges.reject} variant="amber" />
             </button>
           </div>
         </div>

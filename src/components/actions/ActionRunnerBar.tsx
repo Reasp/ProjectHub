@@ -13,6 +13,7 @@ import {
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { ActionConfigModal } from './ActionConfigModal';
+import { VoiceBadge } from '../voice/VoiceBadge';
 import type { ProjectActionConfig } from '../../types/electron';
 
 export const ActionRunnerBar: React.FC = () => {
@@ -115,11 +116,13 @@ export const ActionRunnerBar: React.FC = () => {
             <>
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
               <span>{t.actions.stopDev}</span>
+              <VoiceBadge command={t.voice.voiceBadges.stopDev} variant="amber" />
             </>
           ) : (
             <>
               <Play className="w-3.5 h-3.5 fill-current" />
               <span>{t.actions.run}</span>
+              <VoiceBadge command={t.voice.voiceBadges.startDev} variant="emerald" />
             </>
           )}
         </button>
@@ -151,6 +154,7 @@ export const ActionRunnerBar: React.FC = () => {
           <Rocket className="w-3.5 h-3.5 text-indigo-400" />
         )}
         <span className="hidden sm:inline">{t.actions.deploy}</span>
+        <VoiceBadge command={t.voice.voiceBadges.deploy} variant="indigo" />
       </button>
 
       {/* ─── 3. TEST BUTTON ─── */}
@@ -166,6 +170,7 @@ export const ActionRunnerBar: React.FC = () => {
           <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
         )}
         <span className="hidden md:inline">{t.actions.test}</span>
+        <VoiceBadge command={t.voice.voiceBadges.test} variant="amber" />
       </button>
 
       {/* ─── 4. SETTINGS MODAL TRIGGER ─── */}

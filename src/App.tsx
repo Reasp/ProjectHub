@@ -99,6 +99,13 @@ export const App: React.FC = () => {
     setTimeout(() => setRemoteActionToast(null), 4000);
   };
 
+  // Event listener for opening omni-search via voice or external triggers
+  useEffect(() => {
+    const handleOpenSearch = () => setIsOmniSearchOpen(true);
+    window.addEventListener('projecthub:open-search', handleOpenSearch);
+    return () => window.removeEventListener('projecthub:open-search', handleOpenSearch);
+  }, []);
+
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

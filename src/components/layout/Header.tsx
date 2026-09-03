@@ -20,6 +20,7 @@ import { ActionRunnerBar } from '../actions/ActionRunnerBar';
 import { McpServerStatusBadge } from '../mcp/McpServerStatusBadge';
 import { VoiceControlHeader } from '../voice/VoiceControlHeader';
 import { ClaudeUsageButton } from '../ai/ClaudeUsageButton';
+import { VoiceBadge } from '../voice/VoiceBadge';
 
 export const Header: React.FC = () => {
   const { language, setLanguage, t } = useTranslation();
@@ -188,6 +189,7 @@ export const Header: React.FC = () => {
         >
           <Code className="w-3.5 h-3.5 text-blue-400 shrink-0" />
           <span className="hidden xl:inline">{t.header.vsCode}</span>
+          <VoiceBadge command={t.voice.voiceBadges.code} />
         </button>
 
         <button
@@ -197,6 +199,7 @@ export const Header: React.FC = () => {
         >
           <FolderOpen className="w-3.5 h-3.5 text-slate-400 shrink-0" />
           <span className="hidden xl:inline">{t.header.folder}</span>
+          <VoiceBadge command={t.voice.voiceBadges.folder} />
         </button>
 
         <div className="w-px h-6 bg-slate-800 mx-1 shrink-0" />
@@ -212,6 +215,7 @@ export const Header: React.FC = () => {
         >
           <TerminalSquare className="w-3.5 h-3.5 shrink-0" />
           <span className="hidden lg:inline">{t.header.console}</span>
+          <VoiceBadge command={t.voice.voiceBadges.terminal} />
         </button>
 
         {/* MCP Remote Control Status Badge */}
@@ -250,13 +254,16 @@ export const Header: React.FC = () => {
           </button>
         </div>
 
-        <button
-          onClick={() => setHotkeysHelpOpen(true)}
-          title={t.header.hotkeysHelp}
-          className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700/60 transition shrink-0"
-        >
-          <HelpCircle className="w-3.5 h-3.5 shrink-0" />
-        </button>
+        <div className="relative inline-flex items-center shrink-0">
+          <button
+            onClick={() => setHotkeysHelpOpen(true)}
+            title={t.header.hotkeysHelp}
+            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700/60 transition"
+          >
+            <HelpCircle className="w-3.5 h-3.5 shrink-0" />
+          </button>
+          <VoiceBadge command={t.voice.voiceBadges.help} position="bottom" />
+        </div>
       </div>
     </header>
   );

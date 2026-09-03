@@ -10,9 +10,10 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { VoiceBadge } from '../voice/VoiceBadge';
 
 export const ProjectTabsBar: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const {
     projects,
     activeProjectPaths,
@@ -104,6 +105,11 @@ export const ProjectTabsBar: React.FC = () => {
                     «{project.voiceAlias}»
                   </span>
                 )}
+                <VoiceBadge
+                  command={language === 'ru' ? `проект ${tabNumber}` : `project ${tabNumber}`}
+                  altCommand={project.voiceAlias}
+                  variant={isSelected ? 'emerald' : 'indigo'}
+                />
               </div>
 
               {/* Git Uncommitted Badge */}
@@ -136,8 +142,10 @@ export const ProjectTabsBar: React.FC = () => {
         })}
       </div>
 
-      {/* Right Action / Counter Info */}
+      {/* Right Action / Counter Info with Voice Hints */}
       <div className="flex items-center gap-2 pl-2 border-l border-slate-800/60 text-[11px] font-mono text-slate-500 shrink-0">
+        <VoiceBadge command={t.voice.voiceBadges.nextProject} />
+        <VoiceBadge command={t.voice.voiceBadges.closeProject} variant="amber" />
         <span title={t.projectTabs.activeProjectsCount.replace('{count}', String(activeProjects.length))}>
           {activeProjects.length} {t.sidebar.activeOnly.toLowerCase()}
         </span>

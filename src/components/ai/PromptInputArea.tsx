@@ -3,6 +3,7 @@ import { Send, Square, CheckSquare, GitBranch, BookOpen, Mic, Radio, Zap } from 
 import type { BacklogTask, GitRepoDetails } from '../../types/electron';
 import { useTranslation } from '../../i18n/useTranslation';
 import { voiceService, type VoiceState } from '../../services/voiceService';
+import { VoiceBadge } from '../voice/VoiceBadge';
 
 interface PromptInputAreaProps {
   mode: 'agent' | 'chat' | 'architect';
@@ -20,7 +21,7 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
   onSend,
   onAbort
 }) => {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [input, setInput] = useState('');
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -164,22 +165,29 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
         />
 
         {/* Voice Dictation Button in Prompt Box */}
-        <button
-          type="button"
-          onClick={handleToggleVoiceDictation}
-          className={`p-2 rounded-xl transition flex items-center justify-center shrink-0 ${
-            isSpeech
-              ? 'bg-emerald-600 text-white ring-2 ring-emerald-500/40 animate-pulse'
-              : isTranscribing
-              ? 'bg-amber-600 text-white animate-bounce'
-              : isHandsFree
-              ? 'bg-indigo-600 text-white ring-2 ring-indigo-500/40'
-              : 'bg-[#121522] border border-slate-700 hover:border-indigo-500/70 text-slate-400 hover:text-indigo-400'
-          }`}
-          title={isHandsFree ? 'Talon Voice Hands-Free активен (кликните для отключения)' : 'Включить Talon Voice диктовку промпта'}
-        >
-          <Mic className="w-4 h-4" />
-        </button>
+        <div className="relative inline-flex items-center shrink-0">
+          <button
+            type="button"
+            onClick={handleToggleVoiceDictation}
+            className={`p-2 rounded-xl transition flex items-center justify-center shrink-0 ${
+              isSpeech
+                ? 'bg-emerald-600 text-white ring-2 ring-emerald-500/40 animate-pulse'
+                : isTranscribing
+                ? 'bg-amber-600 text-white animate-bounce'
+                : isHandsFree
+                ? 'bg-indigo-600 text-white ring-2 ring-indigo-500/40'
+                : 'bg-[#121522] border border-slate-700 hover:border-indigo-500/70 text-slate-400 hover:text-indigo-400'
+            }`}
+            title={isHandsFree ? 'Talon Voice Hands-Free активен (кликните для отключения)' : 'Включить Talon Voice диктовку промпта'}
+          >
+            <Mic className="w-4 h-4" />
+          </button>
+          <VoiceBadge
+            command={language === 'ru' ? 'промпт [текст]' : 'prompt [text]'}
+            altCommand={language === 'ru' ? 'напиши [текст]' : 'ask [text]'}
+            position="top"
+          />
+        </div>
 
         {isStreaming ? (
           <button

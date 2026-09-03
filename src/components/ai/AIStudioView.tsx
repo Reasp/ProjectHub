@@ -31,9 +31,10 @@ import { RateLimitWarningBanner } from './RateLimitWarningBanner';
 import { AgentStepsAccordion } from './AgentStepsAccordion';
 import { LiveActivitySidebar } from './LiveActivitySidebar';
 import { MarkdownViewer } from '../common/MarkdownViewer';
+import { VoiceBadge } from '../voice/VoiceBadge';
 
 export const AIStudioView: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const { selectedProject, tasks, gitRepoDetails } = useProjectStore();
   const {
     sessions,
@@ -175,6 +176,11 @@ export const AIStudioView: React.FC = () => {
                   {session.title || t.aiStudio.newChat}
                 </span>
 
+                <VoiceBadge
+                  command={language === 'ru' ? `чат ${tabNumber}` : `chat ${tabNumber}`}
+                  variant="amber"
+                />
+
                 {/* Rename Session Button */}
                 <button
                   type="button"
@@ -216,6 +222,7 @@ export const AIStudioView: React.FC = () => {
           >
             <Plus className="w-3.5 h-3.5 text-amber-400" />
             <span className="text-[11px] hidden sm:inline">{t.aiStudio.newChat}</span>
+            <VoiceBadge command={t.voice.voiceBadges.newChat} variant="amber" />
           </button>
         </div>
 

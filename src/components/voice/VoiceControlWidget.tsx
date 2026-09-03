@@ -27,6 +27,9 @@ export const VoiceControlWidget: React.FC = () => {
     activeTab,
     setActiveTab,
     toggleTerminal,
+    setHotkeysHelpOpen,
+    loadProjectData,
+    refreshSingleProject,
     startProcessAction,
     stopProcessAction,
     processes,
@@ -337,12 +340,31 @@ export const VoiceControlWidget: React.FC = () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 4. ACTION RUNNER
+    // 4. ACTION RUNNER & QUICK ACTIONS
     // ─────────────────────────────────────────────────────────────
     else if (cmd.type === 'action') {
+      if (cmd.intent === 'open_help') {
+        setHotkeysHelpOpen(true);
+        return;
+      } else if (cmd.intent === 'open_search') {
+        window.dispatchEvent(new CustomEvent('projecthub:open-search'));
+        return;
+      }
+
       if (!selectedProject) return;
 
-      if (cmd.intent === 'run_dev') {
+      if (cmd.intent === 'open_code') {
+        if (window.api) {
+          window.api.openInCode(selectedProject.path);
+        }
+      } else if (cmd.intent === 'open_explorer') {
+        if (window.api) {
+          window.api.openInExplorer(selectedProject.path);
+        }
+      } else if (cmd.intent === 'refresh_project') {
+        loadProjectData(selectedProject);
+        refreshSingleProject(selectedProject.path);
+      } else if (cmd.intent === 'run_dev') {
         await startProcessAction('npm run dev', 'dev');
       } else if (cmd.intent === 'stop_dev') {
         const p = processes.find((proc) => proc.status === 'running' && proc.name === 'dev');

@@ -30,6 +30,7 @@ import { AIStudioView } from '../ai/AIStudioView';
 import { ClaudeCliView } from '../claude/ClaudeCliView';
 import { useWorkspaceTabs, type WorkspaceTabId } from '../../hooks/useWorkspaceTabs';
 import { WorkspaceTabsConfigModal } from './WorkspaceTabsConfigModal';
+import { VoiceBadge } from '../voice/VoiceBadge';
 
 interface ContextMenuState {
   isOpen: boolean;
@@ -100,6 +101,19 @@ export const ProjectWorkspace: React.FC = () => {
     ai: { label: t.tabs.ai, shortLabel: 'Claude Studio', hotkey: 'Ctrl+I', icon: Sparkles },
     'claude-cli': { label: t.tabs.claudeCli, shortLabel: 'Claude CLI', hotkey: 'Ctrl+T', icon: Bot },
     processes: { label: t.tabs.processes, shortLabel: 'Processes', hotkey: 'Ctrl+\\', icon: Cpu }
+  };
+
+  const voiceCommandMap: Record<WorkspaceTabId, string> = {
+    kanban: t.voice.voiceBadges.tasks,
+    milestones: t.voice.voiceBadges.milestones,
+    git: t.voice.voiceBadges.git,
+    files: t.voice.voiceBadges.files,
+    prs: t.voice.voiceBadges.prs,
+    docs: t.voice.voiceBadges.docs,
+    analytics: t.voice.voiceBadges.analytics,
+    ai: t.voice.voiceBadges.studio,
+    'claude-cli': t.voice.voiceBadges.claudeCli,
+    processes: t.voice.voiceBadges.processes
   };
 
   if (!selectedProject) {
@@ -186,6 +200,14 @@ export const ProjectWorkspace: React.FC = () => {
                 <Icon className="w-3.5 h-3.5 shrink-0" />
                 <span className="hidden xl:inline">{def.label}</span>
                 <span className="hidden md:inline xl:hidden">{def.shortLabel}</span>
+
+                {/* Voice Command Marker Badge */}
+                {voiceCommandMap[tabItem.id] && (
+                  <VoiceBadge
+                    command={voiceCommandMap[tabItem.id]}
+                    variant={tabItem.id === 'ai' ? 'purple' : 'indigo'}
+                  />
+                )}
 
                 {/* Subtle drag grip handle on hover */}
                 <span className="opacity-0 group-hover:opacity-40 transition -mr-1">
