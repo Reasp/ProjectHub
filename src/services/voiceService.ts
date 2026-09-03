@@ -68,6 +68,8 @@ class VoiceService {
   private onResultCallbacks: Set<(transcript: string, isFinal: boolean) => void> = new Set();
   private onStateChangeCallbacks: Set<(state: VoiceState) => void> = new Set();
   private onAudioLevelCallbacks: Set<(level: number, isSpeaking: boolean) => void> = new Set();
+  private onErrorCallbacks: Set<(errorMessage: string) => void> = new Set();
+  public lastError: string | null = null;
 
   constructor() {
     this.loadConfig();
@@ -167,6 +169,28 @@ class VoiceService {
     };
   }
 
+  onError(callback: (errorMessage: string) => void) {
+    this.onErrorCallbacks.add(callback);
+    return () => {
+      this.onErrorCallbacks.delete(callback);
+    };
+  }
+
+  private notifyError(message: string) {
+    this.lastError = message;
+    this.onErrorCallbacks.forEach((cb) => {
+      try {
+        cb(message);
+      } catch (e) {
+        console.error('[VoiceService] onError callback error:', e);
+      }
+    });
+  }
+
+  getLastError(): string | null {
+    return this.lastError;
+  }
+
   setLanguage(lang: 'ru' | 'en') {
     this.saveConfig({ language: lang });
   }
@@ -237,12 +261,36 @@ class VoiceService {
     if (this.isListening) return true;
 
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      const msg = this.config.language === 'ru'
+        ? 'Аудио-устройства не поддерживаются в данной среде'
+        : 'Audio recording devices not supported in this environment';
+      this.notifyError(msg);
       this.setState('error');
       return false;
     }
 
     try {
+      this.lastError = null;
       this.resetVAD();
+
+      // Check available input devices beforehand
+      if (navigator.mediaDevices.enumerateDevices) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const hasAudioInput = devices.some((d) => d.kind === 'audioinput');
+          if (!hasAudioInput) {
+            const msg = this.config.language === 'ru'
+              ? 'Микрофон не обнаружен в системе. Если вы подключены удаленно (RDP / AnyDesk / RustDesk), включите перенаправление (проброс) микрофона в настройках подключения клиента.'
+              : 'No microphone found in system. If connected remotely (RDP / AnyDesk / RustDesk), enable microphone redirection in client connection settings.';
+            this.notifyError(msg);
+            this.cleanupAudio();
+            this.setState('error');
+            return false;
+          }
+        } catch {
+          // Enumerate devices may be restricted, continue to getUserMedia
+        }
+      }
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -275,8 +323,26 @@ class VoiceService {
       this.setState('listening_handsfree');
       console.log('[VoiceService] Continuous Hands-Free listening active (Talon Voice style)');
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error('[VoiceService] Failed to start hands-free listening:', err);
+      let errorMsg = err?.message || 'Ошибка запуска микрофона';
+      const errName = err?.name || '';
+
+      if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError' || errorMsg.includes('device not found')) {
+        errorMsg = this.config.language === 'ru'
+          ? 'Микрофон не обнаружен в системе. Если вы подключены удаленно (RDP / AnyDesk / RustDesk), включите проброс микрофона в параметрах подключения.'
+          : 'Microphone not found. If connected via Remote Desktop (RDP / AnyDesk / RustDesk), enable microphone redirection in connection settings.';
+      } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError' || errorMsg.includes('denied')) {
+        errorMsg = this.config.language === 'ru'
+          ? 'Доступ к микрофону заблокирован или запрещен разрешениями системы.'
+          : 'Microphone access is blocked or denied by system permissions.';
+      } else if (errName === 'NotReadableError') {
+        errorMsg = this.config.language === 'ru'
+          ? 'Микрофон занят другим приложением или аудиодрайвер записи недоступен.'
+          : 'Microphone is already in use by another application or audio driver is unavailable.';
+      }
+
+      this.notifyError(errorMsg);
       this.cleanupAudio();
       this.setState('error');
       return false;
@@ -578,13 +644,12 @@ class VoiceService {
     }
   }
 
-  toggleHandsFree(): boolean {
+  async toggleHandsFree(): Promise<boolean> {
     if (this.isListening) {
       this.stopListening();
       return false;
     } else {
-      this.startHandsFreeListening();
-      return true;
+      return await this.startHandsFreeListening();
     }
   }
 

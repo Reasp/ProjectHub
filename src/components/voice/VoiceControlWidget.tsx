@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import {
   Radio,
   Zap,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 import {
   voiceService,
@@ -56,6 +58,7 @@ export const VoiceControlWidget: React.FC = () => {
   const [isSpeakingDetected, setIsSpeakingDetected] = useState<boolean>(false);
   const [transcript, setTranscript] = useState('');
   const [lastFeedback, setLastFeedback] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     voiceService.setLanguage(language === 'ru' ? 'ru' : 'en');
@@ -77,6 +80,10 @@ export const VoiceControlWidget: React.FC = () => {
       }
     });
 
+    const unsubError = voiceService.onError((msg: string) => {
+      setErrorMessage(msg);
+    });
+
     // Global Hotkey: Ctrl + Shift + V for Talon Voice Hands-Free Toggle
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v') {
@@ -90,6 +97,7 @@ export const VoiceControlWidget: React.FC = () => {
       unsubState();
       unsubAudio();
       unsubResult();
+      unsubError();
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [language, selectedProject, projects, sessions, activeSessionId, pendingApprovals]);
@@ -382,6 +390,13 @@ export const VoiceControlWidget: React.FC = () => {
     }, 4500);
   };
 
+  useEffect(() => {
+    if (errorMessage) {
+      const timer = setTimeout(() => setErrorMessage(null), 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMessage]);
+
   const isHandsFreeActive = voiceService.isListening;
   const isSpeech = voiceState === 'speech_detected' || isSpeakingDetected;
   const isTranscribing = voiceState === 'transcribing';
@@ -389,59 +404,90 @@ export const VoiceControlWidget: React.FC = () => {
   // Only display the floating Top HUD when speech, transcribing, transcript, or active feedback occurs
   const shouldShowTopHud = isHandsFreeActive && (isSpeech || isTranscribing || Boolean(transcript) || Boolean(lastFeedback));
 
-  if (!shouldShowTopHud) {
-    return null;
-  }
-
   return (
-    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none select-none animate-in slide-in-from-top-2 duration-150">
-      <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-slate-900/90 border border-indigo-500/50 shadow-2xl backdrop-blur-xl text-xs text-white">
-        {/* Audio Wave Visualizer Bars */}
-        <div className="flex items-center gap-0.5 h-3.5 px-1 bg-slate-950/80 rounded-md border border-slate-800 shrink-0">
-          <span
-            className="w-1 bg-indigo-400 rounded-full transition-all duration-75"
-            style={{ height: `${Math.max(3, audioLevel * 14)}px` }}
-          />
-          <span
-            className="w-1 bg-indigo-400 rounded-full transition-all duration-75"
-            style={{ height: `${Math.max(4, audioLevel * 18)}px` }}
-          />
-          <span
-            className="w-1 bg-indigo-400 rounded-full transition-all duration-75"
-            style={{ height: `${Math.max(3, audioLevel * 12)}px` }}
-          />
+    <>
+      {/* Voice Error Modal / Notification Banner */}
+      {errorMessage && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto select-none max-w-lg w-full px-4 animate-in slide-in-from-top-3 fade-in duration-200">
+          <div className="flex items-start gap-3 p-4 rounded-2xl bg-[#16131d] border-2 border-rose-500/80 shadow-2xl shadow-rose-950/60 backdrop-blur-xl text-xs text-white">
+            <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 shrink-0 mt-0.5">
+              <AlertTriangle className="w-5 h-5 animate-pulse" />
+            </div>
+            <div className="flex-1 space-y-1.5">
+              <div className="font-bold text-rose-300 text-sm flex items-center justify-between">
+                <span>Голосовое управление недоступно</span>
+                <button
+                  type="button"
+                  onClick={() => setErrorMessage(null)}
+                  className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                  title="Закрыть"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-slate-200 leading-relaxed text-[12px]">
+                {errorMessage}
+              </p>
+              <div className="pt-1 text-[11px] text-indigo-300 bg-indigo-950/40 p-2 rounded-lg border border-indigo-500/30">
+                💡 <b>RDP / Удаленный рабочий стол:</b> откройте <code>mstsc.exe</code> → <i>Параметры</i> → <i>Локальные ресурсы</i> → <i>Удаленное аудио</i> → <i>Настройка...</i> → <i>Запись звука: «Записывать с этого компьютера»</i>.
+              </div>
+            </div>
+          </div>
         </div>
+      )}
 
-        {/* Status Text & Transcribed Content */}
-        <div className="flex items-center gap-1.5 max-w-md truncate font-medium">
-          {isTranscribing ? (
-            <>
-              <Zap className="w-3.5 h-3.5 text-amber-400 animate-spin shrink-0" />
-              <span className="text-amber-300">⚡ Whisper инференс...</span>
-            </>
-          ) : isSpeech ? (
-            <>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
-              <span className="text-emerald-300 font-semibold">Слушаю речь...</span>
-            </>
-          ) : lastFeedback ? (
-            <>
-              <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-              <span className="text-indigo-200">{lastFeedback}</span>
-            </>
-          ) : transcript ? (
-            <>
-              <Radio className="w-3.5 h-3.5 text-indigo-400 animate-pulse shrink-0" />
-              <span className="text-slate-200 truncate">«{transcript}»</span>
-            </>
-          ) : (
-            <>
-              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse shrink-0" />
-              <span className="text-slate-300">Talon Voice активен</span>
-            </>
-          )}
+      {/* Top HUD */}
+      {shouldShowTopHud && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none select-none animate-in slide-in-from-top-2 duration-150">
+          <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-slate-900/90 border border-indigo-500/50 shadow-2xl backdrop-blur-xl text-xs text-white">
+            {/* Audio Wave Visualizer Bars */}
+            <div className="flex items-center gap-0.5 h-3.5 px-1 bg-slate-950/80 rounded-md border border-slate-800 shrink-0">
+              <span
+                className="w-1 bg-indigo-400 rounded-full transition-all duration-75"
+                style={{ height: `${Math.max(3, audioLevel * 14)}px` }}
+              />
+              <span
+                className="w-1 bg-indigo-400 rounded-full transition-all duration-75"
+                style={{ height: `${Math.max(4, audioLevel * 18)}px` }}
+              />
+              <span
+                className="w-1 bg-indigo-400 rounded-full transition-all duration-75"
+                style={{ height: `${Math.max(3, audioLevel * 12)}px` }}
+              />
+            </div>
+
+            {/* Status Text & Transcribed Content */}
+            <div className="flex items-center gap-1.5 max-w-md truncate font-medium">
+              {isTranscribing ? (
+                <>
+                  <Zap className="w-3.5 h-3.5 text-amber-400 animate-spin shrink-0" />
+                  <span className="text-amber-300">⚡ Whisper инференс...</span>
+                </>
+              ) : isSpeech ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                  <span className="text-emerald-300 font-semibold">Слушаю речь...</span>
+                </>
+              ) : lastFeedback ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span className="text-indigo-200">{lastFeedback}</span>
+                </>
+              ) : transcript ? (
+                <>
+                  <Radio className="w-3.5 h-3.5 text-indigo-400 animate-pulse shrink-0" />
+                  <span className="text-slate-200 truncate">«{transcript}»</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse shrink-0" />
+                  <span className="text-slate-300">Talon Voice активен</span>
+                </>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </>
   );
 };

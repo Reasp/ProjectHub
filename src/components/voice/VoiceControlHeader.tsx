@@ -6,7 +6,8 @@ import {
   VolumeX,
   Settings2,
   Zap,
-  Activity
+  Activity,
+  AlertTriangle
 } from 'lucide-react';
 import { voiceService, type VoiceState, type VoiceConfig } from '../../services/voiceService';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -40,8 +41,8 @@ export const VoiceControlHeader: React.FC = () => {
   const isSpeech = voiceState === 'speech_detected' || isSpeakingDetected;
   const isTranscribing = voiceState === 'transcribing';
 
-  const toggleHandsFree = () => {
-    voiceService.toggleHandsFree();
+  const toggleHandsFree = async () => {
+    await voiceService.toggleHandsFree();
   };
 
   const toggleTts = () => {
@@ -49,6 +50,8 @@ export const VoiceControlHeader: React.FC = () => {
     voiceService.saveConfig({ ttsEnabled: next });
     setVoiceConfig((prev) => ({ ...prev, ttsEnabled: next }));
   };
+
+  const isError = voiceState === 'error';
 
   return (
     <>
@@ -58,7 +61,9 @@ export const VoiceControlHeader: React.FC = () => {
           type="button"
           onClick={toggleHandsFree}
           className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-semibold transition ${
-            isSpeech
+            isError
+              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/50 shadow-sm'
+              : isSpeech
               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm animate-pulse'
               : isTranscribing
               ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
@@ -66,9 +71,17 @@ export const VoiceControlHeader: React.FC = () => {
               ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 shadow-sm'
               : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
           }`}
-          title={isHandsFreeActive ? t.voice.activeTitle : t.voice.inactiveTitle}
+          title={
+            isError
+              ? 'Микрофон не обнаружен (кликните для проверки RDP / микрофона)'
+              : isHandsFreeActive
+              ? t.voice.activeTitle
+              : t.voice.inactiveTitle
+          }
         >
-          {isTranscribing ? (
+          {isError ? (
+            <AlertTriangle className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+          ) : isTranscribing ? (
             <Zap className="w-3.5 h-3.5 text-amber-400 animate-spin" />
           ) : isHandsFreeActive ? (
             <span className="relative flex items-center justify-center">
