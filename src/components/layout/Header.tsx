@@ -18,6 +18,7 @@ import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { ActionRunnerBar } from '../actions/ActionRunnerBar';
 import { McpServerStatusBadge } from '../mcp/McpServerStatusBadge';
+import { VoiceControlHeader } from '../voice/VoiceControlHeader';
 
 export const Header: React.FC = () => {
   const { language, setLanguage, t } = useTranslation();
@@ -44,6 +45,7 @@ export const Header: React.FC = () => {
         <span className="text-xs text-slate-500">{t.header.selectProjectHint}</span>
         <div className="flex items-center gap-2">
           <McpServerStatusBadge />
+          <VoiceControlHeader />
           {/* Language Switcher */}
           <div className="flex items-center gap-1 bg-[#181c2b] p-1 rounded-lg border border-slate-800 text-xs">
           <Globe className="w-3.5 h-3.5 text-indigo-400 mx-1" />
@@ -212,6 +214,9 @@ export const Header: React.FC = () => {
 
         {/* MCP Remote Control Status Badge */}
         <McpServerStatusBadge />
+
+        {/* Global Voice Control Header Bar */}
+        <VoiceControlHeader />
 
         {/* Language Switcher */}
         <div className="flex items-center gap-0.5 bg-[#181c2b] p-0.5 rounded-lg border border-slate-800 text-xs shrink-0">

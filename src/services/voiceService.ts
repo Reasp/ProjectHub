@@ -65,9 +65,9 @@ class VoiceService {
   private isWebSpeechSupported = false;
 
   // Callbacks
-  private onResultCallback?: (transcript: string, isFinal: boolean) => void;
-  private onStateChangeCallback?: (state: VoiceState) => void;
-  private onAudioLevelCallback?: (level: number, isSpeaking: boolean) => void;
+  private onResultCallbacks: Set<(transcript: string, isFinal: boolean) => void> = new Set();
+  private onStateChangeCallbacks: Set<(state: VoiceState) => void> = new Set();
+  private onAudioLevelCallbacks: Set<(level: number, isSpeaking: boolean) => void> = new Set();
 
   constructor() {
     this.loadConfig();
@@ -121,7 +121,13 @@ class VoiceService {
 
   private setState(state: VoiceState) {
     this.state = state;
-    this.onStateChangeCallback?.(state);
+    this.onStateChangeCallbacks.forEach((cb) => {
+      try {
+        cb(state);
+      } catch (e) {
+        console.error('[VoiceService] onStateChange error:', e);
+      }
+    });
   }
 
   get currentState(): VoiceState {
@@ -138,15 +144,27 @@ class VoiceService {
   }
 
   onResult(callback: (transcript: string, isFinal: boolean) => void) {
-    this.onResultCallback = callback;
+    this.onResultCallbacks.add(callback);
+    return () => {
+      this.onResultCallbacks.delete(callback);
+    };
   }
 
   onStateChange(callback: (state: VoiceState) => void) {
-    this.onStateChangeCallback = callback;
+    this.onStateChangeCallbacks.add(callback);
+    try {
+      callback(this.state);
+    } catch (e) {}
+    return () => {
+      this.onStateChangeCallbacks.delete(callback);
+    };
   }
 
   onAudioLevel(callback: (level: number, isSpeaking: boolean) => void) {
-    this.onAudioLevelCallback = callback;
+    this.onAudioLevelCallbacks.add(callback);
+    return () => {
+      this.onAudioLevelCallbacks.delete(callback);
+    };
   }
 
   setLanguage(lang: 'ru' | 'en') {
@@ -186,9 +204,15 @@ class VoiceService {
           }
 
           if (finalTranscript) {
-            this.onResultCallback?.(finalTranscript.trim(), true);
+            const cleanFinal = finalTranscript.trim();
+            this.onResultCallbacks.forEach((cb) => {
+              try { cb(cleanFinal, true); } catch (e) {}
+            });
           } else if (interimTranscript) {
-            this.onResultCallback?.(interimTranscript.trim(), false);
+            const cleanInterim = interimTranscript.trim();
+            this.onResultCallbacks.forEach((cb) => {
+              try { cb(cleanInterim, false); } catch (e) {}
+            });
           }
         };
 
@@ -292,7 +316,9 @@ class VoiceService {
 
     // Visual audio feedback level [0..1]
     const normalizedLevel = Math.min(1, rms * 15);
-    this.onAudioLevelCallback?.(normalizedLevel, this.isSpeaking);
+    this.onAudioLevelCallbacks.forEach((cb) => {
+      try { cb(normalizedLevel, this.isSpeaking); } catch (e) {}
+    });
 
     // 3. Pre-roll ring buffer (maintains last 250ms of audio before speech)
     if (!this.isSpeaking) {
@@ -383,7 +409,9 @@ class VoiceService {
         if (text && text.trim()) {
           const clean = text.trim();
           console.log(`[VoiceService] ✓ Hands-Free transcript: "${clean}"`);
-          this.onResultCallback?.(clean, true);
+          this.onResultCallbacks.forEach((cb) => {
+            try { cb(clean, true); } catch (e) {}
+          });
         }
       })
       .catch((err) => {
