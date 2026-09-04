@@ -1,10 +1,13 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
+import { SystemVoiceOverlay } from './components/voice/SystemVoiceOverlay';
 import './index.css';
+
+const isVoiceOverlay = window.location.hash.startsWith('#/voice-overlay');
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    {isVoiceOverlay ? <SystemVoiceOverlay /> : <App />}
   </React.StrictMode>
 );

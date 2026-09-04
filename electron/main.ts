@@ -24,6 +24,7 @@ process.env.VITE_PUBLIC = app.isPackaged
   : path.join(__dirname, '../public');
 
 let win: BrowserWindow | null = null;
+let voiceOverlayWin: BrowserWindow | null = null;
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
 // Forward claudeBridge status events to renderer
@@ -92,16 +93,93 @@ function createWindow() {
   }
 }
 
+function createVoiceOverlayWindow(): BrowserWindow {
+  if (voiceOverlayWin && !voiceOverlayWin.isDestroyed()) {
+    return voiceOverlayWin;
+  }
+
+  const distPath = path.join(__dirname, '../dist');
+  const indexPath = path.join(distPath, 'index.html');
+  const preloadCjs = path.join(__dirname, 'preload.cjs');
+  const preloadJs = path.join(__dirname, 'preload.js');
+  const preloadPath = existsSync(preloadCjs) ? preloadCjs : preloadJs;
+
+  voiceOverlayWin = new BrowserWindow({
+    width: 320,
+    height: 54,
+    x: 24,
+    y: 24,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    show: false,
+    focusable: false,
+    hasShadow: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: preloadPath,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
+    }
+  });
+
+  voiceOverlayWin.setAlwaysOnTop(true, 'screen-saver');
+
+  if (VITE_DEV_SERVER_URL) {
+    voiceOverlayWin.loadURL(`${VITE_DEV_SERVER_URL}#/voice-overlay`);
+  } else {
+    voiceOverlayWin.loadFile(indexPath, { hash: '/voice-overlay' });
+  }
+
+  voiceOverlayWin.on('closed', () => {
+    voiceOverlayWin = null;
+  });
+
+  return voiceOverlayWin;
+}
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
     win = null;
+    voiceOverlayWin = null;
   }
 });
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
+  }
+});
+
+// ----------------------------------------------------
+// IPC HANDLERS: SYSTEM VOICE OVERLAY
+// ----------------------------------------------------
+ipcMain.on('voice:overlay-sync', (_event, state) => {
+  if (!voiceOverlayWin || voiceOverlayWin.isDestroyed()) {
+    createVoiceOverlayWindow();
+  }
+
+  if (voiceOverlayWin && !voiceOverlayWin.isDestroyed()) {
+    if (state?.isListening || state?.isPaused) {
+      if (!voiceOverlayWin.isVisible()) {
+        voiceOverlayWin.showInactive();
+      }
+    } else {
+      if (voiceOverlayWin.isVisible()) {
+        voiceOverlayWin.hide();
+      }
+    }
+    voiceOverlayWin.webContents.send('voice:overlay-update', state);
+  }
+});
+
+ipcMain.on('voice:overlay-action', (_event, action) => {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('voice:external-control', action);
   }
 });
 

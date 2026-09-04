@@ -429,6 +429,24 @@ export interface IElectronAPI {
   regenerateMcpToken: () => Promise<string>;
   setMcpAppState: (state: { activeProject?: any; activeTab?: string }) => Promise<boolean>;
   onRemoteAction: (callback: (action: { type: string; payload: any }) => void) => () => void;
+
+  // System Voice Overlay
+  syncVoiceOverlay: (state: {
+    isListening: boolean;
+    isPaused: boolean;
+    state: string;
+    transcript: string;
+    audioLevel: number;
+  }) => void;
+  onVoiceOverlayUpdate: (callback: (state: {
+    isListening: boolean;
+    isPaused: boolean;
+    state: string;
+    transcript: string;
+    audioLevel: number;
+  }) => void) => () => void;
+  sendVoiceOverlayAction: (action: 'toggle-pause' | 'stop') => void;
+  onVoiceExternalControl: (callback: (action: 'toggle-pause' | 'stop') => void) => () => void;
 }
 
 export interface FileTreeNode {

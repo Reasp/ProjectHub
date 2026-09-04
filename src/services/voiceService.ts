@@ -55,6 +55,7 @@ class VoiceService {
   private preRollFilled = false;
 
   private isSpeaking = false;
+  private isPaused = false;
   private speechStartTime = 0;
   private lastSoundTime = 0;
   private currentPhraseChunks: Float32Array[] = [];
@@ -68,6 +69,7 @@ class VoiceService {
   private onResultCallbacks: Set<(transcript: string, isFinal: boolean) => void> = new Set();
   private onStateChangeCallbacks: Set<(state: VoiceState) => void> = new Set();
   private onAudioLevelCallbacks: Set<(level: number, isSpeaking: boolean) => void> = new Set();
+  private onPauseChangeCallbacks: Set<(isPaused: boolean) => void> = new Set();
   private onErrorCallbacks: Set<(errorMessage: string) => void> = new Set();
   public lastError: string | null = null;
 
@@ -167,6 +169,53 @@ class VoiceService {
     return () => {
       this.onAudioLevelCallbacks.delete(callback);
     };
+  }
+
+  onPauseChange(callback: (isPaused: boolean) => void) {
+    this.onPauseChangeCallbacks.add(callback);
+    try {
+      callback(this.isPaused);
+    } catch (e) {}
+    return () => {
+      this.onPauseChangeCallbacks.delete(callback);
+    };
+  }
+
+  pause() {
+    if (!this.isPaused) {
+      this.isPaused = true;
+      this.resetVAD();
+      this.notifyPauseChange();
+    }
+  }
+
+  resume() {
+    if (this.isPaused) {
+      this.isPaused = false;
+      this.resetVAD();
+      this.notifyPauseChange();
+    }
+  }
+
+  togglePause(): boolean {
+    if (this.isPaused) {
+      this.resume();
+    } else {
+      this.pause();
+    }
+    return this.isPaused;
+  }
+
+  private notifyPauseChange() {
+    this.onPauseChangeCallbacks.forEach((cb) => {
+      try {
+        cb(this.isPaused);
+      } catch (e) {}
+    });
+  }
+
+  get isPausedActive(): boolean {
+    return this.isPaused;
   }
 
   onError(callback: (errorMessage: string) => void) {
@@ -364,6 +413,13 @@ class VoiceService {
    */
   private processAudioChunkVAD(chunk: Float32Array) {
     if (chunk.length === 0) return;
+
+    if (this.isPaused) {
+      this.onAudioLevelCallbacks.forEach((cb) => {
+        try { cb(0, false); } catch (e) {}
+      });
+      return;
+    }
 
     // 1. Calculate RMS energy
     let sumSquares = 0;
@@ -620,6 +676,8 @@ class VoiceService {
   }
 
   stopListening() {
+    this.isPaused = false;
+    this.notifyPauseChange();
     this.cleanupAudio();
     if (this.recognition) {
       try {

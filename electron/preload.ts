@@ -292,6 +292,31 @@ const api: IElectronAPI = {
     return () => {
       ipcRenderer.removeListener('mcp:remoteAction', handler);
     };
+  },
+
+  // System Voice Overlay
+  syncVoiceOverlay: (state: {
+    isListening: boolean;
+    isPaused: boolean;
+    state: string;
+    transcript: string;
+    audioLevel: number;
+  }) => ipcRenderer.send('voice:overlay-sync', state),
+  onVoiceOverlayUpdate: (callback: (state: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('voice:overlay-update', handler);
+    return () => {
+      ipcRenderer.removeListener('voice:overlay-update', handler);
+    };
+  },
+  sendVoiceOverlayAction: (action: 'toggle-pause' | 'stop') =>
+    ipcRenderer.send('voice:overlay-action', action),
+  onVoiceExternalControl: (callback: (action: 'toggle-pause' | 'stop') => void) => {
+    const handler = (_event: any, action: any) => callback(action);
+    ipcRenderer.on('voice:external-control', handler);
+    return () => {
+      ipcRenderer.removeListener('voice:external-control', handler);
+    };
   }
 };
 

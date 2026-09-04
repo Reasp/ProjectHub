@@ -35,6 +35,7 @@ export const VoiceControlWidget: React.FC = () => {
     startProcessAction,
     stopProcessAction,
     processes,
+    tasks,
     language
   } = useProjectStore();
 
@@ -63,17 +64,36 @@ export const VoiceControlWidget: React.FC = () => {
   useEffect(() => {
     voiceService.setLanguage(language === 'ru' ? 'ru' : 'en');
 
+    const syncToOverlay = (partial?: Partial<{ state: string; transcript: string; audioLevel: number }>) => {
+      if (window.api?.syncVoiceOverlay) {
+        window.api.syncVoiceOverlay({
+          isListening: voiceService.isListening,
+          isPaused: voiceService.isPausedActive,
+          state: partial?.state ?? voiceService.currentState,
+          transcript: partial?.transcript ?? transcript,
+          audioLevel: partial?.audioLevel ?? audioLevel
+        });
+      }
+    };
+
     const unsubState = voiceService.onStateChange((state: VoiceState) => {
       setVoiceState(state);
+      syncToOverlay({ state });
+    });
+
+    const unsubPause = voiceService.onPauseChange(() => {
+      syncToOverlay();
     });
 
     const unsubAudio = voiceService.onAudioLevel((level: number, speaking: boolean) => {
       setAudioLevel(level);
       setIsSpeakingDetected(speaking);
+      syncToOverlay({ audioLevel: level });
     });
 
     const unsubResult = voiceService.onResult((text: string, isFinal: boolean) => {
       setTranscript(text);
+      syncToOverlay({ transcript: text });
 
       if (isFinal && text.trim()) {
         executeCommand(text.trim());
@@ -82,6 +102,15 @@ export const VoiceControlWidget: React.FC = () => {
 
     const unsubError = voiceService.onError((msg: string) => {
       setErrorMessage(msg);
+      syncToOverlay();
+    });
+
+    const unsubExternal = window.api?.onVoiceExternalControl?.((action: 'toggle-pause' | 'stop') => {
+      if (action === 'stop') {
+        voiceService.stopListening();
+      } else if (action === 'toggle-pause') {
+        voiceService.togglePause();
+      }
     });
 
     // Global Hotkey: Ctrl + Shift + V for Talon Voice Hands-Free Toggle
@@ -93,23 +122,25 @@ export const VoiceControlWidget: React.FC = () => {
     };
 
     window.addEventListener('keydown', handleKeyDown);
+    syncToOverlay();
+
     return () => {
       unsubState();
+      unsubPause();
       unsubAudio();
       unsubResult();
       unsubError();
+      unsubExternal?.();
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [language, selectedProject, projects, sessions, activeSessionId, pendingApprovals]);
+  }, [language, selectedProject, projects, sessions, activeSessionId, pendingApprovals, transcript, audioLevel]);
 
   const executeCommand = async (rawText: string) => {
     const cmd = parseVoiceCommand(rawText);
     setLastFeedback(cmd.feedbackText);
 
-    const config = voiceService.getConfig();
-    if (config.ttsEnabled) {
-      voiceService.speak(cmd.feedbackText, language === 'ru' ? 'ru' : 'en');
-    }
+    // No voiceService.speak(...) here — all routine action feedback is purely visual
+    // (TTS is reserved strictly for reading tasks or documents on explicit demand)
 
     // ─────────────────────────────────────────────────────────────
     // 1. AI CONTROL (Studio Tabs, Sessions, Prompts, Approvals)
@@ -123,7 +154,6 @@ export const VoiceControlWidget: React.FC = () => {
         createSession(projectPath);
         const feedback = language === 'ru' ? 'Создан новый чат' : 'Created new chat session';
         setLastFeedback(feedback);
-        if (config.ttsEnabled) voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
         return;
       }
 
@@ -133,7 +163,6 @@ export const VoiceControlWidget: React.FC = () => {
         closeCurrentSession(projectPath);
         const feedback = language === 'ru' ? 'Чат закрыт' : 'Chat session closed';
         setLastFeedback(feedback);
-        if (config.ttsEnabled) voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
         return;
       }
 
@@ -170,7 +199,6 @@ export const VoiceControlWidget: React.FC = () => {
             ? `Открыт ${projectSessions[idx].title || `чат ${idx + 1}`}`
             : `Switched to ${projectSessions[idx].title || `chat ${idx + 1}`}`;
           setLastFeedback(feedback);
-          if (config.ttsEnabled) voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
         }
         return;
       }
@@ -190,7 +218,6 @@ export const VoiceControlWidget: React.FC = () => {
             ? `Открыт чат ${matched.title}`
             : `Switched to ${matched.title}`;
           setLastFeedback(feedback);
-          if (config.ttsEnabled) voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
         }
         return;
       }
@@ -243,9 +270,6 @@ export const VoiceControlWidget: React.FC = () => {
         ? (curName ? `Проект «${curName}» закрыт` : 'Проект закрыт')
         : (curName ? `Closed ${curName}` : 'Project closed');
       setLastFeedback(feedback);
-      if (config.ttsEnabled) {
-        voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
-      }
       return;
     }
 
@@ -280,9 +304,6 @@ export const VoiceControlWidget: React.FC = () => {
           ? `Открыт проект ${activeProjects[idx].name}`
           : `Switched to ${activeProjects[idx].name}`;
         setLastFeedback(feedback);
-        if (config.ttsEnabled) {
-          voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
-        }
       }
       return;
     }
@@ -328,9 +349,6 @@ export const VoiceControlWidget: React.FC = () => {
             ? `Открыт проект ${matched.name}`
             : `Switched to ${matched.name}`;
           setLastFeedback(feedback);
-          if (config.ttsEnabled) {
-            voiceService.speak(feedback, language === 'ru' ? 'ru' : 'en');
-          }
         }
       }
       return;
@@ -351,6 +369,51 @@ export const VoiceControlWidget: React.FC = () => {
     // 4. ACTION RUNNER & QUICK ACTIONS
     // ─────────────────────────────────────────────────────────────
     else if (cmd.type === 'action') {
+      if (cmd.intent === 'toggle_pause') {
+        voiceService.togglePause();
+        return;
+      }
+
+      if (cmd.intent === 'stop_reading') {
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+        }
+        return;
+      }
+
+      if (cmd.intent === 'read_tasks' && selectedProject) {
+        try {
+          const projectTasks = tasks.length > 0 ? tasks : (await window.api?.getTasks(selectedProject.path)) || [];
+          const activeTasks = projectTasks.filter((t) => t.status === 'In Progress' || t.status === 'To Do');
+          if (activeTasks.length === 0) {
+            const noTasksMsg = language === 'ru'
+              ? 'В текущем проекте нет активных задач'
+              : 'No active tasks in current project';
+            setLastFeedback(noTasksMsg);
+            voiceService.speak(noTasksMsg, language === 'ru' ? 'ru' : 'en');
+          } else {
+            const listText = activeTasks.slice(0, 5).map((t, i) => `${i + 1}. ${t.title}`).join('. ');
+            const summary = language === 'ru'
+              ? `Открытых задач ${activeTasks.length}: ${listText}`
+              : `Active tasks (${activeTasks.length}): ${listText}`;
+            setLastFeedback(summary);
+            voiceService.speak(summary, language === 'ru' ? 'ru' : 'en');
+          }
+        } catch (e) {
+          console.error('[Voice] Failed to read tasks:', e);
+        }
+        return;
+      }
+
+      if (cmd.intent === 'read_doc' && selectedProject) {
+        const docMsg = language === 'ru'
+          ? `Раздел документации проекта ${selectedProject.name}`
+          : `Documentation for ${selectedProject.name}`;
+        setLastFeedback(docMsg);
+        voiceService.speak(docMsg, language === 'ru' ? 'ru' : 'en');
+        return;
+      }
+
       if (cmd.intent === 'open_help') {
         setHotkeysHelpOpen(true);
         return;

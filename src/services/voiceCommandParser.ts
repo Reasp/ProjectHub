@@ -534,6 +534,57 @@ export function parseVoiceCommand(text: string): ParsedVoiceCommand {
     };
   }
 
+  // 5.1 READING & AUDIO ASSISTANT (TTS ONLY)
+  if (
+    /^(прочитай задачи|прочитай таски|озвучь задачи|какие задачи|список задач|read tasks)$/i.test(normalized) ||
+    normalized.includes('прочитай задачи') ||
+    normalized.includes('озвучь задачи') ||
+    normalized.includes('какие задачи')
+  ) {
+    return {
+      type: 'action',
+      intent: 'read_tasks',
+      feedbackText: 'Читаю список задач'
+    };
+  }
+
+  if (
+    /^(прочитай документ|прочитай доку|озвучь документ|прочитай доки|read doc|read document)$/i.test(normalized) ||
+    normalized.includes('прочитай документ') ||
+    normalized.includes('прочитай доку')
+  ) {
+    return {
+      type: 'action',
+      intent: 'read_doc',
+      feedbackText: 'Читаю документ'
+    };
+  }
+
+  if (
+    /^(хватит|замолчи|останови чтение|стоп чтение|тишина|stop reading|mute)$/i.test(normalized) ||
+    normalized === 'хватит' ||
+    normalized === 'замолчи' ||
+    normalized === 'стоп чтение'
+  ) {
+    return {
+      type: 'action',
+      intent: 'stop_reading',
+      feedbackText: 'Чтение остановлено'
+    };
+  }
+
+  if (
+    /^(пауза|на паузу|приостанови|возобнови|продолжи|pause|resume)$/i.test(normalized) ||
+    normalized === 'пауза' ||
+    normalized === 'возобнови'
+  ) {
+    return {
+      type: 'action',
+      intent: 'toggle_pause',
+      feedbackText: 'Пауза голосового ввода'
+    };
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // 6. ACTION RUNNER INTENTS
   // ─────────────────────────────────────────────────────────────────
