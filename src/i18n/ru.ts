@@ -70,7 +70,12 @@ export const ru: TranslationDictionary = {
     setVoiceAlias: 'Задать голосовое имя (псевдоним)',
     changeVoiceAlias: 'Изменить голосовое имя',
     promptVoiceAlias: 'Введите короткое голосовое имя для проекта (например: «хаб», «бот», «бэкенд»):',
-    voiceAliasHint: 'Позволяет быстро переключаться голосом: «Проект {alias}»'
+    voiceAliasHint: 'Позволяет быстро переключаться голосом: «Проект {alias}»',
+    toggleSidebar: 'Скрыть/показать меню проектов (Ctrl+[)',
+    hideSidebar: 'Скрыть меню проектов',
+    showSidebar: 'Показать меню проектов',
+    voiceHint: '«проект 1», «следующий», «скрой меню»',
+    voiceHintDetails: 'Команды: «проект 1..N», «проект [имя]», «следующий/предыдущий проект», «закрой проект», «скрой меню».'
   },
   projectTabs: {
     closeTab: 'Закрыть проект',
@@ -628,6 +633,7 @@ export const ru: TranslationDictionary = {
     templateWizard: 'Создать проект из шаблона',
     refreshData: 'Обновить текущий вид',
     toggleTerminal: 'Встроенный мульти-терминал',
+    toggleSidebar: 'Скрыть/показать меню проектов',
     openHelp: 'Справка по горячим клавишам',
     closeModal: 'Закрыть активное модальное окно'
   },

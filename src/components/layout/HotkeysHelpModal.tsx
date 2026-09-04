@@ -17,6 +17,7 @@ export const HotkeysHelpModal: React.FC<Props> = ({ isOpen, onClose }) => {
       title: t.hotkeys.navigation,
       icon: Navigation,
       items: [
+        { keys: ['Ctrl', '['], description: t.hotkeys.toggleSidebar },
         { keys: ['Ctrl', 'B'], description: t.hotkeys.tasksTab },
         { keys: ['Ctrl', 'M'], description: t.hotkeys.milestonesTab },
         { keys: ['Ctrl', 'G'], description: t.hotkeys.gitTab },

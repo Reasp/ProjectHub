@@ -534,6 +534,40 @@ export function parseVoiceCommand(text: string): ParsedVoiceCommand {
     };
   }
 
+  // 5.0.1 SIDEBAR / PROJECT MENU TOGGLE & CONTROL
+  if (
+    /^(меню|сайдбар|скрой меню|скрыть меню|закрой меню|закрыть меню|покажи меню|показать меню|открой меню|открыть меню|панель проектов|меню проектов|toggle sidebar|hide sidebar|show sidebar|sidebar)$/i.test(normalized) ||
+    normalized.includes('скрой меню') ||
+    normalized.includes('покажи меню') ||
+    normalized.includes('скрой сайдбар') ||
+    normalized.includes('покажи сайдбар') ||
+    normalized.includes('панель проектов') ||
+    normalized.includes('меню проектов') ||
+    normalized === 'меню' ||
+    normalized === 'сайдбар' ||
+    normalized === 'sidebar'
+  ) {
+    if (normalized.includes('скрой') || normalized.includes('закрой') || normalized.includes('hide') || normalized.includes('close')) {
+      return {
+        type: 'action',
+        intent: 'hide_sidebar',
+        feedbackText: 'Скрываю меню проектов'
+      };
+    }
+    if (normalized.includes('покажи') || normalized.includes('открой') || normalized.includes('show') || normalized.includes('open')) {
+      return {
+        type: 'action',
+        intent: 'show_sidebar',
+        feedbackText: 'Показываю меню проектов'
+      };
+    }
+    return {
+      type: 'action',
+      intent: 'toggle_sidebar',
+      feedbackText: 'Переключаю меню проектов'
+    };
+  }
+
   // 5.1 READING & AUDIO ASSISTANT (TTS ONLY)
   if (
     /^(прочитай задачи|прочитай таски|озвучь задачи|какие задачи|список задач|read tasks)$/i.test(normalized) ||

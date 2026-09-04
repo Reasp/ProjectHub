@@ -20,6 +20,8 @@ export const App: React.FC = () => {
     activeTab,
     setActiveTab,
     toggleTerminal,
+    isSidebarOpen,
+    toggleSidebar,
     isHotkeysHelpOpen,
     setHotkeysHelpOpen,
     loadProjectData,
@@ -184,6 +186,11 @@ export const App: React.FC = () => {
             refreshSingleProject(selectedProject.path);
           }
         }
+        // Ctrl + [ or Ctrl + Shift + B: Toggle Project Sidebar Menu
+        else if (key === '[' || (key === 'b' && e.shiftKey)) {
+          e.preventDefault();
+          toggleSidebar();
+        }
       }
     };
 
@@ -195,6 +202,7 @@ export const App: React.FC = () => {
     selectedProject,
     setActiveTab,
     toggleTerminal,
+    toggleSidebar,
     setHotkeysHelpOpen,
     loadProjectData,
     refreshSingleProject
@@ -203,7 +211,7 @@ export const App: React.FC = () => {
   return (
     <div className="flex h-screen w-screen bg-[#0f1117] text-slate-100 overflow-hidden font-sans">
       {/* Left Sidebar */}
-      <Sidebar />
+      {isSidebarOpen && <Sidebar />}
 
       {/* Main App Layout */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">

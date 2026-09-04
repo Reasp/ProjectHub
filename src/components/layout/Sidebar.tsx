@@ -20,12 +20,14 @@ import {
   MoreVertical,
   Zap,
   Power,
-  Mic
+  Mic,
+  PanelLeftClose
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { ScanSettingsModal } from '../projects/ScanSettingsModal';
 import { NewProjectWizardModal } from '../projects/NewProjectWizardModal';
+import { VoiceBadge } from '../voice/VoiceBadge';
 
 export const Sidebar: React.FC = () => {
   const { t } = useTranslation();
@@ -36,6 +38,7 @@ export const Sidebar: React.FC = () => {
     fetchProjects,
     isLoading,
     isScanning,
+    toggleSidebar,
     searchQuery,
     setSearchQuery,
     filterOnlyFavorites,
@@ -128,6 +131,15 @@ export const Sidebar: React.FC = () => {
                 className={`w-4 h-4 ${isLoading || isScanning ? 'animate-spin text-indigo-400' : ''}`}
               />
             </button>
+
+            {/* Collapse Sidebar Button */}
+            <button
+              onClick={toggleSidebar}
+              title={t.sidebar.hideSidebar}
+              className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-indigo-400 transition"
+            >
+              <PanelLeftClose className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
@@ -190,6 +202,24 @@ export const Sidebar: React.FC = () => {
           </div>
         </div>
 
+        {/* Voice Control Hints Banner */}
+        <div className="px-3 py-1.5 border-b border-slate-800/40 bg-[#141827]/40">
+          <div
+            className="flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg bg-indigo-950/40 border border-indigo-500/20 text-[11px] text-indigo-200"
+            title={t.sidebar.voiceHintDetails}
+          >
+            <div className="flex items-center gap-1.5 min-w-0 truncate">
+              <Mic className="w-3 h-3 text-indigo-400 shrink-0" />
+              <span className="truncate text-[10px] text-slate-300 font-medium">
+                {t.sidebar.voiceHint}
+              </span>
+            </div>
+            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-900 text-indigo-300 shrink-0 border border-slate-700/60" title="Скрыть/показать меню">
+              Ctrl+[
+            </span>
+          </div>
+        </div>
+
         {/* Projects List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
           {filteredProjects.length === 0 && !isLoading && (
@@ -204,7 +234,7 @@ export const Sidebar: React.FC = () => {
             </div>
           )}
 
-          {filteredProjects.map((project) => {
+          {filteredProjects.map((project, index) => {
             const isSelected = selectedProject?.path === project.path;
             const isSessionActive = activeProjectPaths.includes(project.path);
             const todoCount = project.taskCounts?.todo || 0;
@@ -227,7 +257,19 @@ export const Sidebar: React.FC = () => {
               >
                 {/* Top Row: Name, Star, and Actions */}
                 <div className="flex items-center justify-between gap-1.5">
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                    {/* Project Index Number */}
+                    <span
+                      className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-800/90 text-slate-400 group-hover:text-slate-200'
+                      }`}
+                      title={`Команда голоса: «проект ${index + 1}»`}
+                    >
+                      #{index + 1}
+                    </span>
+
                     <div className="relative shrink-0">
                       <FolderGit2
                         className={`w-4 h-4 ${
@@ -249,13 +291,22 @@ export const Sidebar: React.FC = () => {
                     >
                       {project.name}
                     </span>
-                    {project.voiceAlias && (
+
+                    {/* Voice Badge (Alias or project number command) */}
+                    {project.voiceAlias ? (
                       <span
-                        className="text-[9px] font-mono px-1 py-0.2 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-700/50 shrink-0"
+                        className="text-[9px] font-mono px-1 py-0.2 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-700/50 shrink-0 flex items-center gap-1"
                         title={`${t.sidebar.voiceAlias}: «${project.voiceAlias}»`}
                       >
+                        <Mic className="w-2.5 h-2.5 text-indigo-400" />
                         «{project.voiceAlias}»
                       </span>
+                    ) : (
+                      <VoiceBadge
+                        command={`проект ${index + 1}`}
+                        variant="indigo"
+                        className="shrink-0 text-[9px]"
+                      />
                     )}
                   </div>
 

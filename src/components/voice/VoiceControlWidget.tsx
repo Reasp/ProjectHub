@@ -29,6 +29,9 @@ export const VoiceControlWidget: React.FC = () => {
     activeTab,
     setActiveTab,
     toggleTerminal,
+    isSidebarOpen,
+    toggleSidebar,
+    setSidebarOpen,
     setHotkeysHelpOpen,
     loadProjectData,
     refreshSingleProject,
@@ -436,6 +439,15 @@ export const VoiceControlWidget: React.FC = () => {
         return;
       } else if (cmd.intent === 'open_search') {
         window.dispatchEvent(new CustomEvent('projecthub:open-search'));
+        return;
+      } else if (cmd.intent === 'toggle_sidebar') {
+        toggleSidebar();
+        return;
+      } else if (cmd.intent === 'hide_sidebar') {
+        setSidebarOpen(false);
+        return;
+      } else if (cmd.intent === 'show_sidebar') {
+        setSidebarOpen(true);
         return;
       }
 

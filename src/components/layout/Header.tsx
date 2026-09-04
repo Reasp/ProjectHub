@@ -12,7 +12,10 @@ import {
   RefreshCw,
   HelpCircle,
   Bot,
-  Globe
+  Globe,
+  PanelLeft,
+  PanelLeftOpen,
+  PanelLeftClose
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -26,6 +29,8 @@ export const Header: React.FC = () => {
   const { language, setLanguage, t } = useTranslation();
   const {
     selectedProject,
+    isSidebarOpen,
+    toggleSidebar,
     isTerminalOpen,
     setTerminalOpen,
     toggleTerminal,
@@ -43,8 +48,24 @@ export const Header: React.FC = () => {
 
   if (!selectedProject) {
     return (
-      <header className="h-14 border-b border-slate-800/80 px-6 flex items-center justify-between bg-[#12151f]/80">
-        <span className="text-xs text-slate-500">{t.header.selectProjectHint}</span>
+      <header className="h-14 border-b border-slate-800/80 px-4 flex items-center justify-between bg-[#12151f]/80">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className={`p-1.5 rounded-lg border transition flex items-center gap-1.5 ${
+              !isSidebarOpen
+                ? 'bg-indigo-600/25 border-indigo-500/50 text-indigo-300 hover:bg-indigo-600/35 hover:text-white shadow-sm'
+                : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+            title={isSidebarOpen ? t.sidebar.hideSidebar : t.sidebar.showSidebar}
+          >
+            {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4 text-indigo-400" />}
+            {!isSidebarOpen && <span className="text-xs font-semibold pr-1">{t.sidebar.title || 'Проекты'}</span>}
+            <VoiceBadge command={isSidebarOpen ? 'скрой меню' : 'покажи меню'} />
+          </button>
+          <span className="text-xs text-slate-500">{t.header.selectProjectHint}</span>
+        </div>
         <div className="flex items-center gap-2">
           <McpServerStatusBadge />
           <VoiceControlHeader />
@@ -100,9 +121,24 @@ export const Header: React.FC = () => {
   };
 
   return (
-    <header className="h-14 border-b border-slate-800/80 px-6 flex items-center justify-between bg-[#12151f]/80 backdrop-blur-md shrink-0 flex-nowrap overflow-hidden">
-      {/* Left: Project title & Git info */}
-      <div className="flex items-center gap-4 min-w-0 flex-1 mr-3 overflow-hidden">
+    <header className="h-14 border-b border-slate-800/80 px-4 flex items-center justify-between bg-[#12151f]/80 backdrop-blur-md shrink-0 flex-nowrap overflow-hidden">
+      {/* Left: Sidebar toggle, Project title & Git info */}
+      <div className="flex items-center gap-3 min-w-0 flex-1 mr-3 overflow-hidden">
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          className={`p-1.5 rounded-lg border transition flex items-center gap-1.5 shrink-0 ${
+            !isSidebarOpen
+              ? 'bg-indigo-600/25 border-indigo-500/50 text-indigo-300 hover:bg-indigo-600/35 hover:text-white shadow-sm'
+              : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+          }`}
+          title={isSidebarOpen ? t.sidebar.hideSidebar : t.sidebar.showSidebar}
+        >
+          {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4 text-indigo-400" />}
+          {!isSidebarOpen && <span className="text-xs font-semibold pr-1 hidden md:inline">{t.sidebar.title || 'Проекты'}</span>}
+          <VoiceBadge command={isSidebarOpen ? 'скрой меню' : 'покажи меню'} />
+        </button>
+
         <div className="min-w-0 truncate">
           <div className="flex items-center gap-2">
             <h2 className="text-sm font-semibold text-white tracking-tight flex items-center gap-2 truncate" title={selectedProject.name}>

@@ -71,6 +71,11 @@ export interface TranslationDictionary {
     changeVoiceAlias: string;
     promptVoiceAlias: string;
     voiceAliasHint: string;
+    toggleSidebar: string;
+    hideSidebar: string;
+    showSidebar: string;
+    voiceHint: string;
+    voiceHintDetails: string;
   };
   projectTabs: {
     closeTab: string;
@@ -628,6 +633,7 @@ export interface TranslationDictionary {
     templateWizard: string;
     refreshData: string;
     toggleTerminal: string;
+    toggleSidebar: string;
     openHelp: string;
     closeModal: string;
   };

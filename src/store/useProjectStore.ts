@@ -63,6 +63,9 @@ interface ProjectState {
   setProjectVoiceAlias: (projectPath: string, alias: string) => Promise<boolean>;
 
   scanRoots: string[];
+  isSidebarOpen: boolean;
+  setSidebarOpen: (isSidebarOpen: boolean) => void;
+  toggleSidebar: () => void;
   isTerminalOpen: boolean;
   terminalLogs: string[];
   processes: ManagedProcess[];
@@ -199,6 +202,18 @@ let ptyExitCleanup: (() => void) | null = null;
 let agentStatusCleanup: (() => void) | null = null;
 
 const ACTIVE_PROJECTS_STORAGE_KEY = 'projecthub_active_projects';
+const SIDEBAR_STORAGE_KEY = 'projecthub_sidebar_open';
+
+const loadInitialSidebarState = (): boolean => {
+  if (typeof window === 'undefined') return true;
+  try {
+    const raw = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (raw !== null) {
+      return raw === 'true';
+    }
+  } catch {}
+  return true;
+};
 
 const loadInitialActiveProjects = (): string[] => {
   if (typeof window === 'undefined') return [];
@@ -246,6 +261,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   filterOnlyActive: false,
 
   scanRoots: [],
+  isSidebarOpen: loadInitialSidebarState(),
   isTerminalOpen: false,
   terminalLogs: ['[ProjectHub] Система инициализирована.', '[ProjectHub] Реестр проектов загружен.'],
   processes: [],
@@ -496,6 +512,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setFilterOnlyFavorites: (filterOnlyFavorites) => set({ filterOnlyFavorites }),
   setTerminalOpen: (isTerminalOpen) => set({ isTerminalOpen }),
   toggleTerminal: () => set((s) => ({ isTerminalOpen: !s.isTerminalOpen })),
+  setSidebarOpen: (isSidebarOpen: boolean) => {
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem(SIDEBAR_STORAGE_KEY, String(isSidebarOpen)); } catch {}
+    }
+    set({ isSidebarOpen });
+  },
+  toggleSidebar: () => {
+    const next = !get().isSidebarOpen;
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next)); } catch {}
+    }
+    set({ isSidebarOpen: next });
+  },
   setHotkeysHelpOpen: (isHotkeysHelpOpen) => set({ isHotkeysHelpOpen }),
   setActiveProcessId: (activeProcessId) => set({ activeProcessId }),
   setTerminalHeight: (terminalHeight) => set({ terminalHeight }),

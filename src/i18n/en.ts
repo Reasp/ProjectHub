@@ -70,7 +70,12 @@ export const en: TranslationDictionary = {
     setVoiceAlias: 'Set Voice Alias',
     changeVoiceAlias: 'Change Voice Alias',
     promptVoiceAlias: 'Enter short voice alias for this project (e.g. "hub", "bot", "backend"):',
-    voiceAliasHint: 'Enables quick voice switching: "Project {alias}"'
+    voiceAliasHint: 'Enables quick voice switching: "Project {alias}"',
+    toggleSidebar: 'Toggle project menu (Ctrl+[)',
+    hideSidebar: 'Hide project menu',
+    showSidebar: 'Show project menu',
+    voiceHint: '"project 1", "next project", "hide menu"',
+    voiceHintDetails: 'Commands: "project 1..N", "project [name]", "next/previous project", "close project", "hide menu".'
   },
   projectTabs: {
     closeTab: 'Close project',
@@ -628,6 +633,7 @@ export const en: TranslationDictionary = {
     templateWizard: 'New Project from Template',
     refreshData: 'Refresh Current View',
     toggleTerminal: 'Toggle Embedded Terminal',
+    toggleSidebar: 'Toggle project menu',
     openHelp: 'Show Keyboard Shortcuts Help',
     closeModal: 'Close Active Modal / Overlay'
   },
