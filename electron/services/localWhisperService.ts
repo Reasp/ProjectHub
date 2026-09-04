@@ -239,6 +239,21 @@ class LocalWhisperService {
     // 3. Not ready yet
     throw new Error('Local Whisper pipeline is currently initializing in background');
   }
+
+  async dispose(): Promise<void> {
+    this.flushPendingWithError(new Error('Whisper service disposed'));
+    if (this.worker) {
+      try {
+        await this.worker.terminate();
+      } catch (err) {
+        console.warn('[LocalWhisper] Error terminating worker thread:', err);
+      }
+      this.worker = null;
+    }
+    this.fallbackPipeline = null;
+    this.status = 'unloaded';
+    console.log('[LocalWhisper] Service disposed and worker terminated');
+  }
 }
 
 export const localWhisperService = new LocalWhisperService();

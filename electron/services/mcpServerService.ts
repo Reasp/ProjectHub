@@ -113,9 +113,22 @@ class McpServerService {
     }
     this.sseSessions.clear();
 
+    const srv = this.server;
+    this.server = null;
+
+    if (typeof srv.closeAllConnections === 'function') {
+      try {
+        srv.closeAllConnections();
+      } catch {}
+    }
+
     return new Promise((resolve) => {
-      this.server?.close(() => {
-        this.server = null;
+      const timer = setTimeout(() => {
+        resolve();
+      }, 500);
+
+      srv.close(() => {
+        clearTimeout(timer);
         console.log('[MCPServer] Remote MCP Server stopped');
         resolve();
       });

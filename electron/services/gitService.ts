@@ -9,12 +9,22 @@ import type { GitCommit, GitFileStatus, GitRepoDetails } from '../../src/types/e
 class GitService {
   private watchers = new Map<string, FSWatcher>();
 
+  private debounceTimers = new Map<string, NodeJS.Timeout>();
+
   private broadcastGitChanged(projectPath: string) {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) {
-        win.webContents.send('git:changed', { projectPath });
+    const existing = this.debounceTimers.get(projectPath);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+      this.debounceTimers.delete(projectPath);
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send('git:changed', { projectPath });
+        }
       }
-    }
+    }, 400);
+
+    this.debounceTimers.set(projectPath, timer);
   }
 
   watchProjectGit(projectPath: string) {
@@ -24,26 +34,37 @@ class GitService {
     const gitDir = path.join(normalized, '.git');
     if (!existsSync(gitDir)) return;
 
+    // Watch key git refs and files, plus top-level project changes (native OS events, zero polling)
     const watchTargets = [
-      normalized,
       path.join(gitDir, 'HEAD'),
       path.join(gitDir, 'index'),
-      path.join(gitDir, 'refs')
+      path.join(gitDir, 'refs'),
+      normalized
     ];
 
     const watcher = chokidar.watch(watchTargets, {
       ignoreInitial: true,
-      ignored: [
-        '**/node_modules/**',
-        '**/.git/**',
-        '**/dist/**',
-        '**/dist-electron/**',
-        '**/release/**',
-        '**/.rag-index/**',
-        '**/.venv/**',
-        '**/.tmp/**'
-      ],
-      awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 }
+      // Efficient path filter for Windows avoiding recursive scanning into node_modules & builds
+      ignored: (filePath: string) => {
+        const norm = filePath.replace(/\\/g, '/');
+        // Allow .git/HEAD, .git/index, .git/refs
+        if (norm.includes('/.git/')) {
+          return !norm.includes('/.git/HEAD') && !norm.includes('/.git/index') && !norm.includes('/.git/refs');
+        }
+        return (
+          norm.includes('/node_modules') ||
+          norm.includes('/dist') ||
+          norm.includes('/dist-electron') ||
+          norm.includes('/release') ||
+          norm.includes('/.rag-index') ||
+          norm.includes('/.venv') ||
+          norm.includes('/.tmp') ||
+          norm.includes('/.cache')
+        );
+      },
+      // Native OS events, no continuous pollInterval
+      persistent: true,
+      depth: 3
     });
 
     watcher.on('all', () => {
@@ -51,6 +72,33 @@ class GitService {
     });
 
     this.watchers.set(normalized, watcher);
+  }
+
+  unwatchProjectGit(projectPath: string) {
+    const normalized = path.normalize(projectPath);
+    const watcher = this.watchers.get(normalized);
+    if (watcher) {
+      watcher.close().catch(() => {});
+      this.watchers.delete(normalized);
+    }
+    const timer = this.debounceTimers.get(normalized);
+    if (timer) {
+      clearTimeout(timer);
+      this.debounceTimers.delete(normalized);
+    }
+  }
+
+  cleanupAll() {
+    for (const watcher of this.watchers.values()) {
+      try {
+        watcher.close().catch(() => {});
+      } catch {}
+    }
+    this.watchers.clear();
+    for (const timer of this.debounceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.debounceTimers.clear();
   }
 
   async getRepoDetails(projectPath: string): Promise<GitRepoDetails | null> {

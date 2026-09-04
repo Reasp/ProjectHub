@@ -13,6 +13,9 @@ import { claudeBridgeService } from './services/claudeBridgeService';
 import { localWhisperService } from './services/localWhisperService';
 import { secretStorageService } from './services/secretStorageService';
 import { mcpServerService } from './services/mcpServerService';
+import { processManager } from './services/processManager';
+import { ptyService } from './services/ptyService';
+import { gitService } from './services/gitService';
 
 // Automatically approve media capture requests in Chromium without blocking UI dialogs
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
@@ -94,6 +97,28 @@ function createWindow() {
   } else {
     win.loadFile(indexPath);
   }
+
+  // Ensure full application exit and graceful shutdown when main window is closed
+  win.on('close', (e) => {
+    if (!isCleaningUp) {
+      e.preventDefault();
+      performGracefulShutdown();
+      setTimeout(() => {
+        app.exit(0);
+        process.exit(0);
+      }, 1500).unref();
+    }
+  });
+
+  win.on('closed', () => {
+    win = null;
+    if (voiceOverlayWin && !voiceOverlayWin.isDestroyed()) {
+      try {
+        voiceOverlayWin.destroy();
+      } catch {}
+      voiceOverlayWin = null;
+    }
+  });
 }
 
 function createVoiceOverlayWindow(): BrowserWindow {
@@ -555,7 +580,6 @@ ipcMain.handle('backlog:createTask', async (_event, projectPath: string, task: {
 
 // 3. Project Template Wizard
 import { createProjectFromTemplate, checkTemplateAvailable } from './services/templateWizard';
-import { processManager } from './services/processManager';
 import type { CreateProjectOptions } from '../src/types/electron';
 
 ipcMain.handle('template:createProject', async (_event, options: CreateProjectOptions) => {
@@ -637,7 +661,6 @@ ipcMain.handle('git:getStatus', async (_event, projectPath: string) => {
 });
 
 // 6b. Git — Extended Operations (via gitService)
-import { gitService } from './services/gitService';
 
 ipcMain.handle('git:getRepoDetails', async (_event, projectPath: string) => {
   return await gitService.getRepoDetails(projectPath);
@@ -760,7 +783,6 @@ ipcMain.handle('milestones:delete', async (_event, filePath: string) => {
 });
 
 // 10. Interactive PTY Terminals (Claude Code & Multi-tab Shell)
-import { ptyService } from './services/ptyService';
 import type { CreatePtyOptions } from '../src/types/electron';
 import {
   aiAgentService,
@@ -998,10 +1020,72 @@ ipcMain.handle('mcp:setAppState', async (_event, state: { activeProject?: any; a
   return true;
 });
 
-app.on('before-quit', () => {
-  processManager.cleanupAll();
-  ptyService.cleanupAll();
-  mcpServerService.stop().catch(() => {});
+let isCleaningUp = false;
+
+async function performGracefulShutdown() {
+  if (isCleaningUp) return;
+  isCleaningUp = true;
+
+  console.log('[Main] Performing graceful shutdown of all processes and resources...');
+
+  // 1. Destroy overlay window if still alive
+  if (voiceOverlayWin && !voiceOverlayWin.isDestroyed()) {
+    try {
+      voiceOverlayWin.destroy();
+    } catch {}
+    voiceOverlayWin = null;
+  }
+
+  // 2. Stop Git watchers
+  try {
+    gitService.cleanupAll();
+  } catch (e) {
+    console.warn('[Main] Error cleaning up git watchers:', e);
+  }
+
+  // 3. Stop background dev processes and terminals
+  try {
+    processManager.cleanupAll();
+  } catch (e) {
+    console.warn('[Main] Error cleaning up processes:', e);
+  }
+
+  try {
+    ptyService.cleanupAll();
+  } catch (e) {
+    console.warn('[Main] Error cleaning up pty:', e);
+  }
+
+  // 4. Dispose Whisper Worker and release ONNX runtime threads
+  try {
+    await localWhisperService.dispose();
+  } catch (e) {
+    console.warn('[Main] Error disposing whisper service:', e);
+  }
+
+  // 5. Stop Remote MCP Server and close listening HTTP socket
+  try {
+    await mcpServerService.stop();
+  } catch (e) {
+    console.warn('[Main] Error stopping MCP server:', e);
+  }
+
+  console.log('[Main] Graceful shutdown completed successfully.');
+  app.exit(0);
+  process.exit(0);
+}
+
+app.on('before-quit', (event) => {
+  if (!isCleaningUp) {
+    event.preventDefault();
+    performGracefulShutdown();
+    // Safety guard: if any native dependency hangs during exit, force exit after 1.5s
+    setTimeout(() => {
+      console.warn('[Main] Force exiting after 1.5s shutdown timeout.');
+      app.exit(0);
+      process.exit(0);
+    }, 1500).unref();
+  }
 });
 
 app.whenReady().then(() => {
