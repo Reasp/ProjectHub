@@ -322,37 +322,27 @@ class VoiceService {
       this.lastError = null;
       this.resetVAD();
 
-      // Check available input devices beforehand
-      if (navigator.mediaDevices.enumerateDevices) {
-        try {
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const hasAudioInput = devices.some((d) => d.kind === 'audioinput');
-          if (!hasAudioInput) {
-            const msg = this.config.language === 'ru'
-              ? 'Микрофон не обнаружен в системе. Если вы подключены удаленно (RDP / AnyDesk / RustDesk), включите перенаправление (проброс) микрофона в настройках подключения клиента.'
-              : 'No microphone found in system. If connected remotely (RDP / AnyDesk / RustDesk), enable microphone redirection in client connection settings.';
-            this.notifyError(msg);
-            this.cleanupAudio();
-            this.setState('error');
-            return false;
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1
           }
-        } catch {
-          // Enumerate devices may be restricted, continue to getUserMedia
-        }
+        });
+      } catch (constraintErr) {
+        console.warn('[VoiceService] Advanced audio constraints failed, falling back to basic audio: true', constraintErr);
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1
-        }
-      });
       this.mediaStream = stream;
 
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
       this.audioContext = ctx;
 
       const source = ctx.createMediaStreamSource(stream);
@@ -366,8 +356,13 @@ class VoiceService {
         this.processAudioChunkVAD(resampled16k);
       };
 
+      // Mute local output to prevent feedback echo loop while keeping processing active
+      const muteGain = ctx.createGain();
+      muteGain.gain.value = 0;
+
       source.connect(processor);
-      processor.connect(ctx.destination);
+      processor.connect(muteGain);
+      muteGain.connect(ctx.destination);
 
       this.setState('listening_handsfree');
       console.log('[VoiceService] Continuous Hands-Free listening active (Talon Voice style)');
@@ -389,6 +384,10 @@ class VoiceService {
         errorMsg = this.config.language === 'ru'
           ? 'Микрофон занят другим приложением или аудиодрайвер записи недоступен.'
           : 'Microphone is already in use by another application or audio driver is unavailable.';
+      } else if (errName === 'OverconstrainedError') {
+        errorMsg = this.config.language === 'ru'
+          ? 'Параметры аудиозаписи не поддерживаются текущим микрофоном.'
+          : 'Audio capture parameters are not supported by the current microphone.';
       }
 
       this.notifyError(errorMsg);

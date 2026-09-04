@@ -16,6 +16,8 @@ import { VoiceSettingsModal } from './VoiceSettingsModal';
 export const VoiceControlHeader: React.FC = () => {
   const { t } = useTranslation();
   const [voiceState, setVoiceState] = useState<VoiceState>(voiceService.currentState);
+  const [isListening, setIsListening] = useState<boolean>(voiceService.isListening);
+  const [isStarting, setIsStarting] = useState<boolean>(false);
   const [isSpeakingDetected, setIsSpeakingDetected] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>(voiceService.getConfig());
@@ -24,6 +26,7 @@ export const VoiceControlHeader: React.FC = () => {
   useEffect(() => {
     const unsubState = voiceService.onStateChange((state) => {
       setVoiceState(state);
+      setIsListening(voiceService.isListening);
     });
 
     const unsubLevel = voiceService.onAudioLevel((level, speaking) => {
@@ -37,12 +40,22 @@ export const VoiceControlHeader: React.FC = () => {
     };
   }, []);
 
-  const isHandsFreeActive = voiceService.isListening;
+  const isHandsFreeActive = isListening;
   const isSpeech = voiceState === 'speech_detected' || isSpeakingDetected;
   const isTranscribing = voiceState === 'transcribing';
 
   const toggleHandsFree = async () => {
-    await voiceService.toggleHandsFree();
+    if (isStarting) return;
+    setIsStarting(true);
+    try {
+      await voiceService.toggleHandsFree();
+      setIsListening(voiceService.isListening);
+      setVoiceState(voiceService.currentState);
+    } catch (e) {
+      console.error('[VoiceControlHeader] toggle error:', e);
+    } finally {
+      setIsStarting(false);
+    }
   };
 
   const toggleTts = () => {

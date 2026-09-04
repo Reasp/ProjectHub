@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Radio,
   Zap,
@@ -61,6 +61,18 @@ export const VoiceControlWidget: React.FC = () => {
   const [lastFeedback, setLastFeedback] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const transcriptRef = useRef(transcript);
+  const audioLevelRef = useRef(audioLevel);
+  const lastAudioSyncRef = useRef<number>(0);
+
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
+
+  useEffect(() => {
+    audioLevelRef.current = audioLevel;
+  }, [audioLevel]);
+
   useEffect(() => {
     voiceService.setLanguage(language === 'ru' ? 'ru' : 'en');
 
@@ -70,8 +82,8 @@ export const VoiceControlWidget: React.FC = () => {
           isListening: voiceService.isListening,
           isPaused: voiceService.isPausedActive,
           state: partial?.state ?? voiceService.currentState,
-          transcript: partial?.transcript ?? transcript,
-          audioLevel: partial?.audioLevel ?? audioLevel
+          transcript: partial?.transcript ?? transcriptRef.current,
+          audioLevel: partial?.audioLevel ?? audioLevelRef.current
         });
       }
     };
@@ -88,7 +100,12 @@ export const VoiceControlWidget: React.FC = () => {
     const unsubAudio = voiceService.onAudioLevel((level: number, speaking: boolean) => {
       setAudioLevel(level);
       setIsSpeakingDetected(speaking);
-      syncToOverlay({ audioLevel: level });
+      const now = Date.now();
+      // Throttle audio level IPC updates to max once every 120ms
+      if (now - lastAudioSyncRef.current >= 120) {
+        lastAudioSyncRef.current = now;
+        syncToOverlay({ audioLevel: level });
+      }
     });
 
     const unsubResult = voiceService.onResult((text: string, isFinal: boolean) => {
@@ -133,7 +150,7 @@ export const VoiceControlWidget: React.FC = () => {
       unsubExternal?.();
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [language, selectedProject, projects, sessions, activeSessionId, pendingApprovals, transcript, audioLevel]);
+  }, [language, selectedProject, projects, sessions, activeSessionId, pendingApprovals]);
 
   const executeCommand = async (rawText: string) => {
     const cmd = parseVoiceCommand(rawText);

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, session } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
@@ -13,6 +13,9 @@ import { claudeBridgeService } from './services/claudeBridgeService';
 import { localWhisperService } from './services/localWhisperService';
 import { secretStorageService } from './services/secretStorageService';
 import { mcpServerService } from './services/mcpServerService';
+
+// Automatically approve media capture requests in Chromium without blocking UI dialogs
+app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -159,12 +162,16 @@ app.on('activate', () => {
 // IPC HANDLERS: SYSTEM VOICE OVERLAY
 // ----------------------------------------------------
 ipcMain.on('voice:overlay-sync', (_event, state) => {
-  if (!voiceOverlayWin || voiceOverlayWin.isDestroyed()) {
-    createVoiceOverlayWindow();
+  const shouldBeVisible = Boolean(state?.isListening || state?.isPaused);
+
+  if (shouldBeVisible) {
+    if (!voiceOverlayWin || voiceOverlayWin.isDestroyed()) {
+      createVoiceOverlayWindow();
+    }
   }
 
   if (voiceOverlayWin && !voiceOverlayWin.isDestroyed()) {
-    if (state?.isListening || state?.isPaused) {
+    if (shouldBeVisible) {
       if (!voiceOverlayWin.isVisible()) {
         voiceOverlayWin.showInactive();
       }
@@ -173,7 +180,14 @@ ipcMain.on('voice:overlay-sync', (_event, state) => {
         voiceOverlayWin.hide();
       }
     }
-    voiceOverlayWin.webContents.send('voice:overlay-update', state);
+
+    if (!voiceOverlayWin.webContents.isLoading()) {
+      voiceOverlayWin.webContents.send('voice:overlay-update', state);
+    } else {
+      voiceOverlayWin.webContents.once('did-finish-load', () => {
+        voiceOverlayWin?.webContents.send('voice:overlay-update', state);
+      });
+    }
   }
 });
 
@@ -991,6 +1005,14 @@ app.on('before-quit', () => {
 });
 
 app.whenReady().then(() => {
+  // Grant microphone and media permissions automatically across all windows
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(true);
+  });
+  session.defaultSession.setPermissionCheckHandler((_webContents, _permission) => {
+    return true;
+  });
+
   createWindow();
   // Initialize Local Whisper in non-blocking background task
   localWhisperService.initBackground();
