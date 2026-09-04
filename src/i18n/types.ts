@@ -121,6 +121,24 @@ export interface TranslationDictionary {
     ttsOn: string;
     ttsOff: string;
     settingsTitle: string;
+    settingsModal: {
+      title: string;
+      subtitle: string;
+      tabRecognition: string;
+      tabPhrases: string;
+      tabCheatSheet: string;
+      resetDefaults: string;
+      resetConfirm: string;
+      addPhrasePlaceholder: string;
+      addPhraseButton: string;
+      phrasesHint: string;
+      categoryAll: string;
+      categoryTabs: string;
+      categoryPanels: string;
+      categoryAi: string;
+      categoryApproval: string;
+      doneButton: string;
+    };
     voiceBadges: {
       tasks: string;
       milestones: string;

@@ -156,7 +156,7 @@ export const VoiceControlWidget: React.FC = () => {
   }, [language, selectedProject, projects, sessions, activeSessionId, pendingApprovals]);
 
   const executeCommand = async (rawText: string) => {
-    const cmd = parseVoiceCommand(rawText);
+    const cmd = parseVoiceCommand(rawText, voiceService.getCommandPhrases());
     setLastFeedback(cmd.feedbackText);
 
     // No voiceService.speak(...) here — all routine action feedback is purely visual

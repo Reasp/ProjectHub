@@ -13,6 +13,8 @@ export type VoiceState =
 export type VoiceEngine = 'whisper' | 'webspeech';
 export type WhisperProvider = 'local' | 'groq' | 'openai';
 
+import { getDefaultCommandPhrases } from './voiceCommandPhrases';
+
 export interface VoiceConfig {
   engine: VoiceEngine;
   whisperProvider: WhisperProvider;
@@ -23,6 +25,7 @@ export interface VoiceConfig {
   ttsEnabled: boolean;
   handsFree: boolean; // Continuous listening without touching buttons
   vadSilenceThresholdMs: number; // Silence duration before cutting chunk (default: 480ms)
+  customCommandPhrases?: Record<string, string[]>;
 }
 
 const DEFAULT_CONFIG: VoiceConfig = {
@@ -34,7 +37,8 @@ const DEFAULT_CONFIG: VoiceConfig = {
   language: 'ru',
   ttsEnabled: true,
   handsFree: true, // Hands-Free by default
-  vadSilenceThresholdMs: 480
+  vadSilenceThresholdMs: 480,
+  customCommandPhrases: getDefaultCommandPhrases()
 };
 
 const STORAGE_KEY = 'projecthub_voice_config';
@@ -115,6 +119,37 @@ class VoiceService {
 
   getConfig(): VoiceConfig {
     return { ...this.config };
+  }
+
+  private onPhrasesChangeCallbacks: Set<(phrases: Record<string, string[]>) => void> = new Set();
+
+  getCommandPhrases(): Record<string, string[]> {
+    if (this.config.customCommandPhrases && Object.keys(this.config.customCommandPhrases).length > 0) {
+      return { ...this.config.customCommandPhrases };
+    }
+    return getDefaultCommandPhrases();
+  }
+
+  saveCommandPhrases(phrases: Record<string, string[]>) {
+    this.saveConfig({ customCommandPhrases: phrases });
+    this.onPhrasesChangeCallbacks.forEach((cb) => {
+      try {
+        cb(phrases);
+      } catch (e) {
+        console.error('[VoiceService] onPhrasesChange error:', e);
+      }
+    });
+  }
+
+  resetCommandPhrases(): Record<string, string[]> {
+    const defaults = getDefaultCommandPhrases();
+    this.saveCommandPhrases(defaults);
+    return defaults;
+  }
+
+  onCommandPhrasesChange(callback: (phrases: Record<string, string[]>) => void): () => void {
+    this.onPhrasesChangeCallbacks.add(callback);
+    return () => this.onPhrasesChangeCallbacks.delete(callback);
   }
 
   private updateLanguage() {

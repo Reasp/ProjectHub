@@ -27,9 +27,35 @@ function parseNumberWord(text: string): number | null {
   return null;
 }
 
-export function parseVoiceCommand(text: string): ParsedVoiceCommand {
+import { CONFIGURABLE_COMMANDS } from './voiceCommandPhrases';
+
+export function parseVoiceCommand(text: string, customPhrases?: Record<string, string[]>): ParsedVoiceCommand {
   const raw = text.trim();
-  const normalized = raw.toLowerCase();
+  const normalized = raw.toLowerCase().replace(/[.,!?;:]+$/, '').trim();
+
+  // ─────────────────────────────────────────────────────────────────
+  // 0. CUSTOM / CONFIGURABLE PHRASES OVERRIDE (HIGHEST PRIORITY)
+  // ─────────────────────────────────────────────────────────────────
+  // Strip common command prefixes like «открой», «перейди на», «перейди в», «покажи», «включи»
+  const cleanCmd = normalized
+    .replace(/^(?:открой|открыть|перейди на|перейти на|перейди в|перейти в|переключи на|переключить на|покажи|показать|включи|включить)\s+/i, '')
+    .trim();
+
+  for (const cmd of CONFIGURABLE_COMMANDS) {
+    const phrases = (customPhrases && customPhrases[cmd.intent]) || cmd.defaultPhrases;
+    for (const p of phrases) {
+      const normP = p.toLowerCase().trim();
+      if (!normP) continue;
+      if (normalized === normP || cleanCmd === normP) {
+        return {
+          type: cmd.type,
+          intent: cmd.intent,
+          payload: cmd.payload,
+          feedbackText: cmd.feedbackText
+        };
+      }
+    }
+  }
 
   // ─────────────────────────────────────────────────────────────────
   // 1. AI AGENT & INTERACTIVE MENU APPROVALS
@@ -339,7 +365,9 @@ export function parseVoiceCommand(text: string): ParsedVoiceCommand {
     normalized.includes('клауд') ||
     normalized.includes('ии') ||
     normalized.includes('ai studio') ||
-    normalized.includes('claude')
+    normalized.includes('claude') ||
+    /^(чат|чет|чад|чят|chat)$/i.test(normalized) ||
+    /^(открой|открыть|перейди в|перейти в|переключи на|покажи)\s+(чат|чет|чад|чят|chat)$/i.test(normalized)
   ) {
     return {
       type: 'navigation',
