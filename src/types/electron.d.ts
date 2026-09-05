@@ -316,7 +316,7 @@ export interface IElectronAPI {
     }
   ) => Promise<boolean>;
   toggleCriterion: (filePath: string, index: number, completed: boolean) => Promise<boolean>;
-  createTask: (projectPath: string, task: { title: string; description: string; labels: string[] }) => Promise<BacklogTask | null>;
+  createTask: (projectPath: string, task: { title: string; description: string; labels: string[]; type?: string; priority?: string; milestone?: string }) => Promise<BacklogTask | null>;
   deleteTask: (filePath: string) => Promise<boolean>;
   watchProjectTasks: (projectPath: string) => Promise<void>;
   onTasksChanged: (callback: (data: { projectPath: string; event: string; filePath: string }) => void) => () => void;

@@ -93,7 +93,7 @@ const api: IElectronAPI = {
   ) => ipcRenderer.invoke('backlog:saveFullTask', filePath, data),
   toggleCriterion: (filePath: string, index: number, completed: boolean) =>
     ipcRenderer.invoke('backlog:toggleCriterion', filePath, index, completed),
-  createTask: (projectPath: string, task: { title: string; description: string; labels: string[] }) =>
+  createTask: (projectPath: string, task: { title: string; description: string; labels: string[]; type?: string; priority?: string; milestone?: string }) =>
     ipcRenderer.invoke('backlog:createTask', projectPath, task),
   deleteTask: (filePath: string) => ipcRenderer.invoke('backlog:deleteTask', filePath),
   watchProjectTasks: (projectPath: string) => ipcRenderer.invoke('backlog:watchProject', projectPath),

@@ -464,6 +464,18 @@ ipcMain.handle('system:openTerminal', async (_event, targetPath: string) => {
 });
 
 import { backlogWatcher } from './services/backlogWatcher';
+import {
+  parseTaskBody,
+  applyDescription,
+  applyCriteria,
+  toggleCriterionInContent,
+  buildTaskBody,
+  sanitizeTaskFileTitle,
+  taskNumberFromName,
+  nowBacklogTimestamp,
+  normalizeFrontmatter,
+  withUpdatedDate
+} from './services/backlogTaskFormat';
 
 // 2. Backlog Tasks & File Watcher
 ipcMain.handle('backlog:watchProject', async (_event, projectPath: string) => {
@@ -482,43 +494,26 @@ function fmStringList(value: unknown): string[] {
   return value.map(fmString).filter((v): v is string => v !== undefined);
 }
 
-function parseTaskDetails(rawContent: string) {
-  const criteria: Array<{ text: string; completed: boolean }> = [];
-  const lines = rawContent.split('\n');
-  let inCriteriaSection = false;
-  let descLines: string[] = [];
-  let inDescSection = false;
+/** Разбор файла задачи: frontmatter + тело. Переводы строк нормализуются к `\n`, исходный EOL запоминается. */
+function parseTaskFile(raw: string) {
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+  const parsed = matter(raw.replace(/\r\n/g, '\n'));
+  // gray-matter кэширует результат разбора по строке — копируем data, чтобы не мутировать кэш.
+  return { eol, data: { ...parsed.data } as Record<string, unknown>, content: parsed.content };
+}
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('## Acceptance Criteria')) {
-      inCriteriaSection = true;
-      inDescSection = false;
-      continue;
-    } else if (trimmed.startsWith('## Description')) {
-      inDescSection = true;
-      inCriteriaSection = false;
-      continue;
-    } else if (trimmed.startsWith('## ') || trimmed.startsWith('# ')) {
-      inCriteriaSection = false;
-      inDescSection = false;
-    }
+/** Сборка файла задачи: frontmatter приводится к строкам (правило 16), EOL восстанавливается. */
+function serializeTaskFile(content: string, data: Record<string, unknown>, eol: string): string {
+  const text = matter.stringify(content, normalizeFrontmatter(data));
+  return eol === '\n' ? text : text.replace(/\n/g, eol);
+}
 
-    if (inCriteriaSection) {
-      const match = trimmed.match(/^-\s*\[([ xX])\]\s*(.*)$/);
-      if (match) {
-        criteria.push({
-          completed: match[1].toLowerCase() === 'x',
-          text: match[2].trim()
-        });
-      }
-    } else if (inDescSection) {
-      descLines.push(line);
-    }
-  }
-
-  const description = descLines.join('\n').trim();
-  return { criteria, description };
+function taskIdFromFile(data: Record<string, unknown>, filePath: string): string {
+  const fromFrontmatter = fmString(data.id);
+  if (fromFrontmatter) return fromFrontmatter;
+  const base = path.basename(filePath, '.md');
+  const n = taskNumberFromName(base);
+  return n !== null ? `TASK-${n}` : base.split(' - ')[0].trim();
 }
 
 ipcMain.handle('backlog:getTasks', async (_event, projectPath: string) => {
@@ -535,21 +530,21 @@ ipcMain.handle('backlog:getTasks', async (_event, projectPath: string) => {
       if (file.endsWith('.md')) {
         const fullPath = path.join(tasksDir, file);
         const raw = await fs.readFile(fullPath, 'utf-8');
-        const parsed = matter(raw);
-        const { criteria, description } = parseTaskDetails(parsed.content);
+        const { data, content } = parseTaskFile(raw);
+        const { criteria, description } = parseTaskBody(content);
 
         taskList.push({
           // Frontmatter-значения приводим к строкам: незакавыченная дата в YAML — это объект Date,
           // и React падает (error #31), если такой объект попадёт в разметку.
-          id: fmString(parsed.data.id) || path.basename(file, '.md').split('-')[0].trim(),
-          title: fmString(parsed.data.title) || path.basename(file, '.md'),
-          status: (fmString(parsed.data.status) as any) || 'To Do',
-          labels: fmStringList(parsed.data.labels),
-          milestone: fmString(parsed.data.milestone) || fmString(parsed.data.milestone_id) || undefined,
-          created: fmString(parsed.data.created) || fmString(parsed.data.created_date) || undefined,
+          id: taskIdFromFile(data, fullPath),
+          title: fmString(data.title) || path.basename(file, '.md'),
+          status: (fmString(data.status) as any) || 'To Do',
+          labels: fmStringList(data.labels),
+          milestone: fmString(data.milestone) || fmString(data.milestone_id) || undefined,
+          created: fmString(data.created_date) || fmString(data.created) || undefined,
           filePath: fullPath,
-          content: parsed.content,
-          description: description || parsed.content,
+          content,
+          description,
           acceptanceCriteria: criteria
         });
       }
@@ -564,11 +559,9 @@ ipcMain.handle('backlog:getTasks', async (_event, projectPath: string) => {
 ipcMain.handle('backlog:updateTaskStatus', async (_event, filePath: string, newStatus: string) => {
   try {
     if (!existsSync(filePath)) return false;
-    const raw = await fs.readFile(filePath, 'utf-8');
-    const parsed = matter(raw);
-    parsed.data.status = newStatus;
-    const updatedContent = matter.stringify(parsed.content, parsed.data);
-    await fs.writeFile(filePath, updatedContent, 'utf-8');
+    const { eol, data, content } = parseTaskFile(await fs.readFile(filePath, 'utf-8'));
+    data.status = newStatus;
+    await fs.writeFile(filePath, serializeTaskFile(content, withUpdatedDate(data), eol), 'utf-8');
     return true;
   } catch (err) {
     console.error(`Failed to update status for ${filePath}:`, err);
@@ -579,28 +572,12 @@ ipcMain.handle('backlog:updateTaskStatus', async (_event, filePath: string, newS
 ipcMain.handle('backlog:toggleCriterion', async (_event, filePath: string, index: number, completed: boolean) => {
   try {
     if (!existsSync(filePath)) return false;
-    const raw = await fs.readFile(filePath, 'utf-8');
-    let currentIndex = 0;
-    const lines = raw.split('\n');
-    let modified = false;
-
-    for (let i = 0; i < lines.length; i++) {
-      const match = lines[i].match(/^(\s*-\s*\[)([ xX])(\]\s*.*)$/);
-      if (match) {
-        if (currentIndex === index) {
-          lines[i] = `${match[1]}${completed ? 'x' : ' '}${match[3]}`;
-          modified = true;
-          break;
-        }
-        currentIndex++;
-      }
-    }
-
-    if (modified) {
-      await fs.writeFile(filePath, lines.join('\n'), 'utf-8');
-      return true;
-    }
-    return false;
+    const { eol, data, content } = parseTaskFile(await fs.readFile(filePath, 'utf-8'));
+    // Переключаем только чекбоксы внутри блока AC:BEGIN/AC:END — чекбоксы в описании не считаются.
+    const updated = toggleCriterionInContent(content, index, completed);
+    if (updated === null) return false;
+    await fs.writeFile(filePath, serializeTaskFile(updated, withUpdatedDate(data), eol), 'utf-8');
+    return true;
   } catch (err) {
     console.error(`Failed to toggle criterion in ${filePath}:`, err);
     return false;
@@ -617,32 +594,26 @@ ipcMain.handle('backlog:saveFullTask', async (_event, filePath: string, data: {
 }) => {
   try {
     if (!existsSync(filePath)) return false;
-    const raw = await fs.readFile(filePath, 'utf-8');
-    const parsed = matter(raw);
+    const { eol, data: frontmatter, content } = parseTaskFile(await fs.readFile(filePath, 'utf-8'));
 
-    parsed.data.title = data.title;
-    parsed.data.status = data.status;
-    parsed.data.labels = data.labels;
+    // Меняем только поля, которые редактирует GUI; остальные (assignee, priority, type, ordinal,
+    // dependencies, references, ...) остаются как есть.
+    frontmatter.title = data.title;
+    frontmatter.status = data.status;
+    frontmatter.labels = data.labels;
     if (data.milestone) {
-      parsed.data.milestone = data.milestone;
+      frontmatter.milestone = data.milestone;
     } else {
-      delete parsed.data.milestone;
-      delete parsed.data.milestone_id;
+      delete frontmatter.milestone;
+      delete frontmatter.milestone_id;
     }
 
-    const taskId = parsed.data.id || path.basename(filePath, '.md').split('-')[0].trim();
-    let body = `\n# ${taskId}: ${data.title}\n\n## Description\n${data.description || 'Описание задачи'}\n\n## Acceptance Criteria\n`;
+    // Тело: точечно заменяем описание и критерии внутри маркеров; план, заметки, итог и прочие
+    // секции не трогаем. Критерии перенумеровываются #1..#N.
+    let body = applyDescription(content, data.description || '');
+    body = applyCriteria(body, data.criteria || []);
 
-    if (data.criteria && data.criteria.length > 0) {
-      for (const crit of data.criteria) {
-        body += `- [${crit.completed ? 'x' : ' '}] ${crit.text}\n`;
-      }
-    } else {
-      body += `- [ ] Критерий 1\n`;
-    }
-
-    const updatedContent = matter.stringify(body, parsed.data);
-    await fs.writeFile(filePath, updatedContent, 'utf-8');
+    await fs.writeFile(filePath, serializeTaskFile(body, withUpdatedDate(frontmatter), eol), 'utf-8');
     return true;
   } catch (err) {
     console.error(`Failed to save full task ${filePath}:`, err);
@@ -671,51 +642,70 @@ ipcMain.handle('backlog:saveTask', async (_event, filePath: string, content: str
   }
 });
 
-ipcMain.handle('backlog:createTask', async (_event, projectPath: string, task: { title: string; description: string; labels: string[] }) => {
+ipcMain.handle('backlog:createTask', async (_event, projectPath: string, task: {
+  title: string;
+  description: string;
+  labels: string[];
+  type?: string;
+  priority?: string;
+  milestone?: string;
+}) => {
   try {
-    const tasksDir = path.join(projectPath, 'backlog', 'tasks');
+    const backlogDir = path.join(projectPath, 'backlog');
+    const tasksDir = path.join(backlogDir, 'tasks');
     if (!existsSync(tasksDir)) {
       await fs.mkdir(tasksDir, { recursive: true });
     }
 
-    // Determine next task number
-    const existing = await fs.readdir(tasksDir);
+    // Следующий номер — максимум по всем каталогам задач Backlog.md (активные, завершённые,
+    // черновики, архив), чтобы не переиспользовать id, как это делает CLI.
     let maxId = 0;
-    for (const f of existing) {
-      const match = f.match(/task-(\d+)/i);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxId) maxId = num;
+    for (const dir of ['tasks', 'completed', 'drafts', path.join('archive', 'tasks')]) {
+      const full = path.join(backlogDir, dir);
+      if (!existsSync(full)) continue;
+      for (const f of await fs.readdir(full)) {
+        const n = taskNumberFromName(f);
+        if (n !== null && n > maxId) maxId = n;
       }
     }
 
-    const nextId = `task-${maxId + 1}`;
-    const sanitizedTitle = task.title.replace(/[\\/:*?"<>|]/g, '-').trim();
-    const fileName = `${nextId} - ${sanitizedTitle}.md`;
+    const number = maxId + 1;
+    const id = `TASK-${number}`;
+    const fileName = `task-${number} - ${sanitizeTaskFileTitle(task.title) || 'task'}.md`;
     const fullPath = path.join(tasksDir, fileName);
+    const createdDate = nowBacklogTimestamp();
+    const labels = task.labels || [];
 
-    const today = new Date().toISOString().split('T')[0];
-    const frontmatter = {
-      id: nextId,
+    // Порядок ключей — как у CLI Backlog.md.
+    const frontmatter: Record<string, unknown> = {
+      id,
       title: task.title,
       status: 'To Do',
-      labels: task.labels || [],
-      created: today
+      assignee: [],
+      created_date: createdDate,
+      labels,
+      dependencies: [],
+      ...(task.milestone ? { milestone: task.milestone } : {}),
+      ...(task.priority ? { priority: task.priority } : {}),
+      type: task.type || 'task'
     };
 
-    const fileBody = `\n# ${nextId}: ${task.title}\n\n## Description\n${task.description || 'Описание задачи'}\n\n## Acceptance Criteria\n- [ ] Критерий 1\n`;
-    const finalContent = matter.stringify(fileBody, frontmatter);
-
-    await fs.writeFile(fullPath, finalContent, 'utf-8');
+    const body = buildTaskBody(task.description || '');
+    // flag 'wx' — не перезаписывать, если файл с таким номером уже появился.
+    await fs.writeFile(fullPath, matter.stringify(body, frontmatter), { encoding: 'utf-8', flag: 'wx' });
+    const { criteria, description } = parseTaskBody(body);
 
     return {
-      id: nextId,
+      id,
       title: task.title,
       status: 'To Do' as const,
-      labels: task.labels || [],
-      created: today,
+      labels,
+      milestone: task.milestone,
+      created: createdDate,
       filePath: fullPath,
-      content: fileBody
+      content: body,
+      description,
+      acceptanceCriteria: criteria
     };
   } catch (err) {
     console.error('Failed to create task:', err);
