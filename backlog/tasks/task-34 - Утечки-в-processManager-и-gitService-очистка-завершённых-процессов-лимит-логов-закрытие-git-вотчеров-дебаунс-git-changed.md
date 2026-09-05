@@ -3,11 +3,11 @@ id: TASK-34
 title: >-
   Утечки в processManager и gitService: очистка завершённых процессов, лимит
   логов, закрытие git-вотчеров, дебаунс git:changed
-status: Review
+status: Done
 assignee:
   - Claude
 created_date: '2026-09-05 09:07'
-updated_date: '2026-09-05 21:36'
+updated_date: '2026-09-05 21:38'
 labels:
   - audit
   - memory-leak
