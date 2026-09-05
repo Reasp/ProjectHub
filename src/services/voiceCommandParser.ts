@@ -218,6 +218,44 @@ export function parseVoiceCommand(text: string, customPhrases?: Record<string, s
     };
   }
 
+  // Quick Action Prompts: «следующая задача», «комить», «деплой»
+  if (
+    /^(следующая задача|след задача|следующую задачу|какая следующая задача|next task)$/i.test(normalized) ||
+    normalized.startsWith('следующая задача') ||
+    normalized.startsWith('след задача')
+  ) {
+    return {
+      type: 'ai_control',
+      intent: 'quick_next_task',
+      feedbackText: 'Запускаю быстрый промпт: Следующая задача'
+    };
+  }
+
+  if (
+    /^(комить|коммить|сделай коммит|сделай комит|закоммить|закоммитить|закомитить|commit)$/i.test(normalized) ||
+    normalized.startsWith('закоммить') ||
+    normalized.startsWith('сделай коммит') ||
+    normalized.startsWith('сделай комит')
+  ) {
+    return {
+      type: 'ai_control',
+      intent: 'quick_commit',
+      feedbackText: 'Запускаю быстрый промпт: Сделай коммит'
+    };
+  }
+
+  if (
+    /^(деплой|сделай деплой|задеплой|задеплоить|deploy)$/i.test(normalized) ||
+    normalized.startsWith('сделай деплой') ||
+    normalized.startsWith('задеплой')
+  ) {
+    return {
+      type: 'ai_control',
+      intent: 'quick_deploy',
+      feedbackText: 'Запускаю быстрый промпт: Деплой'
+    };
+  }
+
   // E. Switch Chat / Session by Number (1..N, Ordinals): «чат 1», «сессия 2», «первый чат», «последняя сессия»
   const chatIndexMatch = normalized.match(/^(?:чат|сессия|сессию|диалог|chat|session|dialog)\s+(?:номер\s+)?(.+)$/i) ||
                          normalized.match(/^(.+?)\s+(?:чат|сессия|сессию|диалог|chat|session|dialog)$/i);

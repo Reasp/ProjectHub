@@ -124,9 +124,18 @@ export interface TranslationDictionary {
     settingsModal: {
       title: string;
       subtitle: string;
+      tabDevices: string;
       tabRecognition: string;
       tabPhrases: string;
       tabCheatSheet: string;
+      deviceInputTitle: string;
+      deviceOutputTitle: string;
+      deviceDefault: string;
+      deviceRefresh: string;
+      deviceTestSound: string;
+      deviceActiveChannel: string;
+      hotplugTitle: string;
+      hotplugDesc: string;
       resetDefaults: string;
       resetConfirm: string;
       addPhrasePlaceholder: string;
@@ -528,6 +537,14 @@ export interface TranslationDictionary {
       auditRefactorDesc: string;
       gitCommit: string;
       gitCommitDesc: string;
+    };
+    quickActions: {
+      nextTask: string;
+      commit: string;
+      deploy: string;
+      nextTaskPrompt: string;
+      commitPrompt: string;
+      deployPrompt: string;
     };
     input: {
       placeholder: string;

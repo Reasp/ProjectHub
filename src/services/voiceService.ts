@@ -15,6 +15,13 @@ export type WhisperProvider = 'local' | 'groq' | 'openai';
 
 import { getDefaultCommandPhrases } from './voiceCommandPhrases';
 
+export interface AudioDeviceInfo {
+  deviceId: string;
+  label: string;
+  kind: 'audioinput' | 'audiooutput';
+  groupId: string;
+}
+
 export interface VoiceConfig {
   engine: VoiceEngine;
   whisperProvider: WhisperProvider;
@@ -26,6 +33,9 @@ export interface VoiceConfig {
   handsFree: boolean; // Continuous listening without touching buttons
   vadSilenceThresholdMs: number; // Silence duration before cutting chunk (default: 480ms)
   customCommandPhrases?: Record<string, string[]>;
+  audioInputDeviceId?: string; // ID of selected microphone (empty string = system default)
+  audioOutputDeviceId?: string; // ID of selected output (empty string = system default)
+  autoSwitchOnDeviceChange?: boolean; // Hotplug: auto switch when headset connects/disconnects
 }
 
 const DEFAULT_CONFIG: VoiceConfig = {
@@ -38,7 +48,10 @@ const DEFAULT_CONFIG: VoiceConfig = {
   ttsEnabled: true,
   handsFree: true, // Hands-Free by default
   vadSilenceThresholdMs: 480,
-  customCommandPhrases: getDefaultCommandPhrases()
+  customCommandPhrases: getDefaultCommandPhrases(),
+  audioInputDeviceId: '',
+  audioOutputDeviceId: '',
+  autoSwitchOnDeviceChange: true
 };
 
 const STORAGE_KEY = 'projecthub_voice_config';
@@ -77,9 +90,15 @@ class VoiceService {
   private onErrorCallbacks: Set<(errorMessage: string) => void> = new Set();
   public lastError: string | null = null;
 
+  // Audio Devices & Hotplug callbacks
+  private onDevicesChangeCallbacks: Set<(devices: { inputs: AudioDeviceInfo[]; outputs: AudioDeviceInfo[] }) => void> = new Set();
+  private onDeviceNoticeCallbacks: Set<(notice: { type: 'switch' | 'disconnect' | 'connect'; message: string }) => void> = new Set();
+  private isWatcherInitialized = false;
+
   constructor() {
     this.loadConfig();
     this.initWebSpeech();
+    this.initDeviceChangeWatcher();
   }
 
   private async loadConfig() {
@@ -280,6 +299,194 @@ class VoiceService {
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // Audio Devices & Hotplug (Input & Output Management)
+  // ─────────────────────────────────────────────────────────────────
+  getActiveTrackLabel(): string | null {
+    if (this.mediaStream) {
+      const track = this.mediaStream.getAudioTracks()[0];
+      return track ? track.label : null;
+    }
+    return null;
+  }
+
+  async getAvailableAudioDevices(): Promise<{ inputs: AudioDeviceInfo[]; outputs: AudioDeviceInfo[] }> {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
+      return { inputs: [], outputs: [] };
+    }
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs: AudioDeviceInfo[] = [];
+      const outputs: AudioDeviceInfo[] = [];
+
+      let inCount = 1;
+      let outCount = 1;
+
+      for (const dev of devices) {
+        if (dev.kind === 'audioinput') {
+          inputs.push({
+            deviceId: dev.deviceId,
+            label: dev.label || (this.config.language === 'ru' ? `Микрофон ${inCount++}` : `Microphone ${inCount++}`),
+            kind: 'audioinput',
+            groupId: dev.groupId
+          });
+        } else if (dev.kind === 'audiooutput') {
+          outputs.push({
+            deviceId: dev.deviceId,
+            label: dev.label || (this.config.language === 'ru' ? `Динамики / Наушники ${outCount++}` : `Speakers / Headset ${outCount++}`),
+            kind: 'audiooutput',
+            groupId: dev.groupId
+          });
+        }
+      }
+      return { inputs, outputs };
+    } catch (e) {
+      console.warn('[VoiceService] Failed to enumerate devices:', e);
+      return { inputs: [], outputs: [] };
+    }
+  }
+
+  async selectAudioInputDevice(deviceId: string): Promise<boolean> {
+    this.saveConfig({ audioInputDeviceId: deviceId });
+    if (this.isListening) {
+      return await this.restartAudioCapture();
+    }
+    return true;
+  }
+
+  async selectAudioOutputDevice(deviceId: string): Promise<boolean> {
+    this.saveConfig({ audioOutputDeviceId: deviceId });
+    if (this.audioContext && (this.audioContext as any).setSinkId) {
+      try {
+        await (this.audioContext as any).setSinkId(deviceId || '');
+      } catch (e) {
+        console.warn('[VoiceService] Failed to set sinkId on current context:', e);
+      }
+    }
+    return true;
+  }
+
+  async playTestTone(outputDeviceId?: string): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const targetSink = outputDeviceId !== undefined ? outputDeviceId : this.config.audioOutputDeviceId;
+      if (targetSink && (ctx as any).setSinkId) {
+        try {
+          await (ctx as any).setSinkId(targetSink);
+        } catch (sinkErr) {
+          console.warn('[VoiceService] playTestTone sinkId error:', sinkErr);
+        }
+      }
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      // Pleasant two-tone chime (F5 -> C6)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(698.46, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1046.5, ctx.currentTime + 0.12);
+
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start();
+      osc.stop(ctx.currentTime + 0.36);
+
+      setTimeout(() => {
+        ctx.close().catch(() => {});
+      }, 500);
+
+      return true;
+    } catch (e) {
+      console.error('[VoiceService] playTestTone failed:', e);
+      return false;
+    }
+  }
+
+  async restartAudioCapture(isFallback: boolean = false): Promise<boolean> {
+    if (!this.isListening) return false;
+    this.cleanupAudio();
+    return await this.startHandsFreeListening(isFallback);
+  }
+
+  private initDeviceChangeWatcher() {
+    if (this.isWatcherInitialized || typeof navigator === 'undefined' || !navigator.mediaDevices) return;
+    this.isWatcherInitialized = true;
+
+    navigator.mediaDevices.addEventListener('devicechange', async () => {
+      console.log('[VoiceService] Audio device change detected (hotplug)');
+      await this.handleDeviceChange();
+    });
+  }
+
+  private async handleDeviceChange() {
+    const devices = await this.getAvailableAudioDevices();
+    this.onDevicesChangeCallbacks.forEach((cb) => {
+      try { cb(devices); } catch (e) {}
+    });
+
+    if (!this.isListening || !this.config.autoSwitchOnDeviceChange) return;
+
+    // Check if preferred input device was just connected
+    if (this.config.audioInputDeviceId) {
+      const preferredDevice = devices.inputs.find((d) => d.deviceId === this.config.audioInputDeviceId);
+      const currentTrack = this.mediaStream?.getAudioTracks()[0];
+      const currentLabel = currentTrack?.label;
+
+      if (preferredDevice && currentTrack && currentLabel && currentLabel !== preferredDevice.label) {
+        console.log(`[VoiceService] Preferred device "${preferredDevice.label}" plugged in, switching...`);
+        const msg = this.config.language === 'ru'
+          ? `Гарнитура подключена: «${preferredDevice.label}». Захват переключен.`
+          : `Headset connected: "${preferredDevice.label}". Switched capture.`;
+        this.notifyDeviceNotice({ type: 'connect', message: msg });
+        await this.restartAudioCapture();
+        return;
+      }
+    }
+
+    // Check if current device is still present
+    const activeTrack = this.mediaStream?.getAudioTracks()[0];
+    if (activeTrack) {
+      const isStillAvailable = devices.inputs.some((d) => !d.label || d.label === activeTrack.label);
+      if (!isStillAvailable || activeTrack.readyState === 'ended') {
+        console.log('[VoiceService] Active input device removed, falling back...');
+        const msg = this.config.language === 'ru'
+          ? 'Аудиоустройство отключено. Выполнен переход на резервный микрофон.'
+          : 'Audio device disconnected. Switched to fallback microphone.';
+        this.notifyDeviceNotice({ type: 'disconnect', message: msg });
+        await this.restartAudioCapture(true);
+      }
+    }
+  }
+
+  private notifyDeviceNotice(notice: { type: 'switch' | 'disconnect' | 'connect'; message: string }) {
+    this.onDeviceNoticeCallbacks.forEach((cb) => {
+      try { cb(notice); } catch (e) {}
+    });
+  }
+
+  onDeviceNotice(callback: (notice: { type: 'switch' | 'disconnect' | 'connect'; message: string }) => void) {
+    this.onDeviceNoticeCallbacks.add(callback);
+    return () => {
+      this.onDeviceNoticeCallbacks.delete(callback);
+    };
+  }
+
+  onDevicesChange(callback: (devices: { inputs: AudioDeviceInfo[]; outputs: AudioDeviceInfo[] }) => void) {
+    this.onDevicesChangeCallbacks.add(callback);
+    return () => {
+      this.onDevicesChangeCallbacks.delete(callback);
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   // 1. Web Speech API Fallback
   // ─────────────────────────────────────────────────────────────────
   private initWebSpeech() {
@@ -341,7 +548,7 @@ class VoiceService {
   // ─────────────────────────────────────────────────────────────────
   // 2. Continuous Hands-Free Audio Stream (Talon Voice style)
   // ─────────────────────────────────────────────────────────────────
-  async startHandsFreeListening(): Promise<boolean> {
+  async startHandsFreeListening(isFallback: boolean = false): Promise<boolean> {
     if (this.isListening) return true;
 
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -358,23 +565,62 @@ class VoiceService {
       this.resetVAD();
 
       let stream: MediaStream;
+      const audioConstraints: MediaTrackConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1
+      };
+
+      if (this.config.audioInputDeviceId && !isFallback) {
+        audioConstraints.deviceId = { exact: this.config.audioInputDeviceId };
+      }
+
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1
-          }
+          audio: audioConstraints
         });
       } catch (constraintErr) {
-        console.warn('[VoiceService] Advanced audio constraints failed, falling back to basic audio: true', constraintErr);
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.warn('[VoiceService] Selected audio constraints failed, falling back to basic audio', constraintErr);
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              channelCount: 1
+            }
+          });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
       }
       this.mediaStream = stream;
 
+      // Track hot-unplug listener
+      const activeTrack = stream.getAudioTracks()[0];
+      if (activeTrack) {
+        activeTrack.onended = () => {
+          console.warn('[VoiceService] Audio track ended (device unplugged/disconnected)');
+          const msg = this.config.language === 'ru'
+            ? 'Аудиоустройство отключено. Переключаюсь на резервный микрофон...'
+            : 'Audio device disconnected. Switching to fallback microphone...';
+          this.notifyDeviceNotice({ type: 'disconnect', message: msg });
+          if (this.isListening) {
+            this.restartAudioCapture(true);
+          }
+        };
+      }
+
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       const ctx = new AudioCtx();
+      if (this.config.audioOutputDeviceId && (ctx as any).setSinkId) {
+        try {
+          await (ctx as any).setSinkId(this.config.audioOutputDeviceId);
+        } catch (sinkErr) {
+          console.warn('[VoiceService] Failed to set sinkId on AudioContext:', sinkErr);
+        }
+      }
       if (ctx.state === 'suspended') {
         await ctx.resume();
       }

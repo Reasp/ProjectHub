@@ -16,7 +16,10 @@ import {
   Activity,
   ShieldCheck,
   LogOut,
-  Pencil
+  Pencil,
+  ListTodo,
+  Rocket,
+  GitCommit
 } from 'lucide-react';
 import { useAIStudioStore, type AISession } from '../../store/useAIStudioStore';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -427,20 +430,41 @@ export const AIStudioView: React.FC = () => {
               {/* Quick Prompt Cards */}
               <div className="grid grid-cols-2 gap-2.5 w-full text-left">
                 <button
-                  onClick={() =>
-                    sendMessage(
-                      projectPath,
-                      'Проанализируй активные задачи в Backlog.md и предложи план реализации следующей задачи.'
-                    )
-                  }
+                  onClick={() => sendMessage(projectPath, t.aiStudio.quickActions.nextTaskPrompt)}
                   className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-indigo-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"
                 >
                   <div className="font-semibold text-indigo-300 flex items-center gap-1.5">
-                    <CheckSquare className="w-3.5 h-3.5" />
-                    {t.aiStudio.promptCards.backlogPlan}
+                    <ListTodo className="w-3.5 h-3.5 text-indigo-400 group-hover:scale-110 transition-transform" />
+                    {t.aiStudio.quickActions.nextTask}
                   </div>
-                  <p className="text-[11px] text-slate-500 group-hover:text-slate-400">
-                    {t.aiStudio.promptCards.backlogPlanDesc}
+                  <p className="text-[11px] text-slate-500 group-hover:text-slate-400 truncate">
+                    {t.aiStudio.quickActions.nextTaskPrompt}
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => sendMessage(projectPath, t.aiStudio.quickActions.commitPrompt)}
+                  className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-emerald-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"
+                >
+                  <div className="font-semibold text-emerald-300 flex items-center gap-1.5">
+                    <GitCommit className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+                    {t.aiStudio.quickActions.commit}
+                  </div>
+                  <p className="text-[11px] text-slate-500 group-hover:text-slate-400 truncate">
+                    {t.aiStudio.quickActions.commitPrompt}
+                  </p>
+                </button>
+
+                <button
+                  onClick={() => sendMessage(projectPath, t.aiStudio.quickActions.deployPrompt)}
+                  className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-purple-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"
+                >
+                  <div className="font-semibold text-purple-300 flex items-center gap-1.5">
+                    <Rocket className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
+                    {t.aiStudio.quickActions.deploy}
+                  </div>
+                  <p className="text-[11px] text-slate-500 group-hover:text-slate-400 truncate">
+                    {t.aiStudio.quickActions.deployPrompt}
                   </p>
                 </button>
 
@@ -451,50 +475,14 @@ export const AIStudioView: React.FC = () => {
                       'Создай архитектурное решение (ADR) для внедрения новой функциональности в этот проект.'
                     )
                   }
-                  className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-indigo-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"
-                >
-                  <div className="font-semibold text-purple-300 flex items-center gap-1.5">
-                    <BrainCircuit className="w-3.5 h-3.5" />
-                    {t.aiStudio.promptCards.adrCreate}
-                  </div>
-                  <p className="text-[11px] text-slate-500 group-hover:text-slate-400">
-                    {t.aiStudio.promptCards.adrCreateDesc}
-                  </p>
-                </button>
-
-                <button
-                  onClick={() =>
-                    sendMessage(
-                      projectPath,
-                      'Проведи аудит кодовой базы и предложи оптимизацию производительности компонентов.'
-                    )
-                  }
-                  className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-indigo-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"
-                >
-                  <div className="font-semibold text-emerald-300 flex items-center gap-1.5">
-                    <Code2 className="w-3.5 h-3.5" />
-                    {t.aiStudio.promptCards.auditRefactor}
-                  </div>
-                  <p className="text-[11px] text-slate-500 group-hover:text-slate-400">
-                    {t.aiStudio.promptCards.auditRefactorDesc}
-                  </p>
-                </button>
-
-                <button
-                  onClick={() =>
-                    sendMessage(
-                      projectPath,
-                      'Проверь статус незакоммиченных изменений в Git и сформируй информативное сообщение для коммита.'
-                    )
-                  }
-                  className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-indigo-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"
+                  className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-amber-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"
                 >
                   <div className="font-semibold text-amber-300 flex items-center gap-1.5">
-                    <GitBranch className="w-3.5 h-3.5" />
-                    {t.aiStudio.promptCards.gitCommit}
+                    <BrainCircuit className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" />
+                    {t.aiStudio.promptCards.adrCreate}
                   </div>
-                  <p className="text-[11px] text-slate-500 group-hover:text-slate-400">
-                    {t.aiStudio.promptCards.gitCommitDesc}
+                  <p className="text-[11px] text-slate-500 group-hover:text-slate-400 truncate">
+                    {t.aiStudio.promptCards.adrCreateDesc}
                   </p>
                 </button>
               </div>

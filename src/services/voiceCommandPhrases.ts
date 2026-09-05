@@ -167,6 +167,33 @@ export const CONFIGURABLE_COMMANDS: CommandPhraseDefinition[] = [
     defaultPhrases: ['предыдущий чат', 'предыдущий диалог', 'предыдущая сессия', 'prev chat', 'previous chat'],
     feedbackText: 'Переключаю на предыдущий чат'
   },
+  {
+    intent: 'quick_next_task',
+    type: 'ai_control',
+    category: 'ai',
+    nameKey: 'quickNextTask',
+    descKey: 'quickNextTaskDesc',
+    defaultPhrases: ['следующая задача', 'след задача', 'следующую задачу', 'next task'],
+    feedbackText: 'Запускаю промпт: Следующая задача'
+  },
+  {
+    intent: 'quick_commit',
+    type: 'ai_control',
+    category: 'ai',
+    nameKey: 'quickCommit',
+    descKey: 'quickCommitDesc',
+    defaultPhrases: ['комить', 'коммить', 'сделай коммит', 'закоммить', 'закоммитить', 'commit'],
+    feedbackText: 'Запускаю промпт: Сделай коммит'
+  },
+  {
+    intent: 'quick_deploy',
+    type: 'ai_control',
+    category: 'ai',
+    nameKey: 'quickDeploy',
+    descKey: 'quickDeployDesc',
+    defaultPhrases: ['деплой', 'сделай деплой', 'задеплой', 'deploy'],
+    feedbackText: 'Запускаю промпт: Деплой'
+  },
 
   // ── Согласование действий (Approvals) ──
   {

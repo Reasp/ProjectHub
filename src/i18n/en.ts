@@ -124,9 +124,18 @@ export const en: TranslationDictionary = {
     settingsModal: {
       title: 'Talon Voice & Whisper Settings',
       subtitle: 'Multi-threaded Hands-Free pipeline & command customization',
+      tabDevices: 'Audio Devices',
       tabRecognition: 'Recognition (Whisper)',
       tabPhrases: 'Command Phrases & Aliases',
       tabCheatSheet: 'Cheat Sheet',
+      deviceInputTitle: 'Microphone / Audio Input',
+      deviceOutputTitle: 'Speakers / Headphones / Headset',
+      deviceDefault: 'System Default Device',
+      deviceRefresh: 'Refresh Devices List',
+      deviceTestSound: 'Test Sound',
+      deviceActiveChannel: 'Active Audio Channel',
+      hotplugTitle: 'Automatic Headset Hot-Plug Switching',
+      hotplugDesc: 'When you plug in or turn on a wired/Bluetooth headset, ProjectHub will automatically route audio capture to it without restarting the app. If disconnected, it falls back seamlessly to the system microphone.',
       resetDefaults: 'Reset to Defaults',
       resetConfirm: 'Reset all voice command phrases to default values?',
       addPhrasePlaceholder: 'New word or phrase...',
@@ -528,6 +537,14 @@ export const en: TranslationDictionary = {
       auditRefactorDesc: 'Find bottlenecks and generate code diffs',
       gitCommit: 'Git Commit Assistant',
       gitCommitDesc: 'Generate conventional commit message'
+    },
+    quickActions: {
+      nextTask: 'Next Task',
+      commit: 'Commit',
+      deploy: 'Deploy',
+      nextTaskPrompt: 'Inspect active tasks in Backlog.md (status To Do / In Progress), analyze the requirements of the next task and start implementation following project rules.',
+      commitPrompt: 'Check git status and diff, run npm run lint:docs, generate a concise conventional commit message according to project rules, and propose the git commit command.',
+      deployPrompt: 'Verify release readiness, run tests and documentation validation, then build the desktop application (npm run pack:win / pack:mac).'
     },
     input: {
       placeholder: 'Ask a question or describe a task (e.g. Implement auth, Refactor store)...',

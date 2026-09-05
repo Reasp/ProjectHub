@@ -14,6 +14,7 @@ import {
 import { parseVoiceCommand } from '../../services/voiceCommandParser';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useAIStudioStore } from '../../store/useAIStudioStore';
+import { getDictionary } from '../../i18n';
 
 export const VoiceControlWidget: React.FC = () => {
   const {
@@ -133,6 +134,13 @@ export const VoiceControlWidget: React.FC = () => {
       }
     });
 
+    const unsubDeviceNotice = voiceService.onDeviceNotice((notice) => {
+      setLastFeedback(notice.message);
+      setTimeout(() => {
+        setLastFeedback((prev) => (prev === notice.message ? null : prev));
+      }, 5000);
+    });
+
     // Global Hotkey: Ctrl + Shift + V for Talon Voice Hands-Free Toggle
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
@@ -151,6 +159,7 @@ export const VoiceControlWidget: React.FC = () => {
       unsubResult();
       unsubError();
       unsubExternal?.();
+      unsubDeviceNotice();
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [language, selectedProject, projects, sessions, activeSessionId, pendingApprovals]);
@@ -245,6 +254,29 @@ export const VoiceControlWidget: React.FC = () => {
       // Open Claude Code Usage & Limits
       else if (cmd.intent === 'show_claude_usage') {
         window.dispatchEvent(new CustomEvent('projecthub:open-claude-usage'));
+      }
+
+      // Quick Action Prompts: Next Task, Commit, Deploy
+      else if (cmd.intent === 'quick_next_task' && projectPath) {
+        setActiveTab('ai');
+        const dict = getDictionary(language);
+        await sendMessage(projectPath, dict.aiStudio.quickActions.nextTaskPrompt);
+        setLastFeedback(language === 'ru' ? 'Запущен промпт «Следующая задача»' : 'Prompt "Next Task" sent');
+        return;
+      }
+      else if (cmd.intent === 'quick_commit' && projectPath) {
+        setActiveTab('ai');
+        const dict = getDictionary(language);
+        await sendMessage(projectPath, dict.aiStudio.quickActions.commitPrompt);
+        setLastFeedback(language === 'ru' ? 'Запущен промпт «Комить»' : 'Prompt "Commit" sent');
+        return;
+      }
+      else if (cmd.intent === 'quick_deploy' && projectPath) {
+        setActiveTab('ai');
+        const dict = getDictionary(language);
+        await sendMessage(projectPath, dict.aiStudio.quickActions.deployPrompt);
+        setLastFeedback(language === 'ru' ? 'Запущен промпт «Деплой»' : 'Prompt "Deploy" sent');
+        return;
       }
 
       // C. Send / Dictate Prompt

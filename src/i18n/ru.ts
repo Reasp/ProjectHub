@@ -124,9 +124,18 @@ export const ru: TranslationDictionary = {
     settingsModal: {
       title: 'Настройки Talon Voice & Whisper',
       subtitle: 'Многопоточный конвейер Hands-Free и кастомизация команд',
+      tabDevices: 'Аудиоустройства',
       tabRecognition: 'Распознавание (Whisper)',
       tabPhrases: 'Фразы команд и синонимы',
       tabCheatSheet: 'Шпаргалка команд',
+      deviceInputTitle: 'Микрофон / Аудиовход',
+      deviceOutputTitle: 'Динамики / Наушники / Гарнитура',
+      deviceDefault: 'Системное устройство по умолчанию',
+      deviceRefresh: 'Обновить список устройств',
+      deviceTestSound: 'Проверить звук',
+      deviceActiveChannel: 'Активный аудиоканал',
+      hotplugTitle: 'Автоматическое переключение гарнитуры (Hot-plug)',
+      hotplugDesc: 'При включении или подключении проводной/Bluetooth-гарнитуры ProjectHub автоматически переключит аудиозахват на неё без перезапуска приложения. При отключении гарнитуры — бесшовно переключится на системный микрофон.',
       resetDefaults: 'Сбросить по умолчанию',
       resetConfirm: 'Сбросить все фразы голосовых команд к значениям по умолчанию?',
       addPhrasePlaceholder: 'Новое слово или фраза...',
@@ -526,8 +535,16 @@ export const ru: TranslationDictionary = {
       adrCreateDesc: 'Архитектурный шаблон в backlog/decisions',
       auditRefactor: 'Аудит и рефакторинг',
       auditRefactorDesc: 'Поиск узких мест и генерация правок',
-      gitCommit: 'Git Коммит-ассистент',
+      gitCommit: 'Аудит изменений Git',
       gitCommitDesc: 'Генерация сообщения по стандартам'
+    },
+    quickActions: {
+      nextTask: 'Следующая задача',
+      commit: 'Комить',
+      deploy: 'Деплой',
+      nextTaskPrompt: 'Возьми следующую задачу из Backlog.md (проверь статус To Do / In Progress), прочитай её требования и начни реализацию по правилам проекта.',
+      commitPrompt: 'Проверь git status и diff изменений, запусти npm run lint:docs, сформируй краткое конвенциональное сообщение для коммита по правилам проекта и предложи команду git commit.',
+      deployPrompt: 'Проверь готовность проекта к релизу, запусти тесты и валидацию документации, после чего выполни сборку десктопного приложения (npm run pack:win / pack:mac).'
     },
     input: {
       placeholder: 'Задайте вопрос или опишите задачу (напр. Реализовать авторизацию, Рефакторинг стора)...',
