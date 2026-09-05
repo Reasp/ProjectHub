@@ -34,6 +34,15 @@ let win: BrowserWindow | null = null;
 let voiceOverlayWin: BrowserWindow | null = null;
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
+// Глобальная страховка main-процесса: необработанные ошибки логируются, но не завершают приложение
+// и не показывают системный диалог Electron "A JavaScript error occurred in the main process".
+process.on('unhandledRejection', (reason) => {
+  console.error('[Main] Unhandled promise rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[Main] Uncaught exception:', err);
+});
+
 // Forward claudeBridge status events to renderer
 claudeBridgeService.on('statusChanged', (status) => {
   if (win && !win.isDestroyed()) {
@@ -882,25 +891,27 @@ ipcMain.handle('ai:applyDiff', async (_event, projectPath: string, relativePath:
 ipcMain.handle('ai:streamChat', async (_event, req: AIStreamRequest) => {
   if (!win) return;
   const targetWin = win;
-
-  claudeBridgeService.runAgentTask(
-    req,
-    (chunk) => {
-      if (!targetWin.isDestroyed()) {
-        targetWin.webContents.send(`ai:chunk:${req.sessionId}`, chunk);
-      }
-    },
-    (fullMsg) => {
-      if (!targetWin.isDestroyed()) {
-        targetWin.webContents.send(`ai:complete:${req.sessionId}`, fullMsg);
-      }
-    },
-    (err) => {
-      if (!targetWin.isDestroyed()) {
-        targetWin.webContents.send(`ai:error:${req.sessionId}`, err);
-      }
+  const send = (channel: string, payload: unknown) => {
+    if (!targetWin.isDestroyed()) {
+      targetWin.webContents.send(channel, payload);
     }
-  );
+  };
+
+  try {
+    await claudeBridgeService.runAgentTask(
+      req,
+      (chunk) => send(`ai:chunk:${req.sessionId}`, chunk),
+      (fullMsg) => send(`ai:complete:${req.sessionId}`, fullMsg),
+      (err) => send(`ai:error:${req.sessionId}`, err)
+    );
+  } catch (err: any) {
+    // Исключение вне внутренних try/catch сервиса: не даём ему стать unhandled rejection,
+    // а сообщаем в UI как обычную ошибку сессии.
+    const message = err?.message || String(err);
+    console.error(`[Main] ai:streamChat failed for session ${req.sessionId}:`, err);
+    claudeBridgeService.setProjectStatus(req.projectPath, 'error', message);
+    send(`ai:error:${req.sessionId}`, message);
+  }
 });
 
 // Claude Bridge & Subagents Handlers

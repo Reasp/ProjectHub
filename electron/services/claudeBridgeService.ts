@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -162,11 +162,24 @@ export interface ClaudeBridgeMessageChunk {
   rateLimitWarning?: RateLimitWarning;
 }
 
+export interface ClaudeCliAvailability {
+  available: boolean;
+  version?: string;
+  message?: string;
+}
+
+/** Через сколько повторять проверку CLI после неудачи (чтобы после установки не требовался перезапуск приложения). */
+const CLAUDE_CLI_RECHECK_MS = 30_000;
+/** Таймаут ответа `claude --version`. */
+const CLAUDE_CLI_CHECK_TIMEOUT_MS = 10_000;
+
 class ClaudeBridgeService extends EventEmitter {
   private projectStatuses = new Map<string, ProjectAgentStatus>();
   private pendingApprovals = new Map<string, (response: { approved: boolean; text?: string }) => void>();
   private activeSubagents = new Map<string, SubagentInfo[]>();
   private activeProcesses = new Map<string, ChildProcess>();
+  private claudeCliCheck: (ClaudeCliAvailability & { checkedAt: number }) | null = null;
+  private claudeCliCheckPromise: Promise<ClaudeCliAvailability> | null = null;
 
   constructor() {
     super();
@@ -245,6 +258,85 @@ class ClaudeBridgeService extends EventEmitter {
 
   public getSubagents(projectPath: string): SubagentInfo[] {
     return this.activeSubagents.get(projectPath) || [];
+  }
+
+  private buildCliMissingMessage(detail: string): string {
+    const reason = detail.trim() ? ` (${detail.trim()})` : '';
+    return [
+      `Claude CLI не найден или не запускается${reason}.`,
+      'Установите Claude Code: `npm install -g @anthropic-ai/claude-code`, затем выполните вход',
+      'через кнопку входа в настройках AI Studio или командой `claude auth login`.',
+      'Либо укажите API-ключ Anthropic в настройках провайдера — тогда CLI не требуется.'
+    ].join(' ');
+  }
+
+  /**
+   * Проверяет доступность Claude CLI через `claude --version`.
+   * Успешный результат кэшируется до перезапуска приложения, неуспешный — на CLAUDE_CLI_RECHECK_MS.
+   * Параллельные вызовы делят одну проверку.
+   */
+  public ensureClaudeCliAvailable(force = false): Promise<ClaudeCliAvailability> {
+    if (!force && this.claudeCliCheck) {
+      const { checkedAt, ...cached } = this.claudeCliCheck;
+      if (cached.available || Date.now() - checkedAt < CLAUDE_CLI_RECHECK_MS) {
+        return Promise.resolve(cached);
+      }
+    }
+    if (this.claudeCliCheckPromise) return this.claudeCliCheckPromise;
+
+    this.claudeCliCheckPromise = new Promise<ClaudeCliAvailability>((resolve) => {
+      let settled = false;
+      let timer: NodeJS.Timeout | undefined;
+      const finish = (result: ClaudeCliAvailability) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        this.claudeCliCheck = { ...result, checkedAt: Date.now() };
+        this.claudeCliCheckPromise = null;
+        if (!result.available) console.warn('[ClaudeBridge] Claude CLI недоступен:', result.message);
+        resolve(result);
+      };
+
+      let child: ChildProcess;
+      try {
+        child = spawn('claude', ['--version'], {
+          shell: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, FORCE_COLOR: '0', CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR }
+        });
+      } catch (err: any) {
+        finish({ available: false, message: this.buildCliMissingMessage(err?.message || String(err)) });
+        return;
+      }
+
+      let stdout = '';
+      let stderr = '';
+      child.stdout?.on('data', (d: Buffer) => { stdout += d.toString('utf-8'); });
+      child.stderr?.on('data', (d: Buffer) => { stderr += d.toString('utf-8'); });
+      child.stdout?.on('error', () => {});
+      child.stderr?.on('error', () => {});
+
+      timer = setTimeout(() => {
+        try { child.kill(); } catch { /* ignore */ }
+        finish({
+          available: false,
+          message: `Claude CLI не ответил на \`claude --version\` за ${CLAUDE_CLI_CHECK_TIMEOUT_MS / 1000} с. Проверьте установку и PATH.`
+        });
+      }, CLAUDE_CLI_CHECK_TIMEOUT_MS);
+
+      child.on('error', (err) => finish({ available: false, message: this.buildCliMissingMessage(err.message) }));
+      child.on('close', (code) => {
+        if (code === 0) {
+          const version = stdout.trim().split('\n')[0] || undefined;
+          console.log(`[ClaudeBridge] Claude CLI доступен: ${version || 'версия неизвестна'}`);
+          finish({ available: true, version });
+        } else {
+          finish({ available: false, message: this.buildCliMissingMessage(stderr.trim() || `код выхода ${code}`) });
+        }
+      });
+    });
+
+    return this.claudeCliCheckPromise;
   }
 
   public abortSession(sessionId: string): void {
@@ -618,6 +710,14 @@ class ClaudeBridgeService extends EventEmitter {
       return;
     }
 
+    const cliCheck = await this.ensureClaudeCliAvailable();
+    if (!cliCheck.available) {
+      const message = cliCheck.message || 'Claude CLI недоступен.';
+      this.setProjectStatus(projectPath, 'error', message);
+      onError(message);
+      return;
+    }
+
     const existingCliSessionId = req.claudeCliSessionId || this.sessionClaudeCliIds.get(sessionId);
     const cliArgs = ['-p'];
     if (existingCliSessionId) {
@@ -629,26 +729,52 @@ class ClaudeBridgeService extends EventEmitter {
     cliArgs.push('--dangerously-skip-permissions');
     cliArgs.push('--output-format', 'stream-json', '--verbose');
 
-    const child = spawn(
-      'claude',
-      cliArgs,
-      {
-        cwd: projectPath,
-        shell: true,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          FORCE_COLOR: '0',
-          CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR
+    let child: ChildProcessWithoutNullStreams;
+    try {
+      child = spawn(
+        'claude',
+        cliArgs,
+        {
+          cwd: projectPath,
+          shell: true,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: {
+            ...process.env,
+            FORCE_COLOR: '0',
+            CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR
+          }
         }
-      }
-    );
+      );
+    } catch (err: any) {
+      const message = `Не удалось запустить Claude CLI: ${err?.message || String(err)}`;
+      this.setProjectStatus(projectPath, 'error', message);
+      onError(message);
+      return;
+    }
 
     this.activeProcesses.set(sessionId, child);
 
-    // Pass the prompt safely via stdin to avoid shell argument escaping issues
-    child.stdin.write(lastUserMessage, 'utf-8');
-    child.stdin.end();
+    // Гарантируем, что onComplete/onError для сессии вызываются ровно один раз:
+    // события 'error' и 'close' у ChildProcess могут прийти оба.
+    let finished = false;
+    let stdinError: string | null = null;
+    const failSession = (message: string) => {
+      if (finished) return;
+      finished = true;
+      this.activeProcesses.delete(sessionId);
+      this.setProjectStatus(projectPath, 'error', message);
+      onError(message);
+    };
+
+    // Ошибки на stdio-потоках (например EPIPE, если оболочка или CLI завершились мгновенно)
+    // без обработчика становятся uncaughtException и роняют весь main-процесс.
+    // Для stdin не завершаем сессию сразу: итог решает 'close' (там есть stderr и код выхода).
+    child.stdin.on('error', (err) => {
+      stdinError = err.message;
+      console.warn(`[ClaudeBridge] stdin error for session ${sessionId}:`, err.message);
+    });
+    child.stdout.on('error', (err) => failSession(`Ошибка чтения вывода Claude CLI: ${err.message}`));
+    child.stderr.on('error', (err) => failSession(`Ошибка чтения stderr Claude CLI: ${err.message}`));
 
     let accumulatedText = '';
     let accumulatedThought = '';
@@ -843,6 +969,8 @@ class ClaudeBridgeService extends EventEmitter {
     });
 
     child.on('close', (code) => {
+      if (finished) return;
+      finished = true;
       this.activeProcesses.delete(sessionId);
       if (code === 0 || accumulatedText) {
         const completeMsg: AIMessage = {
@@ -859,17 +987,25 @@ class ClaudeBridgeService extends EventEmitter {
         this.setProjectStatus(projectPath, 'done', 'Задача успешно выполнена');
         onComplete(completeMsg);
       } else {
-        const err = stderrOutput || `Claude Code завершился с кодом ${code}`;
+        const err =
+          stderrOutput ||
+          (stdinError ? `Не удалось передать запрос в Claude CLI: ${stdinError}` : '') ||
+          `Claude Code завершился с кодом ${code}`;
         this.setProjectStatus(projectPath, 'error', err);
         onError(err);
       }
     });
 
-    child.on('error', (err) => {
-      this.activeProcesses.delete(sessionId);
-      this.setProjectStatus(projectPath, 'error', err.message);
-      onError(err.message);
-    });
+    child.on('error', (err) => failSession(err.message));
+
+    // Передаём запрос через stdin (без экранирования аргументов оболочки) — только после навешивания всех обработчиков.
+    try {
+      child.stdin.write(lastUserMessage, 'utf-8');
+      child.stdin.end();
+    } catch (err: any) {
+      failSession(`Не удалось передать запрос в Claude CLI: ${err?.message || String(err)}`);
+      try { child.kill(); } catch { /* ignore */ }
+    }
   }
 
   private executeSubprocess(command: string, cwd: string, onOutput?: (chunk: string) => void): Promise<string> {
@@ -883,6 +1019,13 @@ class ClaudeBridgeService extends EventEmitter {
         env: { ...process.env, FORCE_COLOR: '0' }
       });
 
+      let settled = false;
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        fn();
+      };
+
       let output = '';
       child.stdout.on('data', (data) => {
         const text = data.toString();
@@ -894,18 +1037,22 @@ class ClaudeBridgeService extends EventEmitter {
         output += text;
         onOutput?.(text);
       });
+      // Необработанное 'error' на stdio-потоке роняет main-процесс
+      child.stdin?.on('error', (err) => settle(() => reject(err)));
+      child.stdout.on('error', (err) => settle(() => reject(err)));
+      child.stderr.on('error', (err) => settle(() => reject(err)));
 
       child.on('close', (code) => {
-        if (code === 0) {
-          resolve(output || 'Команда успешно выполнена (код 0)');
-        } else {
-          resolve(`Команда завершилась с кодом ${code}:\n${output}`);
-        }
+        settle(() => {
+          if (code === 0) {
+            resolve(output || 'Команда успешно выполнена (код 0)');
+          } else {
+            resolve(`Команда завершилась с кодом ${code}:\n${output}`);
+          }
+        });
       });
 
-      child.on('error', (err) => {
-        reject(err);
-      });
+      child.on('error', (err) => settle(() => reject(err)));
     });
   }
 }

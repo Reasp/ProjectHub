@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
@@ -79,17 +79,18 @@ class AIAgentService {
   }
 
   private ensureConfigDir() {
+    // Синхронно: промис fs.mkdir без await внутри try не ловится и становится unhandled rejection
     const dir = path.dirname(CONFIG_FILE);
     if (!existsSync(dir)) {
       try {
-        fs.mkdir(dir, { recursive: true });
+        mkdirSync(dir, { recursive: true });
       } catch (e) {
         console.error('Failed to create config dir:', e);
       }
     }
     if (!existsSync(PROJECT_HUB_CLAUDE_DIR)) {
       try {
-        fs.mkdir(PROJECT_HUB_CLAUDE_DIR, { recursive: true });
+        mkdirSync(PROJECT_HUB_CLAUDE_DIR, { recursive: true });
       } catch (e) {
         console.error('Failed to create claude config dir:', e);
       }

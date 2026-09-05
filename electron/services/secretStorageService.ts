@@ -1,6 +1,6 @@
 import { safeStorage } from 'electron';
 import fs from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -17,9 +17,10 @@ export class SecretStorageService {
   }
 
   private ensureDir() {
+    // Синхронно: промис fs.mkdir без await внутри try не ловится и становится unhandled rejection
     if (!existsSync(SECRETS_DIR)) {
       try {
-        fs.mkdir(SECRETS_DIR, { recursive: true });
+        mkdirSync(SECRETS_DIR, { recursive: true });
       } catch (e) {
         console.error('[SecretStorage] Failed to create dir:', e);
       }
