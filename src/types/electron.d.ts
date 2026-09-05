@@ -424,8 +424,8 @@ export interface IElectronAPI {
   deleteEncryptedSecret: (key: string) => Promise<boolean>;
 
   // Remote MCP Server
-  getMcpStatus: () => Promise<{ isRunning: boolean; port: number; activeSessions: number; token: string; url: string }>;
-  toggleMcpServer: (enable: boolean) => Promise<{ isRunning: boolean; port: number; activeSessions: number; token: string; url: string }>;
+  getMcpStatus: () => Promise<{ isRunning: boolean; port: number; activeSessions: number; token: string; url: string; lastError: string | null }>;
+  toggleMcpServer: (enable: boolean) => Promise<{ isRunning: boolean; port: number; activeSessions: number; token: string; url: string; lastError: string | null }>;
   regenerateMcpToken: () => Promise<string>;
   setMcpAppState: (state: { activeProject?: any; activeTab?: string }) => Promise<boolean>;
   onRemoteAction: (callback: (action: { type: string; payload: any }) => void) => () => void;

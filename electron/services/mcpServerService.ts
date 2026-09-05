@@ -17,7 +17,24 @@ export interface McpServerStatus {
   activeSessions: number;
   token: string;
   url: string;
+  /** Последняя ошибка запуска (например, не удалось подобрать свободный порт). */
+  lastError: string | null;
 }
+
+/** Публичная часть статуса, отдаваемая по HTTP без аутентификации (без токена). */
+export type McpServerPublicStatus = Omit<McpServerStatus, 'token'>;
+
+const REMOTE_ACTION_TYPES: ReadonlySet<RemoteActionPayload['type']> = new Set([
+  'switch_project',
+  'switch_tab',
+  'send_studio_prompt',
+  'approve_action',
+  'open_terminal',
+  'refresh_tasks'
+]);
+
+/** Сколько последовательных портов пробовать при EADDRINUSE, прежде чем сдаться. */
+const MAX_PORT_ATTEMPTS = 10;
 
 export interface RemoteActionPayload {
   type:
@@ -36,6 +53,7 @@ class McpServerService {
   private sseSessions = new Map<string, SSEServerTransport>();
   private port = 42042;
   private token: string;
+  private lastError: string | null = null;
   private currentAppState = {
     activeProject: null as any,
     activeTab: 'kanban'
@@ -56,8 +74,15 @@ class McpServerService {
       port: this.port,
       activeSessions: this.sseSessions.size,
       token: this.token,
-      url: `http://127.0.0.1:${this.port}/sse`
+      url: `http://127.0.0.1:${this.port}/sse`,
+      lastError: this.lastError
     };
+  }
+
+  /** Статус без секретов — для неаутентифицированного GET /api/status. */
+  public getPublicStatus(): McpServerPublicStatus {
+    const { token: _token, ...publicStatus } = this.getStatus();
+    return publicStatus;
   }
 
   public regenerateToken(): string {
@@ -77,6 +102,7 @@ class McpServerService {
     if (this.server && this.server.listening) return true;
 
     this.port = customPort;
+    this.lastError = null;
     this.initMcpServer();
 
     return new Promise((resolve) => {
@@ -84,22 +110,51 @@ class McpServerService {
         this.handleHttpRequest(req, res);
       });
 
-      server.listen(this.port, '127.0.0.1', () => {
+      let attempts = 0;
+      let settled = false;
+
+      const fail = (message: string) => {
+        if (settled) return;
+        settled = true;
+        this.lastError = message;
+        console.error(`[MCPServer] ${message}`);
+        try {
+          server.close();
+        } catch {}
+        resolve(false);
+      };
+
+      server.on('listening', () => {
+        if (settled) return;
+        settled = true;
         console.log(`[MCPServer] ProjectHub Remote MCP Server running at http://127.0.0.1:${this.port}/sse`);
         this.server = server;
         resolve(true);
       });
 
       server.on('error', (err: any) => {
-        if (err.code === 'EADDRINUSE') {
+        if (settled) {
+          // Ошибка уже работающего сервера — не трогаем результат start(), только логируем.
+          console.error('[MCPServer] HTTP server error:', err);
+          return;
+        }
+        if (err?.code === 'EADDRINUSE') {
+          attempts++;
+          if (attempts >= MAX_PORT_ATTEMPTS) {
+            fail(
+              `Не удалось найти свободный порт: заняты ${customPort}–${this.port} (${MAX_PORT_ATTEMPTS} попыток)`
+            );
+            return;
+          }
           console.warn(`[MCPServer] Port ${this.port} is in use, trying ${this.port + 1}...`);
           this.port++;
           server.listen(this.port, '127.0.0.1');
-        } else {
-          console.error('[MCPServer] Failed to start HTTP server:', err);
-          resolve(false);
+          return;
         }
+        fail(`Не удалось запустить HTTP-сервер: ${err?.message || String(err)}`);
       });
+
+      server.listen(this.port, '127.0.0.1');
     });
   }
 
@@ -439,25 +494,71 @@ class McpServerService {
     this.mcpServer = server;
   }
 
+  /**
+   * Host должен указывать на loopback — защита от DNS rebinding
+   * (страница на evil.com с A-записью 127.0.0.1 присылает Host: evil.com).
+   */
+  private isLoopbackHost(hostHeader: string | undefined): boolean {
+    if (!hostHeader) return false;
+    let hostname: string;
+    try {
+      hostname = new URL(`http://${hostHeader}`).hostname;
+    } catch {
+      return false;
+    }
+    return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]' || hostname === '::1';
+  }
+
+  /** Сравнение Bearer-токена за константное время. */
+  private isAuthorized(req: IncomingMessage): boolean {
+    const header = req.headers.authorization;
+    if (!header || Array.isArray(header)) return false;
+    const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+    if (!match) return false;
+    const presented = Buffer.from(match[1].trim(), 'utf8');
+    const expected = Buffer.from(this.token, 'utf8');
+    if (presented.length !== expected.length) return false;
+    return crypto.timingSafeEqual(presented, expected);
+  }
+
+  private sendJson(res: ServerResponse, statusCode: number, body: unknown, extraHeaders: Record<string, string> = {}) {
+    res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8', ...extraHeaders });
+    res.end(JSON.stringify(body, null, 2));
+  }
+
   private handleHttpRequest(req: IncomingMessage, res: ServerResponse) {
-    const origin = req.headers.origin || '*';
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    // CORS-заголовки не выставляются вовсе: сервер предназначен только для локальных
+    // CLI/десктоп-клиентов (Claude Code, Cursor и т.п.), а не для браузерных страниц.
+    // Любой запрос с заголовком Origin — это браузер (в т.ч. preflight OPTIONS), отклоняем.
+    if (req.headers.origin !== undefined) {
+      this.sendJson(res, 403, { error: 'Browser origins are not allowed' });
+      return;
+    }
+
+    if (!this.isLoopbackHost(req.headers.host)) {
+      this.sendJson(res, 403, { error: 'Invalid Host header' });
+      return;
+    }
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204).end();
       return;
     }
 
-    const host = req.headers.host || `127.0.0.1:${this.port}`;
-    const parsedUrl = new URL(req.url || '/', `http://${host}`);
+    const parsedUrl = new URL(req.url || '/', `http://127.0.0.1:${this.port}`);
     const pathname = parsedUrl.pathname;
 
-    // 1. Status Endpoint: GET /api/status
+    // 1. Status Endpoint: GET /api/status — единственный маршрут без аутентификации, без токена в ответе.
     if (pathname === '/api/status' && req.method === 'GET') {
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify(this.getStatus(), null, 2));
+      this.sendJson(res, 200, this.getPublicStatus());
+      return;
+    }
+
+    // Все остальные маршруты требуют Authorization: Bearer <token>.
+    if (!this.isAuthorized(req)) {
+      this.sendJson(res, 401, { error: 'Unauthorized: valid Bearer token required' }, {
+        'WWW-Authenticate': 'Bearer realm="ProjectHub MCP"'
+      });
       return;
     }
 
@@ -468,34 +569,20 @@ class McpServerService {
       req.on('end', () => {
         try {
           const json = JSON.parse(body);
-          this.dispatchToRenderer(json);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true }));
+          if (!json || typeof json !== 'object' || !REMOTE_ACTION_TYPES.has(json.type)) {
+            this.sendJson(res, 400, { error: `Unknown action type; allowed: ${[...REMOTE_ACTION_TYPES].join(', ')}` });
+            return;
+          }
+          this.dispatchToRenderer({ type: json.type, payload: json.payload ?? {} });
+          this.sendJson(res, 200, { ok: true });
         } catch (e: any) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: e.message }));
+          this.sendJson(res, 400, { error: e.message });
         }
       });
       return;
     }
 
-    // 3. MCP Config JSON snippet: GET /mcp.json
-    if (pathname === '/mcp.json' && req.method === 'GET') {
-      const configSnippet = {
-        mcpServers: {
-          projecthub: {
-            url: `http://127.0.0.1:${this.port}/sse`,
-            transport: 'sse',
-            headers: {
-              Authorization: `Bearer ${this.token}`
-            }
-          }
-        }
-      };
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify(configSnippet, null, 2));
-      return;
-    }
+    // 3. /mcp.json намеренно удалён: конфиг-сниппет с токеном копируется только из UI (McpServerStatusBadge).
 
     // 4. SSE Stream: GET /sse
     if (pathname === '/sse' && req.method === 'GET') {
@@ -514,12 +601,10 @@ class McpServerService {
         this.sseSessions.delete(sessionId);
       };
 
+      // connect() сам вызывает transport.start(); повторный явный start() давал
+      // ошибку "SSEServerTransport already started" в логе на каждое подключение.
       this.mcpServer.connect(transport).catch((err) => {
         console.error('[MCPServer] Error connecting transport to MCP server:', err);
-      });
-
-      transport.start().catch((err) => {
-        console.error('[MCPServer] Error starting transport:', err);
       });
       return;
     }

@@ -19,6 +19,7 @@ interface McpStatus {
   activeSessions: number;
   token: string;
   url: string;
+  lastError?: string | null;
 }
 
 export const McpServerStatusBadge: React.FC = () => {
@@ -88,6 +89,7 @@ export const McpServerStatusBadge: React.FC = () => {
   );
 
   const curlExample = `curl -X POST http://127.0.0.1:${status.port}/api/action \\
+  -H "Authorization: Bearer ${status.token}" \\
   -H "Content-Type: application/json" \\
   -d '{"type":"switch_tab","payload":{"tab":"ai"}}'`;
 
@@ -175,6 +177,13 @@ export const McpServerStatusBadge: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {/* Startup error (e.g. no free port) */}
+            {!status.isRunning && status.lastError && (
+              <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-[11px] leading-relaxed">
+                Ошибка запуска: {status.lastError}
+              </div>
+            )}
 
             {/* Token & Security */}
             <div className="space-y-1.5 text-xs">
