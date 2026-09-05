@@ -370,6 +370,8 @@ export interface IElectronAPI {
   claudeLogout: () => Promise<boolean>;
   streamAIChat: (request: AIStreamRequest) => Promise<boolean>;
   abortAIStream: (sessionId: string) => Promise<boolean>;
+  /** Полная очистка сессии в main: одобрения, процессы, resume-id Claude CLI, подагенты (TASK-33). */
+  clearAISession: (sessionId: string) => Promise<boolean>;
   applyAIDiff: (projectPath: string, relativePath: string, newContent: string) => Promise<boolean>;
 
   // Claude Bridge Approvals & Statuses
@@ -556,6 +558,8 @@ export interface AutoApproveRules {
   writeExcludePatterns: string[];
   readExcludePatterns: string[];
   commandDenyList: string[];
+  /** Таймаут команд агента (run_command) в секундах; по умолчанию 5 минут (TASK-33). */
+  commandTimeoutSec?: number;
 }
 
 export interface AIProviderConfig {

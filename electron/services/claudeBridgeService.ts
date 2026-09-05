@@ -4,14 +4,17 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import { EventEmitter } from 'node:events';
+import treeKill from 'tree-kill';
 import {
   aiAgentService,
   PROJECT_HUB_CLAUDE_DIR,
   type AIProviderConfig,
   type AIMessage,
-  type AIToolCall
+  type AIToolCall,
+  type AutoApproveRules
 } from './aiAgentService.js';
 import { isInsideProject } from './pathGuard.js';
+import { processManager } from './processManager.js';
 
 export type AgentStatusType = 'idle' | 'running' | 'waiting_approval' | 'done' | 'error';
 
@@ -173,12 +176,69 @@ export interface ClaudeCliAvailability {
 const CLAUDE_CLI_RECHECK_MS = 30_000;
 /** Таймаут ответа `claude --version`. */
 const CLAUDE_CLI_CHECK_TIMEOUT_MS = 10_000;
+/** Таймаут команды агента по умолчанию (TASK-33, аудит 1.4); переопределяется `autoApproveRules.commandTimeoutSec`. */
+export const SUBPROCESS_DEFAULT_TIMEOUT_MS = 5 * 60_000;
+/** Лимит накопленного вывода команды агента: хранится только «хвост» этого размера. */
+export const SUBPROCESS_MAX_OUTPUT_BYTES = 1024 * 1024;
+
+export type ApprovalResponse = { approved: boolean; text?: string };
+
+/** Ожидание одобрения прервано (abortSession/clearSession/закрытие окна), а не отклонено пользователем. */
+export class ApprovalCancelledError extends Error {
+  constructor(message = 'Сессия прервана: ожидание одобрения отменено') {
+    super(message);
+    this.name = 'ApprovalCancelledError';
+  }
+}
+
+interface PendingApproval {
+  sessionId: string;
+  projectPath: string;
+  resolve: (response: ApprovalResponse) => void;
+  reject: (err: Error) => void;
+}
+
+export interface SubprocessOptions {
+  /** Сессия-владелец: процесс убивается вместе с ней в abortSession/killAll. */
+  sessionId?: string;
+  timeoutMs?: number;
+  maxOutputBytes?: number;
+}
+
+export interface SubprocessResult {
+  output: string;
+  exitCode: number | null;
+  timedOut: boolean;
+  truncated: boolean;
+}
+
+/** Убивает дерево процессов: при `shell: true` `child.kill()` убил бы только оболочку, а не сам claude/npm. */
+function killProcessTree(child: ChildProcess): void {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (child.pid) {
+    treeKill(child.pid, 'SIGKILL', (err) => {
+      if (err) {
+        try { child.kill('SIGKILL'); } catch { /* ignore */ }
+      }
+    });
+  } else {
+    try { child.kill('SIGKILL'); } catch { /* ignore */ }
+  }
+}
 
 class ClaudeBridgeService extends EventEmitter {
   private projectStatuses = new Map<string, ProjectAgentStatus>();
-  private pendingApprovals = new Map<string, (response: { approved: boolean; text?: string }) => void>();
+  private pendingApprovals = new Map<string, PendingApproval>();
   private activeSubagents = new Map<string, SubagentInfo[]>();
+  /** Процессы Claude CLI по sessionId. */
   private activeProcesses = new Map<string, ChildProcess>();
+  /** Команды агента (executeSubprocess) по sessionId. */
+  private sessionSubprocesses = new Map<string, Set<ChildProcess>>();
+  /** Сессии, у которых сейчас выполняется runAgentTask: sessionId → projectPath. */
+  private activeSessions = new Map<string, string>();
+  /** Сессии, прерванные пользователем: их завершение считается отменой, а не ошибкой. */
+  private abortedSessions = new Set<string>();
+  private sessionClaudeCliIds = new Map<string, string>();
   private claudeCliCheck: (ClaudeCliAvailability & { checkedAt: number }) | null = null;
   private claudeCliCheckPromise: Promise<ClaudeCliAvailability> | null = null;
 
@@ -224,25 +284,89 @@ class ClaudeBridgeService extends EventEmitter {
       updatedAt: Date.now()
     };
 
-    this.projectStatuses.set(projectPath, updated);
+    // Статус idle — значение по умолчанию у getProjectStatus, хранить его незачем:
+    // иначе projectStatuses растёт с числом когда-либо открытых проектов (аудит 2.3).
+    if (status === 'idle') {
+      this.projectStatuses.delete(projectPath);
+    } else {
+      this.projectStatuses.set(projectPath, updated);
+    }
     this.emit('statusChanged', updated);
   }
 
-  public async requestApproval(request: ApprovalRequest): Promise<{ approved: boolean; text?: string }> {
-    return new Promise((resolve) => {
-      this.pendingApprovals.set(request.id, resolve);
+  public async requestApproval(request: ApprovalRequest): Promise<ApprovalResponse> {
+    return new Promise((resolve, reject) => {
+      this.pendingApprovals.set(request.id, {
+        sessionId: request.sessionId,
+        projectPath: request.projectPath,
+        resolve,
+        reject
+      });
       this.setProjectStatus(request.projectPath, 'waiting_approval', request.title, request);
     });
   }
 
-  public sendApprovalResponse(requestId: string, response: { approved: boolean; text?: string }): boolean {
-    const resolver = this.pendingApprovals.get(requestId);
-    if (resolver) {
-      resolver(response);
+  public sendApprovalResponse(requestId: string, response: ApprovalResponse): boolean {
+    const pending = this.pendingApprovals.get(requestId);
+    if (pending) {
       this.pendingApprovals.delete(requestId);
+      pending.resolve(response);
       return true;
     }
     return false;
+  }
+
+  public getPendingApprovalIds(sessionId?: string): string[] {
+    return Array.from(this.pendingApprovals.entries())
+      .filter(([, p]) => !sessionId || p.sessionId === sessionId)
+      .map(([id]) => id);
+  }
+
+  /**
+   * Отклоняет все ожидающие одобрения сессии (или всех сессий, если sessionId не задан) и
+   * переводит статус проекта из waiting_approval в idle. Возвращает число отклонённых.
+   */
+  public rejectPendingApprovals(sessionId?: string, reason?: string): number {
+    let count = 0;
+    for (const [id, pending] of Array.from(this.pendingApprovals.entries())) {
+      if (sessionId && pending.sessionId !== sessionId) continue;
+      this.pendingApprovals.delete(id);
+      count++;
+      pending.reject(new ApprovalCancelledError(reason));
+      if (this.projectStatuses.get(pending.projectPath)?.status === 'waiting_approval') {
+        this.setProjectStatus(pending.projectPath, 'idle', 'Ожидание одобрения отменено');
+      }
+    }
+    return count;
+  }
+
+  public getClaudeCliSessionId(sessionId: string): string | undefined {
+    return this.sessionClaudeCliIds.get(sessionId);
+  }
+
+  public isSessionActive(sessionId: string): boolean {
+    return this.activeSessions.has(sessionId);
+  }
+
+  private startSession(sessionId: string, projectPath: string): void {
+    this.abortedSessions.delete(sessionId);
+    this.activeSessions.set(sessionId, projectPath);
+  }
+
+  /**
+   * Единая точка завершения сессии: статус проекта, подагенты, снятие с учёта.
+   * Вызывается ровно один раз на запуск runAgentTask (done/error/aborted).
+   */
+  private finishSession(
+    sessionId: string,
+    projectPath: string,
+    outcome: 'done' | 'error' | 'aborted',
+    message: string
+  ): void {
+    this.activeSessions.delete(sessionId);
+    this.abortedSessions.delete(sessionId);
+    this.finishSessionSubagents(sessionId, outcome === 'done' ? 'completed' : 'failed');
+    this.setProjectStatus(projectPath, outcome === 'done' ? 'done' : outcome === 'error' ? 'error' : 'idle', message);
   }
 
   public registerSubagent(subagent: SubagentInfo): void {
@@ -259,6 +383,32 @@ class ClaudeBridgeService extends EventEmitter {
 
   public getSubagents(projectPath: string): SubagentInfo[] {
     return this.activeSubagents.get(projectPath) || [];
+  }
+
+  /**
+   * Завершает подагентов родительской сессии: ещё выполняющиеся получают итоговый статус
+   * (с событием subagentUpdated для UI), после чего все подагенты сессии удаляются из реестра.
+   */
+  public finishSessionSubagents(sessionId: string, status: 'completed' | 'failed'): SubagentInfo[] {
+    const finished: SubagentInfo[] = [];
+    for (const [projectPath, list] of Array.from(this.activeSubagents.entries())) {
+      const own = list.filter((s) => s.parentSessionId === sessionId);
+      if (own.length === 0) continue;
+      const rest = list.filter((s) => s.parentSessionId !== sessionId);
+      if (rest.length > 0) {
+        this.activeSubagents.set(projectPath, rest);
+      } else {
+        this.activeSubagents.delete(projectPath);
+      }
+      for (const sub of own) {
+        const final: SubagentInfo = sub.status === 'running'
+          ? { ...sub, status, completedAt: Date.now(), progress: status === 'completed' ? 'Родительская сессия завершена' : 'Родительская сессия прервана' }
+          : sub;
+        finished.push(final);
+        this.emit('subagentUpdated', final);
+      }
+    }
+    return finished;
   }
 
   private buildCliMissingMessage(detail: string): string {
@@ -340,13 +490,65 @@ class ClaudeBridgeService extends EventEmitter {
     return this.claudeCliCheckPromise;
   }
 
+  /**
+   * Прерывает сессию: отклоняет ожидающие одобрения, останавливает стрим API и убивает
+   * процесс Claude CLI и команды агента. Если сессия была активна, статус проекта → idle.
+   */
   public abortSession(sessionId: string): void {
+    const projectPath = this.activeSessions.get(sessionId);
+    if (projectPath) this.abortedSessions.add(sessionId);
+
+    this.rejectPendingApprovals(sessionId);
     aiAgentService.abortStream(sessionId);
+    this.killSessionProcesses(sessionId);
+
+    if (projectPath) {
+      const current = this.projectStatuses.get(projectPath)?.status;
+      if (current === 'running' || current === 'waiting_approval') {
+        this.setProjectStatus(projectPath, 'idle', 'Сессия прервана пользователем');
+      }
+    }
+  }
+
+  private killSessionProcesses(sessionId: string): void {
     const proc = this.activeProcesses.get(sessionId);
     if (proc) {
-      proc.kill();
+      killProcessTree(proc);
       this.activeProcesses.delete(sessionId);
     }
+    const subs = this.sessionSubprocesses.get(sessionId);
+    if (subs) {
+      for (const child of subs) killProcessTree(child);
+      this.sessionSubprocesses.delete(sessionId);
+    }
+  }
+
+  /** Полная очистка сессии (закрытие/очистка диалога в UI): процессы, одобрения, CLI-id. */
+  public clearSession(sessionId: string): void {
+    this.abortSession(sessionId);
+    this.sessionClaudeCliIds.delete(sessionId);
+    this.finishSessionSubagents(sessionId, 'failed');
+  }
+
+  /** Остановка всего при выходе из приложения (performGracefulShutdown). */
+  public killAll(): void {
+    this.rejectPendingApprovals(undefined, 'Приложение закрывается');
+    for (const sessionId of Array.from(this.activeSessions.keys())) {
+      aiAgentService.abortStream(sessionId);
+    }
+    for (const sessionId of Array.from(new Set([...this.activeProcesses.keys(), ...this.sessionSubprocesses.keys()]))) {
+      this.killSessionProcesses(sessionId);
+    }
+    this.activeSessions.clear();
+    this.abortedSessions.clear();
+    this.activeSubagents.clear();
+    this.sessionClaudeCliIds.clear();
+  }
+
+  public getActiveProcessCount(): number {
+    let count = this.activeProcesses.size;
+    for (const subs of this.sessionSubprocesses.values()) count += subs.size;
+    return count;
   }
 
   public parseQuestionData(args: Record<string, any>): QuestionData {
@@ -465,6 +667,7 @@ class ClaudeBridgeService extends EventEmitter {
     const canAutoRead = rules ? rules.allowFileRead !== false : true;
     const canAutoSubagents = isMasterAutoApprove && (rules ? rules.allowSubagents !== false : true);
 
+    this.startSession(sessionId, projectPath);
     this.setProjectStatus(projectPath, 'running', 'Агент анализирует задачу...');
 
     // If using Anthropic without API key, run directly via local Claude CLI subscription!
@@ -478,219 +681,270 @@ class ClaudeBridgeService extends EventEmitter {
         req,
         async (chunk) => {
           onChunk(chunk);
+          if (!chunk.toolCall) return;
 
-          // If tool call generated, check if it needs approval or interactive question
-          if (chunk.toolCall) {
+          // Обработчик чанка никто не await'ит: отклонение промиса (отмена одобрения при
+          // abortSession) или ошибка инструмента иначе стали бы unhandled rejection.
+          try {
+            await this.handleApiToolCall(chunk.toolCall, req, rules, { canAutoCommands, canAutoWrite, canAutoRead, canAutoSubagents }, onChunk);
+          } catch (err: any) {
             const tc = chunk.toolCall;
-
-            if (tc.name === 'ask_question' || tc.name === 'AskUserQuestion') {
-              const qData = this.parseQuestionData(tc.args);
-              const approvalReq: ApprovalRequest = {
-                id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                sessionId,
-                projectPath,
-                type: 'question',
-                title: qData.title || 'Вопрос от ассистента',
-                details: qData.subtitle,
-                questionData: qData,
-                createdAt: Date.now()
-              };
-
-              onChunk({ approvalRequest: approvalReq });
-              const res = await this.requestApproval(approvalReq);
-              tc.status = res.approved ? 'accepted' : 'rejected';
-              tc.result = res.text || (res.approved ? 'Подтверждено пользователем' : 'Отклонено пользователем');
-              onChunk({ toolCall: tc });
-            } else if (tc.name === 'read_file' || tc.name === 'read') {
-              const filePath = tc.args.filePath || tc.args.path || '';
-              const isExcludedFromRead = rules?.readExcludePatterns && this.isPathExcluded(filePath, rules.readExcludePatterns);
-
-              if (isExcludedFromRead) {
-                const approvalReq: ApprovalRequest = {
-                  id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                  sessionId,
-                  projectPath,
-                  type: 'question',
-                  title: `Разрешение на чтение защищенного файла`,
-                  details: `Файл ${filePath} находится в списке исключений для чтения. Разрешить агенту доступ?`,
-                  questionData: {
-                    title: 'Чтение защищенного файла',
-                    subtitle: `Разрешить агенту прочитать файл ${filePath}?`,
-                    options: [
-                      { id: 'allow', label: 'Разрешить чтение', description: 'Предоставить агенту содержимое файла' },
-                      { id: 'deny', label: 'Запретить чтение', description: 'Скрыть содержимое файла от агента' }
-                    ],
-                    isMultiSelect: false,
-                    allowOther: false
-                  },
-                  createdAt: Date.now()
-                };
-
-                onChunk({ approvalRequest: approvalReq });
-                const res = await this.requestApproval(approvalReq);
-                if (!res.approved || res.text?.includes('deny') || res.text?.includes('Запретить')) {
-                  tc.status = 'rejected';
-                  tc.result = `Доступ к чтению файла ${filePath} отклонен пользователем`;
-                  onChunk({ toolCall: tc });
-                  return;
-                }
-              }
-            } else if (tc.name === 'run_command' || tc.name === 'bash') {
-              const cmd = tc.args.command || tc.args.cmd || '';
-              const isDenied = rules?.commandDenyList && this.isCommandDenied(cmd, rules.commandDenyList);
-              const shouldAutoRun = canAutoCommands && !isDenied;
-
-              if (shouldAutoRun) {
-                this.setProjectStatus(projectPath, 'running', `Выполняется: ${cmd}`);
-                try {
-                  let liveOutput = '';
-                  const execOut = await this.executeSubprocess(cmd, projectPath, (chunkText) => {
-                    liveOutput += chunkText;
-                    tc.status = 'running';
-                    tc.result = liveOutput;
-                    onChunk({ toolCall: { ...tc } });
-                  });
-                  tc.status = 'accepted';
-                  tc.result = execOut;
-                  onChunk({ toolCall: tc });
-                } catch (e: any) {
-                  tc.status = 'error';
-                  tc.result = `Error: ${e.message}`;
-                  onChunk({ toolCall: tc });
-                }
-              } else {
-                const approvalReq: ApprovalRequest = {
-                  id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                  sessionId,
-                  projectPath,
-                  type: 'command',
-                  title: isDenied ? `⚠️ Заблокированная команда требует подтверждения: ${cmd}` : `Разрешение на запуск команды: ${cmd}`,
-                  command: cmd,
-                  details: tc.args.explanation || (isDenied ? 'Команда находится в списке запрещенных для авто-запуска' : 'Выполнение команды терминала'),
-                  createdAt: Date.now()
-                };
-
-                onChunk({ approvalRequest: approvalReq });
-                const res = await this.requestApproval(approvalReq);
-
-                if (res.approved) {
-                  this.setProjectStatus(projectPath, 'running', `Выполняется: ${cmd}`);
-                  try {
-                    let liveOutput = '';
-                    const execOut = await this.executeSubprocess(cmd, projectPath, (chunkText) => {
-                      liveOutput += chunkText;
-                      tc.status = 'running';
-                      tc.result = liveOutput;
-                      onChunk({ toolCall: { ...tc } });
-                    });
-                    tc.status = 'accepted';
-                    tc.result = execOut;
-                    onChunk({ toolCall: tc });
-                  } catch (e: any) {
-                    tc.status = 'error';
-                    tc.result = `Error: ${e.message}`;
-                    onChunk({ toolCall: tc });
-                  }
-                } else {
-                  tc.status = 'rejected';
-                  tc.result = `Отклонено пользователем: ${res.text || 'Без комментария'}`;
-                  onChunk({ toolCall: tc });
-                }
-              }
-              this.setProjectStatus(projectPath, 'running', 'Обработка результатов...');
-            } else if (tc.name === 'write_file' || tc.name === 'write_to_file') {
-              const filePath = tc.args.filePath || tc.args.path || '';
-              const content = tc.args.content || '';
-              const isExcluded = rules?.writeExcludePatterns && this.isPathExcluded(filePath, rules.writeExcludePatterns);
-              const shouldAutoWrite = canAutoWrite && !isExcluded;
-
-              if (!isInsideProject(projectPath, filePath)) {
-                // Абсолютный путь вне проекта или выход через `..` — отклоняем до любых
-                // одобрений, даже при auto-approve, и объясняем модели причину (TASK-32).
-                tc.status = 'rejected';
-                tc.result = `Запись отклонена: путь "${filePath}" находится вне корня проекта "${projectPath}". `
-                  + 'Разрешены только пути внутри проекта — укажи путь относительно его корня без выхода через "..".';
-                onChunk({ toolCall: tc });
-              } else if (shouldAutoWrite) {
-                await aiAgentService.applyDiff(projectPath, filePath, content);
-                tc.status = 'accepted';
-                tc.result = `Файл ${filePath} успешно записан`;
-                onChunk({ toolCall: tc });
-              } else {
-                let oldContent = '';
-                const fullPath = path.resolve(projectPath, filePath);
-                if (existsSync(fullPath)) {
-                  try {
-                    oldContent = await fs.readFile(fullPath, 'utf-8');
-                  } catch {}
-                }
-                const patch = aiAgentService.generateDiff(oldContent, content, filePath);
-                tc.diff = { filePath, oldContent, newContent: content, patch };
-
-                const approvalReq: ApprovalRequest = {
-                  id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                  sessionId,
-                  projectPath,
-                  type: 'file_write',
-                  title: isExcluded ? `⚠️ Файл в списке исключений: ${filePath}` : `Разрешение на запись файла: ${filePath}`,
-                  filePath,
-                  details: isExcluded ? 'Файл защищен списком исключений авто-одобрения' : (tc.args.explanation || 'Изменение содержимого файла'),
-                  diff: tc.diff,
-                  createdAt: Date.now()
-                };
-
-                onChunk({ approvalRequest: approvalReq, toolCall: tc });
-                const res = await this.requestApproval(approvalReq);
-                if (res.approved) {
-                  await aiAgentService.applyDiff(projectPath, filePath, content);
-                  tc.status = 'accepted';
-                  tc.result = `Файл ${filePath} успешно сохранен`;
-                  onChunk({ toolCall: tc });
-                } else {
-                  tc.status = 'rejected';
-                  tc.result = `Отклонено пользователем: ${res.text || 'Без комментария'}`;
-                  onChunk({ toolCall: tc });
-                }
-              }
-            } else if (tc.name === 'spawn_subagent' || tc.name === 'dispatch_agent') {
-              const subTask = tc.args.task || tc.args.prompt || 'Подзадача';
-              const subagentId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-              const subagent: SubagentInfo = {
-                id: subagentId,
-                parentSessionId: sessionId,
-                projectPath,
-                name: tc.args.name || `Подагент #${subagentId.slice(-4)}`,
-                task: subTask,
-                status: 'running',
-                progress: 'Инициализация подзадачи...',
-                startedAt: Date.now()
-              };
-
-              this.registerSubagent(subagent);
-              onChunk({ subagent });
+            if (err instanceof ApprovalCancelledError) {
+              tc.status = 'rejected';
+              tc.result = err.message;
+            } else {
+              tc.status = 'error';
+              tc.result = `Error: ${err?.message || String(err)}`;
             }
+            onChunk({ toolCall: tc });
           }
         },
         (completedMsg) => {
-          this.setProjectStatus(projectPath, 'done', 'Задача успешно выполнена');
+          this.finishSession(sessionId, projectPath, 'done', 'Задача успешно выполнена');
           onComplete(completedMsg);
         },
         (err) => {
-          this.setProjectStatus(projectPath, 'error', `Ошибка: ${err}`);
+          this.finishSession(sessionId, projectPath, 'error', `Ошибка: ${err}`);
           onError(err);
         }
       );
+      // streamChat при AbortError не зовёт ни onComplete, ни onError — закрываем сессию как отменённую.
+      if (this.activeSessions.has(sessionId)) {
+        this.finishSession(sessionId, projectPath, 'aborted', 'Сессия прервана пользователем');
+      }
     } catch (err: any) {
-      this.setProjectStatus(projectPath, 'error', err.message);
+      this.finishSession(sessionId, projectPath, 'error', err.message);
       onError(err.message);
     }
   }
 
-  private sessionClaudeCliIds = new Map<string, string>();
+  /** Запуск команды агента: в фоне через processManager (background: true) или с ожиданием и таймаутом. */
+  private async runCommandTool(
+    tc: AIToolCall,
+    cmd: string,
+    sessionId: string,
+    projectPath: string,
+    rules: AutoApproveRules | undefined,
+    onChunk: (chunk: ClaudeBridgeMessageChunk) => void
+  ): Promise<void> {
+    this.setProjectStatus(projectPath, 'running', `Выполняется: ${cmd}`);
 
-  public clearSession(sessionId: string): void {
-    this.sessionClaudeCliIds.delete(sessionId);
-    this.abortSession(sessionId);
+    if (tc.args.background === true) {
+      const name = String(tc.args.name || `agent-${Date.now().toString(36)}`).trim();
+      const info = await processManager.startProcess(projectPath, cmd, name);
+      tc.status = 'accepted';
+      tc.result = `Процесс "${info.name}" запущен в фоне (pid ${info.pid ?? '?'}, id "${info.id}"). `
+        + 'Цикл агента не блокируется; логи и остановка — во вкладке Processes.';
+      onChunk({ toolCall: tc });
+      return;
+    }
+
+    const timeoutSec = rules?.commandTimeoutSec;
+    const timeoutMs = typeof timeoutSec === 'number' && timeoutSec > 0 ? timeoutSec * 1000 : SUBPROCESS_DEFAULT_TIMEOUT_MS;
+    const res = await this.executeSubprocess(
+      cmd,
+      projectPath,
+      (outputSoFar) => {
+        tc.status = 'running';
+        tc.result = outputSoFar;
+        onChunk({ toolCall: { ...tc } });
+      },
+      { sessionId, timeoutMs }
+    );
+    tc.status = res.timedOut ? 'error' : 'accepted';
+    tc.result = this.formatSubprocessResult(res, timeoutMs);
+    onChunk({ toolCall: tc });
+  }
+
+  private formatSubprocessResult(res: SubprocessResult, timeoutMs: number): string {
+    const output = res.truncated
+      ? `[… вывод усечён, показан только последний ${Math.round(SUBPROCESS_MAX_OUTPUT_BYTES / 1024)} КБ …]\n${res.output}`
+      : res.output;
+    if (res.timedOut) {
+      return `Команда прервана по таймауту (${Math.round(timeoutMs / 1000)} с) и убита вместе с дочерними процессами. `
+        + 'Для долгоживущих процессов (dev-серверы, вотчеры) запускай run_command с background: true.\n' + output;
+    }
+    if (res.exitCode === 0) {
+      return output || 'Команда успешно выполнена (код 0)';
+    }
+    return `Команда завершилась с кодом ${res.exitCode}:\n${output}`;
+  }
+
+  private async handleApiToolCall(
+    tc: AIToolCall,
+    req: { sessionId: string; projectPath: string; config: AIProviderConfig },
+    rules: AutoApproveRules | undefined,
+    perms: { canAutoCommands: boolean; canAutoWrite: boolean; canAutoRead: boolean; canAutoSubagents: boolean },
+    onChunk: (chunk: ClaudeBridgeMessageChunk) => void
+  ): Promise<void> {
+    const { sessionId, projectPath } = req;
+    const { canAutoCommands, canAutoWrite } = perms;
+    if (tc.name === 'ask_question' || tc.name === 'AskUserQuestion') {
+      const qData = this.parseQuestionData(tc.args);
+      const approvalReq: ApprovalRequest = {
+        id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        sessionId,
+        projectPath,
+        type: 'question',
+        title: qData.title || 'Вопрос от ассистента',
+        details: qData.subtitle,
+        questionData: qData,
+        createdAt: Date.now()
+      };
+
+      onChunk({ approvalRequest: approvalReq });
+      const res = await this.requestApproval(approvalReq);
+      tc.status = res.approved ? 'accepted' : 'rejected';
+      tc.result = res.text || (res.approved ? 'Подтверждено пользователем' : 'Отклонено пользователем');
+      onChunk({ toolCall: tc });
+    } else if (tc.name === 'read_file' || tc.name === 'read') {
+      const filePath = tc.args.filePath || tc.args.path || '';
+      const isExcludedFromRead = rules?.readExcludePatterns && this.isPathExcluded(filePath, rules.readExcludePatterns);
+
+      if (isExcludedFromRead) {
+        const approvalReq: ApprovalRequest = {
+          id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          sessionId,
+          projectPath,
+          type: 'question',
+          title: `Разрешение на чтение защищенного файла`,
+          details: `Файл ${filePath} находится в списке исключений для чтения. Разрешить агенту доступ?`,
+          questionData: {
+            title: 'Чтение защищенного файла',
+            subtitle: `Разрешить агенту прочитать файл ${filePath}?`,
+            options: [
+              { id: 'allow', label: 'Разрешить чтение', description: 'Предоставить агенту содержимое файла' },
+              { id: 'deny', label: 'Запретить чтение', description: 'Скрыть содержимое файла от агента' }
+            ],
+            isMultiSelect: false,
+            allowOther: false
+          },
+          createdAt: Date.now()
+        };
+
+        onChunk({ approvalRequest: approvalReq });
+        const res = await this.requestApproval(approvalReq);
+        if (!res.approved || res.text?.includes('deny') || res.text?.includes('Запретить')) {
+          tc.status = 'rejected';
+          tc.result = `Доступ к чтению файла ${filePath} отклонен пользователем`;
+          onChunk({ toolCall: tc });
+          return;
+        }
+      }
+    } else if (tc.name === 'run_command' || tc.name === 'bash') {
+      const cmd = tc.args.command || tc.args.cmd || '';
+      const isDenied = rules?.commandDenyList && this.isCommandDenied(cmd, rules.commandDenyList);
+      const shouldAutoRun = canAutoCommands && !isDenied;
+
+      if (shouldAutoRun) {
+        try {
+          await this.runCommandTool(tc, cmd, sessionId, projectPath, rules, onChunk);
+        } catch (e: any) {
+          tc.status = 'error';
+          tc.result = `Error: ${e.message}`;
+          onChunk({ toolCall: tc });
+        }
+      } else {
+        const approvalReq: ApprovalRequest = {
+          id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          sessionId,
+          projectPath,
+          type: 'command',
+          title: isDenied ? `⚠️ Заблокированная команда требует подтверждения: ${cmd}` : `Разрешение на запуск команды: ${cmd}`,
+          command: cmd,
+          details: tc.args.explanation || (isDenied ? 'Команда находится в списке запрещенных для авто-запуска' : 'Выполнение команды терминала'),
+          createdAt: Date.now()
+        };
+
+        onChunk({ approvalRequest: approvalReq });
+        const res = await this.requestApproval(approvalReq);
+
+        if (res.approved) {
+          try {
+            await this.runCommandTool(tc, cmd, sessionId, projectPath, rules, onChunk);
+          } catch (e: any) {
+            tc.status = 'error';
+            tc.result = `Error: ${e.message}`;
+            onChunk({ toolCall: tc });
+          }
+        } else {
+          tc.status = 'rejected';
+          tc.result = `Отклонено пользователем: ${res.text || 'Без комментария'}`;
+          onChunk({ toolCall: tc });
+        }
+      }
+      this.setProjectStatus(projectPath, 'running', 'Обработка результатов...');
+    } else if (tc.name === 'write_file' || tc.name === 'write_to_file') {
+      const filePath = tc.args.filePath || tc.args.path || '';
+      const content = tc.args.content || '';
+      const isExcluded = rules?.writeExcludePatterns && this.isPathExcluded(filePath, rules.writeExcludePatterns);
+      const shouldAutoWrite = canAutoWrite && !isExcluded;
+
+      if (!isInsideProject(projectPath, filePath)) {
+        // Абсолютный путь вне проекта или выход через `..` — отклоняем до любых
+        // одобрений, даже при auto-approve, и объясняем модели причину (TASK-32).
+        tc.status = 'rejected';
+        tc.result = `Запись отклонена: путь "${filePath}" находится вне корня проекта "${projectPath}". `
+          + 'Разрешены только пути внутри проекта — укажи путь относительно его корня без выхода через "..".';
+        onChunk({ toolCall: tc });
+      } else if (shouldAutoWrite) {
+        await aiAgentService.applyDiff(projectPath, filePath, content);
+        tc.status = 'accepted';
+        tc.result = `Файл ${filePath} успешно записан`;
+        onChunk({ toolCall: tc });
+      } else {
+        let oldContent = '';
+        const fullPath = path.resolve(projectPath, filePath);
+        if (existsSync(fullPath)) {
+          try {
+            oldContent = await fs.readFile(fullPath, 'utf-8');
+          } catch {}
+        }
+        const patch = aiAgentService.generateDiff(oldContent, content, filePath);
+        tc.diff = { filePath, oldContent, newContent: content, patch };
+
+        const approvalReq: ApprovalRequest = {
+          id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          sessionId,
+          projectPath,
+          type: 'file_write',
+          title: isExcluded ? `⚠️ Файл в списке исключений: ${filePath}` : `Разрешение на запись файла: ${filePath}`,
+          filePath,
+          details: isExcluded ? 'Файл защищен списком исключений авто-одобрения' : (tc.args.explanation || 'Изменение содержимого файла'),
+          diff: tc.diff,
+          createdAt: Date.now()
+        };
+
+        onChunk({ approvalRequest: approvalReq, toolCall: tc });
+        const res = await this.requestApproval(approvalReq);
+        if (res.approved) {
+          await aiAgentService.applyDiff(projectPath, filePath, content);
+          tc.status = 'accepted';
+          tc.result = `Файл ${filePath} успешно сохранен`;
+          onChunk({ toolCall: tc });
+        } else {
+          tc.status = 'rejected';
+          tc.result = `Отклонено пользователем: ${res.text || 'Без комментария'}`;
+          onChunk({ toolCall: tc });
+        }
+      }
+    } else if (tc.name === 'spawn_subagent' || tc.name === 'dispatch_agent') {
+      const subTask = tc.args.task || tc.args.prompt || 'Подзадача';
+      const subagentId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const subagent: SubagentInfo = {
+        id: subagentId,
+        parentSessionId: sessionId,
+        projectPath,
+        name: tc.args.name || `Подагент #${subagentId.slice(-4)}`,
+        task: subTask,
+        status: 'running',
+        progress: 'Инициализация подзадачи...',
+        startedAt: Date.now()
+      };
+
+      this.registerSubagent(subagent);
+      onChunk({ subagent });
+    }
   }
 
   private async runClaudeCliTask(
@@ -721,8 +975,14 @@ class ClaudeBridgeService extends EventEmitter {
     const cliCheck = await this.ensureClaudeCliAvailable();
     if (!cliCheck.available) {
       const message = cliCheck.message || 'Claude CLI недоступен.';
-      this.setProjectStatus(projectPath, 'error', message);
+      this.finishSession(sessionId, projectPath, 'error', message);
       onError(message);
+      return;
+    }
+    if (this.abortedSessions.has(sessionId)) {
+      // Пользователь прервал сессию, пока шла проверка CLI.
+      this.finishSession(sessionId, projectPath, 'aborted', 'Сессия прервана пользователем');
+      onComplete({ id: `msg-${Date.now()}`, role: 'assistant', content: '*(Отменено пользователем)*', timestamp: new Date().toISOString() });
       return;
     }
 
@@ -755,7 +1015,7 @@ class ClaudeBridgeService extends EventEmitter {
       );
     } catch (err: any) {
       const message = `Не удалось запустить Claude CLI: ${err?.message || String(err)}`;
-      this.setProjectStatus(projectPath, 'error', message);
+      this.finishSession(sessionId, projectPath, 'error', message);
       onError(message);
       return;
     }
@@ -770,7 +1030,7 @@ class ClaudeBridgeService extends EventEmitter {
       if (finished) return;
       finished = true;
       this.activeProcesses.delete(sessionId);
-      this.setProjectStatus(projectPath, 'error', message);
+      this.finishSession(sessionId, projectPath, 'error', message);
       onError(message);
     };
 
@@ -980,11 +1240,12 @@ class ClaudeBridgeService extends EventEmitter {
       if (finished) return;
       finished = true;
       this.activeProcesses.delete(sessionId);
-      if (code === 0 || accumulatedText) {
+      const aborted = this.abortedSessions.has(sessionId);
+      if (code === 0 || accumulatedText || aborted) {
         const completeMsg: AIMessage = {
           id: `msg-${Date.now()}`,
           role: 'assistant',
-          content: accumulatedText,
+          content: aborted ? `${accumulatedText}\n\n*(Отменено пользователем)*`.trim() : accumulatedText,
           thought: accumulatedThought,
           toolCalls: toolCalls.map((tc) => ({
             ...tc,
@@ -992,14 +1253,18 @@ class ClaudeBridgeService extends EventEmitter {
           })),
           timestamp: new Date().toISOString()
         };
-        this.setProjectStatus(projectPath, 'done', 'Задача успешно выполнена');
+        if (aborted) {
+          this.finishSession(sessionId, projectPath, 'aborted', 'Сессия прервана пользователем');
+        } else {
+          this.finishSession(sessionId, projectPath, 'done', 'Задача успешно выполнена');
+        }
         onComplete(completeMsg);
       } else {
         const err =
           stderrOutput ||
           (stdinError ? `Не удалось передать запрос в Claude CLI: ${stdinError}` : '') ||
           `Claude Code завершился с кодом ${code}`;
-        this.setProjectStatus(projectPath, 'error', err);
+        this.finishSession(sessionId, projectPath, 'error', err);
         onError(err);
       }
     });
@@ -1012,52 +1277,92 @@ class ClaudeBridgeService extends EventEmitter {
       child.stdin.end();
     } catch (err: any) {
       failSession(`Не удалось передать запрос в Claude CLI: ${err?.message || String(err)}`);
-      try { child.kill(); } catch { /* ignore */ }
+      killProcessTree(child);
     }
   }
 
-  private executeSubprocess(command: string, cwd: string, onOutput?: (chunk: string) => void): Promise<string> {
+  /**
+   * Выполняет команду оболочки с ожиданием завершения. Таймаут (по умолчанию 5 минут) убивает
+   * дерево процессов через tree-kill; вывод ограничен maxOutputBytes (хранится «хвост»).
+   * `onProgress` получает уже ограниченный снимок вывода. Ошибки запуска — reject.
+   */
+  public executeSubprocess(
+    command: string,
+    cwd: string,
+    onProgress?: (outputSoFar: string) => void,
+    options: SubprocessOptions = {}
+  ): Promise<SubprocessResult> {
+    const timeoutMs = options.timeoutMs ?? SUBPROCESS_DEFAULT_TIMEOUT_MS;
+    const maxOutputBytes = options.maxOutputBytes ?? SUBPROCESS_MAX_OUTPUT_BYTES;
+    const { sessionId } = options;
+
     return new Promise((resolve, reject) => {
       const isWin = process.platform === 'win32';
       const shell = isWin ? 'powershell.exe' : '/bin/bash';
       const args = isWin ? ['-NoProfile', '-NonInteractive', '-Command', command] : ['-c', command];
 
-      const child = spawn(shell, args, {
-        cwd,
-        env: { ...process.env, FORCE_COLOR: '0' }
-      });
+      let child: ChildProcessWithoutNullStreams;
+      try {
+        child = spawn(shell, args, {
+          cwd,
+          env: { ...process.env, FORCE_COLOR: '0' }
+        });
+      } catch (err) {
+        reject(err);
+        return;
+      }
+
+      if (sessionId) {
+        const set = this.sessionSubprocesses.get(sessionId) ?? new Set<ChildProcess>();
+        set.add(child);
+        this.sessionSubprocesses.set(sessionId, set);
+      }
 
       let settled = false;
+      let timedOut = false;
+      let truncated = false;
+      let output = '';
+      const timer = timeoutMs > 0
+        ? setTimeout(() => {
+          timedOut = true;
+          killProcessTree(child);
+        }, timeoutMs)
+        : undefined;
+
+      const untrack = () => {
+        if (timer) clearTimeout(timer);
+        if (sessionId) {
+          const set = this.sessionSubprocesses.get(sessionId);
+          if (set) {
+            set.delete(child);
+            if (set.size === 0) this.sessionSubprocesses.delete(sessionId);
+          }
+        }
+      };
       const settle = (fn: () => void) => {
         if (settled) return;
         settled = true;
+        untrack();
         fn();
       };
 
-      let output = '';
-      child.stdout.on('data', (data) => {
-        const text = data.toString();
-        output += text;
-        onOutput?.(text);
-      });
-      child.stderr.on('data', (data) => {
-        const text = data.toString();
-        output += text;
-        onOutput?.(text);
-      });
+      const append = (data: Buffer) => {
+        output += data.toString();
+        if (output.length > maxOutputBytes) {
+          output = output.slice(-maxOutputBytes);
+          truncated = true;
+        }
+        onProgress?.(output);
+      };
+      child.stdout.on('data', append);
+      child.stderr.on('data', append);
       // Необработанное 'error' на stdio-потоке роняет main-процесс
-      child.stdin?.on('error', (err) => settle(() => reject(err)));
+      child.stdin.on('error', (err) => settle(() => reject(err)));
       child.stdout.on('error', (err) => settle(() => reject(err)));
       child.stderr.on('error', (err) => settle(() => reject(err)));
 
       child.on('close', (code) => {
-        settle(() => {
-          if (code === 0) {
-            resolve(output || 'Команда успешно выполнена (код 0)');
-          } else {
-            resolve(`Команда завершилась с кодом ${code}:\n${output}`);
-          }
-        });
+        settle(() => resolve({ output, exitCode: code, timedOut, truncated }));
       });
 
       child.on('error', (err) => settle(() => reject(err)));

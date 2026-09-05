@@ -91,6 +91,38 @@ const DEFAULT_CONFIG: AIProviderConfig = {
   autoApproveRules: DEFAULT_AUTO_APPROVE_RULES
 };
 
+/**
+ * Сообщает main-процессу, что сессия закрыта/очищена: там отклоняются ожидающие одобрения,
+ * убиваются процессы сессии и забывается resume-id Claude CLI (TASK-33).
+ */
+function releaseSessionInMain(sessionId: string): void {
+  window.api?.clearAISession?.(sessionId).catch((err: unknown) => {
+    console.error('Failed to clear AI session in main:', err);
+  });
+}
+
+/** Сброс состояния стрима и ожидающих одобрений, относящихся к закрываемой/очищаемой сессии. */
+function sessionResetPatch(
+  state: Pick<AIStudioState, 'activeStreamSessionId' | 'pendingApprovals'>,
+  projectPath: string,
+  sessionId: string | undefined
+): Partial<Pick<AIStudioState, 'isStreaming' | 'activeStreamSessionId' | 'pendingApprovals'>> {
+  if (!sessionId) return {};
+  const patch: Partial<Pick<AIStudioState, 'isStreaming' | 'activeStreamSessionId' | 'pendingApprovals'>> = {};
+  if (state.activeStreamSessionId === sessionId) {
+    patch.isStreaming = false;
+    patch.activeStreamSessionId = null;
+  }
+  const current = state.pendingApprovals[projectPath] || [];
+  if (current.some((r) => r.sessionId === sessionId)) {
+    patch.pendingApprovals = {
+      ...state.pendingApprovals,
+      [projectPath]: current.filter((r) => r.sessionId !== sessionId)
+    };
+  }
+  return patch;
+}
+
 function createInitialSession(): AISession {
   const id = `session-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   return {
@@ -339,6 +371,7 @@ export const useAIStudioStore = create<AIStudioState>()(
       },
 
       closeSession: (projectPath: string, sessionId: string) => {
+        releaseSessionInMain(sessionId);
         set((state) => {
           const existing = state.sessions[projectPath] || [];
           const filtered = existing.filter((s) => s.id !== sessionId);
@@ -370,14 +403,16 @@ export const useAIStudioStore = create<AIStudioState>()(
             activeSessionId: {
               ...state.activeSessionId,
               [projectPath]: currentActive
-            }
+            },
+            ...sessionResetPatch(state, projectPath, sessionId)
           };
         });
       },
 
       clearSession: (projectPath: string, sessionId?: string) => {
+        const targetSessionId = sessionId || get().activeSessionId[projectPath];
+        if (targetSessionId) releaseSessionInMain(targetSessionId);
         set((state) => {
-          const targetSessionId = sessionId || state.activeSessionId[projectPath];
           const existing = state.sessions[projectPath] || [];
 
           const updated = existing.map((s) =>
@@ -390,7 +425,8 @@ export const useAIStudioStore = create<AIStudioState>()(
             sessions: {
               ...state.sessions,
               [projectPath]: updated
-            }
+            },
+            ...sessionResetPatch(state, projectPath, targetSessionId)
           };
         });
       },

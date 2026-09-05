@@ -17,6 +17,8 @@ export interface AutoApproveRules {
   writeExcludePatterns: string[];
   readExcludePatterns: string[];
   commandDenyList: string[];
+  /** Таймаут команд агента (run_command) в секундах; по умолчанию 5 минут (TASK-33). */
+  commandTimeoutSec?: number;
 }
 
 export interface AIProviderConfig {
@@ -616,6 +618,22 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
           properties: {
             subDir: { type: 'string', description: 'Относительный путь подкаталога (пустая строка для корня)' }
           }
+        }
+      },
+      {
+        name: 'run_command',
+        description:
+          'Выполнить команду оболочки в корне проекта и получить её вывод (ожидание ограничено таймаутом, по умолчанию 5 минут). '
+          + 'Долгоживущие процессы (dev-серверы, вотчеры, `npm run dev`) запускай с background: true — они уходят в менеджер процессов ProjectHub и не блокируют работу.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            command: { type: 'string', description: 'Команда оболочки (PowerShell на Windows, bash на macOS/Linux)' },
+            explanation: { type: 'string', description: 'Зачем нужна команда (показывается пользователю при запросе одобрения)' },
+            background: { type: 'boolean', description: 'true — запустить в фоне через менеджер процессов и сразу вернуть управление' },
+            name: { type: 'string', description: 'Имя фонового процесса (только с background: true), например "dev-server"' }
+          },
+          required: ['command']
         }
       },
       {

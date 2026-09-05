@@ -1009,6 +1009,14 @@ ipcMain.handle('ai:abortStream', async (_event, sessionId: string) => {
   return true;
 });
 
+// Закрытие/очистка диалога в UI: отклонить ожидающие одобрения, убить процессы сессии,
+// забыть resume-id Claude CLI и подагентов (TASK-33).
+ipcMain.handle('ai:clearSession', async (_event, sessionId: string) => {
+  if (typeof sessionId !== 'string' || !sessionId) return false;
+  claudeBridgeService.clearSession(sessionId);
+  return true;
+});
+
 ipcMain.handle('ai:applyDiff', async (_event, projectPath: string, relativePath: string, newContent: string) => {
   return await aiAgentService.applyDiff(projectPath, relativePath, newContent);
 });
@@ -1207,11 +1215,17 @@ async function performGracefulShutdown() {
     console.warn('[Main] Error cleaning up git watchers:', e);
   }
 
-  // 3. Stop background dev processes and terminals
+  // 3. Stop background dev processes, agent sessions (Claude CLI + команды агента) and terminals
   try {
     processManager.cleanupAll();
   } catch (e) {
     console.warn('[Main] Error cleaning up processes:', e);
+  }
+
+  try {
+    claudeBridgeService.killAll();
+  } catch (e) {
+    console.warn('[Main] Error cleaning up agent sessions:', e);
   }
 
   try {

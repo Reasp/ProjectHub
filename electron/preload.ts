@@ -192,6 +192,7 @@ const api: IElectronAPI = {
   claudeLogout: () => ipcRenderer.invoke('ai:claudeLogout'),
   streamAIChat: (request: any) => ipcRenderer.invoke('ai:streamChat', request),
   abortAIStream: (sessionId: string) => ipcRenderer.invoke('ai:abortStream', sessionId),
+  clearAISession: (sessionId: string) => ipcRenderer.invoke('ai:clearSession', sessionId),
   applyAIDiff: (projectPath: string, relativePath: string, newContent: string) =>
     ipcRenderer.invoke('ai:applyDiff', projectPath, relativePath, newContent),
 
