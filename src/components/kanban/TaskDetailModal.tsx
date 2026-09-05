@@ -16,7 +16,9 @@ import {
   AlertTriangle,
   FolderOpen,
   Target,
-  Sparkles
+  Sparkles,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import type { BacklogTask, TaskCriterion } from '../../types/electron';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -43,7 +45,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const { milestones } = useProjectStore();
 
   const [activeTab, setActiveTab] = useState<'editor' | 'raw'>('editor');
-  const [previewMode, setPreviewMode] = useState(false);
+  const [previewMode, setPreviewMode] = useState(true);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
   const [title, setTitle] = useState(task?.title || '');
@@ -80,6 +83,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     setCriteria(task.acceptanceCriteria || []);
     setRawContent(task.content || '');
     setWarningMessage(null);
+    setPreviewMode(true);
+    setIsDescriptionExpanded(false);
   }, [task]);
 
   if (!task) return null;
@@ -156,7 +161,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="bg-[#131622] border border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className={`bg-[#131622] border border-slate-800 rounded-2xl w-full shadow-2xl overflow-hidden flex flex-col transition-all duration-150 ${
+        isDescriptionExpanded ? 'max-w-5xl h-[92vh]' : 'max-w-3xl max-h-[90vh]'
+      }`}>
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#171b2b]/70">
           <div className="flex items-center gap-3 min-w-0">
@@ -210,11 +217,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         )}
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto space-y-5 flex-1 text-xs">
+        <div className={`p-6 overflow-y-auto flex-1 text-xs ${isDescriptionExpanded ? 'flex flex-col space-y-3 min-h-0' : 'space-y-5'}`}>
           {activeTab === 'editor' ? (
             <>
-              {/* Meta Row: Status, Milestone & Labels */}
-              <div className="grid grid-cols-3 gap-3 p-4 rounded-xl bg-[#171b2b]/50 border border-slate-800">
+              {!isDescriptionExpanded && (
+                <>
+                  {/* Meta Row: Status, Milestone & Labels */}
+                  <div className="grid grid-cols-3 gap-3 p-4 rounded-xl bg-[#171b2b]/50 border border-slate-800">
                 <div>
                   <label className="font-semibold text-slate-300 uppercase tracking-wider text-[11px] block mb-1.5">
                     {t.taskDetail.status}
@@ -377,54 +386,102 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   </div>
                 </div>
               </div>
-
-              {/* Description & Markdown Editor */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                    <Edit3 className="w-3.5 h-3.5 text-indigo-400" />
-                    {t.taskDetail.description} (Markdown)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewMode(!previewMode)}
-                    className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 font-medium"
-                  >
-                    <Eye className="w-3 h-3" />
-                    {previewMode ? t.common.edit : t.docs.viewDoc}
-                  </button>
-                </div>
-
-                {previewMode ? (
-                  <div className="bg-[#0e111a] p-4 rounded-xl text-xs text-slate-300 border border-slate-800 min-h-[140px] leading-relaxed">
-                    <MarkdownViewer content={description} />
-                  </div>
-                ) : (
-                  <textarea
-                    rows={6}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder={t.createTask.descriptionPlaceholder}
-                    className="w-full bg-[#10121d] border border-slate-800 rounded-xl p-3.5 text-xs text-slate-200 font-mono placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 leading-relaxed transition resize-y"
-                  />
-                )}
-              </div>
             </>
-          ) : (
-            /* Raw Markdown source viewer */
-            <div className="space-y-2">
-              <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                <FileCode className="w-3.5 h-3.5 text-indigo-400" />
-                {t.docs.markdownEditor}
-              </label>
-              <pre className="bg-[#0e111a] p-4 rounded-xl text-xs text-slate-300 font-mono border border-slate-800 leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-[50vh]">
-                {rawContent}
-              </pre>
-            </div>
           )}
 
-          {/* File location footer info */}
-          <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 font-mono">
+          {/* Description & Markdown Editor */}
+          <div className={`space-y-2 ${isDescriptionExpanded ? 'flex-1 flex flex-col min-h-0' : ''}`}>
+            <div className="flex items-center justify-between shrink-0">
+              <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <Edit3 className="w-3.5 h-3.5 text-indigo-400" />
+                {t.taskDetail.description} (Markdown)
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode(!previewMode)}
+                  className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 font-medium px-2 py-1 rounded hover:bg-slate-800/60 transition"
+                  title={previewMode ? t.common.edit : t.docs.viewDoc}
+                >
+                  {previewMode ? (
+                    <>
+                      <Edit3 className="w-3 h-3" />
+                      {t.common.edit}
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-3 h-3" />
+                      {t.docs.viewDoc}
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsDescriptionExpanded(!isDescriptionExpanded)}
+                  className={`flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded transition ${
+                    isDescriptionExpanded
+                      ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                  title={isDescriptionExpanded ? t.common.collapse : t.common.expand}
+                >
+                  {isDescriptionExpanded ? (
+                    <>
+                      <Minimize2 className="w-3 h-3" />
+                      {t.common.collapse}
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="w-3 h-3" />
+                      {t.common.expand}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {previewMode ? (
+              <div
+                className={`bg-[#0e111a] p-4 rounded-xl text-xs text-slate-300 border border-slate-800 leading-relaxed overflow-y-auto ${
+                  isDescriptionExpanded ? 'flex-1 min-h-0' : 'min-h-[140px] max-h-[380px]'
+                }`}
+              >
+                {description.trim() ? (
+                  <MarkdownViewer content={description} />
+                ) : (
+                  <div className="text-slate-500 italic py-2">
+                    {t.createTask.descriptionPlaceholder || 'Нет описания'}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <textarea
+                rows={isDescriptionExpanded ? undefined : 8}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t.createTask.descriptionPlaceholder}
+                className={`w-full bg-[#10121d] border border-slate-800 rounded-xl p-3.5 text-xs text-slate-200 font-mono placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 leading-relaxed transition ${
+                  isDescriptionExpanded ? 'flex-1 min-h-0 resize-none' : 'resize-y'
+                }`}
+              />
+            )}
+          </div>
+        </>
+      ) : (
+        /* Raw Markdown source viewer */
+        <div className="space-y-2">
+          <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+            <FileCode className="w-3.5 h-3.5 text-indigo-400" />
+            {t.docs.markdownEditor}
+          </label>
+          <pre className="bg-[#0e111a] p-4 rounded-xl text-xs text-slate-300 font-mono border border-slate-800 leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-[50vh]">
+            {rawContent}
+          </pre>
+        </div>
+      )}
+
+      {/* File location footer info */}
+      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 font-mono shrink-0">
             <span className="truncate max-w-lg" title={task.filePath}>
               {task.filePath}
             </span>
