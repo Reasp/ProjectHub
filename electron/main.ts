@@ -17,6 +17,7 @@ import { processManager } from './services/processManager';
 import { ptyService } from './services/ptyService';
 import { gitService } from './services/gitService';
 import { windowStateService } from './services/windowStateService';
+import { assertInsideRegisteredProject, assertRegisteredProject } from './services/projectPathGuard';
 
 // Automatically approve media capture requests in Chromium without blocking UI dialogs
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
@@ -556,7 +557,10 @@ ipcMain.handle('backlog:getTasks', async (_event, projectPath: string) => {
   return taskList;
 });
 
-ipcMain.handle('backlog:updateTaskStatus', async (_event, filePath: string, newStatus: string) => {
+// Все обработчики ниже получают абсолютный filePath от рендерера; перед чтением/записью
+// проверяем, что путь лежит внутри зарегистрированного проекта (TASK-32). Нарушение — исключение.
+ipcMain.handle('backlog:updateTaskStatus', async (_event, rawFilePath: string, newStatus: string) => {
+  const filePath = await assertInsideRegisteredProject(rawFilePath);
   try {
     if (!existsSync(filePath)) return false;
     const { eol, data, content } = parseTaskFile(await fs.readFile(filePath, 'utf-8'));
@@ -569,7 +573,8 @@ ipcMain.handle('backlog:updateTaskStatus', async (_event, filePath: string, newS
   }
 });
 
-ipcMain.handle('backlog:toggleCriterion', async (_event, filePath: string, index: number, completed: boolean) => {
+ipcMain.handle('backlog:toggleCriterion', async (_event, rawFilePath: string, index: number, completed: boolean) => {
+  const filePath = await assertInsideRegisteredProject(rawFilePath);
   try {
     if (!existsSync(filePath)) return false;
     const { eol, data, content } = parseTaskFile(await fs.readFile(filePath, 'utf-8'));
@@ -584,7 +589,7 @@ ipcMain.handle('backlog:toggleCriterion', async (_event, filePath: string, index
   }
 });
 
-ipcMain.handle('backlog:saveFullTask', async (_event, filePath: string, data: {
+ipcMain.handle('backlog:saveFullTask', async (_event, rawFilePath: string, data: {
   title: string;
   status: BacklogTask['status'];
   labels: string[];
@@ -592,6 +597,7 @@ ipcMain.handle('backlog:saveFullTask', async (_event, filePath: string, data: {
   description: string;
   criteria?: Array<{ text: string; completed: boolean }>;
 }) => {
+  const filePath = await assertInsideRegisteredProject(rawFilePath);
   try {
     if (!existsSync(filePath)) return false;
     const { eol, data: frontmatter, content } = parseTaskFile(await fs.readFile(filePath, 'utf-8'));
@@ -621,7 +627,8 @@ ipcMain.handle('backlog:saveFullTask', async (_event, filePath: string, data: {
   }
 });
 
-ipcMain.handle('backlog:deleteTask', async (_event, filePath: string) => {
+ipcMain.handle('backlog:deleteTask', async (_event, rawFilePath: string) => {
+  const filePath = await assertInsideRegisteredProject(rawFilePath);
   try {
     if (!existsSync(filePath)) return false;
     await fs.unlink(filePath);
@@ -632,7 +639,8 @@ ipcMain.handle('backlog:deleteTask', async (_event, filePath: string) => {
   }
 });
 
-ipcMain.handle('backlog:saveTask', async (_event, filePath: string, content: string) => {
+ipcMain.handle('backlog:saveTask', async (_event, rawFilePath: string, content: string) => {
+  const filePath = await assertInsideRegisteredProject(rawFilePath);
   try {
     await fs.writeFile(filePath, content, 'utf-8');
     return true;
@@ -650,6 +658,7 @@ ipcMain.handle('backlog:createTask', async (_event, projectPath: string, task: {
   priority?: string;
   milestone?: string;
 }) => {
+  await assertRegisteredProject(projectPath);
   try {
     const backlogDir = path.join(projectPath, 'backlog');
     const tasksDir = path.join(backlogDir, 'tasks');
@@ -887,15 +896,15 @@ ipcMain.handle('docs:list', async (_event, projectPath: string) => {
 });
 
 ipcMain.handle('docs:read', async (_event, filePath: string) => {
-  return await readDocFile(filePath);
+  return await readDocFile(await assertInsideRegisteredProject(filePath));
 });
 
 ipcMain.handle('docs:save', async (_event, filePath: string, content: string) => {
-  return await saveDocFile(filePath, content);
+  return await saveDocFile(await assertInsideRegisteredProject(filePath), content);
 });
 
 ipcMain.handle('docs:create', async (_event, projectPath: string, params: CreateDocParams) => {
-  return await createProjectDoc(projectPath, params);
+  return await createProjectDoc(await assertRegisteredProject(projectPath), params);
 });
 
 // 9. Milestones & Roadmap
@@ -907,15 +916,15 @@ ipcMain.handle('milestones:list', async (_event, projectPath: string) => {
 });
 
 ipcMain.handle('milestones:create', async (_event, projectPath: string, params: CreateMilestoneParams) => {
-  return await createMilestone(projectPath, params);
+  return await createMilestone(await assertRegisteredProject(projectPath), params);
 });
 
 ipcMain.handle('milestones:save', async (_event, filePath: string, params: Partial<CreateMilestoneParams>) => {
-  return await saveMilestone(filePath, params);
+  return await saveMilestone(await assertInsideRegisteredProject(filePath), params);
 });
 
 ipcMain.handle('milestones:delete', async (_event, filePath: string) => {
-  return await deleteMilestone(filePath);
+  return await deleteMilestone(await assertInsideRegisteredProject(filePath));
 });
 
 // 10. Interactive PTY Terminals (Claude Code & Multi-tab Shell)
@@ -1060,36 +1069,38 @@ ipcMain.handle('claudeBridge:getUsage', async (_event, forceRefresh = false) => 
 // 12. File System Helpers for AI & Explorer
 import { fileService } from './services/fileService';
 
+// projectPath приходит от рендерера — принимаем только корни из реестра (TASK-32); относительный
+// путь дополнительно проверяется внутри fileService (выход за корень через `..` запрещён).
 ipcMain.handle('files:readTree', async (_event, projectPath: string, subDir = '', maxDepth = 6) => {
-  return await fileService.readTree(projectPath, subDir, maxDepth);
+  return await fileService.readTree(await assertRegisteredProject(projectPath), subDir, maxDepth);
 });
 
 ipcMain.handle('files:readContent', async (_event, projectPath: string, relativePath: string) => {
-  return await fileService.readFileContent(projectPath, relativePath);
+  return await fileService.readFileContent(await assertRegisteredProject(projectPath), relativePath);
 });
 
 ipcMain.handle('files:saveContent', async (_event, projectPath: string, relativePath: string, content: string) => {
-  return await fileService.saveFileContent(projectPath, relativePath, content);
+  return await fileService.saveFileContent(await assertRegisteredProject(projectPath), relativePath, content);
 });
 
 ipcMain.handle('files:create', async (_event, projectPath: string, relativePath: string, isDirectory = false) => {
-  return await fileService.createFileOrFolder(projectPath, relativePath, isDirectory);
+  return await fileService.createFileOrFolder(await assertRegisteredProject(projectPath), relativePath, isDirectory);
 });
 
 ipcMain.handle('files:delete', async (_event, projectPath: string, relativePath: string) => {
-  return await fileService.deleteFileOrFolder(projectPath, relativePath);
+  return await fileService.deleteFileOrFolder(await assertRegisteredProject(projectPath), relativePath);
 });
 
 ipcMain.handle('file:readFile', async (_event, projectPath: string, relativePath: string) => {
-  return await fileService.readFileContent(projectPath, relativePath);
+  return await fileService.readFileContent(await assertRegisteredProject(projectPath), relativePath);
 });
 
 ipcMain.handle('file:writeFile', async (_event, projectPath: string, relativePath: string, content: string) => {
-  return await fileService.saveFileContent(projectPath, relativePath, content);
+  return await fileService.saveFileContent(await assertRegisteredProject(projectPath), relativePath, content);
 });
 
 ipcMain.handle('file:listFiles', async (_event, projectPath: string, subDir?: string) => {
-  const tree = await fileService.readTree(projectPath, subDir || '', 1);
+  const tree = await fileService.readTree(await assertRegisteredProject(projectPath), subDir || '', 1);
   return tree.map((t) => ({
     name: t.name,
     isDirectory: t.isDirectory,

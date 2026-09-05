@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { searchProjectDocs } from './ragSearch.js';
 import { secretStorageService } from './secretStorageService.js';
 import matter from 'gray-matter';
+import { assertInsideProject, isInsideProject } from './pathGuard.js';
 
 export interface AutoApproveRules {
   enabled: boolean;
@@ -243,7 +244,8 @@ class AIAgentService {
    * Execute safe file write after user approval
    */
   public async applyDiff(projectPath: string, relativePath: string, newContent: string): Promise<boolean> {
-    const fullPath = path.isAbsolute(relativePath) ? relativePath : path.join(projectPath, relativePath);
+    // Модель может прислать абсолютный путь или `../` — запись разрешена только внутри проекта (TASK-32).
+    const fullPath = assertInsideProject(projectPath, relativePath);
     const parentDir = path.dirname(fullPath);
     await fs.mkdir(parentDir, { recursive: true });
     await fs.writeFile(fullPath, newContent, 'utf-8');
@@ -409,11 +411,12 @@ class AIAgentService {
 
               // Prepare diff if write_file
               if (currentTool.name === 'write_file' && args.filePath && args.content) {
-                const targetPath = path.isAbsolute(args.filePath)
-                  ? args.filePath
-                  : path.join(req.projectPath, args.filePath);
+                // Старое содержимое читаем только внутри проекта; путь вне корня отклонит applyDiff.
+                const targetPath = isInsideProject(req.projectPath, args.filePath)
+                  ? path.resolve(req.projectPath, args.filePath)
+                  : null;
                 let oldContent = '';
-                if (existsSync(targetPath)) {
+                if (targetPath && existsSync(targetPath)) {
                   oldContent = await fs.readFile(targetPath, 'utf-8').catch(() => '');
                 }
                 toolCall.diff = {

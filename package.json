@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "lint:docs": "node scripts/validate-docs.mjs",
+    "test": "vitest run",
     "build": "node scripts/validate-docs.mjs && tsc && vite build",
     "preview": "vite preview",
     "pack:win": "node scripts/pack-win.mjs",
@@ -154,6 +155,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vite-plugin-electron": "^1.1.1",
-    "vite-plugin-electron-renderer": "^1.0.0"
+    "vite-plugin-electron-renderer": "^1.0.0",
+    "vitest": "^5.0.0"
   }
 }

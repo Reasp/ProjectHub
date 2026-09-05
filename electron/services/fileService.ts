@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { assertInsideProject, isInsideProject } from './pathGuard';
 
 export interface FileTreeNode {
   name: string;
@@ -31,20 +32,19 @@ const IGNORED_NAMES = new Set([
 ]);
 
 class FileService {
+  /**
+   * Разрешает `relativePath` внутри `projectRoot` и бросает ошибку при выходе за корень
+   * (включая соседнюю папку с общим префиксом, `../` и другой диск) — см. pathGuard (TASK-32).
+   */
   private validateSafePath(projectRoot: string, relativePath: string): string {
-    const normalizedRoot = path.resolve(projectRoot);
-    const resolved = path.resolve(normalizedRoot, relativePath);
-    if (!resolved.startsWith(normalizedRoot)) {
-      throw new Error(`Access Denied: Path traversal detected outside project root (${relativePath})`);
-    }
-    return resolved;
+    return assertInsideProject(projectRoot, relativePath);
   }
 
   async readTree(projectPath: string, subDir = '', maxDepth = 6, currentDepth = 0): Promise<FileTreeNode[]> {
     const rootPath = path.resolve(projectPath);
     const targetDir = path.resolve(rootPath, subDir);
 
-    if (!targetDir.startsWith(rootPath) || !existsSync(targetDir)) {
+    if (!isInsideProject(rootPath, targetDir) || !existsSync(targetDir)) {
       return [];
     }
 

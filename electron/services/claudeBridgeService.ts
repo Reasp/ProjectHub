@@ -11,6 +11,7 @@ import {
   type AIMessage,
   type AIToolCall
 } from './aiAgentService.js';
+import { isInsideProject } from './pathGuard.js';
 
 export type AgentStatusType = 'idle' | 'running' | 'waiting_approval' | 'done' | 'error';
 
@@ -603,14 +604,21 @@ class ClaudeBridgeService extends EventEmitter {
               const isExcluded = rules?.writeExcludePatterns && this.isPathExcluded(filePath, rules.writeExcludePatterns);
               const shouldAutoWrite = canAutoWrite && !isExcluded;
 
-              if (shouldAutoWrite) {
+              if (!isInsideProject(projectPath, filePath)) {
+                // Абсолютный путь вне проекта или выход через `..` — отклоняем до любых
+                // одобрений, даже при auto-approve, и объясняем модели причину (TASK-32).
+                tc.status = 'rejected';
+                tc.result = `Запись отклонена: путь "${filePath}" находится вне корня проекта "${projectPath}". `
+                  + 'Разрешены только пути внутри проекта — укажи путь относительно его корня без выхода через "..".';
+                onChunk({ toolCall: tc });
+              } else if (shouldAutoWrite) {
                 await aiAgentService.applyDiff(projectPath, filePath, content);
                 tc.status = 'accepted';
                 tc.result = `Файл ${filePath} успешно записан`;
                 onChunk({ toolCall: tc });
               } else {
                 let oldContent = '';
-                const fullPath = path.isAbsolute(filePath) ? filePath : path.join(projectPath, filePath);
+                const fullPath = path.resolve(projectPath, filePath);
                 if (existsSync(fullPath)) {
                   try {
                     oldContent = await fs.readFile(fullPath, 'utf-8');
