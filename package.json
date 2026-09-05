@@ -11,7 +11,9 @@
     "build": "node scripts/validate-docs.mjs && tsc && vite build",
     "preview": "vite preview",
     "pack:win": "node scripts/pack-win.mjs",
+    "pack:mac": "node scripts/pack-mac.mjs",
     "dist:win": "npm run build && electron-builder --win portable && node scripts/patch-exe-icon.mjs",
+    "dist:mac": "node scripts/pack-mac.mjs --dist",
     "dist": "npm run build && electron-builder --win && node scripts/patch-exe-icon.mjs",
     "setup": "node scripts/setup.mjs",
     "index-docs": "node scripts/rag/index-docs.mjs",
@@ -53,6 +55,54 @@
           "arch": [
             "x64"
           ]
+        }
+      ]
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "ProjectHub использует микрофон для голосового управления и ассистента."
+      }
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
         }
       ]
     },

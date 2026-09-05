@@ -135,7 +135,7 @@ export const VoiceControlWidget: React.FC = () => {
 
     // Global Hotkey: Ctrl + Shift + V for Talon Voice Hands-Free Toggle
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'v') {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
         e.preventDefault();
         voiceService.toggleHandsFree();
       }

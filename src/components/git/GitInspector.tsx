@@ -488,10 +488,10 @@ export const GitInspector: React.FC = () => {
               <textarea
                 value={commitMessage}
                 onChange={e => setCommitMessage(e.target.value)}
-                placeholder="Сообщение коммита (Ctrl+Enter для сохранения)..."
+                placeholder="Сообщение коммита (Ctrl/Cmd+Enter для сохранения)..."
                 className="w-full bg-slate-950/80 border border-slate-700/80 rounded-lg p-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 resize-none h-16 font-mono"
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && e.ctrlKey) handleCommit();
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleCommit();
                 }}
               />
               <div className="flex items-center justify-between gap-1">
