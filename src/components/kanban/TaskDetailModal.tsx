@@ -40,23 +40,21 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onToggleCriterion
 }) => {
   const { t } = useTranslation();
-  if (!task) return null;
-
   const { milestones } = useProjectStore();
 
   const [activeTab, setActiveTab] = useState<'editor' | 'raw'>('editor');
   const [previewMode, setPreviewMode] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
-  const [title, setTitle] = useState(task.title);
-  const [status, setStatus] = useState<BacklogTask['status']>(task.status);
-  const [milestone, setMilestone] = useState(task.milestone || '');
-  const [description, setDescription] = useState(task.description || '');
-  const [labels, setLabels] = useState<string[]>(task.labels || []);
+  const [title, setTitle] = useState(task?.title || '');
+  const [status, setStatus] = useState<BacklogTask['status']>(task?.status || 'To Do');
+  const [milestone, setMilestone] = useState(task?.milestone || '');
+  const [description, setDescription] = useState(task?.description || '');
+  const [labels, setLabels] = useState<string[]>(task?.labels || []);
   const [newLabelInput, setNewLabelInput] = useState('');
-  const [criteria, setCriteria] = useState<TaskCriterion[]>(task.acceptanceCriteria || []);
+  const [criteria, setCriteria] = useState<TaskCriterion[]>(task?.acceptanceCriteria || []);
   const [newCriterionInput, setNewCriterionInput] = useState('');
-  const [rawContent, setRawContent] = useState(task.content || '');
+  const [rawContent, setRawContent] = useState(task?.content || '');
   const [isSaving, setIsSaving] = useState(false);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
 
@@ -73,8 +71,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   };
 
   useEffect(() => {
-    setTitle(task.title);
-    setStatus(task.status);
+    if (!task) return;
+    setTitle(task.title || '');
+    setStatus(task.status || 'To Do');
     setMilestone(task.milestone || '');
     setDescription(task.description || '');
     setLabels(task.labels || []);
@@ -82,6 +81,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     setRawContent(task.content || '');
     setWarningMessage(null);
   }, [task]);
+
+  if (!task) return null;
 
   const handleStatusChange = (newStatus: BacklogTask['status']) => {
     if (newStatus === 'Done' && (status === 'To Do' || status === 'In Progress')) {
@@ -241,9 +242,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     className="w-full bg-[#10121d] border border-slate-700 rounded-lg px-3 py-1.5 text-slate-200 text-xs font-medium focus:outline-none focus:border-indigo-500"
                   >
                     <option value="">({t.taskDetail.noMilestone})</option>
-                    {milestones.map((m) => (
+                    {(milestones || []).map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.id}: {m.title}
+                        {String(m.id)}: {String(m.title)}
                       </option>
                     ))}
                   </select>
@@ -254,13 +255,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                     {t.taskDetail.labels}
                   </label>
                   <div className="flex flex-wrap gap-1.5 mb-2">
-                    {labels.map((l) => (
+                    {labels.map((l, lIdx) => (
                       <span
-                        key={l}
+                        key={typeof l === 'string' ? l : lIdx}
                         className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700/60 flex items-center gap-1 text-[11px]"
                       >
                         <Tag className="w-2.5 h-2.5 text-indigo-400" />
-                        {l}
+                        {typeof l === 'string' ? l : String(l)}
                         <button
                           type="button"
                           onClick={() => handleRemoveLabel(l)}
@@ -340,7 +341,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                               crit.completed ? 'line-through text-slate-500' : 'text-slate-200'
                             }`}
                           >
-                            {crit.text}
+                            {typeof crit.text === 'string' ? crit.text : String(crit.text || '')}
                           </span>
                         </div>
 
@@ -427,7 +428,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             <span className="truncate max-w-lg" title={task.filePath}>
               {task.filePath}
             </span>
-            {task.created && <span>{task.created}</span>}
+            {task.created && <span>{String(task.created)}</span>}
           </div>
         </div>
 

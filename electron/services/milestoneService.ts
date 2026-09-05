@@ -4,6 +4,12 @@ import { existsSync } from 'node:fs';
 import matter from 'gray-matter';
 import type { Milestone, CreateMilestoneParams } from '../../src/types/electron';
 
+function fmString(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (value instanceof Date) return isNaN(value.getTime()) ? undefined : value.toISOString().slice(0, 10);
+  return String(value);
+}
+
 function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -34,15 +40,13 @@ export async function listMilestones(projectPath: string): Promise<Milestone[]> 
 
           if (milestoneKey) {
             const key = String(milestoneKey).trim().toLowerCase();
-            if (!taskMap.has(key)) {
-              taskMap.set(key, { total: 0, done: 0, inProgress: 0, review: 0, todo: 0 });
-            }
-            const counts = taskMap.get(key)!;
-            counts.total++;
-            if (status === 'Done') counts.done++;
-            else if (status === 'In Progress') counts.inProgress++;
-            else if (status === 'Review') counts.review++;
-            else counts.todo++;
+            const current = taskMap.get(key) || { total: 0, done: 0, inProgress: 0, review: 0, todo: 0 };
+            current.total++;
+            if (status === 'Done') current.done++;
+            else if (status === 'In Progress') current.inProgress++;
+            else if (status === 'Review') current.review++;
+            else current.todo++;
+            taskMap.set(key, current);
           }
         }
       }
@@ -61,11 +65,11 @@ export async function listMilestones(projectPath: string): Promise<Milestone[]> 
           const raw = await fs.readFile(fullPath, 'utf-8');
           const { data, content } = matter(raw);
 
-          const id = data.id || file.replace(/\.md$/, '').split('-')[0].trim();
-          const title = data.title || file.replace(/\.md$/, '');
-          const status = data.status || 'Planning';
-          const targetDate = data.target_date || data.targetDate || data.due_date || undefined;
-          const description = data.description || content.trim();
+          const id = fmString(data.id) || file.replace(/\.md$/, '').split('-')[0].trim();
+          const title = fmString(data.title) || file.replace(/\.md$/, '');
+          const status = (fmString(data.status) as any) || 'Planning';
+          const targetDate = fmString(data.target_date) || fmString(data.targetDate) || fmString(data.due_date);
+          const description = fmString(data.description) || content.trim();
 
           const keyById = id.toLowerCase();
           const keyByTitle = title.toLowerCase();

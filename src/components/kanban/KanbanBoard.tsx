@@ -444,13 +444,15 @@ export const KanbanBoard: React.FC = () => {
       )}
 
       {/* Task Details Modal */}
-      <TaskDetailModal
-        task={selectedTask}
-        onClose={() => setSelectedTask(null)}
-        onSave={saveFullTaskLocal}
-        onDelete={deleteTaskLocal}
-        onToggleCriterion={toggleCriterionLocal}
-      />
+      {selectedTask && (
+        <TaskDetailModal
+          task={selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onSave={saveFullTaskLocal}
+          onDelete={deleteTaskLocal}
+          onToggleCriterion={toggleCriterionLocal}
+        />
+      )}
 
       {/* Create Task Modal */}
       {isCreateOpen && (

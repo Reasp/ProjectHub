@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App';
 import { SystemVoiceOverlay } from './components/voice/SystemVoiceOverlay';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import './index.css';
 
 const isVoiceOverlay =
@@ -11,6 +12,8 @@ const isVoiceOverlay =
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {isVoiceOverlay ? <SystemVoiceOverlay /> : <App />}
+    <ErrorBoundary>
+      {isVoiceOverlay ? <SystemVoiceOverlay /> : <App />}
+    </ErrorBoundary>
   </React.StrictMode>
 );
