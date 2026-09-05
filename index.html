@@ -2,6 +2,19 @@
 <html lang="ru" class="dark">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Content-Security-Policy (TASK-30). Одна политика для dev и prod:
+      - script-src 'self': только бандл Vite (в dev preamble React Refresh — виртуальный модуль, не inline);
+      - style-src 'unsafe-inline': Tailwind в dev, inline-стили React, <style> внутри SVG Mermaid;
+      - img-src: локальные картинки документации (file:, data:) и картинки по http/https в markdown;
+      - connect-src: dev-сервер и HMR (ws://localhost), Ollama/локальный Whisper (127.0.0.1/localhost на
+        любом порту, адрес настраивается пользователем), облачные API (https:).
+      Никаких фреймов, объектов и form-action.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file: http: https:; font-src 'self' data:; media-src 'self' blob: data:; connect-src 'self' http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:* https:; worker-src 'self' blob:; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none';"
+    />
     <link rel="icon" type="image/png" href="./icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ProjectHub — Панель управления проектами</title>

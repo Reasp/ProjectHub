@@ -281,6 +281,9 @@ const api: IElectronAPI = {
   getEncryptedSecret: (key: string) => ipcRenderer.invoke('secrets:getSecret', key),
   deleteEncryptedSecret: (key: string) => ipcRenderer.invoke('secrets:deleteSecret', key),
 
+  // Внешние ссылки: только через системный браузер (main проверяет схему)
+  openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+
   // Remote MCP Server (External Agent Control)
   getMcpStatus: () => ipcRenderer.invoke('mcp:getStatus'),
   toggleMcpServer: (enable: boolean) => ipcRenderer.invoke('mcp:toggleServer', enable),

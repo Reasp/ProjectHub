@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
+import DOMPurify from 'dompurify';
 
-// Initialize mermaid with rich dark theme aesthetics
+// Initialize mermaid with rich dark theme aesthetics.
+// securityLevel 'strict': HTML в подписях экранируется, click-колбэки отключены (TASK-30).
 mermaid.initialize({
   startOnLoad: false,
   theme: 'dark',
@@ -17,8 +19,22 @@ mermaid.initialize({
     fontFamily: 'Inter, system-ui, sans-serif',
     fontSize: '13px'
   },
-  securityLevel: 'loose'
+  securityLevel: 'strict'
 });
+
+/**
+ * Вторая линия защиты после securityLevel 'strict': SVG проходит DOMPurify перед вставкой через
+ * dangerouslySetInnerHTML. foreignObject нужен для htmlLabels (текст внутри уже экранирован mermaid),
+ * скрипты, обработчики событий и javascript:-ссылки вырезаются.
+ */
+function sanitizeSvg(svg: string): string {
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true, html: true },
+    ADD_TAGS: ['foreignObject'],
+    FORBID_TAGS: ['script', 'iframe', 'object', 'embed'],
+    FORBID_ATTR: ['onclick', 'onload', 'onerror', 'onmouseover']
+  });
+}
 
 interface MermaidDiagramProps {
   chart: string;
@@ -37,7 +53,7 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart }) => {
         const id = `mermaid-${Math.random().toString(36).substring(2, 9)}`;
         const { svg: renderedSvg } = await mermaid.render(id, chart);
         if (isMounted) {
-          setSvg(renderedSvg);
+          setSvg(sanitizeSvg(renderedSvg));
           setError(null);
         }
       } catch (err: any) {

@@ -478,6 +478,35 @@ const InlineMarkdown: React.FC<{ text: string }> = ({ text }) => {
   return <>{parts}</>;
 };
 
+/**
+ * Ссылка из markdown: никакого target="_blank" (открывало бы внешний сайт в окне Electron с preload
+ * и доступом к window.api). http/https/mailto уходят в системный браузер через window.api.openExternal,
+ * остальные схемы и относительные пути не открываются вовсе (TASK-30).
+ */
+const ExternalLink: React.FC<{ href: string; children: React.ReactNode }> = ({ href, children }) => {
+  const isOpenable = /^(https?:|mailto:)/i.test(href.trim());
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    if (isOpenable) {
+      void window.api.openExternal(href.trim());
+    }
+  };
+  return (
+    <a
+      href={href}
+      onClick={handleClick}
+      title={isOpenable ? href : undefined}
+      className={`underline underline-offset-2 ${
+        isOpenable
+          ? 'text-cyan-400 hover:text-cyan-300 decoration-cyan-500/40 cursor-pointer'
+          : 'text-slate-400 decoration-slate-600 cursor-default'
+      }`}
+    >
+      {children}
+    </a>
+  );
+};
+
 function renderFormattedText(str: string, keyPrefix: number): React.ReactNode {
   // Replace bold, italic, inline code, links
   const tokens = str.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g);
@@ -501,15 +530,9 @@ function renderFormattedText(str: string, keyPrefix: number): React.ReactNode {
         const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
         if (linkMatch) {
           return (
-            <a
-              key={idx}
-              href={linkMatch[2]}
-              target="_blank"
-              rel="noreferrer"
-              className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2 decoration-cyan-500/40"
-            >
+            <ExternalLink key={idx} href={linkMatch[2]}>
               {linkMatch[1]}
-            </a>
+            </ExternalLink>
           );
         }
         return token;

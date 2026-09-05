@@ -34,6 +34,116 @@ let win: BrowserWindow | null = null;
 let voiceOverlayWin: BrowserWindow | null = null;
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
+// ───────────────────────────── Защита рендерера (TASK-30) ─────────────────────────────
+// Каталог собранного рендерера: единственное место, откуда окнам разрешено грузить file://-страницы.
+const RENDERER_DIST_DIR = path.resolve(__dirname, '../dist');
+
+function isExternalHttpUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isOpenExternalAllowed(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:' || protocol === 'mailto:';
+  } catch {
+    return false;
+  }
+}
+
+/** URL принадлежит самому приложению: dev-сервер Vite или file:// внутри dist. */
+function isAppUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol === 'about:' && parsed.href === 'about:blank') return true;
+  if (VITE_DEV_SERVER_URL) {
+    try {
+      if (parsed.origin === new URL(VITE_DEV_SERVER_URL).origin) return true;
+    } catch {}
+  }
+  if (parsed.protocol === 'file:') {
+    try {
+      const filePath = path.resolve(fileURLToPath(parsed));
+      const rel = path.relative(RENDERER_DIST_DIR, filePath);
+      return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function isOwnWindowContents(contents: Electron.WebContents): boolean {
+  const own = [win, voiceOverlayWin].filter(
+    (w): w is BrowserWindow => Boolean(w) && !w!.isDestroyed()
+  );
+  return own.some((w) => w.webContents.id === contents.id);
+}
+
+/**
+ * Общая политика для всех окон приложения: новые окна не создаются (http/https уходят в системный
+ * браузер), навигация за пределы dist/dev-сервера блокируется, <webview> запрещён.
+ */
+function hardenWebContents(contents: Electron.WebContents): void {
+  contents.setWindowOpenHandler(({ url }) => {
+    if (isExternalHttpUrl(url)) {
+      shell.openExternal(url).catch((err) => {
+        console.error('[Security] shell.openExternal failed:', err);
+      });
+    } else {
+      console.warn(`[Security] Blocked window.open to non-http URL: ${url}`);
+    }
+    return { action: 'deny' };
+  });
+
+  contents.on('will-navigate', (event, url) => {
+    if (isAppUrl(url)) return;
+    event.preventDefault();
+    console.warn(`[Security] Blocked navigation to: ${url}`);
+  });
+
+  contents.on('will-redirect', (event, url) => {
+    if (isAppUrl(url)) return;
+    event.preventDefault();
+    console.warn(`[Security] Blocked redirect to: ${url}`);
+  });
+
+  contents.on('will-attach-webview', (event) => {
+    event.preventDefault();
+    console.warn('[Security] Blocked <webview> attachment');
+  });
+}
+
+// Разрешения Chromium: только захват микрофона/медиа (и запись в буфер обмена для кнопок «Копировать»)
+// и только для собственных окон приложения, загруженных с dist/dev-сервера. Всё остальное — отказ.
+const ALLOWED_PERMISSIONS = new Set(['media', 'audioCapture', 'clipboard-sanitized-write']);
+
+function isPermissionAllowed(
+  contents: Electron.WebContents | null,
+  permission: string,
+  requestingUrl?: string,
+  details?: { mediaTypes?: string[] }
+): boolean {
+  if (!ALLOWED_PERMISSIONS.has(permission)) return false;
+  if (!contents || !isOwnWindowContents(contents)) return false;
+  const url = requestingUrl || contents.getURL();
+  if (!isAppUrl(url)) return false;
+  if (permission === 'media' && details?.mediaTypes?.length) {
+    // Видео с камеры приложению не нужно — только аудио.
+    return details.mediaTypes.every((t) => t === 'audio');
+  }
+  return true;
+}
+
 // Глобальная страховка main-процесса: необработанные ошибки логируются, но не завершают приложение
 // и не показывают системный диалог Electron "A JavaScript error occurred in the main process".
 process.on('unhandledRejection', (reason) => {
@@ -94,6 +204,7 @@ function createWindow() {
   }
 
   windowStateService.trackWindow(win);
+  hardenWebContents(win.webContents);
 
   // Log renderer console messages to stdout
   win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
@@ -175,6 +286,7 @@ function createVoiceOverlayWindow(): BrowserWindow {
   });
 
   voiceOverlayWin.setAlwaysOnTop(true, 'screen-saver');
+  hardenWebContents(voiceOverlayWin.webContents);
 
   if (VITE_DEV_SERVER_URL) {
     voiceOverlayWin.loadURL(`${VITE_DEV_SERVER_URL}#/voice-overlay`);
@@ -1034,6 +1146,21 @@ ipcMain.handle('secrets:deleteSecret', async (_event, key: string) => {
 });
 
 // Remote MCP Server IPC Handlers
+// Открытие внешних ссылок из рендерера: только http/https/mailto, всегда в системном браузере
+ipcMain.handle('shell:openExternal', async (_event, url: string) => {
+  if (typeof url !== 'string' || !isOpenExternalAllowed(url)) {
+    console.warn(`[Security] shell:openExternal rejected URL: ${String(url).slice(0, 200)}`);
+    return false;
+  }
+  try {
+    await shell.openExternal(url);
+    return true;
+  } catch (err) {
+    console.error('[Security] shell.openExternal failed:', err);
+    return false;
+  }
+});
+
 ipcMain.handle('mcp:getStatus', async () => {
   return mcpServerService.getStatus();
 });
@@ -1125,12 +1252,26 @@ app.on('before-quit', (event) => {
 });
 
 app.whenReady().then(() => {
-  // Grant microphone and media permissions automatically across all windows
-  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-    callback(true);
+  // Разрешения только для собственных окон и только media/audioCapture (см. isPermissionAllowed)
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const allowed = isPermissionAllowed(
+      webContents,
+      permission,
+      (details as { requestingUrl?: string }).requestingUrl,
+      details as { mediaTypes?: string[] }
+    );
+    if (!allowed) {
+      console.warn(`[Security] Denied permission request "${permission}" for ${webContents?.getURL() ?? 'unknown'}`);
+    }
+    callback(allowed);
   });
-  session.defaultSession.setPermissionCheckHandler((_webContents, _permission) => {
-    return true;
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    return isPermissionAllowed(
+      webContents,
+      permission,
+      (details as { requestingUrl?: string }).requestingUrl ?? requestingOrigin,
+      details as { mediaTypes?: string[] }
+    );
   });
 
   createWindow();

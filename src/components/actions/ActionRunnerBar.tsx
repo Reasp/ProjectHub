@@ -129,15 +129,14 @@ export const ActionRunnerBar: React.FC = () => {
 
         {/* Live URL Link if running */}
         {runningDevProcess && config.run.autoOpenUrl && (
-          <a
-            href={config.run.autoOpenUrl}
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
+            onClick={() => void window.api.openExternal(config.run.autoOpenUrl!)}
             className="ml-1 p-1.5 rounded-lg bg-emerald-950/60 border border-emerald-700/50 text-emerald-300 hover:text-white hover:bg-emerald-900 transition text-xs"
             title={`Open ${config.run.autoOpenUrl}`}
           >
             <Globe className="w-3.5 h-3.5" />
-          </a>
+          </button>
         )}
       </div>
 

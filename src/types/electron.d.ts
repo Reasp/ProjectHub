@@ -447,6 +447,9 @@ export interface IElectronAPI {
   }) => void) => () => void;
   sendVoiceOverlayAction: (action: 'toggle-pause' | 'stop') => void;
   onVoiceExternalControl: (callback: (action: 'toggle-pause' | 'stop') => void) => () => void;
+
+  // Внешние ссылки (http/https/mailto) — открываются в системном браузере, а не в окне Electron
+  openExternal: (url: string) => Promise<boolean>;
 }
 
 export interface FileTreeNode {
