@@ -358,6 +358,18 @@ ipcMain.handle('backlog:watchProject', async (_event, projectPath: string) => {
   backlogWatcher.watch(projectPath, win);
 });
 
+/** Строковое значение из frontmatter: Date (незакавыченная дата в YAML) → 'YYYY-MM-DD', остальное → String(). */
+function fmString(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (value instanceof Date) return isNaN(value.getTime()) ? undefined : value.toISOString().slice(0, 10);
+  return String(value);
+}
+
+function fmStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(fmString).filter((v): v is string => v !== undefined);
+}
+
 function parseTaskDetails(rawContent: string) {
   const criteria: Array<{ text: string; completed: boolean }> = [];
   const lines = rawContent.split('\n');
@@ -415,12 +427,14 @@ ipcMain.handle('backlog:getTasks', async (_event, projectPath: string) => {
         const { criteria, description } = parseTaskDetails(parsed.content);
 
         taskList.push({
-          id: (parsed.data.id as string) || path.basename(file, '.md').split('-')[0].trim(),
-          title: (parsed.data.title as string) || path.basename(file, '.md'),
-          status: (parsed.data.status as any) || 'To Do',
-          labels: (parsed.data.labels as string[]) || [],
-          milestone: (parsed.data.milestone as string) || (parsed.data.milestone_id as string) || undefined,
-          created: parsed.data.created ? String(parsed.data.created) : undefined,
+          // Frontmatter-значения приводим к строкам: незакавыченная дата в YAML — это объект Date,
+          // и React падает (error #31), если такой объект попадёт в разметку.
+          id: fmString(parsed.data.id) || path.basename(file, '.md').split('-')[0].trim(),
+          title: fmString(parsed.data.title) || path.basename(file, '.md'),
+          status: (fmString(parsed.data.status) as any) || 'To Do',
+          labels: fmStringList(parsed.data.labels),
+          milestone: fmString(parsed.data.milestone) || fmString(parsed.data.milestone_id) || undefined,
+          created: fmString(parsed.data.created) || fmString(parsed.data.created_date) || undefined,
           filePath: fullPath,
           content: parsed.content,
           description: description || parsed.content,

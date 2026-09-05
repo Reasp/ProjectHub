@@ -1,15 +1,45 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import matter from 'gray-matter';
 import { PROJECT_ROOT } from './config.mjs';
 
+// Документация (полный набор проверок: frontmatter, картинки, таблицы).
 const DOC_ROOTS = ['backlog/docs', 'backlog/decisions'];
+// Задачи и milestones: проверяется только frontmatter (id/title и типы значений, правило 16).
+const FRONTMATTER_ONLY_ROOTS = ['backlog/tasks', 'backlog/milestones'];
 const ROOT = PROJECT_ROOT;
 
 let hasErrors = false;
 let totalFilesChecked = 0;
 let totalImagesChecked = 0;
+let totalFrontmatterFieldsChecked = 0;
 
-function validateMarkdownFile(relPath) {
+/**
+ * Правило 16: YAML превращает незакавыченные значения вида `2026-09-03` в объекты Date.
+ * Приложение отдаёт frontmatter в рендерер как есть, и React падает на Date как child (error #31).
+ * Обходим данные рекурсивно (включая списки вроде tags/labels) и требуем строку в кавычках.
+ */
+function collectTypedValueErrors(value, keyPath, errors) {
+  if (value instanceof Date) {
+    const iso = isNaN(value.getTime()) ? 'invalid date' : value.toISOString().slice(0, 10);
+    errors.push(
+      `Frontmatter, поле "${keyPath}": незакавыченная дата (YAML распарсил как Date → ${iso}). ` +
+        `Запишите строкой в кавычках: "${iso}" (правило 16)`
+    );
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item, i) => collectTypedValueErrors(item, `${keyPath}[${i}]`, errors));
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) collectTypedValueErrors(v, keyPath ? `${keyPath}.${k}` : k, errors);
+    return;
+  }
+  totalFrontmatterFieldsChecked++;
+}
+
+function validateMarkdownFile(relPath, { frontmatterOnly = false } = {}) {
   const fullPath = path.join(ROOT, relPath);
   const content = fs.readFileSync(fullPath, 'utf-8');
   totalFilesChecked++;
@@ -28,7 +58,20 @@ function validateMarkdownFile(relPath) {
       const frontmatter = content.substring(3, endMatch);
       if (!frontmatter.includes('id:')) errors.push('Отсутствует поле "id" во frontmatter');
       if (!frontmatter.includes('title:')) errors.push('Отсутствует поле "title" во frontmatter');
+
+      // 1b. Типы значений: тем же парсером, что и приложение (gray-matter), чтобы совпадало 1:1.
+      try {
+        const { data } = matter(content);
+        collectTypedValueErrors(data, '', errors);
+      } catch (e) {
+        errors.push(`Frontmatter не парсится как YAML: ${e.message}`);
+      }
     }
+  }
+
+  if (frontmatterOnly) {
+    reportFileResult(relPath, errors, warnings);
+    return;
   }
 
   // 2. Проверка невалидных HTML-тегов img с разрывами строк внутри таблиц
@@ -77,6 +120,10 @@ function validateMarkdownFile(relPath) {
     }
   });
 
+  reportFileResult(relPath, errors, warnings);
+}
+
+function reportFileResult(relPath, errors, warnings) {
   if (errors.length > 0) {
     hasErrors = true;
     console.error(`\n❌ Ошибки в [${relPath}]:`);
@@ -95,21 +142,26 @@ function validateMarkdownFile(relPath) {
 
 console.log('🔍 Запуск линтера и валидатора документации ProjectHub...\n');
 
-for (const docRoot of DOC_ROOTS) {
-  const absRoot = path.join(ROOT, docRoot);
-  if (!fs.existsSync(absRoot)) continue;
+function walkMarkdown(root, options) {
+  const absRoot = path.join(ROOT, root);
+  if (!fs.existsSync(absRoot)) return;
 
   const entries = fs.readdirSync(absRoot, { recursive: true, withFileTypes: true });
   for (const entry of entries) {
     if (entry.isFile() && entry.name.endsWith('.md')) {
       const full = path.join(entry.parentPath ?? entry.path, entry.name);
       const rel = path.relative(ROOT, full).split(path.sep).join('/');
-      validateMarkdownFile(rel);
+      validateMarkdownFile(rel, options);
     }
   }
 }
 
-console.log(`\n📊 Проверено файлов: ${totalFilesChecked}, проверено изображений: ${totalImagesChecked}`);
+for (const docRoot of DOC_ROOTS) walkMarkdown(docRoot, {});
+for (const fmRoot of FRONTMATTER_ONLY_ROOTS) walkMarkdown(fmRoot, { frontmatterOnly: true });
+
+console.log(
+  `\n📊 Проверено файлов: ${totalFilesChecked}, полей frontmatter: ${totalFrontmatterFieldsChecked}, изображений: ${totalImagesChecked}`
+);
 
 if (hasErrors) {
   console.error('\n🚨 Валидация документации завершилась с ошибками. Исправьте форматирование перед коммитом!');

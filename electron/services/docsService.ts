@@ -4,6 +4,22 @@ import { existsSync } from 'node:fs';
 import matter from 'gray-matter';
 import type { DocItem, CreateDocParams } from '../../src/types/electron';
 
+/**
+ * YAML в frontmatter превращает незакавыченные значения вида `2026-09-03` в объекты Date,
+ * а числа — в number. Рендерер ожидает строки (React падает на Date как child),
+ * поэтому всё, что уходит в UI, приводим к строкам здесь.
+ */
+function toOptionalString(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (value instanceof Date) return isNaN(value.getTime()) ? undefined : value.toISOString().slice(0, 10);
+  return String(value);
+}
+
+function toStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((v) => toOptionalString(v)).filter((v): v is string => v !== undefined);
+}
+
 function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -41,9 +57,9 @@ export async function listProjectDocs(projectPath: string): Promise<DocItem[]> {
             category: 'decision',
             filePath,
             fileRelative: path.relative(normalizedProject, filePath).replace(/\\/g, '/'),
-            tags: Array.isArray(data.tags) ? data.tags : [],
-            status: data.status || 'Accepted',
-            date: data.date ? String(data.date) : undefined,
+            tags: toStringList(data.tags),
+            status: toOptionalString(data.status) || 'Accepted',
+            date: toOptionalString(data.date),
             updatedAt: stat.mtime.toISOString(),
             size: stat.size
           });
@@ -81,9 +97,9 @@ export async function listProjectDocs(projectPath: string): Promise<DocItem[]> {
               category: 'doc',
               filePath: fullPath,
               fileRelative: path.relative(normalizedProject, fullPath).replace(/\\/g, '/'),
-              tags: Array.isArray(data.tags) ? data.tags : [],
-              status: data.status,
-              date: data.date ? String(data.date) : undefined,
+              tags: toStringList(data.tags),
+              status: toOptionalString(data.status),
+              date: toOptionalString(data.date),
               updatedAt: stat.mtime.toISOString(),
               size: stat.size
             });
