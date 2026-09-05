@@ -1,0 +1,15 @@
+{
+  "model": "Xenova/all-MiniLM-L6-v2",
+  "files": [
+    "backlog/docs/doc-1 - App-Icon-Concepts.md",
+    "backlog/docs/doc-2 - Architecture-Concept.md",
+    "backlog/docs/doc-3 - Tech-Stack-Analysis.md",
+    "backlog/docs/doc-4 - Deployment-Guide.md",
+    "backlog/docs/doc-5 - RAG-Guide.md",
+    "backlog/docs/doc-6 - Comprehensive-Review-Security-And-Feature-Roadmap.md",
+    "backlog/docs/doc-7 - Технический-аудит-ProjectHub-стабильность-утечки-производительность-безопасность.md",
+    "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md"
+  ],
+  "chunks": 1082,
+  "builtAt": "2026-09-05T09:12:48.219Z"
+}
