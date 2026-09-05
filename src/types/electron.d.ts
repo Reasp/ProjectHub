@@ -329,6 +329,7 @@ export interface IElectronAPI {
 
   // Git Advanced
   getGitRepoDetails: (projectPath: string) => Promise<GitRepoDetails | null>;
+  unwatchGit: (projectPath: string) => Promise<boolean>;
   checkoutBranch: (projectPath: string, branchName: string, createNew?: boolean) => Promise<boolean>;
   createBranch: (projectPath: string, branchName: string) => Promise<boolean>;
   deleteBranch: (projectPath: string, branchName: string, force?: boolean) => Promise<boolean>;

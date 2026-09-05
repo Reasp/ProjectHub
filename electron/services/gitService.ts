@@ -5,100 +5,296 @@ import { simpleGit, type SimpleGit } from 'simple-git';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { BrowserWindow } from 'electron';
 import type { GitCommit, GitFileStatus, GitRepoDetails } from '../../src/types/electron';
+import { processManager } from './processManager';
+
+/** Базовый дебаунс `git:changed` (аудит 3.3: было 400 мс). */
+export const GIT_CHANGED_DEBOUNCE_MS = 1500;
+/** Дебаунс, когда в проекте идёт процесс из processManager (сборка, dev-сервер): события агрегируются. */
+export const GIT_CHANGED_BUSY_DEBOUNCE_MS = 5000;
+/** Максимальное ожидание при непрерывном потоке событий — чтобы статус всё же обновлялся. */
+export const GIT_CHANGED_MAX_WAIT_MS = 15000;
+
+/**
+ * Каталоги, изменения в которых не имеют смысла для git-статуса (сборка, зависимости,
+ * окружения, кэши, логи env-tools). Сравнение идёт по сегментам пути — `build` внутри
+ * `src/build-tools/` не отфильтруется, а `src/build/` — да.
+ */
+export const IGNORED_WORKING_TREE_DIRS = new Set([
+  'node_modules',
+  'bower_components',
+  '.git',
+  'dist',
+  'dist-electron',
+  'build',
+  'out',
+  'release',
+  'coverage',
+  'target',
+  '.next',
+  '.nuxt',
+  '.turbo',
+  '.parcel-cache',
+  '.svelte-kit',
+  '.angular',
+  'venv',
+  '.venv',
+  'env',
+  '.env-state',
+  '__pycache__',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.ruff_cache',
+  '.tox',
+  '.gradle',
+  '.rag-index',
+  '.tmp',
+  'tmp',
+  '.cache',
+  '.idea',
+  '.vs',
+  'Binaries',
+  'Intermediate',
+  'DerivedDataCache',
+  'Saved'
+]);
+
+const IGNORED_FILE_SUFFIXES = ['.log', '.tmp', '.swp', '.swo', '~'];
+
+/**
+ * Предикат `ignored` для вотчера рабочего дерева. `filePath` — абсолютный путь от chokidar,
+ * `projectRoot` — нормализованный корень проекта. Сам корень никогда не игнорируется.
+ */
+export function isIgnoredWorkingTreePath(projectRoot: string, filePath: string): boolean {
+  const rel = path.relative(projectRoot, filePath);
+  if (!rel || rel === '.') return false;
+  const segments = rel.split(/[\\/]+/).filter(Boolean);
+  for (const seg of segments) {
+    if (IGNORED_WORKING_TREE_DIRS.has(seg)) return true;
+  }
+  const last = segments[segments.length - 1] || '';
+  return IGNORED_FILE_SUFFIXES.some((suffix) => last.endsWith(suffix));
+}
+
+interface ProjectWatch {
+  /** Путь проекта в исходном регистре — уходит в рендерер в событии `git:changed`. */
+  projectPath: string;
+  gitWatcher: FSWatcher;
+  treeWatcher: FSWatcher | null;
+  debounceTimer: NodeJS.Timeout | null;
+  /** Момент первого события в текущей серии — для ограничения максимального ожидания. */
+  firstEventAt: number;
+  /** Была ли в серии «жёсткая» причина (изменение .git/HEAD|index|refs или git-операция из UI). */
+  hardChange: boolean;
+  /** Снимок `git status --porcelain --branch`, чтобы не дёргать рендерер без изменений. */
+  lastStatusSnapshot: string | null;
+  /** Уже выполняется проверка статуса — новые события ставят флаг повторного прогона. */
+  checking: boolean;
+  rerunAfterCheck: boolean;
+}
 
 class GitService {
-  private watchers = new Map<string, FSWatcher>();
+  private watches = new Map<string, ProjectWatch>();
 
-  private debounceTimers = new Map<string, NodeJS.Timeout>();
+  /** Таймеры дебаунса для проектов без вотчера (git-операции из UI на невотченном проекте). */
+  private looseTimers = new Map<string, NodeJS.Timeout>();
 
-  private broadcastGitChanged(projectPath: string) {
-    const existing = this.debounceTimers.get(projectPath);
-    if (existing) clearTimeout(existing);
+  private keyOf(projectPath: string): string {
+    const normalized = path.normalize(projectPath);
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  }
 
-    const timer = setTimeout(() => {
-      this.debounceTimers.delete(projectPath);
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (!win.isDestroyed()) {
-          win.webContents.send('git:changed', { projectPath });
-        }
+  private emitGitChanged(projectPath: string) {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('git:changed', { projectPath });
       }
-    }, 400);
+    }
+  }
 
-    this.debounceTimers.set(projectPath, timer);
+  /**
+   * Планирует отправку `git:changed`. `hard = true` — изменение внутри `.git` или git-операция
+   * из UI: рендерер уведомляется после дебаунса без проверки. `hard = false` — событие
+   * рабочего дерева: после дебаунса выполняется `git status --porcelain --branch`, и событие
+   * уходит только если снимок статуса изменился (правки в игнорируемых git файлах и повторные
+   * сохранения уже изменённого файла не создают шторм из шести git-команд в рендерере).
+   */
+  private broadcastGitChanged(projectPath: string, hard = true) {
+    const key = this.keyOf(projectPath);
+    const watch = this.watches.get(key);
+    if (!watch) {
+      const existing = this.looseTimers.get(key);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        this.looseTimers.delete(key);
+        this.emitGitChanged(path.normalize(projectPath));
+      }, GIT_CHANGED_DEBOUNCE_MS);
+      timer.unref?.();
+      this.looseTimers.set(key, timer);
+      return;
+    }
+
+    watch.hardChange = watch.hardChange || hard;
+    const now = Date.now();
+    if (!watch.debounceTimer) {
+      watch.firstEventAt = now;
+    }
+    const busy = processManager.hasRunningProcess(watch.projectPath);
+    let delay = busy ? GIT_CHANGED_BUSY_DEBOUNCE_MS : GIT_CHANGED_DEBOUNCE_MS;
+    // Непрерывный поток событий (dev-сервер пишет постоянно) не должен откладывать обновление бесконечно.
+    const remainingMaxWait = watch.firstEventAt + GIT_CHANGED_MAX_WAIT_MS - now;
+    delay = Math.max(0, Math.min(delay, remainingMaxWait));
+
+    if (watch.debounceTimer) clearTimeout(watch.debounceTimer);
+    const timer = setTimeout(() => {
+      watch.debounceTimer = null;
+      void this.flushGitChanged(key, watch);
+    }, delay);
+    timer.unref?.();
+    watch.debounceTimer = timer;
+  }
+
+  private async flushGitChanged(key: string, watch: ProjectWatch) {
+    if (watch.checking) {
+      watch.rerunAfterCheck = true;
+      return;
+    }
+    const hard = watch.hardChange;
+    watch.hardChange = false;
+    watch.checking = true;
+    try {
+      const snapshot = await this.readStatusSnapshot(watch.projectPath);
+      const changed = snapshot === null || snapshot !== watch.lastStatusSnapshot;
+      if (snapshot !== null) watch.lastStatusSnapshot = snapshot;
+      // Вотчер могли закрыть, пока шёл git status — тогда рендерер уже не ждёт событий.
+      if (this.watches.get(key) !== watch) return;
+      if (hard || changed) {
+        this.emitGitChanged(watch.projectPath);
+      }
+    } finally {
+      watch.checking = false;
+      if (watch.rerunAfterCheck && this.watches.get(key) === watch) {
+        watch.rerunAfterCheck = false;
+        this.broadcastGitChanged(watch.projectPath, false);
+      }
+    }
+  }
+
+  private async readStatusSnapshot(projectPath: string): Promise<string | null> {
+    try {
+      return await simpleGit(projectPath).raw(['status', '--porcelain', '--branch']);
+    } catch {
+      return null;
+    }
   }
 
   watchProjectGit(projectPath: string) {
     const normalized = path.normalize(projectPath);
-    if (this.watchers.has(normalized)) return;
+    const key = this.keyOf(normalized);
+    if (this.watches.has(key)) return;
 
     const gitDir = path.join(normalized, '.git');
     if (!existsSync(gitDir)) return;
 
-    // Watch key git refs and files, plus top-level project changes (native OS events, zero polling)
-    const watchTargets = [
+    // Вотчер служебных файлов git: HEAD/index/refs/packed-refs — точные признаки коммита,
+    // checkout, stage, fetch, тегов. Событий мало, глубина ограничена самим набором путей.
+    const gitTargets = [
       path.join(gitDir, 'HEAD'),
       path.join(gitDir, 'index'),
-      path.join(gitDir, 'refs'),
-      normalized
-    ];
+      path.join(gitDir, 'packed-refs'),
+      path.join(gitDir, 'refs')
+    ].filter((p) => existsSync(p));
 
-    const watcher = chokidar.watch(watchTargets, {
+    const gitWatcher = chokidar.watch(gitTargets, {
       ignoreInitial: true,
-      // Efficient path filter for Windows avoiding recursive scanning into node_modules & builds
-      ignored: (filePath: string) => {
-        const norm = filePath.replace(/\\/g, '/');
-        // Allow .git/HEAD, .git/index, .git/refs
-        if (norm.includes('/.git/')) {
-          return !norm.includes('/.git/HEAD') && !norm.includes('/.git/index') && !norm.includes('/.git/refs');
-        }
-        return (
-          norm.includes('/node_modules') ||
-          norm.includes('/dist') ||
-          norm.includes('/dist-electron') ||
-          norm.includes('/release') ||
-          norm.includes('/.rag-index') ||
-          norm.includes('/.venv') ||
-          norm.includes('/.tmp') ||
-          norm.includes('/.cache')
-        );
-      },
-      // Native OS events, no continuous pollInterval
       persistent: true,
       depth: 3
     });
 
-    watcher.on('all', () => {
-      this.broadcastGitChanged(normalized);
-    });
+    const watch: ProjectWatch = {
+      projectPath: normalized,
+      gitWatcher,
+      treeWatcher: null,
+      debounceTimer: null,
+      firstEventAt: 0,
+      hardChange: false,
+      lastStatusSnapshot: null,
+      checking: false,
+      rerunAfterCheck: false
+    };
 
-    this.watchers.set(normalized, watcher);
+    // .git/index переписывает и сам git status (обновление stat-кэша), поэтому его события
+    // идут через гейт по статусу как «мягкие»; HEAD/refs/packed-refs — всегда жёсткие.
+    const indexPath = path.join(gitDir, 'index');
+    gitWatcher.on('all', (_event, changedPath) => {
+      const isIndex = path.normalize(changedPath) === indexPath;
+      this.broadcastGitChanged(normalized, !isIndex);
+    });
+    gitWatcher.on('error', (err) => console.warn(`[Git] watcher error for ${normalized}/.git:`, err));
+
+    // Вотчер рабочего дерева: нужен, чтобы статус обновлялся при правке файлов во внешнем
+    // редакторе. Каталоги сборки/зависимостей/окружений отсечены предикатом (не обходятся вовсе),
+    // а события идут через гейт по `git status`, поэтому шторма git-команд в рендерере нет.
+    const treeWatcher = chokidar.watch(normalized, {
+      ignoreInitial: true,
+      persistent: true,
+      depth: 3,
+      ignored: (filePath: string) => isIgnoredWorkingTreePath(normalized, filePath)
+    });
+    treeWatcher.on('all', () => this.broadcastGitChanged(normalized, false));
+    treeWatcher.on('error', (err) => console.warn(`[Git] watcher error for ${normalized}:`, err));
+    watch.treeWatcher = treeWatcher;
+
+    this.watches.set(key, watch);
+
+    // Начальный снимок статуса, чтобы первое же событие рабочего дерева сравнивалось с реальностью.
+    void this.readStatusSnapshot(normalized).then((snapshot) => {
+      if (this.watches.get(key) === watch && watch.lastStatusSnapshot === null) {
+        watch.lastStatusSnapshot = snapshot;
+      }
+    });
   }
 
   unwatchProjectGit(projectPath: string) {
-    const normalized = path.normalize(projectPath);
-    const watcher = this.watchers.get(normalized);
-    if (watcher) {
-      watcher.close().catch(() => {});
-      this.watchers.delete(normalized);
+    const key = this.keyOf(projectPath);
+    const watch = this.watches.get(key);
+    if (watch) {
+      this.watches.delete(key);
+      if (watch.debounceTimer) {
+        clearTimeout(watch.debounceTimer);
+        watch.debounceTimer = null;
+      }
+      watch.gitWatcher.close().catch(() => {});
+      watch.treeWatcher?.close().catch(() => {});
     }
-    const timer = this.debounceTimers.get(normalized);
-    if (timer) {
-      clearTimeout(timer);
-      this.debounceTimers.delete(normalized);
+    const loose = this.looseTimers.get(key);
+    if (loose) {
+      clearTimeout(loose);
+      this.looseTimers.delete(key);
     }
   }
 
+  /** Нормализованные пути проектов с активными вотчерами (для проверок и тестов). */
+  getWatchedProjects(): string[] {
+    return Array.from(this.watches.values()).map((w) => w.projectPath);
+  }
+
+  /** Число проектов с активными вотчерами. */
+  getWatcherCount(): number {
+    return this.watches.size;
+  }
+
   cleanupAll() {
-    for (const watcher of this.watchers.values()) {
+    for (const key of Array.from(this.watches.keys())) {
+      const watch = this.watches.get(key)!;
       try {
-        watcher.close().catch(() => {});
+        this.unwatchProjectGit(watch.projectPath);
       } catch {}
     }
-    this.watchers.clear();
-    for (const timer of this.debounceTimers.values()) {
+    this.watches.clear();
+    for (const timer of this.looseTimers.values()) {
       clearTimeout(timer);
     }
-    this.debounceTimers.clear();
+    this.looseTimers.clear();
   }
 
   async getRepoDetails(projectPath: string): Promise<GitRepoDetails | null> {

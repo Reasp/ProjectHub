@@ -435,6 +435,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     saveActiveProjects(next);
     set({ activeProjectPaths: next });
 
+    // Закрытая вкладка больше не нуждается в git-вотчере в main (TASK-34).
+    // При повторном выборе проекта getRepoDetails снова поднимет вотчер.
+    window.api?.unwatchGit?.(projectPath).catch(() => {});
+
     // If deactivated project was currently active, switch to next available active project
     if (get().selectedProject?.path === projectPath) {
       const allProjects = get().projects;

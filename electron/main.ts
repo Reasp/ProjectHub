@@ -399,6 +399,8 @@ ipcMain.handle('projects:add', async (_event, folderPath: string) => {
 
 // 4. Remove project from registry
 ipcMain.handle('projects:remove', async (_event, projectPath: string) => {
+  // Удалённый из реестра проект больше не должен держать FS-вотчеры (TASK-34).
+  gitService.unwatchProjectGit(projectPath);
   return await projectRegistry.removeProject(projectPath);
 });
 
@@ -809,6 +811,12 @@ ipcMain.handle('git:getStatus', async (_event, projectPath: string) => {
 
 ipcMain.handle('git:getRepoDetails', async (_event, projectPath: string) => {
   return await gitService.getRepoDetails(projectPath);
+});
+
+// Закрытие вкладки проекта в рендерере: снимаем вотчеры git этого проекта (TASK-34).
+ipcMain.handle('git:unwatch', async (_event, projectPath: string) => {
+  gitService.unwatchProjectGit(await assertRegisteredProject(projectPath));
+  return true;
 });
 
 ipcMain.handle('git:checkout', async (_event, projectPath: string, branchName: string, createNew = false) => {

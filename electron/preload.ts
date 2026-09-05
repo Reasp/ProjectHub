@@ -117,6 +117,7 @@ const api: IElectronAPI = {
 
   // Git Advanced
   getGitRepoDetails: (projectPath: string) => ipcRenderer.invoke('git:getRepoDetails', projectPath),
+  unwatchGit: (projectPath: string) => ipcRenderer.invoke('git:unwatch', projectPath),
   checkoutBranch: (projectPath: string, branchName: string, createNew?: boolean) =>
     ipcRenderer.invoke('git:checkout', projectPath, branchName, createNew),
   createBranch: (projectPath: string, branchName: string) =>
