@@ -16,6 +16,7 @@ import { mcpServerService } from './services/mcpServerService';
 import { processManager } from './services/processManager';
 import { ptyService } from './services/ptyService';
 import { gitService } from './services/gitService';
+import { windowStateService } from './services/windowStateService';
 
 // Automatically approve media capture requests in Chromium without blocking UI dialogs
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
@@ -58,11 +59,15 @@ function createWindow() {
   const iconBuild = path.join(__dirname, '../build/icon.png');
   const appIcon = existsSync(iconPng) ? iconPng : iconBuild;
 
+  const windowState = windowStateService.getInitialState();
+
   win = new BrowserWindow({
     title: 'ProjectHub — Панель управления проектами',
     icon: appIcon,
-    width: 1400,
-    height: 900,
+    width: windowState.width,
+    height: windowState.height,
+    x: windowState.x,
+    y: windowState.y,
     minWidth: 1024,
     minHeight: 700,
     backgroundColor: '#0f1117',
@@ -74,6 +79,12 @@ function createWindow() {
       sandbox: false
     }
   });
+
+  if (windowState.isMaximized) {
+    win.maximize();
+  }
+
+  windowStateService.trackWindow(win);
 
   // Log renderer console messages to stdout
   win.webContents.on('console-message', (_event, level, message, line, sourceId) => {

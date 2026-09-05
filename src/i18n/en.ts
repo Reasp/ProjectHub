@@ -723,5 +723,15 @@ export const en: TranslationDictionary = {
     featureLightrag: 'LightRAG Documentation Graph (`lightrag`)',
     featureLightragDesc: 'Build knowledge entity graph via local Ollama (requires Python)',
     heavyBadge: 'Heavy'
+  },
+  emptyState: {
+    title: 'Project not selected',
+    subtitle: 'Select a project from the catalog below, open the sidebar, or create a new one from the ProjectTemplate.',
+    removedNoticeTitle: 'Previously selected project is no longer available or was removed',
+    removedNoticeHint: 'The project directory could not be found. Select another project or add a new folder.',
+    availableProjects: 'Available Projects in Registry',
+    noTasks: 'no tasks',
+    tasksCount: 'tasks',
+    openProject: 'Open'
   }
 };

@@ -82,6 +82,10 @@ interface ProjectState {
   language: Language;
   setLanguage: (language: Language) => void;
 
+  // Graceful fallback notice when a previously selected project was deleted or moved
+  removedProjectNotice: string | null;
+  clearRemovedProjectNotice: () => void;
+
   // Interactive PTY State (Claude Code & Multi-tab Terminals)
   ptySessions: PtySession[];
   activePtySessionId: string | null;
@@ -203,6 +207,98 @@ let agentStatusCleanup: (() => void) | null = null;
 
 const ACTIVE_PROJECTS_STORAGE_KEY = 'projecthub_active_projects';
 const SIDEBAR_STORAGE_KEY = 'projecthub_sidebar_open';
+const ACTIVE_TAB_KEY = 'projecthub_active_tab';
+const LABEL_FILTER_KEY = 'projecthub_filter_label';
+const MILESTONE_FILTER_KEY = 'projecthub_filter_milestone';
+const TASK_VIEW_MODE_KEY = 'projecthub_task_view_mode';
+const FILTER_FAVORITES_KEY = 'projecthub_filter_favorites';
+const FILTER_ACTIVE_KEY = 'projecthub_filter_active';
+const PR_FILTER_KEY = 'projecthub_pr_filter';
+const TERMINAL_MODE_KEY = 'projecthub_terminal_mode';
+const SELECTED_PROJECT_KEY = 'projecthub_selected_project_path';
+
+const VALID_TABS: Set<string> = new Set([
+  'kanban',
+  'milestones',
+  'git',
+  'files',
+  'prs',
+  'docs',
+  'analytics',
+  'ai',
+  'claude-cli',
+  'processes'
+]);
+
+const loadInitialActiveTab = (): ProjectState['activeTab'] => {
+  if (typeof window === 'undefined') return 'kanban';
+  try {
+    const raw = localStorage.getItem(ACTIVE_TAB_KEY);
+    if (raw && VALID_TABS.has(raw)) {
+      return raw as ProjectState['activeTab'];
+    }
+  } catch {}
+  return 'kanban';
+};
+
+const loadInitialTaskViewMode = (): 'kanban' | 'list' => {
+  if (typeof window === 'undefined') return 'kanban';
+  try {
+    const raw = localStorage.getItem(TASK_VIEW_MODE_KEY);
+    if (raw === 'list' || raw === 'kanban') return raw;
+  } catch {}
+  return 'kanban';
+};
+
+const loadInitialLabelFilter = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(LABEL_FILTER_KEY) || null;
+  } catch {}
+  return null;
+};
+
+const loadInitialMilestoneFilter = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(MILESTONE_FILTER_KEY) || null;
+  } catch {}
+  return null;
+};
+
+const loadInitialFilterFavorites = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(FILTER_FAVORITES_KEY) === 'true';
+  } catch {}
+  return false;
+};
+
+const loadInitialFilterActive = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(FILTER_ACTIVE_KEY) === 'true';
+  } catch {}
+  return false;
+};
+
+const loadInitialPRFilter = (): 'all' | 'open' | 'closed' | 'merged' => {
+  if (typeof window === 'undefined') return 'open';
+  try {
+    const raw = localStorage.getItem(PR_FILTER_KEY);
+    if (raw === 'all' || raw === 'open' || raw === 'closed' || raw === 'merged') return raw;
+  } catch {}
+  return 'open';
+};
+
+const loadInitialTerminalMode = (): 'pty' | 'process_logs' => {
+  if (typeof window === 'undefined') return 'pty';
+  try {
+    const raw = localStorage.getItem(TERMINAL_MODE_KEY);
+    if (raw === 'pty' || raw === 'process_logs') return raw;
+  } catch {}
+  return 'pty';
+};
 
 const loadInitialSidebarState = (): boolean => {
   if (typeof window === 'undefined') return true;
@@ -246,19 +342,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   gitRepoDetails: null,
   gitSelectedFile: null,
   gitDiffContent: '',
-  activeTab: 'kanban',
-  taskViewMode: 'kanban',
-  selectedLabelFilter: null,
+  activeTab: loadInitialActiveTab(),
+  taskViewMode: loadInitialTaskViewMode(),
+  selectedLabelFilter: loadInitialLabelFilter(),
+  selectedMilestoneFilter: loadInitialMilestoneFilter(),
   isLoading: false,
   isScanning: false,
   searchQuery: '',
-  filterOnlyFavorites: false,
+  filterOnlyFavorites: loadInitialFilterFavorites(),
 
   // Multi-Project Session & In-Memory Cache
   projectDataCache: {},
   activeProjectPaths: loadInitialActiveProjects(),
   lastSelectedProjectPath: null,
-  filterOnlyActive: false,
+  filterOnlyActive: loadInitialFilterActive(),
+  removedProjectNotice: null,
+  clearRemovedProjectNotice: () => set({ removedProjectNotice: null }),
 
   scanRoots: [],
   isSidebarOpen: loadInitialSidebarState(),
@@ -280,7 +379,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   prs: [],
   selectedPR: null,
   prDiffContent: '',
-  prFilter: 'open',
+  prFilter: loadInitialPRFilter(),
   isLoadingPRs: false,
   prProviderInfo: null,
 
@@ -292,7 +391,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isDocDirty: false,
 
   milestones: [],
-  selectedMilestoneFilter: null,
   isLoadingMilestones: false,
 
   projectAgentStatuses: {},
@@ -320,10 +418,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
     }));
   },
-
-  setSelectedMilestoneFilter: (selectedMilestoneFilter) => set({ selectedMilestoneFilter }),
-
-  setFilterOnlyActive: (filterOnlyActive) => set({ filterOnlyActive }),
 
   activateProject: (project: ProjectInfo) => {
     const activePaths = get().activeProjectPaths;
@@ -454,8 +548,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setProjects: (projects) => set({ projects }),
   selectProject: (selectedProject) => {
     if (!selectedProject) {
+      if (typeof window !== 'undefined') {
+        try { localStorage.removeItem(SELECTED_PROJECT_KEY); } catch {}
+      }
       set({ selectedProject: null, selectedMilestoneFilter: null });
       return;
+    }
+
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem(SELECTED_PROJECT_KEY, selectedProject.path); } catch {}
+    }
+
+    // Clear removed notice when a valid project is selected
+    if (get().removedProjectNotice) {
+      set({ removedProjectNotice: null });
     }
 
     const cur = get().selectedProject;
@@ -479,7 +585,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // Instant synchronous UI update without any lag or spinner!
       set({
         selectedProject,
-        selectedMilestoneFilter: null,
         tasks: cached.tasks,
         gitLogs: cached.gitLogs,
         gitRepoDetails: cached.gitRepoDetails,
@@ -495,7 +600,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       get().fetchMilestones(selectedProject.path);
     } else {
       // Not yet in cache - standard load
-      set({ selectedProject, selectedMilestoneFilter: null });
+      set({ selectedProject });
       get().loadProjectData(selectedProject);
       get().fetchProcesses(selectedProject.path);
       get().fetchDocs(selectedProject.path);
@@ -504,12 +609,56 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
   setTasks: (tasks) => set({ tasks }),
   setGitLogs: (gitLogs) => set({ gitLogs }),
-  setActiveTab: (activeTab) => set({ activeTab }),
-  setTaskViewMode: (taskViewMode) => set({ taskViewMode }),
-  setSelectedLabelFilter: (selectedLabelFilter) => set({ selectedLabelFilter }),
+  setActiveTab: (activeTab) => {
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem(ACTIVE_TAB_KEY, activeTab); } catch {}
+    }
+    set({ activeTab });
+  },
+  setTaskViewMode: (taskViewMode) => {
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem(TASK_VIEW_MODE_KEY, taskViewMode); } catch {}
+    }
+    set({ taskViewMode });
+  },
+  setSelectedLabelFilter: (selectedLabelFilter) => {
+    if (typeof window !== 'undefined') {
+      try {
+        if (selectedLabelFilter) {
+          localStorage.setItem(LABEL_FILTER_KEY, selectedLabelFilter);
+        } else {
+          localStorage.removeItem(LABEL_FILTER_KEY);
+        }
+      } catch {}
+    }
+    set({ selectedLabelFilter });
+  },
+  setSelectedMilestoneFilter: (selectedMilestoneFilter) => {
+    if (typeof window !== 'undefined') {
+      try {
+        if (selectedMilestoneFilter) {
+          localStorage.setItem(MILESTONE_FILTER_KEY, selectedMilestoneFilter);
+        } else {
+          localStorage.removeItem(MILESTONE_FILTER_KEY);
+        }
+      } catch {}
+    }
+    set({ selectedMilestoneFilter });
+  },
   setIsLoading: (isLoading) => set({ isLoading }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
-  setFilterOnlyFavorites: (filterOnlyFavorites) => set({ filterOnlyFavorites }),
+  setFilterOnlyFavorites: (filterOnlyFavorites) => {
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem(FILTER_FAVORITES_KEY, String(filterOnlyFavorites)); } catch {}
+    }
+    set({ filterOnlyFavorites });
+  },
+  setFilterOnlyActive: (filterOnlyActive) => {
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem(FILTER_ACTIVE_KEY, String(filterOnlyActive)); } catch {}
+    }
+    set({ filterOnlyActive });
+  },
   setTerminalOpen: (isTerminalOpen) => set({ isTerminalOpen }),
   toggleTerminal: () => set((s) => ({ isTerminalOpen: !s.isTerminalOpen })),
   setSidebarOpen: (isSidebarOpen: boolean) => {
@@ -536,7 +685,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   terminalMode: 'pty',
 
   setActivePtySessionId: (activePtySessionId) => set({ activePtySessionId }),
-  setTerminalMode: (terminalMode) => set({ terminalMode }),
+  setTerminalMode: (terminalMode) => {
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem(TERMINAL_MODE_KEY, terminalMode); } catch {}
+    }
+    set({ terminalMode });
+  },
 
   fetchPtySessions: async () => {
     if (!window.api?.listPtySessions) return;
@@ -680,10 +834,33 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           list = await window.api.scanProjects();
         }
         set({ projects: list });
+
         if (!get().selectedProject && list.length > 0) {
-          const activePaths = get().activeProjectPaths;
-          const matchedActive = list.find((p) => activePaths.includes(p.path));
-          get().selectProject(matchedActive || list[0]);
+          const storedPath = typeof window !== 'undefined' ? localStorage.getItem(SELECTED_PROJECT_KEY) : null;
+          if (storedPath) {
+            const matchedStored = list.find((p) => p.path === storedPath);
+            if (matchedStored) {
+              get().selectProject(matchedStored);
+            } else {
+              // The stored project is not in the list (was deleted or moved)
+              if (typeof window !== 'undefined') {
+                try { localStorage.removeItem(SELECTED_PROJECT_KEY); } catch {}
+              }
+              set({
+                selectedProject: null,
+                removedProjectNotice: storedPath
+              });
+            }
+          } else {
+            // No stored project: check active session or leave null for empty state
+            const activePaths = get().activeProjectPaths;
+            const matchedActive = list.find((p) => activePaths.includes(p.path));
+            if (matchedActive) {
+              get().selectProject(matchedActive);
+            } else {
+              set({ selectedProject: null });
+            }
+          }
         }
       }
     } catch (e) {
@@ -723,7 +900,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         const list = await window.api.listProjects();
         set({ projects: list });
         if (!get().selectedProject && list.length > 0) {
-          get().selectProject(list[0]);
+          const storedPath = typeof window !== 'undefined' ? localStorage.getItem(SELECTED_PROJECT_KEY) : null;
+          const matched = storedPath ? list.find((p) => p.path === storedPath) : null;
+          if (matched) {
+            get().selectProject(matched);
+          }
         }
         get().addTerminalLog(`[ProjectHub] Сканирование завершено: найдено проектов ${discovered.length}.`);
         return discovered;
@@ -763,10 +944,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         const updated = get().projects.filter((p) => p.path !== projectPath);
         set({ projects: updated });
         if (get().selectedProject?.path === projectPath) {
-          set({ selectedProject: updated.length > 0 ? updated[0] : null });
-          if (updated.length > 0) {
-            get().loadProjectData(updated[0]);
-          }
+          get().selectProject(null);
+          set({ removedProjectNotice: projectPath });
         }
         get().addTerminalLog(`[ProjectHub] Проект удален из каталога: ${projectPath}`);
       }
@@ -1301,6 +1480,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   setPRFilter: (filter: 'all' | 'open' | 'closed' | 'merged') => {
+    if (typeof window !== 'undefined') {
+      try { localStorage.setItem(PR_FILTER_KEY, filter); } catch {}
+    }
     set({ prFilter: filter });
     const project = get().selectedProject;
     if (project) {

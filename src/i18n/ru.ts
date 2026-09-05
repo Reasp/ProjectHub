@@ -723,5 +723,15 @@ export const ru: TranslationDictionary = {
     featureLightrag: 'Граф документации LightRAG (`lightrag`)',
     featureLightragDesc: 'Построение графа сущностей документации через локальную Ollama (требует Python)',
     heavyBadge: 'Тяжелая'
+  },
+  emptyState: {
+    title: 'Проект не выбран',
+    subtitle: 'Выберите проект из списка ниже, откройте боковое меню или создайте новый по шаблону ProjectTemplate.',
+    removedNoticeTitle: 'Ранее открытый проект больше недоступен или был удален',
+    removedNoticeHint: 'Каталог проекта не найден на диске. Выберите другой проект из доступных или добавьте новую папку.',
+    availableProjects: 'Доступные проекты в реестре',
+    noTasks: 'нет задач',
+    tasksCount: 'задач',
+    openProject: 'Открыть'
   }
 };

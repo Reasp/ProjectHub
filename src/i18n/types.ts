@@ -724,4 +724,14 @@ export interface TranslationDictionary {
     featureLightragDesc: string;
     heavyBadge: string;
   };
+  emptyState: {
+    title: string;
+    subtitle: string;
+    removedNoticeTitle: string;
+    removedNoticeHint: string;
+    availableProjects: string;
+    noTasks: string;
+    tasksCount: string;
+    openProject: string;
+  };
 }

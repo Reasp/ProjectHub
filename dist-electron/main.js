@@ -1,29 +1,29 @@
 import { a as e, i as t, n, o as r, r as i, t as a } from "./rolldown-runtime-CJfroGDQ.js";
-import { BrowserWindow as o, app as s, dialog as c, ipcMain as l, safeStorage as u, session as d, shell as f } from "electron";
-import p from "node:path";
-import { URL as m, fileURLToPath as h } from "node:url";
-import g from "node:fs/promises";
-import { existsSync as _ } from "node:fs";
-import { execFile as v, spawn as y } from "node:child_process";
-import b from "gray-matter";
-import { simpleGit as x } from "simple-git";
-import S from "node:os";
-import { EventEmitter as C } from "node:events";
-import { Worker as ee } from "node:worker_threads";
-import te from "node:http";
-import ne, { randomUUID as re } from "node:crypto";
-import { TLSSocket as ie } from "node:tls";
-import ae from "tree-kill";
-import oe from "chokidar";
-import { promisify as se } from "node:util";
+import { BrowserWindow as o, app as s, dialog as c, ipcMain as l, safeStorage as u, screen as d, session as f, shell as p } from "electron";
+import m from "node:path";
+import { URL as h, fileURLToPath as g } from "node:url";
+import _ from "node:fs/promises";
+import v, { existsSync as y } from "node:fs";
+import { execFile as b, spawn as x } from "node:child_process";
+import S from "gray-matter";
+import { simpleGit as C } from "simple-git";
+import w from "node:os";
+import { EventEmitter as ee } from "node:events";
+import { Worker as te } from "node:worker_threads";
+import ne from "node:http";
+import re, { randomUUID as ie } from "node:crypto";
+import { TLSSocket as ae } from "node:tls";
+import oe from "tree-kill";
+import se from "chokidar";
+import { promisify as ce } from "node:util";
 //#region electron/services/projectRegistry.ts
-var ce = {
+var le = {
 	version: 1,
 	scanRoots: (process.platform === "win32" ? [
 		"F:\\",
 		"D:\\",
-		p.join(S.homedir(), "Projects")
-	] : [p.join(S.homedir(), "Projects"), p.join(S.homedir(), "Developer")]).filter((e) => _(e)),
+		m.join(w.homedir(), "Projects")
+	] : [m.join(w.homedir(), "Projects"), m.join(w.homedir(), "Developer")]).filter((e) => y(e)),
 	projects: [{
 		path: process.cwd(),
 		addedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -34,45 +34,45 @@ var ce = {
 		autoScanOnStartup: !0,
 		scanDepth: 2
 	}
-}, le = new class {
+}, ue = new class {
 	configPath;
 	cachedConfig = null;
 	constructor() {
-		let e = S.homedir(), t = p.join(e, ".projecthub");
-		this.configPath = p.join(t, "projects.json");
+		let e = w.homedir(), t = m.join(e, ".projecthub");
+		this.configPath = m.join(t, "projects.json");
 	}
 	async ensureConfigFile() {
 		try {
-			let e = p.dirname(this.configPath);
-			return _(e) || await g.mkdir(e, { recursive: !0 }), _(this.configPath) || await g.writeFile(this.configPath, JSON.stringify(ce, null, 2), "utf-8"), this.configPath;
+			let e = m.dirname(this.configPath);
+			return y(e) || await _.mkdir(e, { recursive: !0 }), y(this.configPath) || await _.writeFile(this.configPath, JSON.stringify(le, null, 2), "utf-8"), this.configPath;
 		} catch {
-			let e = s ? s.getPath("userData") : p.join(S.tmpdir(), ".projecthub");
-			return _(e) || await g.mkdir(e, { recursive: !0 }), this.configPath = p.join(e, "projects.json"), _(this.configPath) || await g.writeFile(this.configPath, JSON.stringify(ce, null, 2), "utf-8"), this.configPath;
+			let e = s ? s.getPath("userData") : m.join(w.tmpdir(), ".projecthub");
+			return y(e) || await _.mkdir(e, { recursive: !0 }), this.configPath = m.join(e, "projects.json"), y(this.configPath) || await _.writeFile(this.configPath, JSON.stringify(le, null, 2), "utf-8"), this.configPath;
 		}
 	}
 	async getConfig() {
 		if (this.cachedConfig) return this.cachedConfig;
 		await this.ensureConfigFile();
 		try {
-			let e = await g.readFile(this.configPath, "utf-8"), t = JSON.parse(e);
+			let e = await _.readFile(this.configPath, "utf-8"), t = JSON.parse(e);
 			return this.cachedConfig = {
-				...ce,
+				...le,
 				...t,
 				projects: t.projects || [],
-				scanRoots: t.scanRoots || ce.scanRoots,
+				scanRoots: t.scanRoots || le.scanRoots,
 				settings: {
-					...ce.settings,
+					...le.settings,
 					...t.settings
 				}
 			}, this.cachedConfig;
 		} catch (e) {
-			return console.error("Failed to parse projects.json, restoring default config:", e), this.cachedConfig = ce, await this.saveConfig(this.cachedConfig), this.cachedConfig;
+			return console.error("Failed to parse projects.json, restoring default config:", e), this.cachedConfig = le, await this.saveConfig(this.cachedConfig), this.cachedConfig;
 		}
 	}
 	async saveConfig(e) {
 		this.cachedConfig = e, await this.ensureConfigFile();
 		try {
-			await g.writeFile(this.configPath, JSON.stringify(e, null, 2), "utf-8");
+			await _.writeFile(this.configPath, JSON.stringify(e, null, 2), "utf-8");
 		} catch (e) {
 			console.error("Failed to save project registry:", e);
 		}
@@ -82,13 +82,13 @@ var ce = {
 	}
 	async setScanRoots(e) {
 		let t = await this.getConfig();
-		return t.scanRoots = Array.from(new Set(e.map((e) => p.normalize(e)))), await this.saveConfig(t), !0;
+		return t.scanRoots = Array.from(new Set(e.map((e) => m.normalize(e)))), await this.saveConfig(t), !0;
 	}
 	async getProjects() {
 		return (await this.getConfig()).projects;
 	}
 	async addProject(e, t = !1) {
-		let n = p.normalize(e), r = await this.getConfig(), i = r.projects.findIndex((e) => p.normalize(e.path).toLowerCase() === n.toLowerCase());
+		let n = m.normalize(e), r = await this.getConfig(), i = r.projects.findIndex((e) => m.normalize(e.path).toLowerCase() === n.toLowerCase());
 		return i >= 0 ? r.projects[i].favorite = t || r.projects[i].favorite : r.projects.unshift({
 			path: n,
 			addedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -97,19 +97,19 @@ var ce = {
 		}), await this.saveConfig(r), !0;
 	}
 	async removeProject(e) {
-		let t = p.normalize(e).toLowerCase(), n = await this.getConfig(), r = n.projects.length;
-		return n.projects = n.projects.filter((e) => p.normalize(e.path).toLowerCase() !== t), n.projects.length !== r && (await this.saveConfig(n), !0);
+		let t = m.normalize(e).toLowerCase(), n = await this.getConfig(), r = n.projects.length;
+		return n.projects = n.projects.filter((e) => m.normalize(e.path).toLowerCase() !== t), n.projects.length !== r && (await this.saveConfig(n), !0);
 	}
 	async toggleFavorite(e) {
-		let t = p.normalize(e).toLowerCase(), n = await this.getConfig(), r = n.projects.find((e) => p.normalize(e.path).toLowerCase() === t);
+		let t = m.normalize(e).toLowerCase(), n = await this.getConfig(), r = n.projects.find((e) => m.normalize(e.path).toLowerCase() === t);
 		return r ? (r.favorite = !r.favorite, await this.saveConfig(n), r.favorite) : !1;
 	}
 	async isFavorite(e) {
-		let t = p.normalize(e).toLowerCase();
-		return !!(await this.getConfig()).projects.find((e) => p.normalize(e.path).toLowerCase() === t)?.favorite;
+		let t = m.normalize(e).toLowerCase();
+		return !!(await this.getConfig()).projects.find((e) => m.normalize(e.path).toLowerCase() === t)?.favorite;
 	}
 	async setVoiceAlias(e, t) {
-		let n = p.normalize(e).toLowerCase(), r = await this.getConfig(), i = r.projects.find((e) => p.normalize(e.path).toLowerCase() === n);
+		let n = m.normalize(e).toLowerCase(), r = await this.getConfig(), i = r.projects.find((e) => m.normalize(e.path).toLowerCase() === n);
 		return i ? (i.voiceAlias = t.trim() || void 0, await this.saveConfig(r), !0) : (r.projects.push({
 			path: e,
 			addedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -117,10 +117,10 @@ var ce = {
 		}), await this.saveConfig(r), !0);
 	}
 	async getVoiceAlias(e) {
-		let t = p.normalize(e).toLowerCase();
-		return (await this.getConfig()).projects.find((e) => p.normalize(e.path).toLowerCase() === t)?.voiceAlias;
+		let t = m.normalize(e).toLowerCase();
+		return (await this.getConfig()).projects.find((e) => m.normalize(e.path).toLowerCase() === t)?.voiceAlias;
 	}
-}(), ue = /* @__PURE__ */ new Set([
+}(), de = /* @__PURE__ */ new Set([
 	"node_modules",
 	".git",
 	".agents",
@@ -136,23 +136,23 @@ var ce = {
 	"appdata",
 	"windows"
 ]);
-async function de(e) {
+async function fe(e) {
 	try {
-		let t = p.normalize(e);
-		if (!_(t) || !(await g.stat(t)).isDirectory()) return null;
-		let n = _(p.join(t, "backlog")), r = _(p.join(t, "infra.config.json")), i = _(p.join(t, ".git")), a = _(p.join(t, "package.json"));
+		let t = m.normalize(e);
+		if (!y(t) || !(await _.stat(t)).isDirectory()) return null;
+		let n = y(m.join(t, "backlog")), r = y(m.join(t, "infra.config.json")), i = y(m.join(t, ".git")), a = y(m.join(t, "package.json"));
 		if (!n && !r && !(i && a)) return null;
-		let o = p.basename(t), s, c, l;
+		let o = m.basename(t), s, c, l;
 		if (r) try {
-			let e = await g.readFile(p.join(t, "infra.config.json"), "utf-8");
+			let e = await _.readFile(m.join(t, "infra.config.json"), "utf-8");
 			l = JSON.parse(e).features;
 		} catch {}
 		if (a) try {
-			let e = await g.readFile(p.join(t, "package.json"), "utf-8"), n = JSON.parse(e);
+			let e = await _.readFile(m.join(t, "package.json"), "utf-8"), n = JSON.parse(e);
 			n.name && (o = n.name), n.description && (s = n.description), n.version && (c = n.version);
 		} catch {}
-		if (n && _(p.join(t, "backlog", "config.yml"))) try {
-			let e = (await g.readFile(p.join(t, "backlog", "config.yml"), "utf-8")).match(/project_name:\s*["']?([^"'\r\n]+)["']?/);
+		if (n && y(m.join(t, "backlog", "config.yml"))) try {
+			let e = (await _.readFile(m.join(t, "backlog", "config.yml"), "utf-8")).match(/project_name:\s*["']?([^"'\r\n]+)["']?/);
 			e && e[1] && (o = e[1].trim());
 		} catch {}
 		let u = {
@@ -162,34 +162,34 @@ async function de(e) {
 			review: 0,
 			done: 0
 		};
-		if (n && _(p.join(t, "backlog", "tasks"))) try {
-			let e = await g.readdir(p.join(t, "backlog", "tasks"));
+		if (n && y(m.join(t, "backlog", "tasks"))) try {
+			let e = await _.readdir(m.join(t, "backlog", "tasks"));
 			for (let n of e) if (n.endsWith(".md")) {
 				u.total++;
 				try {
-					let e = await g.readFile(p.join(t, "backlog", "tasks", n), "utf-8"), { data: r } = b(e), i = r.status || "To Do";
+					let e = await _.readFile(m.join(t, "backlog", "tasks", n), "utf-8"), { data: r } = S(e), i = r.status || "To Do";
 					i === "To Do" ? u.todo++ : i === "In Progress" ? u.inProgress++ : i === "Review" ? u.review++ : i === "Done" && u.done++;
 				} catch {
 					u.todo++;
 				}
 			}
 		} catch {}
-		let d, f, m = 0, h = 0, v = 0, y;
+		let d, f, p = 0, h = 0, g = 0, v;
 		if (i) try {
-			let e = x(t), n = await e.status();
-			d = n.current || "detached", f = n.isClean(), m = n.files.length, h = n.ahead || 0, v = n.behind || 0;
+			let e = C(t), n = await e.status();
+			d = n.current || "detached", f = n.isClean(), p = n.files.length, h = n.ahead || 0, g = n.behind || 0;
 			let r = await e.log({ maxCount: 1 });
-			r.latest && (y = {
+			r.latest && (v = {
 				hash: r.latest.hash,
 				message: r.latest.message,
 				date: r.latest.date,
 				author: r.latest.author_name
 			});
 		} catch {}
-		let S, C = p.join(t, ".rag-index", "meta.json");
-		if (_(C)) try {
-			let e = await g.readFile(C, "utf-8"), t = JSON.parse(e);
-			S = {
+		let b, x = m.join(t, ".rag-index", "meta.json");
+		if (y(x)) try {
+			let e = await _.readFile(x, "utf-8"), t = JSON.parse(e);
+			b = {
 				ready: !0,
 				chunksCount: t.chunks || 0,
 				filesCount: t.files?.length || 0,
@@ -197,15 +197,15 @@ async function de(e) {
 				model: t.model
 			};
 		} catch {
-			S = { ready: !0 };
+			b = { ready: !0 };
 		}
-		else (_(p.join(t, "scripts", "rag")) || l && l.docsRag) && (S = { ready: !1 });
-		let ee = {
+		else (y(m.join(t, "scripts", "rag")) || l && l.docsRag) && (b = { ready: !1 });
+		let w = {
 			runningCount: 0,
 			processes: []
-		}, te = p.join(t, ".env-state", "processes.json");
-		if (_(te)) try {
-			let e = await g.readFile(te, "utf-8"), t = JSON.parse(e), n = [];
+		}, ee = m.join(t, ".env-state", "processes.json");
+		if (y(ee)) try {
+			let e = await _.readFile(ee, "utf-8"), t = JSON.parse(e), n = [];
 			for (let [e, r] of Object.entries(t)) if (r && r.pid) {
 				let t = !1;
 				try {
@@ -220,31 +220,31 @@ async function de(e) {
 					startedAt: r.startedAt
 				});
 			}
-			ee = {
+			w = {
 				runningCount: n.length,
 				processes: n
 			};
 		} catch {}
-		let ne = await le.isFavorite(t), re = await le.getVoiceAlias(t);
+		let te = await ue.isFavorite(t), ne = await ue.getVoiceAlias(t);
 		return {
 			name: o,
 			path: t,
 			description: s,
 			version: c,
-			favorite: ne,
-			voiceAlias: re,
+			favorite: te,
+			voiceAlias: ne,
 			hasBacklog: n,
 			hasInfraConfig: r,
 			hasGit: i,
 			gitBranch: d,
 			gitClean: f,
 			gitAhead: h,
-			gitBehind: v,
-			uncommittedCount: m,
-			lastCommit: y,
+			gitBehind: g,
+			uncommittedCount: p,
+			lastCommit: v,
 			taskCounts: u,
-			ragStatus: S,
-			processStatus: ee,
+			ragStatus: b,
+			processStatus: w,
 			features: l,
 			lastScannedAt: (/* @__PURE__ */ new Date()).toISOString()
 		};
@@ -252,36 +252,36 @@ async function de(e) {
 		return console.error(`Error inspecting project at ${e}:`, t), null;
 	}
 }
-async function fe(e, t = 2) {
+async function pe(e, t = 2) {
 	let n = /* @__PURE__ */ new Map();
 	async function r(e, i) {
 		if (!(i > t)) try {
-			if (!_(e) || !(await g.stat(e)).isDirectory()) return;
-			let t = await de(e);
-			if (t && (n.set(p.normalize(t.path).toLowerCase(), t), i > 0)) return;
-			let a = await g.readdir(e, { withFileTypes: !0 });
+			if (!y(e) || !(await _.stat(e)).isDirectory()) return;
+			let t = await fe(e);
+			if (t && (n.set(m.normalize(t.path).toLowerCase(), t), i > 0)) return;
+			let a = await _.readdir(e, { withFileTypes: !0 });
 			for (let t of a) if (t.isDirectory()) {
 				let n = t.name.toLowerCase();
-				if (ue.has(n) || n.startsWith(".")) continue;
-				await r(p.join(e, t.name), i + 1);
+				if (de.has(n) || n.startsWith(".")) continue;
+				await r(m.join(e, t.name), i + 1);
 			}
 		} catch {}
 	}
-	for (let t of e) await r(p.normalize(t), 0);
-	for (let e of n.values()) await le.addProject(e.path, !!e.favorite);
+	for (let t of e) await r(m.normalize(t), 0);
+	for (let e of n.values()) await ue.addProject(e.path, !!e.favorite);
 	return Array.from(n.values());
 }
 //#endregion
 //#region electron/services/secretStorageService.ts
-var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "secrets.enc.json"), ge = new class {
+var me = "enc_v1:", he = m.join(w.homedir(), ".projecthub"), ge = m.join(he, "secrets.enc.json"), _e = new class {
 	inMemoryCache = /* @__PURE__ */ new Map();
 	initialized = !1;
 	constructor() {
 		this.ensureDir();
 	}
 	ensureDir() {
-		if (!_(me)) try {
-			g.mkdir(me, { recursive: !0 });
+		if (!y(he)) try {
+			_.mkdir(he, { recursive: !0 });
 		} catch (e) {
 			console.error("[SecretStorage] Failed to create dir:", e);
 		}
@@ -294,9 +294,9 @@ var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "se
 		}
 	}
 	encrypt(e) {
-		if (!e || e.startsWith(pe)) return e;
+		if (!e || e.startsWith(me)) return e;
 		if (this.isEncryptionAvailable()) try {
-			return `${pe}${u.encryptString(e).toString("base64")}`;
+			return `${me}${u.encryptString(e).toString("base64")}`;
 		} catch (t) {
 			return console.warn("[SecretStorage] safeStorage.encryptString failed, using plain fallback:", t), e;
 		}
@@ -304,7 +304,7 @@ var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "se
 	}
 	decrypt(e) {
 		if (!e) return "";
-		if (!e.startsWith(pe)) return e;
+		if (!e.startsWith(me)) return e;
 		if (this.isEncryptionAvailable()) try {
 			let t = e.slice(7), n = Buffer.from(t, "base64");
 			return u.decryptString(n);
@@ -315,13 +315,13 @@ var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "se
 	}
 	mask(e) {
 		if (!e) return "";
-		let t = e.startsWith(pe) ? this.decrypt(e) : e;
+		let t = e.startsWith(me) ? this.decrypt(e) : e;
 		return t.length <= 8 ? "********" : `${t.slice(0, 4)}...${t.slice(-4)}`;
 	}
 	async loadSecretsFile() {
 		try {
-			if (_(he)) {
-				let e = await g.readFile(he, "utf-8");
+			if (y(ge)) {
+				let e = await _.readFile(ge, "utf-8");
 				return JSON.parse(e);
 			}
 		} catch (e) {
@@ -330,7 +330,7 @@ var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "se
 		return {};
 	}
 	async saveSecretsFile(e) {
-		this.ensureDir(), await g.writeFile(he, JSON.stringify(e, null, 2), "utf-8");
+		this.ensureDir(), await _.writeFile(ge, JSON.stringify(e, null, 2), "utf-8");
 	}
 	async setSecret(e, t) {
 		let n = this.encrypt(t);
@@ -350,28 +350,28 @@ var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "se
 		let t = await this.loadSecretsFile();
 		return e in t && (delete t[e], await this.saveSecretsFile(t), !0);
 	}
-}(), _e = p.join(S.homedir(), ".projecthub", "claude_config"), ve = p.join(S.homedir(), ".projecthub", "ai-config.json"), ye = new class {
+}(), ve = m.join(w.homedir(), ".projecthub", "claude_config"), ye = m.join(w.homedir(), ".projecthub", "ai-config.json"), be = new class {
 	activeControllers = /* @__PURE__ */ new Map();
 	constructor() {
 		this.ensureConfigDir();
 	}
 	ensureConfigDir() {
-		let e = p.dirname(ve);
-		if (!_(e)) try {
-			g.mkdir(e, { recursive: !0 });
+		let e = m.dirname(ye);
+		if (!y(e)) try {
+			_.mkdir(e, { recursive: !0 });
 		} catch (e) {
 			console.error("Failed to create config dir:", e);
 		}
-		if (!_(_e)) try {
-			g.mkdir(_e, { recursive: !0 });
+		if (!y(ve)) try {
+			_.mkdir(ve, { recursive: !0 });
 		} catch (e) {
 			console.error("Failed to create claude config dir:", e);
 		}
 	}
 	async getClaudeAuthStatus() {
-		let e = [p.join(_e, ".claude.json"), p.join(S.homedir(), ".claude.json")];
-		for (let t of e) if (_(t)) try {
-			let e = await g.readFile(t, "utf-8"), n = JSON.parse(e);
+		let e = [m.join(ve, ".claude.json"), m.join(w.homedir(), ".claude.json")];
+		for (let t of e) if (y(t)) try {
+			let e = await _.readFile(t, "utf-8"), n = JSON.parse(e);
 			if (n.oauthAccount && (n.oauthAccount.emailAddress || n.oauthAccount.email)) return {
 				isLoggedIn: !0,
 				email: n.oauthAccount.emailAddress || n.oauthAccount.email,
@@ -385,24 +385,24 @@ var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "se
 		return { isLoggedIn: !1 };
 	}
 	async claudeLogout() {
-		let e = [p.join(_e, ".claude.json"), p.join(S.homedir(), ".claude.json")];
-		for (let t of e) if (_(t)) try {
-			let e = await g.readFile(t, "utf-8"), n = JSON.parse(e);
-			n.oauthAccount && (delete n.oauthAccount, delete n.primaryApiKey, await g.writeFile(t, JSON.stringify(n, null, 2), "utf-8"));
+		let e = [m.join(ve, ".claude.json"), m.join(w.homedir(), ".claude.json")];
+		for (let t of e) if (y(t)) try {
+			let e = await _.readFile(t, "utf-8"), n = JSON.parse(e);
+			n.oauthAccount && (delete n.oauthAccount, delete n.primaryApiKey, await _.writeFile(t, JSON.stringify(n, null, 2), "utf-8"));
 		} catch (e) {
 			console.warn(`Failed to clean oauthAccount from ${t}:`, e);
 		}
 		try {
-			let e = p.join(_e, ".credentials.json");
-			_(e) && await g.unlink(e);
+			let e = m.join(ve, ".credentials.json");
+			y(e) && await _.unlink(e);
 		} catch {}
 		try {
-			process.platform === "win32" ? y("cmd.exe", ["/c", "claude auth logout"], { env: {
+			process.platform === "win32" ? x("cmd.exe", ["/c", "claude auth logout"], { env: {
 				...process.env,
-				CLAUDE_CONFIG_DIR: _e
-			} }) : y("claude", ["auth", "logout"], { env: {
+				CLAUDE_CONFIG_DIR: ve
+			} }) : x("claude", ["auth", "logout"], { env: {
 				...process.env,
-				CLAUDE_CONFIG_DIR: _e
+				CLAUDE_CONFIG_DIR: ve
 			} });
 		} catch (e) {
 			console.warn("Failed to spawn claude auth logout:", e);
@@ -411,9 +411,9 @@ var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "se
 	}
 	async getConfig() {
 		try {
-			if (_(ve)) {
-				let e = await g.readFile(ve, "utf-8"), t = JSON.parse(e);
-				return t && t.apiKey && (t.apiKey = ge.decrypt(t.apiKey)), t;
+			if (y(ye)) {
+				let e = await _.readFile(ye, "utf-8"), t = JSON.parse(e);
+				return t && t.apiKey && (t.apiKey = _e.decrypt(t.apiKey)), t;
 			}
 		} catch (e) {
 			console.warn("Failed to load AI config, using defaults:", e);
@@ -428,7 +428,7 @@ var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "se
 	async saveConfig(e) {
 		this.ensureConfigDir();
 		let t = { ...e };
-		t.apiKey &&= ge.encrypt(t.apiKey), await g.writeFile(ve, JSON.stringify(t, null, 2), "utf-8");
+		t.apiKey &&= _e.encrypt(t.apiKey), await _.writeFile(ye, JSON.stringify(t, null, 2), "utf-8");
 	}
 	abortStream(e) {
 		let t = this.activeControllers.get(e);
@@ -443,8 +443,8 @@ var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "se
 		return a.trim();
 	}
 	async applyDiff(e, t, n) {
-		let r = p.isAbsolute(t) ? t : p.join(e, t), i = p.dirname(r);
-		return await g.mkdir(i, { recursive: !0 }), await g.writeFile(r, n, "utf-8"), !0;
+		let r = m.isAbsolute(t) ? t : m.join(e, t), i = m.dirname(r);
+		return await _.mkdir(i, { recursive: !0 }), await _.writeFile(r, n, "utf-8"), !0;
 	}
 	async streamChat(e, t, n, r) {
 		let i = new AbortController();
@@ -489,13 +489,13 @@ var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "se
 			let e = await u.text();
 			throw Error(`Anthropic API Error (${u.status}): ${e}`);
 		}
-		let d = "", f = "", m = [], h = null, v = u.body?.getReader();
-		if (!v) throw Error("Response body is empty");
-		let y = new TextDecoder(), b = "";
+		let d = "", f = "", p = [], h = null, g = u.body?.getReader();
+		if (!g) throw Error("Response body is empty");
+		let v = new TextDecoder(), b = "";
 		for (;;) {
-			let { done: t, value: n } = await v.read();
+			let { done: t, value: n } = await g.read();
 			if (t) break;
-			b += y.decode(n, { stream: !0 });
+			b += v.decode(n, { stream: !0 });
 			let i = b.split("\n");
 			b = i.pop() || "";
 			for (let t of i) {
@@ -531,15 +531,15 @@ var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "se
 							status: "pending"
 						};
 						if (h.name === "write_file" && t.filePath && t.content) {
-							let r = p.isAbsolute(t.filePath) ? t.filePath : p.join(e.projectPath, t.filePath), i = "";
-							_(r) && (i = await g.readFile(r, "utf-8").catch(() => "")), n.diff = {
+							let r = m.isAbsolute(t.filePath) ? t.filePath : m.join(e.projectPath, t.filePath), i = "";
+							y(r) && (i = await _.readFile(r, "utf-8").catch(() => "")), n.diff = {
 								filePath: t.filePath,
 								oldContent: i,
 								newContent: t.content,
 								patch: this.generateDiff(i, t.content, t.filePath)
 							};
 						}
-						m.push(n), r({ toolCall: n }), h = null;
+						p.push(n), r({ toolCall: n }), h = null;
 					}
 				} catch {}
 			}
@@ -549,7 +549,7 @@ var pe = "enc_v1:", me = p.join(S.homedir(), ".projecthub"), he = p.join(me, "se
 			role: "assistant",
 			content: d,
 			thought: f || void 0,
-			toolCalls: m.length > 0 ? m.map((e) => ({
+			toolCalls: p.length > 0 ? p.map((e) => ({
 				...e,
 				status: e.status || (e.diff ? "pending" : "done")
 			})) : void 0,
@@ -719,7 +719,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 			}
 		];
 	}
-}(), be = [
+}(), xe = [
 	{
 		id: "default",
 		name: "Default (recommended)",
@@ -779,7 +779,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 		badge: "1M Context",
 		family: "fable"
 	}
-], xe = new class extends C {
+], Se = new class extends ee {
 	projectStatuses = /* @__PURE__ */ new Map();
 	pendingApprovals = /* @__PURE__ */ new Map();
 	activeSubagents = /* @__PURE__ */ new Map();
@@ -790,7 +790,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 	getProjectStatus(e) {
 		return this.projectStatuses.get(e) || {
 			projectPath: e,
-			projectName: p.basename(e),
+			projectName: m.basename(e),
 			status: "idle",
 			updatedAt: Date.now()
 		};
@@ -799,12 +799,12 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 		return Array.from(this.projectStatuses.values());
 	}
 	getAvailableModels() {
-		return be;
+		return xe;
 	}
 	setProjectStatus(e, t, n, r) {
 		let i = (this.activeSubagents.get(e) || []).filter((e) => e.status === "running").length, a = {
 			projectPath: e,
-			projectName: p.basename(e),
+			projectName: m.basename(e),
 			status: t,
 			lastMessage: n,
 			pendingApproval: r,
@@ -830,7 +830,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 		return this.activeSubagents.get(e) || [];
 	}
 	abortSession(e) {
-		ye.abortStream(e);
+		be.abortStream(e);
 		let t = this.activeProcesses.get(e);
 		t && (t.kill(), this.activeProcesses.delete(e));
 	}
@@ -872,7 +872,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 	}
 	isPathExcluded(e, t = []) {
 		if (!e || !t || t.length === 0) return !1;
-		let n = e.replace(/\\/g, "/").toLowerCase(), r = p.basename(n);
+		let n = e.replace(/\\/g, "/").toLowerCase(), r = m.basename(n);
 		return t.some((e) => {
 			let t = e.trim().replace(/\\/g, "/").toLowerCase();
 			if (!t) return !1;
@@ -907,7 +907,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 		let { sessionId: i, projectPath: a } = e, o = !!e.config.autoApprove, s = e.config.autoApproveRules, c = o && (!s || s.allowCommands !== !1), l = o && (!s || s.allowFileWrite !== !1);
 		if (s && s.allowFileRead, o && s && s.allowSubagents, this.setProjectStatus(a, "running", "Агент анализирует задачу..."), e.config.provider === "anthropic" && (!e.config.apiKey || !e.config.apiKey.trim())) return this.runClaudeCliTask(e, t, n, r);
 		try {
-			await ye.streamChat(e, async (e) => {
+			await be.streamChat(e, async (e) => {
 				if (t(e), e.toolCall) {
 					let n = e.toolCall;
 					if (n.name === "ask_question" || n.name === "AskUserQuestion") {
@@ -998,13 +998,13 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 						this.setProjectStatus(a, "running", "Обработка результатов...");
 					} else if (n.name === "write_file" || n.name === "write_to_file") {
 						let e = n.args.filePath || n.args.path || "", r = n.args.content || "", o = s?.writeExcludePatterns && this.isPathExcluded(e, s.writeExcludePatterns);
-						if (l && !o) await ye.applyDiff(a, e, r), n.status = "accepted", n.result = `Файл ${e} успешно записан`, t({ toolCall: n });
+						if (l && !o) await be.applyDiff(a, e, r), n.status = "accepted", n.result = `Файл ${e} успешно записан`, t({ toolCall: n });
 						else {
-							let s = "", c = p.isAbsolute(e) ? e : p.join(a, e);
-							if (_(c)) try {
-								s = await g.readFile(c, "utf-8");
+							let s = "", c = m.isAbsolute(e) ? e : m.join(a, e);
+							if (y(c)) try {
+								s = await _.readFile(c, "utf-8");
 							} catch {}
-							let l = ye.generateDiff(s, r, e);
+							let l = be.generateDiff(s, r, e);
 							n.diff = {
 								filePath: e,
 								oldContent: s,
@@ -1027,7 +1027,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 								toolCall: n
 							});
 							let d = await this.requestApproval(u);
-							d.approved ? (await ye.applyDiff(a, e, r), n.status = "accepted", n.result = `Файл ${e} успешно сохранен`, t({ toolCall: n })) : (n.status = "rejected", n.result = `Отклонено пользователем: ${d.text || "Без комментария"}`, t({ toolCall: n }));
+							d.approved ? (await be.applyDiff(a, e, r), n.status = "accepted", n.result = `Файл ${e} успешно сохранен`, t({ toolCall: n })) : (n.status = "rejected", n.result = `Отклонено пользователем: ${d.text || "Без комментария"}`, t({ toolCall: n }));
 						}
 					} else if (n.name === "spawn_subagent" || n.name === "dispatch_agent") {
 						let e = n.args.task || n.args.prompt || "Подзадача", r = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, o = {
@@ -1069,7 +1069,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 		}
 		let c = e.claudeCliSessionId || this.sessionClaudeCliIds.get(i), l = ["-p"];
 		c && l.push("--resume", c), e.config.model && e.config.model !== "default" && l.push("--model", e.config.model), l.push("--dangerously-skip-permissions"), l.push("--output-format", "stream-json", "--verbose");
-		let u = y("claude", l, {
+		let u = x("claude", l, {
 			cwd: a,
 			shell: !0,
 			stdio: [
@@ -1080,7 +1080,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 			env: {
 				...process.env,
 				FORCE_COLOR: "0",
-				CLAUDE_CONFIG_DIR: _e
+				CLAUDE_CONFIG_DIR: ve
 			}
 		});
 		this.activeProcesses.set(i, u), u.stdin.write(s, "utf-8"), u.stdin.end();
@@ -1240,7 +1240,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 	}
 	executeSubprocess(e, t, n) {
 		return new Promise((r, i) => {
-			let a = process.platform === "win32", o = y(a ? "powershell.exe" : "/bin/bash", a ? [
+			let a = process.platform === "win32", o = x(a ? "powershell.exe" : "/bin/bash", a ? [
 				"-NoProfile",
 				"-NonInteractive",
 				"-Command",
@@ -1265,7 +1265,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 			});
 		});
 	}
-}(), Se = new class {
+}(), Ce = new class {
 	status = "unloaded";
 	modelName = "Xenova/whisper-base";
 	cacheDir;
@@ -1277,7 +1277,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 	pendingJobs = /* @__PURE__ */ new Map();
 	fallbackPipeline = null;
 	constructor() {
-		this.cacheDir = p.join(S.homedir(), ".cache", "projecthub", "whisper");
+		this.cacheDir = m.join(w.homedir(), ".cache", "projecthub", "whisper");
 	}
 	getState() {
 		return {
@@ -1295,23 +1295,23 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 	}
 	resolveWorkerPath() {
 		let e = [
-			p.join(process.cwd(), "dist-electron", "workers", "whisperWorker.mjs"),
-			p.join(process.cwd(), "electron", "workers", "whisperWorker.mjs"),
-			p.join(p.dirname(h(import.meta.url)), "../workers/whisperWorker.mjs"),
-			p.join(p.dirname(h(import.meta.url)), "workers/whisperWorker.mjs")
+			m.join(process.cwd(), "dist-electron", "workers", "whisperWorker.mjs"),
+			m.join(process.cwd(), "electron", "workers", "whisperWorker.mjs"),
+			m.join(m.dirname(g(import.meta.url)), "../workers/whisperWorker.mjs"),
+			m.join(m.dirname(g(import.meta.url)), "workers/whisperWorker.mjs")
 		];
-		for (let t of e) if (_(t)) return t;
+		for (let t of e) if (y(t)) return t;
 		return e[1];
 	}
 	spawnWorker() {
 		try {
 			let e = this.resolveWorkerPath();
-			if (!e || !_(e)) {
+			if (!e || !y(e)) {
 				console.warn(`[LocalWhisper] Worker script not found at ${e}, using in-process fallback`), this.initInProcessFallback();
 				return;
 			}
 			console.log(`[LocalWhisper] Spawning Worker thread at ${e}`);
-			let t = new ee(e);
+			let t = new te(e);
 			this.worker = t, t.on("message", (e) => {
 				if (e) {
 					if (e.type === "ready") this.status = "ready", this.loadTimeMs = e.loadTimeMs || Date.now() - this.loadStartTime, console.log(`[LocalWhisper] Isolated Worker thread is READY (${this.loadTimeMs}ms)`);
@@ -1341,7 +1341,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 	}
 	async initInProcessFallback() {
 		try {
-			console.log("[LocalWhisper] Initializing in-process Transformers fallback..."), await g.mkdir(this.cacheDir, { recursive: !0 });
+			console.log("[LocalWhisper] Initializing in-process Transformers fallback..."), await _.mkdir(this.cacheDir, { recursive: !0 });
 			let e = await import("./transformers.node-COFdxZ8y.js");
 			e.env && (e.env.cacheDir = this.cacheDir, e.env.allowLocalModels = !0), this.fallbackPipeline = await e.pipeline("automatic-speech-recognition", this.modelName, { dtype: "fp32" }), this.status = "ready", this.loadTimeMs = Date.now() - this.loadStartTime, console.log(`[LocalWhisper] In-process fallback pipeline is READY (${this.loadTimeMs}ms)`);
 		} catch (e) {
@@ -1399,7 +1399,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 		}
 		this.fallbackPipeline = null, this.status = "unloaded", console.log("[LocalWhisper] Service disposed and worker terminated");
 	}
-}(), w;
+}(), T;
 (function(e) {
 	e.assertEqual = (e) => {};
 	function t(e) {}
@@ -1428,15 +1428,15 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
 		return e.map((e) => typeof e == "string" ? `'${e}'` : e).join(t);
 	}
 	e.joinValues = r, e.jsonStringifyReplacer = (e, t) => typeof t == "bigint" ? t.toString() : t;
-})(w ||= {});
-var Ce;
+})(T ||= {});
+var we;
 (function(e) {
 	e.mergeShapes = (e, t) => ({
 		...e,
 		...t
 	});
-})(Ce ||= {});
-var T = w.arrayToEnum([
+})(we ||= {});
+var E = T.arrayToEnum([
 	"string",
 	"nan",
 	"number",
@@ -1457,19 +1457,19 @@ var T = w.arrayToEnum([
 	"never",
 	"map",
 	"set"
-]), we = (e) => {
+]), Te = (e) => {
 	switch (typeof e) {
-		case "undefined": return T.undefined;
-		case "string": return T.string;
-		case "number": return Number.isNaN(e) ? T.nan : T.number;
-		case "boolean": return T.boolean;
-		case "function": return T.function;
-		case "bigint": return T.bigint;
-		case "symbol": return T.symbol;
-		case "object": return Array.isArray(e) ? T.array : e === null ? T.null : e.then && typeof e.then == "function" && e.catch && typeof e.catch == "function" ? T.promise : typeof Map < "u" && e instanceof Map ? T.map : typeof Set < "u" && e instanceof Set ? T.set : typeof Date < "u" && e instanceof Date ? T.date : T.object;
-		default: return T.unknown;
+		case "undefined": return E.undefined;
+		case "string": return E.string;
+		case "number": return Number.isNaN(e) ? E.nan : E.number;
+		case "boolean": return E.boolean;
+		case "function": return E.function;
+		case "bigint": return E.bigint;
+		case "symbol": return E.symbol;
+		case "object": return Array.isArray(e) ? E.array : e === null ? E.null : e.then && typeof e.then == "function" && e.catch && typeof e.catch == "function" ? E.promise : typeof Map < "u" && e instanceof Map ? E.map : typeof Set < "u" && e instanceof Set ? E.set : typeof Date < "u" && e instanceof Date ? E.date : E.object;
+		default: return E.unknown;
 	}
-}, E = w.arrayToEnum([
+}, D = T.arrayToEnum([
 	"invalid_type",
 	"invalid_literal",
 	"custom",
@@ -1486,7 +1486,7 @@ var T = w.arrayToEnum([
 	"invalid_intersection_types",
 	"not_multiple_of",
 	"not_finite"
-]), Te = class e extends Error {
+]), Ee = class e extends Error {
 	get errors() {
 		return this.issues;
 	}
@@ -1524,7 +1524,7 @@ var T = w.arrayToEnum([
 		return this.message;
 	}
 	get message() {
-		return JSON.stringify(this.issues, w.jsonStringifyReplacer, 2);
+		return JSON.stringify(this.issues, T.jsonStringifyReplacer, 2);
 	}
 	get isEmpty() {
 		return this.issues.length === 0;
@@ -1544,70 +1544,70 @@ var T = w.arrayToEnum([
 		return this.flatten();
 	}
 };
-Te.create = (e) => new Te(e);
+Ee.create = (e) => new Ee(e);
 //#endregion
 //#region node_modules/zod/v3/locales/en.js
-var Ee = (e, t) => {
+var De = (e, t) => {
 	let n;
 	switch (e.code) {
-		case E.invalid_type:
-			n = e.received === T.undefined ? "Required" : `Expected ${e.expected}, received ${e.received}`;
+		case D.invalid_type:
+			n = e.received === E.undefined ? "Required" : `Expected ${e.expected}, received ${e.received}`;
 			break;
-		case E.invalid_literal:
-			n = `Invalid literal value, expected ${JSON.stringify(e.expected, w.jsonStringifyReplacer)}`;
+		case D.invalid_literal:
+			n = `Invalid literal value, expected ${JSON.stringify(e.expected, T.jsonStringifyReplacer)}`;
 			break;
-		case E.unrecognized_keys:
-			n = `Unrecognized key(s) in object: ${w.joinValues(e.keys, ", ")}`;
+		case D.unrecognized_keys:
+			n = `Unrecognized key(s) in object: ${T.joinValues(e.keys, ", ")}`;
 			break;
-		case E.invalid_union:
+		case D.invalid_union:
 			n = "Invalid input";
 			break;
-		case E.invalid_union_discriminator:
-			n = `Invalid discriminator value. Expected ${w.joinValues(e.options)}`;
+		case D.invalid_union_discriminator:
+			n = `Invalid discriminator value. Expected ${T.joinValues(e.options)}`;
 			break;
-		case E.invalid_enum_value:
-			n = `Invalid enum value. Expected ${w.joinValues(e.options)}, received '${e.received}'`;
+		case D.invalid_enum_value:
+			n = `Invalid enum value. Expected ${T.joinValues(e.options)}, received '${e.received}'`;
 			break;
-		case E.invalid_arguments:
+		case D.invalid_arguments:
 			n = "Invalid function arguments";
 			break;
-		case E.invalid_return_type:
+		case D.invalid_return_type:
 			n = "Invalid function return type";
 			break;
-		case E.invalid_date:
+		case D.invalid_date:
 			n = "Invalid date";
 			break;
-		case E.invalid_string:
-			typeof e.validation == "object" ? "includes" in e.validation ? (n = `Invalid input: must include "${e.validation.includes}"`, typeof e.validation.position == "number" && (n = `${n} at one or more positions greater than or equal to ${e.validation.position}`)) : "startsWith" in e.validation ? n = `Invalid input: must start with "${e.validation.startsWith}"` : "endsWith" in e.validation ? n = `Invalid input: must end with "${e.validation.endsWith}"` : w.assertNever(e.validation) : n = e.validation === "regex" ? "Invalid" : `Invalid ${e.validation}`;
+		case D.invalid_string:
+			typeof e.validation == "object" ? "includes" in e.validation ? (n = `Invalid input: must include "${e.validation.includes}"`, typeof e.validation.position == "number" && (n = `${n} at one or more positions greater than or equal to ${e.validation.position}`)) : "startsWith" in e.validation ? n = `Invalid input: must start with "${e.validation.startsWith}"` : "endsWith" in e.validation ? n = `Invalid input: must end with "${e.validation.endsWith}"` : T.assertNever(e.validation) : n = e.validation === "regex" ? "Invalid" : `Invalid ${e.validation}`;
 			break;
-		case E.too_small:
+		case D.too_small:
 			n = e.type === "array" ? `Array must contain ${e.exact ? "exactly" : e.inclusive ? "at least" : "more than"} ${e.minimum} element(s)` : e.type === "string" ? `String must contain ${e.exact ? "exactly" : e.inclusive ? "at least" : "over"} ${e.minimum} character(s)` : e.type === "number" || e.type === "bigint" ? `Number must be ${e.exact ? "exactly equal to " : e.inclusive ? "greater than or equal to " : "greater than "}${e.minimum}` : e.type === "date" ? `Date must be ${e.exact ? "exactly equal to " : e.inclusive ? "greater than or equal to " : "greater than "}${new Date(Number(e.minimum))}` : "Invalid input";
 			break;
-		case E.too_big:
+		case D.too_big:
 			n = e.type === "array" ? `Array must contain ${e.exact ? "exactly" : e.inclusive ? "at most" : "less than"} ${e.maximum} element(s)` : e.type === "string" ? `String must contain ${e.exact ? "exactly" : e.inclusive ? "at most" : "under"} ${e.maximum} character(s)` : e.type === "number" ? `Number must be ${e.exact ? "exactly" : e.inclusive ? "less than or equal to" : "less than"} ${e.maximum}` : e.type === "bigint" ? `BigInt must be ${e.exact ? "exactly" : e.inclusive ? "less than or equal to" : "less than"} ${e.maximum}` : e.type === "date" ? `Date must be ${e.exact ? "exactly" : e.inclusive ? "smaller than or equal to" : "smaller than"} ${new Date(Number(e.maximum))}` : "Invalid input";
 			break;
-		case E.custom:
+		case D.custom:
 			n = "Invalid input";
 			break;
-		case E.invalid_intersection_types:
+		case D.invalid_intersection_types:
 			n = "Intersection results could not be merged";
 			break;
-		case E.not_multiple_of:
+		case D.not_multiple_of:
 			n = `Number must be a multiple of ${e.multipleOf}`;
 			break;
-		case E.not_finite:
+		case D.not_finite:
 			n = "Number must be finite";
 			break;
-		default: n = t.defaultError, w.assertNever(e);
+		default: n = t.defaultError, T.assertNever(e);
 	}
 	return { message: n };
-}, De = Ee;
-function Oe() {
-	return De;
+}, Oe = De;
+function ke() {
+	return Oe;
 }
 //#endregion
 //#region node_modules/zod/v3/helpers/parseUtil.js
-var ke = (e) => {
+var Ae = (e) => {
 	let { data: t, path: n, errorMaps: r, issueData: i } = e, a = [...n, ...i.path || []], o = {
 		...i,
 		path: a
@@ -1628,8 +1628,8 @@ var ke = (e) => {
 		message: s
 	};
 };
-function D(e, t) {
-	let n = Oe(), r = ke({
+function O(e, t) {
+	let n = ke(), r = Ae({
 		issueData: t,
 		data: e.data,
 		path: e.path,
@@ -1637,12 +1637,12 @@ function D(e, t) {
 			e.common.contextualErrorMap,
 			e.schemaErrorMap,
 			n,
-			n === Ee ? void 0 : Ee
+			n === De ? void 0 : De
 		].filter((e) => !!e)
 	});
 	e.common.issues.push(r);
 }
-var Ae = class e {
+var je = class e {
 	constructor() {
 		this.value = "valid";
 	}
@@ -1655,7 +1655,7 @@ var Ae = class e {
 	static mergeArray(e, t) {
 		let n = [];
 		for (let r of t) {
-			if (r.status === "aborted") return O;
+			if (r.status === "aborted") return k;
 			r.status === "dirty" && e.dirty(), n.push(r.value);
 		}
 		return {
@@ -1678,7 +1678,7 @@ var Ae = class e {
 		let n = {};
 		for (let r of t) {
 			let { key: t, value: i } = r;
-			if (t.status === "aborted" || i.status === "aborted") return O;
+			if (t.status === "aborted" || i.status === "aborted") return k;
 			t.status === "dirty" && e.dirty(), i.status === "dirty" && e.dirty(), t.value !== "__proto__" && (i.value !== void 0 || r.alwaysSet) && (n[t.value] = i.value);
 		}
 		return {
@@ -1686,27 +1686,27 @@ var Ae = class e {
 			value: n
 		};
 	}
-}, O = Object.freeze({ status: "aborted" }), je = (e) => ({
+}, k = Object.freeze({ status: "aborted" }), Me = (e) => ({
 	status: "dirty",
 	value: e
-}), Me = (e) => ({
+}), Ne = (e) => ({
 	status: "valid",
 	value: e
-}), Ne = (e) => e.status === "aborted", Pe = (e) => e.status === "dirty", Fe = (e) => e.status === "valid", Ie = (e) => typeof Promise < "u" && e instanceof Promise, k;
+}), Pe = (e) => e.status === "aborted", Fe = (e) => e.status === "dirty", Ie = (e) => e.status === "valid", Le = (e) => typeof Promise < "u" && e instanceof Promise, A;
 (function(e) {
 	e.errToObj = (e) => typeof e == "string" ? { message: e } : e || {}, e.toString = (e) => typeof e == "string" ? e : e?.message;
-})(k ||= {});
+})(A ||= {});
 //#endregion
 //#region node_modules/zod/v3/types.js
-var Le = class {
+var Re = class {
 	constructor(e, t, n, r) {
 		this._cachedPath = [], this.parent = e, this.data = t, this._path = n, this._key = r;
 	}
 	get path() {
 		return this._cachedPath.length || (Array.isArray(this._key) ? this._cachedPath.push(...this._path, ...this._key) : this._cachedPath.push(...this._path, this._key)), this._cachedPath;
 	}
-}, Re = (e, t) => {
-	if (Fe(t)) return {
+}, ze = (e, t) => {
+	if (Ie(t)) return {
 		success: !0,
 		data: t.value
 	};
@@ -1715,12 +1715,12 @@ var Le = class {
 		success: !1,
 		get error() {
 			if (this._error) return this._error;
-			let t = new Te(e.common.issues);
+			let t = new Ee(e.common.issues);
 			return this._error = t, this._error;
 		}
 	};
 };
-function A(e) {
+function j(e) {
 	if (!e) return {};
 	let { errorMap: t, invalid_type_error: n, required_error: r, description: i } = e;
 	if (t && (n || r)) throw Error("Can't use \"invalid_type_error\" or \"required_error\" in conjunction with custom error map.");
@@ -1735,18 +1735,18 @@ function A(e) {
 		description: i
 	};
 }
-var j = class {
+var M = class {
 	get description() {
 		return this._def.description;
 	}
 	_getType(e) {
-		return we(e.data);
+		return Te(e.data);
 	}
 	_getOrReturnCtx(e, t) {
 		return t || {
 			common: e.parent.common,
 			data: e.data,
-			parsedType: we(e.data),
+			parsedType: Te(e.data),
 			schemaErrorMap: this._def.errorMap,
 			path: e.path,
 			parent: e.parent
@@ -1754,11 +1754,11 @@ var j = class {
 	}
 	_processInputParams(e) {
 		return {
-			status: new Ae(),
+			status: new je(),
 			ctx: {
 				common: e.parent.common,
 				data: e.data,
-				parsedType: we(e.data),
+				parsedType: Te(e.data),
 				schemaErrorMap: this._def.errorMap,
 				path: e.path,
 				parent: e.parent
@@ -1767,7 +1767,7 @@ var j = class {
 	}
 	_parseSync(e) {
 		let t = this._parse(e);
-		if (Ie(t)) throw Error("Synchronous parse encountered promise.");
+		if (Le(t)) throw Error("Synchronous parse encountered promise.");
 		return t;
 	}
 	_parseAsync(e) {
@@ -1790,9 +1790,9 @@ var j = class {
 			schemaErrorMap: this._def.errorMap,
 			parent: null,
 			data: e,
-			parsedType: we(e)
+			parsedType: Te(e)
 		};
-		return Re(n, this._parseSync({
+		return ze(n, this._parseSync({
 			data: e,
 			path: n.path,
 			parent: n
@@ -1808,7 +1808,7 @@ var j = class {
 			schemaErrorMap: this._def.errorMap,
 			parent: null,
 			data: e,
-			parsedType: we(e)
+			parsedType: Te(e)
 		};
 		if (!this["~standard"].async) try {
 			let n = this._parseSync({
@@ -1816,7 +1816,7 @@ var j = class {
 				path: [],
 				parent: t
 			});
-			return Fe(n) ? { value: n.value } : { issues: t.common.issues };
+			return Ie(n) ? { value: n.value } : { issues: t.common.issues };
 		} catch (e) {
 			e?.message?.toLowerCase()?.includes("encountered") && (this["~standard"].async = !0), t.common = {
 				issues: [],
@@ -1827,7 +1827,7 @@ var j = class {
 			data: e,
 			path: [],
 			parent: t
-		}).then((e) => Fe(e) ? { value: e.value } : { issues: t.common.issues });
+		}).then((e) => Ie(e) ? { value: e.value } : { issues: t.common.issues });
 	}
 	async parseAsync(e, t) {
 		let n = await this.safeParseAsync(e, t);
@@ -1845,19 +1845,19 @@ var j = class {
 			schemaErrorMap: this._def.errorMap,
 			parent: null,
 			data: e,
-			parsedType: we(e)
+			parsedType: Te(e)
 		}, r = this._parse({
 			data: e,
 			path: n.path,
 			parent: n
 		});
-		return Re(n, await (Ie(r) ? r : Promise.resolve(r)));
+		return ze(n, await (Le(r) ? r : Promise.resolve(r)));
 	}
 	refine(e, t) {
 		let n = (e) => typeof t == "string" || t === void 0 ? { message: t } : typeof t == "function" ? t(e) : t;
 		return this._refinement((t, r) => {
 			let i = e(t), a = () => r.addIssue({
-				code: E.custom,
+				code: D.custom,
 				...n(t)
 			});
 			return typeof Promise < "u" && i instanceof Promise ? i.then((e) => e ? !0 : (a(), !1)) : i ? !0 : (a(), !1);
@@ -1867,9 +1867,9 @@ var j = class {
 		return this._refinement((n, r) => e(n) ? !0 : (r.addIssue(typeof t == "function" ? t(n, r) : t), !1));
 	}
 	_refinement(e) {
-		return new Vt({
+		return new Ht({
 			schema: this,
-			typeName: M.ZodEffects,
+			typeName: N.ZodEffects,
 			effect: {
 				type: "refinement",
 				refinement: e
@@ -1887,31 +1887,31 @@ var j = class {
 		};
 	}
 	optional() {
-		return Ht.create(this, this._def);
+		return Ut.create(this, this._def);
 	}
 	nullable() {
-		return Ut.create(this, this._def);
+		return Wt.create(this, this._def);
 	}
 	nullish() {
 		return this.nullable().optional();
 	}
 	array() {
-		return St.create(this);
+		return Ct.create(this);
 	}
 	promise() {
-		return Bt.create(this, this._def);
+		return Vt.create(this, this._def);
 	}
 	or(e) {
-		return Tt.create([this, e], this._def);
+		return Et.create([this, e], this._def);
 	}
 	and(e) {
-		return kt.create(this, e, this._def);
+		return At.create(this, e, this._def);
 	}
 	transform(e) {
-		return new Vt({
-			...A(this._def),
+		return new Ht({
+			...j(this._def),
 			schema: this,
-			typeName: M.ZodEffects,
+			typeName: N.ZodEffects,
 			effect: {
 				type: "transform",
 				transform: e
@@ -1920,27 +1920,27 @@ var j = class {
 	}
 	default(e) {
 		let t = typeof e == "function" ? e : () => e;
-		return new Wt({
-			...A(this._def),
+		return new Gt({
+			...j(this._def),
 			innerType: this,
 			defaultValue: t,
-			typeName: M.ZodDefault
+			typeName: N.ZodDefault
 		});
 	}
 	brand() {
-		return new qt({
-			typeName: M.ZodBranded,
+		return new Jt({
+			typeName: N.ZodBranded,
 			type: this,
-			...A(this._def)
+			...j(this._def)
 		});
 	}
 	catch(e) {
 		let t = typeof e == "function" ? e : () => e;
-		return new Gt({
-			...A(this._def),
+		return new Kt({
+			...j(this._def),
 			innerType: this,
 			catchValue: t,
-			typeName: M.ZodCatch
+			typeName: N.ZodCatch
 		});
 	}
 	describe(e) {
@@ -1951,10 +1951,10 @@ var j = class {
 		});
 	}
 	pipe(e) {
-		return Jt.create(this, e);
+		return Yt.create(this, e);
 	}
 	readonly() {
-		return Yt.create(this);
+		return Xt.create(this);
 	}
 	isOptional() {
 		return this.safeParse(void 0).success;
@@ -1962,25 +1962,25 @@ var j = class {
 	isNullable() {
 		return this.safeParse(null).success;
 	}
-}, ze = /^c[^\s-]{8,}$/i, Be = /^[0-9a-z]+$/, Ve = /^[0-9A-HJKMNP-TV-Z]{26}$/i, He = /^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$/i, Ue = /^[a-z0-9_-]{21}$/i, We = /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]*$/, Ge = /^[-+]?P(?!$)(?:(?:[-+]?\d+Y)|(?:[-+]?\d+[.,]\d+Y$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:(?:[-+]?\d+W)|(?:[-+]?\d+[.,]\d+W$))?(?:(?:[-+]?\d+D)|(?:[-+]?\d+[.,]\d+D$))?(?:T(?=[\d+-])(?:(?:[-+]?\d+H)|(?:[-+]?\d+[.,]\d+H$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:[-+]?\d+(?:[.,]\d+)?S)?)??$/, Ke = /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\-]*\.)+[A-Z]{2,}$/i, qe = "^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$", Je, Ye = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/, Xe = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/(3[0-2]|[12]?[0-9])$/, Ze = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/, Qe = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/, $e = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/, et = /^([0-9a-zA-Z-_]{4})*(([0-9a-zA-Z-_]{2}(==)?)|([0-9a-zA-Z-_]{3}(=)?))?$/, tt = "((\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-((0[13578]|1[02])-(0[1-9]|[12]\\d|3[01])|(0[469]|11)-(0[1-9]|[12]\\d|30)|(02)-(0[1-9]|1\\d|2[0-8])))", nt = RegExp(`^${tt}$`);
-function rt(e) {
+}, Be = /^c[^\s-]{8,}$/i, Ve = /^[0-9a-z]+$/, He = /^[0-9A-HJKMNP-TV-Z]{26}$/i, Ue = /^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$/i, We = /^[a-z0-9_-]{21}$/i, Ge = /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]*$/, Ke = /^[-+]?P(?!$)(?:(?:[-+]?\d+Y)|(?:[-+]?\d+[.,]\d+Y$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:(?:[-+]?\d+W)|(?:[-+]?\d+[.,]\d+W$))?(?:(?:[-+]?\d+D)|(?:[-+]?\d+[.,]\d+D$))?(?:T(?=[\d+-])(?:(?:[-+]?\d+H)|(?:[-+]?\d+[.,]\d+H$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:[-+]?\d+(?:[.,]\d+)?S)?)??$/, qe = /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\-]*\.)+[A-Z]{2,}$/i, Je = "^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$", Ye, Xe = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/, Ze = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/(3[0-2]|[12]?[0-9])$/, Qe = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/, $e = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/, et = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/, tt = /^([0-9a-zA-Z-_]{4})*(([0-9a-zA-Z-_]{2}(==)?)|([0-9a-zA-Z-_]{3}(=)?))?$/, nt = "((\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-((0[13578]|1[02])-(0[1-9]|[12]\\d|3[01])|(0[469]|11)-(0[1-9]|[12]\\d|30)|(02)-(0[1-9]|1\\d|2[0-8])))", rt = RegExp(`^${nt}$`);
+function it(e) {
 	let t = "[0-5]\\d";
 	e.precision ? t = `${t}\\.\\d{${e.precision}}` : e.precision ?? (t = `${t}(\\.\\d+)?`);
 	let n = e.precision ? "+" : "?";
 	return `([01]\\d|2[0-3]):[0-5]\\d(:${t})${n}`;
 }
-function it(e) {
-	return RegExp(`^${rt(e)}$`);
-}
 function at(e) {
-	let t = `${tt}T${rt(e)}`, n = [];
+	return RegExp(`^${it(e)}$`);
+}
+function ot(e) {
+	let t = `${nt}T${it(e)}`, n = [];
 	return n.push(e.local ? "Z?" : "Z"), e.offset && n.push("([+-]\\d{2}:?\\d{2})"), t = `${t}(${n.join("|")})`, RegExp(`^${t}$`);
 }
-function ot(e, t) {
-	return !!((t === "v4" || !t) && Ye.test(e) || (t === "v6" || !t) && Ze.test(e));
-}
 function st(e, t) {
-	if (!We.test(e)) return !1;
+	return !!((t === "v4" || !t) && Xe.test(e) || (t === "v6" || !t) && Qe.test(e));
+}
+function ct(e, t) {
+	if (!Ge.test(e)) return !1;
 	try {
 		let [n] = e.split(".");
 		if (!n) return !1;
@@ -1990,30 +1990,30 @@ function st(e, t) {
 		return !1;
 	}
 }
-function ct(e, t) {
-	return !!((t === "v4" || !t) && Xe.test(e) || (t === "v6" || !t) && Qe.test(e));
+function lt(e, t) {
+	return !!((t === "v4" || !t) && Ze.test(e) || (t === "v6" || !t) && $e.test(e));
 }
-var lt = class e extends j {
+var ut = class e extends M {
 	_parse(e) {
-		if (this._def.coerce && (e.data = String(e.data)), this._getType(e) !== T.string) {
+		if (this._def.coerce && (e.data = String(e.data)), this._getType(e) !== E.string) {
 			let t = this._getOrReturnCtx(e);
-			return D(t, {
-				code: E.invalid_type,
-				expected: T.string,
+			return O(t, {
+				code: D.invalid_type,
+				expected: E.string,
 				received: t.parsedType
-			}), O;
+			}), k;
 		}
-		let t = new Ae(), n;
-		for (let r of this._def.checks) if (r.kind === "min") e.data.length < r.value && (n = this._getOrReturnCtx(e, n), D(n, {
-			code: E.too_small,
+		let t = new je(), n;
+		for (let r of this._def.checks) if (r.kind === "min") e.data.length < r.value && (n = this._getOrReturnCtx(e, n), O(n, {
+			code: D.too_small,
 			minimum: r.value,
 			type: "string",
 			inclusive: !0,
 			exact: !1,
 			message: r.message
 		}), t.dirty());
-		else if (r.kind === "max") e.data.length > r.value && (n = this._getOrReturnCtx(e, n), D(n, {
-			code: E.too_big,
+		else if (r.kind === "max") e.data.length > r.value && (n = this._getOrReturnCtx(e, n), O(n, {
+			code: D.too_big,
 			maximum: r.value,
 			type: "string",
 			inclusive: !0,
@@ -2022,121 +2022,121 @@ var lt = class e extends j {
 		}), t.dirty());
 		else if (r.kind === "length") {
 			let i = e.data.length > r.value, a = e.data.length < r.value;
-			(i || a) && (n = this._getOrReturnCtx(e, n), i ? D(n, {
-				code: E.too_big,
+			(i || a) && (n = this._getOrReturnCtx(e, n), i ? O(n, {
+				code: D.too_big,
 				maximum: r.value,
 				type: "string",
 				inclusive: !0,
 				exact: !0,
 				message: r.message
-			}) : a && D(n, {
-				code: E.too_small,
+			}) : a && O(n, {
+				code: D.too_small,
 				minimum: r.value,
 				type: "string",
 				inclusive: !0,
 				exact: !0,
 				message: r.message
 			}), t.dirty());
-		} else if (r.kind === "email") Ke.test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
+		} else if (r.kind === "email") qe.test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "email",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
 		}), t.dirty());
-		else if (r.kind === "emoji") Je ||= new RegExp(qe, "u"), Je.test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
+		else if (r.kind === "emoji") Ye ||= new RegExp(Je, "u"), Ye.test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "emoji",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
 		}), t.dirty());
-		else if (r.kind === "uuid") He.test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
+		else if (r.kind === "uuid") Ue.test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "uuid",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
 		}), t.dirty());
-		else if (r.kind === "nanoid") Ue.test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
+		else if (r.kind === "nanoid") We.test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "nanoid",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
 		}), t.dirty());
-		else if (r.kind === "cuid") ze.test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
+		else if (r.kind === "cuid") Be.test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "cuid",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
 		}), t.dirty());
-		else if (r.kind === "cuid2") Be.test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
+		else if (r.kind === "cuid2") Ve.test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "cuid2",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
 		}), t.dirty());
-		else if (r.kind === "ulid") Ve.test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
+		else if (r.kind === "ulid") He.test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "ulid",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
 		}), t.dirty());
 		else if (r.kind === "url") try {
 			new URL(e.data);
 		} catch {
-			n = this._getOrReturnCtx(e, n), D(n, {
+			n = this._getOrReturnCtx(e, n), O(n, {
 				validation: "url",
-				code: E.invalid_string,
+				code: D.invalid_string,
 				message: r.message
 			}), t.dirty();
 		}
-		else r.kind === "regex" ? (r.regex.lastIndex = 0, r.regex.test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
+		else r.kind === "regex" ? (r.regex.lastIndex = 0, r.regex.test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "regex",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
-		}), t.dirty())) : r.kind === "trim" ? e.data = e.data.trim() : r.kind === "includes" ? e.data.includes(r.value, r.position) || (n = this._getOrReturnCtx(e, n), D(n, {
-			code: E.invalid_string,
+		}), t.dirty())) : r.kind === "trim" ? e.data = e.data.trim() : r.kind === "includes" ? e.data.includes(r.value, r.position) || (n = this._getOrReturnCtx(e, n), O(n, {
+			code: D.invalid_string,
 			validation: {
 				includes: r.value,
 				position: r.position
 			},
 			message: r.message
-		}), t.dirty()) : r.kind === "toLowerCase" ? e.data = e.data.toLowerCase() : r.kind === "toUpperCase" ? e.data = e.data.toUpperCase() : r.kind === "startsWith" ? e.data.startsWith(r.value) || (n = this._getOrReturnCtx(e, n), D(n, {
-			code: E.invalid_string,
+		}), t.dirty()) : r.kind === "toLowerCase" ? e.data = e.data.toLowerCase() : r.kind === "toUpperCase" ? e.data = e.data.toUpperCase() : r.kind === "startsWith" ? e.data.startsWith(r.value) || (n = this._getOrReturnCtx(e, n), O(n, {
+			code: D.invalid_string,
 			validation: { startsWith: r.value },
 			message: r.message
-		}), t.dirty()) : r.kind === "endsWith" ? e.data.endsWith(r.value) || (n = this._getOrReturnCtx(e, n), D(n, {
-			code: E.invalid_string,
+		}), t.dirty()) : r.kind === "endsWith" ? e.data.endsWith(r.value) || (n = this._getOrReturnCtx(e, n), O(n, {
+			code: D.invalid_string,
 			validation: { endsWith: r.value },
 			message: r.message
-		}), t.dirty()) : r.kind === "datetime" ? at(r).test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
-			code: E.invalid_string,
+		}), t.dirty()) : r.kind === "datetime" ? ot(r).test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
+			code: D.invalid_string,
 			validation: "datetime",
 			message: r.message
-		}), t.dirty()) : r.kind === "date" ? nt.test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
-			code: E.invalid_string,
+		}), t.dirty()) : r.kind === "date" ? rt.test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
+			code: D.invalid_string,
 			validation: "date",
 			message: r.message
-		}), t.dirty()) : r.kind === "time" ? it(r).test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
-			code: E.invalid_string,
+		}), t.dirty()) : r.kind === "time" ? at(r).test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
+			code: D.invalid_string,
 			validation: "time",
 			message: r.message
-		}), t.dirty()) : r.kind === "duration" ? Ge.test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
+		}), t.dirty()) : r.kind === "duration" ? Ke.test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "duration",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
-		}), t.dirty()) : r.kind === "ip" ? ot(e.data, r.version) || (n = this._getOrReturnCtx(e, n), D(n, {
+		}), t.dirty()) : r.kind === "ip" ? st(e.data, r.version) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "ip",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
-		}), t.dirty()) : r.kind === "jwt" ? st(e.data, r.alg) || (n = this._getOrReturnCtx(e, n), D(n, {
+		}), t.dirty()) : r.kind === "jwt" ? ct(e.data, r.alg) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "jwt",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
-		}), t.dirty()) : r.kind === "cidr" ? ct(e.data, r.version) || (n = this._getOrReturnCtx(e, n), D(n, {
+		}), t.dirty()) : r.kind === "cidr" ? lt(e.data, r.version) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "cidr",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
-		}), t.dirty()) : r.kind === "base64" ? $e.test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
+		}), t.dirty()) : r.kind === "base64" ? et.test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "base64",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
-		}), t.dirty()) : r.kind === "base64url" ? et.test(e.data) || (n = this._getOrReturnCtx(e, n), D(n, {
+		}), t.dirty()) : r.kind === "base64url" ? tt.test(e.data) || (n = this._getOrReturnCtx(e, n), O(n, {
 			validation: "base64url",
-			code: E.invalid_string,
+			code: D.invalid_string,
 			message: r.message
-		}), t.dirty()) : w.assertNever(r);
+		}), t.dirty()) : T.assertNever(r);
 		return {
 			status: t.value,
 			value: e.data
@@ -2145,8 +2145,8 @@ var lt = class e extends j {
 	_regex(e, t, n) {
 		return this.refinement((t) => e.test(t), {
 			validation: t,
-			code: E.invalid_string,
-			...k.errToObj(n)
+			code: D.invalid_string,
+			...A.errToObj(n)
 		});
 	}
 	_addCheck(t) {
@@ -2158,79 +2158,79 @@ var lt = class e extends j {
 	email(e) {
 		return this._addCheck({
 			kind: "email",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	url(e) {
 		return this._addCheck({
 			kind: "url",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	emoji(e) {
 		return this._addCheck({
 			kind: "emoji",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	uuid(e) {
 		return this._addCheck({
 			kind: "uuid",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	nanoid(e) {
 		return this._addCheck({
 			kind: "nanoid",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	cuid(e) {
 		return this._addCheck({
 			kind: "cuid",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	cuid2(e) {
 		return this._addCheck({
 			kind: "cuid2",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	ulid(e) {
 		return this._addCheck({
 			kind: "ulid",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	base64(e) {
 		return this._addCheck({
 			kind: "base64",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	base64url(e) {
 		return this._addCheck({
 			kind: "base64url",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	jwt(e) {
 		return this._addCheck({
 			kind: "jwt",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	ip(e) {
 		return this._addCheck({
 			kind: "ip",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	cidr(e) {
 		return this._addCheck({
 			kind: "cidr",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	datetime(e) {
@@ -2245,7 +2245,7 @@ var lt = class e extends j {
 			precision: e?.precision === void 0 ? null : e?.precision,
 			offset: e?.offset ?? !1,
 			local: e?.local ?? !1,
-			...k.errToObj(e?.message)
+			...A.errToObj(e?.message)
 		});
 	}
 	date(e) {
@@ -2262,20 +2262,20 @@ var lt = class e extends j {
 		}) : this._addCheck({
 			kind: "time",
 			precision: e?.precision === void 0 ? null : e?.precision,
-			...k.errToObj(e?.message)
+			...A.errToObj(e?.message)
 		});
 	}
 	duration(e) {
 		return this._addCheck({
 			kind: "duration",
-			...k.errToObj(e)
+			...A.errToObj(e)
 		});
 	}
 	regex(e, t) {
 		return this._addCheck({
 			kind: "regex",
 			regex: e,
-			...k.errToObj(t)
+			...A.errToObj(t)
 		});
 	}
 	includes(e, t) {
@@ -2283,46 +2283,46 @@ var lt = class e extends j {
 			kind: "includes",
 			value: e,
 			position: t?.position,
-			...k.errToObj(t?.message)
+			...A.errToObj(t?.message)
 		});
 	}
 	startsWith(e, t) {
 		return this._addCheck({
 			kind: "startsWith",
 			value: e,
-			...k.errToObj(t)
+			...A.errToObj(t)
 		});
 	}
 	endsWith(e, t) {
 		return this._addCheck({
 			kind: "endsWith",
 			value: e,
-			...k.errToObj(t)
+			...A.errToObj(t)
 		});
 	}
 	min(e, t) {
 		return this._addCheck({
 			kind: "min",
 			value: e,
-			...k.errToObj(t)
+			...A.errToObj(t)
 		});
 	}
 	max(e, t) {
 		return this._addCheck({
 			kind: "max",
 			value: e,
-			...k.errToObj(t)
+			...A.errToObj(t)
 		});
 	}
 	length(e, t) {
 		return this._addCheck({
 			kind: "length",
 			value: e,
-			...k.errToObj(t)
+			...A.errToObj(t)
 		});
 	}
 	nonempty(e) {
-		return this.min(1, k.errToObj(e));
+		return this.min(1, A.errToObj(e));
 	}
 	trim() {
 		return new e({
@@ -2401,73 +2401,73 @@ var lt = class e extends j {
 		return e;
 	}
 };
-lt.create = (e) => new lt({
+ut.create = (e) => new ut({
 	checks: [],
-	typeName: M.ZodString,
+	typeName: N.ZodString,
 	coerce: e?.coerce ?? !1,
-	...A(e)
+	...j(e)
 });
-function ut(e, t) {
+function dt(e, t) {
 	let n = (e.toString().split(".")[1] || "").length, r = (t.toString().split(".")[1] || "").length, i = n > r ? n : r;
 	return Number.parseInt(e.toFixed(i).replace(".", "")) % Number.parseInt(t.toFixed(i).replace(".", "")) / 10 ** i;
 }
-var dt = class e extends j {
+var ft = class e extends M {
 	constructor() {
 		super(...arguments), this.min = this.gte, this.max = this.lte, this.step = this.multipleOf;
 	}
 	_parse(e) {
-		if (this._def.coerce && (e.data = Number(e.data)), this._getType(e) !== T.number) {
+		if (this._def.coerce && (e.data = Number(e.data)), this._getType(e) !== E.number) {
 			let t = this._getOrReturnCtx(e);
-			return D(t, {
-				code: E.invalid_type,
-				expected: T.number,
+			return O(t, {
+				code: D.invalid_type,
+				expected: E.number,
 				received: t.parsedType
-			}), O;
+			}), k;
 		}
-		let t, n = new Ae();
-		for (let r of this._def.checks) r.kind === "int" ? w.isInteger(e.data) || (t = this._getOrReturnCtx(e, t), D(t, {
-			code: E.invalid_type,
+		let t, n = new je();
+		for (let r of this._def.checks) r.kind === "int" ? T.isInteger(e.data) || (t = this._getOrReturnCtx(e, t), O(t, {
+			code: D.invalid_type,
 			expected: "integer",
 			received: "float",
 			message: r.message
-		}), n.dirty()) : r.kind === "min" ? (r.inclusive ? e.data < r.value : e.data <= r.value) && (t = this._getOrReturnCtx(e, t), D(t, {
-			code: E.too_small,
+		}), n.dirty()) : r.kind === "min" ? (r.inclusive ? e.data < r.value : e.data <= r.value) && (t = this._getOrReturnCtx(e, t), O(t, {
+			code: D.too_small,
 			minimum: r.value,
 			type: "number",
 			inclusive: r.inclusive,
 			exact: !1,
 			message: r.message
-		}), n.dirty()) : r.kind === "max" ? (r.inclusive ? e.data > r.value : e.data >= r.value) && (t = this._getOrReturnCtx(e, t), D(t, {
-			code: E.too_big,
+		}), n.dirty()) : r.kind === "max" ? (r.inclusive ? e.data > r.value : e.data >= r.value) && (t = this._getOrReturnCtx(e, t), O(t, {
+			code: D.too_big,
 			maximum: r.value,
 			type: "number",
 			inclusive: r.inclusive,
 			exact: !1,
 			message: r.message
-		}), n.dirty()) : r.kind === "multipleOf" ? ut(e.data, r.value) !== 0 && (t = this._getOrReturnCtx(e, t), D(t, {
-			code: E.not_multiple_of,
+		}), n.dirty()) : r.kind === "multipleOf" ? dt(e.data, r.value) !== 0 && (t = this._getOrReturnCtx(e, t), O(t, {
+			code: D.not_multiple_of,
 			multipleOf: r.value,
 			message: r.message
-		}), n.dirty()) : r.kind === "finite" ? Number.isFinite(e.data) || (t = this._getOrReturnCtx(e, t), D(t, {
-			code: E.not_finite,
+		}), n.dirty()) : r.kind === "finite" ? Number.isFinite(e.data) || (t = this._getOrReturnCtx(e, t), O(t, {
+			code: D.not_finite,
 			message: r.message
-		}), n.dirty()) : w.assertNever(r);
+		}), n.dirty()) : T.assertNever(r);
 		return {
 			status: n.value,
 			value: e.data
 		};
 	}
 	gte(e, t) {
-		return this.setLimit("min", e, !0, k.toString(t));
+		return this.setLimit("min", e, !0, A.toString(t));
 	}
 	gt(e, t) {
-		return this.setLimit("min", e, !1, k.toString(t));
+		return this.setLimit("min", e, !1, A.toString(t));
 	}
 	lte(e, t) {
-		return this.setLimit("max", e, !0, k.toString(t));
+		return this.setLimit("max", e, !0, A.toString(t));
 	}
 	lt(e, t) {
-		return this.setLimit("max", e, !1, k.toString(t));
+		return this.setLimit("max", e, !1, A.toString(t));
 	}
 	setLimit(t, n, r, i) {
 		return new e({
@@ -2476,7 +2476,7 @@ var dt = class e extends j {
 				kind: t,
 				value: n,
 				inclusive: r,
-				message: k.toString(i)
+				message: A.toString(i)
 			}]
 		});
 	}
@@ -2489,7 +2489,7 @@ var dt = class e extends j {
 	int(e) {
 		return this._addCheck({
 			kind: "int",
-			message: k.toString(e)
+			message: A.toString(e)
 		});
 	}
 	positive(e) {
@@ -2497,7 +2497,7 @@ var dt = class e extends j {
 			kind: "min",
 			value: 0,
 			inclusive: !1,
-			message: k.toString(e)
+			message: A.toString(e)
 		});
 	}
 	negative(e) {
@@ -2505,7 +2505,7 @@ var dt = class e extends j {
 			kind: "max",
 			value: 0,
 			inclusive: !1,
-			message: k.toString(e)
+			message: A.toString(e)
 		});
 	}
 	nonpositive(e) {
@@ -2513,7 +2513,7 @@ var dt = class e extends j {
 			kind: "max",
 			value: 0,
 			inclusive: !0,
-			message: k.toString(e)
+			message: A.toString(e)
 		});
 	}
 	nonnegative(e) {
@@ -2521,20 +2521,20 @@ var dt = class e extends j {
 			kind: "min",
 			value: 0,
 			inclusive: !0,
-			message: k.toString(e)
+			message: A.toString(e)
 		});
 	}
 	multipleOf(e, t) {
 		return this._addCheck({
 			kind: "multipleOf",
 			value: e,
-			message: k.toString(t)
+			message: A.toString(t)
 		});
 	}
 	finite(e) {
 		return this._addCheck({
 			kind: "finite",
-			message: k.toString(e)
+			message: A.toString(e)
 		});
 	}
 	safe(e) {
@@ -2542,12 +2542,12 @@ var dt = class e extends j {
 			kind: "min",
 			inclusive: !0,
 			value: -(2 ** 53 - 1),
-			message: k.toString(e)
+			message: A.toString(e)
 		})._addCheck({
 			kind: "max",
 			inclusive: !0,
 			value: 2 ** 53 - 1,
-			message: k.toString(e)
+			message: A.toString(e)
 		});
 	}
 	get minValue() {
@@ -2561,7 +2561,7 @@ var dt = class e extends j {
 		return e;
 	}
 	get isInt() {
-		return !!this._def.checks.find((e) => e.kind === "int" || e.kind === "multipleOf" && w.isInteger(e.value));
+		return !!this._def.checks.find((e) => e.kind === "int" || e.kind === "multipleOf" && T.isInteger(e.value));
 	}
 	get isFinite() {
 		let e = null, t = null;
@@ -2570,13 +2570,13 @@ var dt = class e extends j {
 		return Number.isFinite(t) && Number.isFinite(e);
 	}
 };
-dt.create = (e) => new dt({
+ft.create = (e) => new ft({
 	checks: [],
-	typeName: M.ZodNumber,
+	typeName: N.ZodNumber,
 	coerce: e?.coerce || !1,
-	...A(e)
+	...j(e)
 });
-var ft = class e extends j {
+var pt = class e extends M {
 	constructor() {
 		super(...arguments), this.min = this.gte, this.max = this.lte;
 	}
@@ -2586,25 +2586,25 @@ var ft = class e extends j {
 		} catch {
 			return this._getInvalidInput(e);
 		}
-		if (this._getType(e) !== T.bigint) return this._getInvalidInput(e);
-		let t, n = new Ae();
-		for (let r of this._def.checks) r.kind === "min" ? (r.inclusive ? e.data < r.value : e.data <= r.value) && (t = this._getOrReturnCtx(e, t), D(t, {
-			code: E.too_small,
+		if (this._getType(e) !== E.bigint) return this._getInvalidInput(e);
+		let t, n = new je();
+		for (let r of this._def.checks) r.kind === "min" ? (r.inclusive ? e.data < r.value : e.data <= r.value) && (t = this._getOrReturnCtx(e, t), O(t, {
+			code: D.too_small,
 			type: "bigint",
 			minimum: r.value,
 			inclusive: r.inclusive,
 			message: r.message
-		}), n.dirty()) : r.kind === "max" ? (r.inclusive ? e.data > r.value : e.data >= r.value) && (t = this._getOrReturnCtx(e, t), D(t, {
-			code: E.too_big,
+		}), n.dirty()) : r.kind === "max" ? (r.inclusive ? e.data > r.value : e.data >= r.value) && (t = this._getOrReturnCtx(e, t), O(t, {
+			code: D.too_big,
 			type: "bigint",
 			maximum: r.value,
 			inclusive: r.inclusive,
 			message: r.message
-		}), n.dirty()) : r.kind === "multipleOf" ? e.data % r.value !== BigInt(0) && (t = this._getOrReturnCtx(e, t), D(t, {
-			code: E.not_multiple_of,
+		}), n.dirty()) : r.kind === "multipleOf" ? e.data % r.value !== BigInt(0) && (t = this._getOrReturnCtx(e, t), O(t, {
+			code: D.not_multiple_of,
 			multipleOf: r.value,
 			message: r.message
-		}), n.dirty()) : w.assertNever(r);
+		}), n.dirty()) : T.assertNever(r);
 		return {
 			status: n.value,
 			value: e.data
@@ -2612,23 +2612,23 @@ var ft = class e extends j {
 	}
 	_getInvalidInput(e) {
 		let t = this._getOrReturnCtx(e);
-		return D(t, {
-			code: E.invalid_type,
-			expected: T.bigint,
+		return O(t, {
+			code: D.invalid_type,
+			expected: E.bigint,
 			received: t.parsedType
-		}), O;
+		}), k;
 	}
 	gte(e, t) {
-		return this.setLimit("min", e, !0, k.toString(t));
+		return this.setLimit("min", e, !0, A.toString(t));
 	}
 	gt(e, t) {
-		return this.setLimit("min", e, !1, k.toString(t));
+		return this.setLimit("min", e, !1, A.toString(t));
 	}
 	lte(e, t) {
-		return this.setLimit("max", e, !0, k.toString(t));
+		return this.setLimit("max", e, !0, A.toString(t));
 	}
 	lt(e, t) {
-		return this.setLimit("max", e, !1, k.toString(t));
+		return this.setLimit("max", e, !1, A.toString(t));
 	}
 	setLimit(t, n, r, i) {
 		return new e({
@@ -2637,7 +2637,7 @@ var ft = class e extends j {
 				kind: t,
 				value: n,
 				inclusive: r,
-				message: k.toString(i)
+				message: A.toString(i)
 			}]
 		});
 	}
@@ -2652,7 +2652,7 @@ var ft = class e extends j {
 			kind: "min",
 			value: BigInt(0),
 			inclusive: !1,
-			message: k.toString(e)
+			message: A.toString(e)
 		});
 	}
 	negative(e) {
@@ -2660,7 +2660,7 @@ var ft = class e extends j {
 			kind: "max",
 			value: BigInt(0),
 			inclusive: !1,
-			message: k.toString(e)
+			message: A.toString(e)
 		});
 	}
 	nonpositive(e) {
@@ -2668,7 +2668,7 @@ var ft = class e extends j {
 			kind: "max",
 			value: BigInt(0),
 			inclusive: !0,
-			message: k.toString(e)
+			message: A.toString(e)
 		});
 	}
 	nonnegative(e) {
@@ -2676,14 +2676,14 @@ var ft = class e extends j {
 			kind: "min",
 			value: BigInt(0),
 			inclusive: !0,
-			message: k.toString(e)
+			message: A.toString(e)
 		});
 	}
 	multipleOf(e, t) {
 		return this._addCheck({
 			kind: "multipleOf",
 			value: e,
-			message: k.toString(t)
+			message: A.toString(t)
 		});
 	}
 	get minValue() {
@@ -2697,57 +2697,57 @@ var ft = class e extends j {
 		return e;
 	}
 };
-ft.create = (e) => new ft({
+pt.create = (e) => new pt({
 	checks: [],
-	typeName: M.ZodBigInt,
+	typeName: N.ZodBigInt,
 	coerce: e?.coerce ?? !1,
-	...A(e)
+	...j(e)
 });
-var pt = class extends j {
+var mt = class extends M {
 	_parse(e) {
-		if (this._def.coerce && (e.data = !!e.data), this._getType(e) !== T.boolean) {
+		if (this._def.coerce && (e.data = !!e.data), this._getType(e) !== E.boolean) {
 			let t = this._getOrReturnCtx(e);
-			return D(t, {
-				code: E.invalid_type,
-				expected: T.boolean,
+			return O(t, {
+				code: D.invalid_type,
+				expected: E.boolean,
 				received: t.parsedType
-			}), O;
+			}), k;
 		}
-		return Me(e.data);
+		return Ne(e.data);
 	}
 };
-pt.create = (e) => new pt({
-	typeName: M.ZodBoolean,
+mt.create = (e) => new mt({
+	typeName: N.ZodBoolean,
 	coerce: e?.coerce || !1,
-	...A(e)
+	...j(e)
 });
-var mt = class e extends j {
+var ht = class e extends M {
 	_parse(e) {
-		if (this._def.coerce && (e.data = new Date(e.data)), this._getType(e) !== T.date) {
+		if (this._def.coerce && (e.data = new Date(e.data)), this._getType(e) !== E.date) {
 			let t = this._getOrReturnCtx(e);
-			return D(t, {
-				code: E.invalid_type,
-				expected: T.date,
+			return O(t, {
+				code: D.invalid_type,
+				expected: E.date,
 				received: t.parsedType
-			}), O;
+			}), k;
 		}
-		if (Number.isNaN(e.data.getTime())) return D(this._getOrReturnCtx(e), { code: E.invalid_date }), O;
-		let t = new Ae(), n;
-		for (let r of this._def.checks) r.kind === "min" ? e.data.getTime() < r.value && (n = this._getOrReturnCtx(e, n), D(n, {
-			code: E.too_small,
+		if (Number.isNaN(e.data.getTime())) return O(this._getOrReturnCtx(e), { code: D.invalid_date }), k;
+		let t = new je(), n;
+		for (let r of this._def.checks) r.kind === "min" ? e.data.getTime() < r.value && (n = this._getOrReturnCtx(e, n), O(n, {
+			code: D.too_small,
 			message: r.message,
 			inclusive: !0,
 			exact: !1,
 			minimum: r.value,
 			type: "date"
-		}), t.dirty()) : r.kind === "max" ? e.data.getTime() > r.value && (n = this._getOrReturnCtx(e, n), D(n, {
-			code: E.too_big,
+		}), t.dirty()) : r.kind === "max" ? e.data.getTime() > r.value && (n = this._getOrReturnCtx(e, n), O(n, {
+			code: D.too_big,
 			message: r.message,
 			inclusive: !0,
 			exact: !1,
 			maximum: r.value,
 			type: "date"
-		}), t.dirty()) : w.assertNever(r);
+		}), t.dirty()) : T.assertNever(r);
 		return {
 			status: t.value,
 			value: new Date(e.data.getTime())
@@ -2763,14 +2763,14 @@ var mt = class e extends j {
 		return this._addCheck({
 			kind: "min",
 			value: e.getTime(),
-			message: k.toString(t)
+			message: A.toString(t)
 		});
 	}
 	max(e, t) {
 		return this._addCheck({
 			kind: "max",
 			value: e.getTime(),
-			message: k.toString(t)
+			message: A.toString(t)
 		});
 	}
 	get minDate() {
@@ -2784,130 +2784,130 @@ var mt = class e extends j {
 		return e == null ? null : new Date(e);
 	}
 };
-mt.create = (e) => new mt({
+ht.create = (e) => new ht({
 	checks: [],
 	coerce: e?.coerce || !1,
-	typeName: M.ZodDate,
-	...A(e)
+	typeName: N.ZodDate,
+	...j(e)
 });
-var ht = class extends j {
+var gt = class extends M {
 	_parse(e) {
-		if (this._getType(e) !== T.symbol) {
+		if (this._getType(e) !== E.symbol) {
 			let t = this._getOrReturnCtx(e);
-			return D(t, {
-				code: E.invalid_type,
-				expected: T.symbol,
+			return O(t, {
+				code: D.invalid_type,
+				expected: E.symbol,
 				received: t.parsedType
-			}), O;
+			}), k;
 		}
-		return Me(e.data);
-	}
-};
-ht.create = (e) => new ht({
-	typeName: M.ZodSymbol,
-	...A(e)
-});
-var gt = class extends j {
-	_parse(e) {
-		if (this._getType(e) !== T.undefined) {
-			let t = this._getOrReturnCtx(e);
-			return D(t, {
-				code: E.invalid_type,
-				expected: T.undefined,
-				received: t.parsedType
-			}), O;
-		}
-		return Me(e.data);
+		return Ne(e.data);
 	}
 };
 gt.create = (e) => new gt({
-	typeName: M.ZodUndefined,
-	...A(e)
+	typeName: N.ZodSymbol,
+	...j(e)
 });
-var _t = class extends j {
+var _t = class extends M {
 	_parse(e) {
-		if (this._getType(e) !== T.null) {
+		if (this._getType(e) !== E.undefined) {
 			let t = this._getOrReturnCtx(e);
-			return D(t, {
-				code: E.invalid_type,
-				expected: T.null,
+			return O(t, {
+				code: D.invalid_type,
+				expected: E.undefined,
 				received: t.parsedType
-			}), O;
+			}), k;
 		}
-		return Me(e.data);
+		return Ne(e.data);
 	}
 };
 _t.create = (e) => new _t({
-	typeName: M.ZodNull,
-	...A(e)
+	typeName: N.ZodUndefined,
+	...j(e)
 });
-var vt = class extends j {
+var vt = class extends M {
+	_parse(e) {
+		if (this._getType(e) !== E.null) {
+			let t = this._getOrReturnCtx(e);
+			return O(t, {
+				code: D.invalid_type,
+				expected: E.null,
+				received: t.parsedType
+			}), k;
+		}
+		return Ne(e.data);
+	}
+};
+vt.create = (e) => new vt({
+	typeName: N.ZodNull,
+	...j(e)
+});
+var yt = class extends M {
 	constructor() {
 		super(...arguments), this._any = !0;
 	}
 	_parse(e) {
-		return Me(e.data);
+		return Ne(e.data);
 	}
 };
-vt.create = (e) => new vt({
-	typeName: M.ZodAny,
-	...A(e)
+yt.create = (e) => new yt({
+	typeName: N.ZodAny,
+	...j(e)
 });
-var yt = class extends j {
+var bt = class extends M {
 	constructor() {
 		super(...arguments), this._unknown = !0;
 	}
 	_parse(e) {
-		return Me(e.data);
-	}
-};
-yt.create = (e) => new yt({
-	typeName: M.ZodUnknown,
-	...A(e)
-});
-var bt = class extends j {
-	_parse(e) {
-		let t = this._getOrReturnCtx(e);
-		return D(t, {
-			code: E.invalid_type,
-			expected: T.never,
-			received: t.parsedType
-		}), O;
+		return Ne(e.data);
 	}
 };
 bt.create = (e) => new bt({
-	typeName: M.ZodNever,
-	...A(e)
+	typeName: N.ZodUnknown,
+	...j(e)
 });
-var xt = class extends j {
+var xt = class extends M {
 	_parse(e) {
-		if (this._getType(e) !== T.undefined) {
-			let t = this._getOrReturnCtx(e);
-			return D(t, {
-				code: E.invalid_type,
-				expected: T.void,
-				received: t.parsedType
-			}), O;
-		}
-		return Me(e.data);
+		let t = this._getOrReturnCtx(e);
+		return O(t, {
+			code: D.invalid_type,
+			expected: E.never,
+			received: t.parsedType
+		}), k;
 	}
 };
 xt.create = (e) => new xt({
-	typeName: M.ZodVoid,
-	...A(e)
+	typeName: N.ZodNever,
+	...j(e)
 });
-var St = class e extends j {
+var St = class extends M {
+	_parse(e) {
+		if (this._getType(e) !== E.undefined) {
+			let t = this._getOrReturnCtx(e);
+			return O(t, {
+				code: D.invalid_type,
+				expected: E.void,
+				received: t.parsedType
+			}), k;
+		}
+		return Ne(e.data);
+	}
+};
+St.create = (e) => new St({
+	typeName: N.ZodVoid,
+	...j(e)
+});
+var Ct = class e extends M {
 	_parse(e) {
 		let { ctx: t, status: n } = this._processInputParams(e), r = this._def;
-		if (t.parsedType !== T.array) return D(t, {
-			code: E.invalid_type,
-			expected: T.array,
+		if (t.parsedType !== E.array) return O(t, {
+			code: D.invalid_type,
+			expected: E.array,
 			received: t.parsedType
-		}), O;
+		}), k;
 		if (r.exactLength !== null) {
 			let e = t.data.length > r.exactLength.value, i = t.data.length < r.exactLength.value;
-			(e || i) && (D(t, {
-				code: e ? E.too_big : E.too_small,
+			(e || i) && (O(t, {
+				code: e ? D.too_big : D.too_small,
 				minimum: i ? r.exactLength.value : void 0,
 				maximum: e ? r.exactLength.value : void 0,
 				type: "array",
@@ -2916,23 +2916,23 @@ var St = class e extends j {
 				message: r.exactLength.message
 			}), n.dirty());
 		}
-		if (r.minLength !== null && t.data.length < r.minLength.value && (D(t, {
-			code: E.too_small,
+		if (r.minLength !== null && t.data.length < r.minLength.value && (O(t, {
+			code: D.too_small,
 			minimum: r.minLength.value,
 			type: "array",
 			inclusive: !0,
 			exact: !1,
 			message: r.minLength.message
-		}), n.dirty()), r.maxLength !== null && t.data.length > r.maxLength.value && (D(t, {
-			code: E.too_big,
+		}), n.dirty()), r.maxLength !== null && t.data.length > r.maxLength.value && (O(t, {
+			code: D.too_big,
 			maximum: r.maxLength.value,
 			type: "array",
 			inclusive: !0,
 			exact: !1,
 			message: r.maxLength.message
-		}), n.dirty()), t.common.async) return Promise.all([...t.data].map((e, n) => r.type._parseAsync(new Le(t, e, t.path, n)))).then((e) => Ae.mergeArray(n, e));
-		let i = [...t.data].map((e, n) => r.type._parseSync(new Le(t, e, t.path, n)));
-		return Ae.mergeArray(n, i);
+		}), n.dirty()), t.common.async) return Promise.all([...t.data].map((e, n) => r.type._parseAsync(new Re(t, e, t.path, n)))).then((e) => je.mergeArray(n, e));
+		let i = [...t.data].map((e, n) => r.type._parseSync(new Re(t, e, t.path, n)));
+		return je.mergeArray(n, i);
 	}
 	get element() {
 		return this._def.type;
@@ -2942,7 +2942,7 @@ var St = class e extends j {
 			...this._def,
 			minLength: {
 				value: t,
-				message: k.toString(n)
+				message: A.toString(n)
 			}
 		});
 	}
@@ -2951,7 +2951,7 @@ var St = class e extends j {
 			...this._def,
 			maxLength: {
 				value: t,
-				message: k.toString(n)
+				message: A.toString(n)
 			}
 		});
 	}
@@ -2960,7 +2960,7 @@ var St = class e extends j {
 			...this._def,
 			exactLength: {
 				value: t,
-				message: k.toString(n)
+				message: A.toString(n)
 			}
 		});
 	}
@@ -2968,54 +2968,54 @@ var St = class e extends j {
 		return this.min(1, e);
 	}
 };
-St.create = (e, t) => new St({
+Ct.create = (e, t) => new Ct({
 	type: e,
 	minLength: null,
 	maxLength: null,
 	exactLength: null,
-	typeName: M.ZodArray,
-	...A(t)
+	typeName: N.ZodArray,
+	...j(t)
 });
-function Ct(e) {
-	if (e instanceof wt) {
+function wt(e) {
+	if (e instanceof Tt) {
 		let t = {};
 		for (let n in e.shape) {
 			let r = e.shape[n];
-			t[n] = Ht.create(Ct(r));
+			t[n] = Ut.create(wt(r));
 		}
-		return new wt({
+		return new Tt({
 			...e._def,
 			shape: () => t
 		});
 	}
-	return e instanceof St ? new St({
+	return e instanceof Ct ? new Ct({
 		...e._def,
-		type: Ct(e.element)
-	}) : e instanceof Ht ? Ht.create(Ct(e.unwrap())) : e instanceof Ut ? Ut.create(Ct(e.unwrap())) : e instanceof At ? At.create(e.items.map((e) => Ct(e))) : e;
+		type: wt(e.element)
+	}) : e instanceof Ut ? Ut.create(wt(e.unwrap())) : e instanceof Wt ? Wt.create(wt(e.unwrap())) : e instanceof jt ? jt.create(e.items.map((e) => wt(e))) : e;
 }
-var wt = class e extends j {
+var Tt = class e extends M {
 	constructor() {
 		super(...arguments), this._cached = null, this.nonstrict = this.passthrough, this.augment = this.extend;
 	}
 	_getCached() {
 		if (this._cached !== null) return this._cached;
-		let e = this._def.shape(), t = w.objectKeys(e);
+		let e = this._def.shape(), t = T.objectKeys(e);
 		return this._cached = {
 			shape: e,
 			keys: t
 		}, this._cached;
 	}
 	_parse(e) {
-		if (this._getType(e) !== T.object) {
+		if (this._getType(e) !== E.object) {
 			let t = this._getOrReturnCtx(e);
-			return D(t, {
-				code: E.invalid_type,
-				expected: T.object,
+			return O(t, {
+				code: D.invalid_type,
+				expected: E.object,
 				received: t.parsedType
-			}), O;
+			}), k;
 		}
 		let { status: t, ctx: n } = this._processInputParams(e), { shape: r, keys: i } = this._getCached(), a = [];
-		if (!(this._def.catchall instanceof bt && this._def.unknownKeys === "strip")) for (let e in n.data) i.includes(e) || a.push(e);
+		if (!(this._def.catchall instanceof xt && this._def.unknownKeys === "strip")) for (let e in n.data) i.includes(e) || a.push(e);
 		let o = [];
 		for (let e of i) {
 			let t = r[e], i = n.data[e];
@@ -3024,11 +3024,11 @@ var wt = class e extends j {
 					status: "valid",
 					value: e
 				},
-				value: t._parse(new Le(n, i, n.path, e)),
+				value: t._parse(new Re(n, i, n.path, e)),
 				alwaysSet: e in n.data
 			});
 		}
-		if (this._def.catchall instanceof bt) {
+		if (this._def.catchall instanceof xt) {
 			let e = this._def.unknownKeys;
 			if (e === "passthrough") for (let e of a) o.push({
 				key: {
@@ -3040,8 +3040,8 @@ var wt = class e extends j {
 					value: n.data[e]
 				}
 			});
-			else if (e === "strict") a.length > 0 && (D(n, {
-				code: E.unrecognized_keys,
+			else if (e === "strict") a.length > 0 && (O(n, {
+				code: D.unrecognized_keys,
 				keys: a
 			}), t.dirty());
 			else if (e !== "strip") throw Error("Internal ZodObject error: invalid unknownKeys value.");
@@ -3054,7 +3054,7 @@ var wt = class e extends j {
 						status: "valid",
 						value: t
 					},
-					value: e._parse(new Le(n, r, n.path, t)),
+					value: e._parse(new Re(n, r, n.path, t)),
 					alwaysSet: t in n.data
 				});
 			}
@@ -3070,18 +3070,18 @@ var wt = class e extends j {
 				});
 			}
 			return e;
-		}).then((e) => Ae.mergeObjectSync(t, e)) : Ae.mergeObjectSync(t, o);
+		}).then((e) => je.mergeObjectSync(t, e)) : je.mergeObjectSync(t, o);
 	}
 	get shape() {
 		return this._def.shape();
 	}
 	strict(t) {
-		return k.errToObj, new e({
+		return A.errToObj, new e({
 			...this._def,
 			unknownKeys: "strict",
 			...t === void 0 ? {} : { errorMap: (e, n) => {
 				let r = this._def.errorMap?.(e, n).message ?? n.defaultError;
-				return e.code === "unrecognized_keys" ? { message: k.errToObj(t).message ?? r } : { message: r };
+				return e.code === "unrecognized_keys" ? { message: A.errToObj(t).message ?? r } : { message: r };
 			} }
 		});
 	}
@@ -3114,7 +3114,7 @@ var wt = class e extends j {
 				...this._def.shape(),
 				...t._def.shape()
 			}),
-			typeName: M.ZodObject
+			typeName: N.ZodObject
 		});
 	}
 	setKey(e, t) {
@@ -3128,7 +3128,7 @@ var wt = class e extends j {
 	}
 	pick(t) {
 		let n = {};
-		for (let e of w.objectKeys(t)) t[e] && this.shape[e] && (n[e] = this.shape[e]);
+		for (let e of T.objectKeys(t)) t[e] && this.shape[e] && (n[e] = this.shape[e]);
 		return new e({
 			...this._def,
 			shape: () => n
@@ -3136,18 +3136,18 @@ var wt = class e extends j {
 	}
 	omit(t) {
 		let n = {};
-		for (let e of w.objectKeys(this.shape)) t[e] || (n[e] = this.shape[e]);
+		for (let e of T.objectKeys(this.shape)) t[e] || (n[e] = this.shape[e]);
 		return new e({
 			...this._def,
 			shape: () => n
 		});
 	}
 	deepPartial() {
-		return Ct(this);
+		return wt(this);
 	}
 	partial(t) {
 		let n = {};
-		for (let e of w.objectKeys(this.shape)) {
+		for (let e of T.objectKeys(this.shape)) {
 			let r = this.shape[e];
 			n[e] = t && !t[e] ? r : r.optional();
 		}
@@ -3158,10 +3158,10 @@ var wt = class e extends j {
 	}
 	required(t) {
 		let n = {};
-		for (let e of w.objectKeys(this.shape)) if (t && !t[e]) n[e] = this.shape[e];
+		for (let e of T.objectKeys(this.shape)) if (t && !t[e]) n[e] = this.shape[e];
 		else {
 			let t = this.shape[e];
-			for (; t instanceof Ht;) t = t._def.innerType;
+			for (; t instanceof Ut;) t = t._def.innerType;
 			n[e] = t;
 		}
 		return new e({
@@ -3170,39 +3170,39 @@ var wt = class e extends j {
 		});
 	}
 	keyof() {
-		return Lt(w.objectKeys(this.shape));
+		return Rt(T.objectKeys(this.shape));
 	}
 };
-wt.create = (e, t) => new wt({
+Tt.create = (e, t) => new Tt({
 	shape: () => e,
 	unknownKeys: "strip",
-	catchall: bt.create(),
-	typeName: M.ZodObject,
-	...A(t)
-}), wt.strictCreate = (e, t) => new wt({
+	catchall: xt.create(),
+	typeName: N.ZodObject,
+	...j(t)
+}), Tt.strictCreate = (e, t) => new Tt({
 	shape: () => e,
 	unknownKeys: "strict",
-	catchall: bt.create(),
-	typeName: M.ZodObject,
-	...A(t)
-}), wt.lazycreate = (e, t) => new wt({
+	catchall: xt.create(),
+	typeName: N.ZodObject,
+	...j(t)
+}), Tt.lazycreate = (e, t) => new Tt({
 	shape: e,
 	unknownKeys: "strip",
-	catchall: bt.create(),
-	typeName: M.ZodObject,
-	...A(t)
+	catchall: xt.create(),
+	typeName: N.ZodObject,
+	...j(t)
 });
-var Tt = class extends j {
+var Et = class extends M {
 	_parse(e) {
 		let { ctx: t } = this._processInputParams(e), n = this._def.options;
 		function r(e) {
 			for (let t of e) if (t.result.status === "valid") return t.result;
 			for (let n of e) if (n.result.status === "dirty") return t.common.issues.push(...n.ctx.common.issues), n.result;
-			let n = e.map((e) => new Te(e.ctx.common.issues));
-			return D(t, {
-				code: E.invalid_union,
+			let n = e.map((e) => new Ee(e.ctx.common.issues));
+			return O(t, {
+				code: D.invalid_union,
 				unionErrors: n
-			}), O;
+			}), k;
 		}
 		if (t.common.async) return Promise.all(n.map(async (e) => {
 			let n = {
@@ -3244,30 +3244,30 @@ var Tt = class extends j {
 				}), n.common.issues.length && r.push(n.common.issues);
 			}
 			if (e) return t.common.issues.push(...e.ctx.common.issues), e.result;
-			let i = r.map((e) => new Te(e));
-			return D(t, {
-				code: E.invalid_union,
+			let i = r.map((e) => new Ee(e));
+			return O(t, {
+				code: D.invalid_union,
 				unionErrors: i
-			}), O;
+			}), k;
 		}
 	}
 	get options() {
 		return this._def.options;
 	}
 };
-Tt.create = (e, t) => new Tt({
+Et.create = (e, t) => new Et({
 	options: e,
-	typeName: M.ZodUnion,
-	...A(t)
+	typeName: N.ZodUnion,
+	...j(t)
 });
-var Et = (e) => e instanceof Ft ? Et(e.schema) : e instanceof Vt ? Et(e.innerType()) : e instanceof It ? [e.value] : e instanceof Rt ? e.options : e instanceof zt ? w.objectValues(e.enum) : e instanceof Wt ? Et(e._def.innerType) : e instanceof gt ? [void 0] : e instanceof _t ? [null] : e instanceof Ht ? [void 0, ...Et(e.unwrap())] : e instanceof Ut ? [null, ...Et(e.unwrap())] : e instanceof qt || e instanceof Yt ? Et(e.unwrap()) : e instanceof Gt ? Et(e._def.innerType) : [], Dt = class e extends j {
+var Dt = (e) => e instanceof It ? Dt(e.schema) : e instanceof Ht ? Dt(e.innerType()) : e instanceof Lt ? [e.value] : e instanceof zt ? e.options : e instanceof Bt ? T.objectValues(e.enum) : e instanceof Gt ? Dt(e._def.innerType) : e instanceof _t ? [void 0] : e instanceof vt ? [null] : e instanceof Ut ? [void 0, ...Dt(e.unwrap())] : e instanceof Wt ? [null, ...Dt(e.unwrap())] : e instanceof Jt || e instanceof Xt ? Dt(e.unwrap()) : e instanceof Kt ? Dt(e._def.innerType) : [], Ot = class e extends M {
 	_parse(e) {
 		let { ctx: t } = this._processInputParams(e);
-		if (t.parsedType !== T.object) return D(t, {
-			code: E.invalid_type,
-			expected: T.object,
+		if (t.parsedType !== E.object) return O(t, {
+			code: D.invalid_type,
+			expected: E.object,
 			received: t.parsedType
-		}), O;
+		}), k;
 		let n = this.discriminator, r = t.data[n], i = this.optionsMap.get(r);
 		return i ? t.common.async ? i._parseAsync({
 			data: t.data,
@@ -3277,11 +3277,11 @@ var Et = (e) => e instanceof Ft ? Et(e.schema) : e instanceof Vt ? Et(e.innerTyp
 			data: t.data,
 			path: t.path,
 			parent: t
-		}) : (D(t, {
-			code: E.invalid_union_discriminator,
+		}) : (O(t, {
+			code: D.invalid_union_discriminator,
 			options: Array.from(this.optionsMap.keys()),
 			path: [n]
-		}), O);
+		}), k);
 	}
 	get discriminator() {
 		return this._def.discriminator;
@@ -3295,7 +3295,7 @@ var Et = (e) => e instanceof Ft ? Et(e.schema) : e instanceof Vt ? Et(e.innerTyp
 	static create(t, n, r) {
 		let i = /* @__PURE__ */ new Map();
 		for (let e of n) {
-			let n = Et(e.shape[t]);
+			let n = Dt(e.shape[t]);
 			if (!n.length) throw Error(`A discriminator value for key \`${t}\` could not be extracted from all schema options`);
 			for (let r of n) {
 				if (i.has(r)) throw Error(`Discriminator property ${String(t)} has duplicate value ${String(r)}`);
@@ -3303,27 +3303,27 @@ var Et = (e) => e instanceof Ft ? Et(e.schema) : e instanceof Vt ? Et(e.innerTyp
 			}
 		}
 		return new e({
-			typeName: M.ZodDiscriminatedUnion,
+			typeName: N.ZodDiscriminatedUnion,
 			discriminator: t,
 			options: n,
 			optionsMap: i,
-			...A(r)
+			...j(r)
 		});
 	}
 };
-function Ot(e, t) {
-	let n = we(e), r = we(t);
+function kt(e, t) {
+	let n = Te(e), r = Te(t);
 	if (e === t) return {
 		valid: !0,
 		data: e
 	};
-	if (n === T.object && r === T.object) {
-		let n = w.objectKeys(t), r = w.objectKeys(e).filter((e) => n.indexOf(e) !== -1), i = {
+	if (n === E.object && r === E.object) {
+		let n = T.objectKeys(t), r = T.objectKeys(e).filter((e) => n.indexOf(e) !== -1), i = {
 			...e,
 			...t
 		};
 		for (let n of r) {
-			let r = Ot(e[n], t[n]);
+			let r = kt(e[n], t[n]);
 			if (!r.valid) return { valid: !1 };
 			i[n] = r.data;
 		}
@@ -3332,11 +3332,11 @@ function Ot(e, t) {
 			data: i
 		};
 	}
-	if (n === T.array && r === T.array) {
+	if (n === E.array && r === E.array) {
 		if (e.length !== t.length) return { valid: !1 };
 		let n = [];
 		for (let r = 0; r < e.length; r++) {
-			let i = e[r], a = t[r], o = Ot(i, a);
+			let i = e[r], a = t[r], o = kt(i, a);
 			if (!o.valid) return { valid: !1 };
 			n.push(o.data);
 		}
@@ -3345,20 +3345,20 @@ function Ot(e, t) {
 			data: n
 		};
 	}
-	return n === T.date && r === T.date && +e == +t ? {
+	return n === E.date && r === E.date && +e == +t ? {
 		valid: !0,
 		data: e
 	} : { valid: !1 };
 }
-var kt = class extends j {
+var At = class extends M {
 	_parse(e) {
 		let { status: t, ctx: n } = this._processInputParams(e), r = (e, r) => {
-			if (Ne(e) || Ne(r)) return O;
-			let i = Ot(e.value, r.value);
-			return i.valid ? ((Pe(e) || Pe(r)) && t.dirty(), {
+			if (Pe(e) || Pe(r)) return k;
+			let i = kt(e.value, r.value);
+			return i.valid ? ((Fe(e) || Fe(r)) && t.dirty(), {
 				status: t.value,
 				value: i.data
-			}) : (D(n, { code: E.invalid_intersection_types }), O);
+			}) : (O(n, { code: D.invalid_intersection_types }), k);
 		};
 		return n.common.async ? Promise.all([this._def.left._parseAsync({
 			data: n.data,
@@ -3379,29 +3379,29 @@ var kt = class extends j {
 		}));
 	}
 };
-kt.create = (e, t, n) => new kt({
+At.create = (e, t, n) => new At({
 	left: e,
 	right: t,
-	typeName: M.ZodIntersection,
-	...A(n)
+	typeName: N.ZodIntersection,
+	...j(n)
 });
-var At = class e extends j {
+var jt = class e extends M {
 	_parse(e) {
 		let { status: t, ctx: n } = this._processInputParams(e);
-		if (n.parsedType !== T.array) return D(n, {
-			code: E.invalid_type,
-			expected: T.array,
+		if (n.parsedType !== E.array) return O(n, {
+			code: D.invalid_type,
+			expected: E.array,
 			received: n.parsedType
-		}), O;
-		if (n.data.length < this._def.items.length) return D(n, {
-			code: E.too_small,
+		}), k;
+		if (n.data.length < this._def.items.length) return O(n, {
+			code: D.too_small,
 			minimum: this._def.items.length,
 			inclusive: !0,
 			exact: !1,
 			type: "array"
-		}), O;
-		!this._def.rest && n.data.length > this._def.items.length && (D(n, {
-			code: E.too_big,
+		}), k;
+		!this._def.rest && n.data.length > this._def.items.length && (O(n, {
+			code: D.too_big,
 			maximum: this._def.items.length,
 			inclusive: !0,
 			exact: !1,
@@ -3409,9 +3409,9 @@ var At = class e extends j {
 		}), t.dirty());
 		let r = [...n.data].map((e, t) => {
 			let r = this._def.items[t] || this._def.rest;
-			return r ? r._parse(new Le(n, e, n.path, t)) : null;
+			return r ? r._parse(new Re(n, e, n.path, t)) : null;
 		}).filter((e) => !!e);
-		return n.common.async ? Promise.all(r).then((e) => Ae.mergeArray(t, e)) : Ae.mergeArray(t, r);
+		return n.common.async ? Promise.all(r).then((e) => je.mergeArray(t, e)) : je.mergeArray(t, r);
 	}
 	get items() {
 		return this._def.items;
@@ -3423,16 +3423,16 @@ var At = class e extends j {
 		});
 	}
 };
-At.create = (e, t) => {
+jt.create = (e, t) => {
 	if (!Array.isArray(e)) throw Error("You must pass an array of schemas to z.tuple([ ... ])");
-	return new At({
+	return new jt({
 		items: e,
-		typeName: M.ZodTuple,
+		typeName: N.ZodTuple,
 		rest: null,
-		...A(t)
+		...j(t)
 	});
 };
-var jt = class e extends j {
+var Mt = class e extends M {
 	get keySchema() {
 		return this._def.keyType;
 	}
@@ -3441,36 +3441,36 @@ var jt = class e extends j {
 	}
 	_parse(e) {
 		let { status: t, ctx: n } = this._processInputParams(e);
-		if (n.parsedType !== T.object) return D(n, {
-			code: E.invalid_type,
-			expected: T.object,
+		if (n.parsedType !== E.object) return O(n, {
+			code: D.invalid_type,
+			expected: E.object,
 			received: n.parsedType
-		}), O;
+		}), k;
 		let r = [], i = this._def.keyType, a = this._def.valueType;
 		for (let e in n.data) r.push({
-			key: i._parse(new Le(n, e, n.path, e)),
-			value: a._parse(new Le(n, n.data[e], n.path, e)),
+			key: i._parse(new Re(n, e, n.path, e)),
+			value: a._parse(new Re(n, n.data[e], n.path, e)),
 			alwaysSet: e in n.data
 		});
-		return n.common.async ? Ae.mergeObjectAsync(t, r) : Ae.mergeObjectSync(t, r);
+		return n.common.async ? je.mergeObjectAsync(t, r) : je.mergeObjectSync(t, r);
 	}
 	get element() {
 		return this._def.valueType;
 	}
 	static create(t, n, r) {
-		return n instanceof j ? new e({
+		return n instanceof M ? new e({
 			keyType: t,
 			valueType: n,
-			typeName: M.ZodRecord,
-			...A(r)
+			typeName: N.ZodRecord,
+			...j(r)
 		}) : new e({
-			keyType: lt.create(),
+			keyType: ut.create(),
 			valueType: t,
-			typeName: M.ZodRecord,
-			...A(n)
+			typeName: N.ZodRecord,
+			...j(n)
 		});
 	}
-}, Mt = class extends j {
+}, Nt = class extends M {
 	get keySchema() {
 		return this._def.keyType;
 	}
@@ -3479,21 +3479,21 @@ var jt = class e extends j {
 	}
 	_parse(e) {
 		let { status: t, ctx: n } = this._processInputParams(e);
-		if (n.parsedType !== T.map) return D(n, {
-			code: E.invalid_type,
-			expected: T.map,
+		if (n.parsedType !== E.map) return O(n, {
+			code: D.invalid_type,
+			expected: E.map,
 			received: n.parsedType
-		}), O;
+		}), k;
 		let r = this._def.keyType, i = this._def.valueType, a = [...n.data.entries()].map(([e, t], a) => ({
-			key: r._parse(new Le(n, e, n.path, [a, "key"])),
-			value: i._parse(new Le(n, t, n.path, [a, "value"]))
+			key: r._parse(new Re(n, e, n.path, [a, "key"])),
+			value: i._parse(new Re(n, t, n.path, [a, "value"]))
 		}));
 		if (n.common.async) {
 			let e = /* @__PURE__ */ new Map();
 			return Promise.resolve().then(async () => {
 				for (let n of a) {
 					let r = await n.key, i = await n.value;
-					if (r.status === "aborted" || i.status === "aborted") return O;
+					if (r.status === "aborted" || i.status === "aborted") return k;
 					(r.status === "dirty" || i.status === "dirty") && t.dirty(), e.set(r.value, i.value);
 				}
 				return {
@@ -3506,7 +3506,7 @@ var jt = class e extends j {
 			let e = /* @__PURE__ */ new Map();
 			for (let n of a) {
 				let r = n.key, i = n.value;
-				if (r.status === "aborted" || i.status === "aborted") return O;
+				if (r.status === "aborted" || i.status === "aborted") return k;
 				(r.status === "dirty" || i.status === "dirty") && t.dirty(), e.set(r.value, i.value);
 			}
 			return {
@@ -3516,30 +3516,30 @@ var jt = class e extends j {
 		}
 	}
 };
-Mt.create = (e, t, n) => new Mt({
+Nt.create = (e, t, n) => new Nt({
 	valueType: t,
 	keyType: e,
-	typeName: M.ZodMap,
-	...A(n)
+	typeName: N.ZodMap,
+	...j(n)
 });
-var Nt = class e extends j {
+var Pt = class e extends M {
 	_parse(e) {
 		let { status: t, ctx: n } = this._processInputParams(e);
-		if (n.parsedType !== T.set) return D(n, {
-			code: E.invalid_type,
-			expected: T.set,
+		if (n.parsedType !== E.set) return O(n, {
+			code: D.invalid_type,
+			expected: E.set,
 			received: n.parsedType
-		}), O;
+		}), k;
 		let r = this._def;
-		r.minSize !== null && n.data.size < r.minSize.value && (D(n, {
-			code: E.too_small,
+		r.minSize !== null && n.data.size < r.minSize.value && (O(n, {
+			code: D.too_small,
 			minimum: r.minSize.value,
 			type: "set",
 			inclusive: !0,
 			exact: !1,
 			message: r.minSize.message
-		}), t.dirty()), r.maxSize !== null && n.data.size > r.maxSize.value && (D(n, {
-			code: E.too_big,
+		}), t.dirty()), r.maxSize !== null && n.data.size > r.maxSize.value && (O(n, {
+			code: D.too_big,
 			maximum: r.maxSize.value,
 			type: "set",
 			inclusive: !0,
@@ -3550,7 +3550,7 @@ var Nt = class e extends j {
 		function a(e) {
 			let n = /* @__PURE__ */ new Set();
 			for (let r of e) {
-				if (r.status === "aborted") return O;
+				if (r.status === "aborted") return k;
 				r.status === "dirty" && t.dirty(), n.add(r.value);
 			}
 			return {
@@ -3558,7 +3558,7 @@ var Nt = class e extends j {
 				value: n
 			};
 		}
-		let o = [...n.data.values()].map((e, t) => i._parse(new Le(n, e, n.path, t)));
+		let o = [...n.data.values()].map((e, t) => i._parse(new Re(n, e, n.path, t)));
 		return n.common.async ? Promise.all(o).then((e) => a(e)) : a(o);
 	}
 	min(t, n) {
@@ -3566,7 +3566,7 @@ var Nt = class e extends j {
 			...this._def,
 			minSize: {
 				value: t,
-				message: k.toString(n)
+				message: A.toString(n)
 			}
 		});
 	}
@@ -3575,7 +3575,7 @@ var Nt = class e extends j {
 			...this._def,
 			maxSize: {
 				value: t,
-				message: k.toString(n)
+				message: A.toString(n)
 			}
 		});
 	}
@@ -3586,61 +3586,61 @@ var Nt = class e extends j {
 		return this.min(1, e);
 	}
 };
-Nt.create = (e, t) => new Nt({
+Pt.create = (e, t) => new Pt({
 	valueType: e,
 	minSize: null,
 	maxSize: null,
-	typeName: M.ZodSet,
-	...A(t)
+	typeName: N.ZodSet,
+	...j(t)
 });
-var Pt = class e extends j {
+var Ft = class e extends M {
 	constructor() {
 		super(...arguments), this.validate = this.implement;
 	}
 	_parse(e) {
 		let { ctx: t } = this._processInputParams(e);
-		if (t.parsedType !== T.function) return D(t, {
-			code: E.invalid_type,
-			expected: T.function,
+		if (t.parsedType !== E.function) return O(t, {
+			code: D.invalid_type,
+			expected: E.function,
 			received: t.parsedType
-		}), O;
+		}), k;
 		function n(e, n) {
-			return ke({
+			return Ae({
 				data: e,
 				path: t.path,
 				errorMaps: [
 					t.common.contextualErrorMap,
 					t.schemaErrorMap,
-					Oe(),
-					Ee
+					ke(),
+					De
 				].filter((e) => !!e),
 				issueData: {
-					code: E.invalid_arguments,
+					code: D.invalid_arguments,
 					argumentsError: n
 				}
 			});
 		}
 		function r(e, n) {
-			return ke({
+			return Ae({
 				data: e,
 				path: t.path,
 				errorMaps: [
 					t.common.contextualErrorMap,
 					t.schemaErrorMap,
-					Oe(),
-					Ee
+					ke(),
+					De
 				].filter((e) => !!e),
 				issueData: {
-					code: E.invalid_return_type,
+					code: D.invalid_return_type,
 					returnTypeError: n
 				}
 			});
 		}
 		let i = { errorMap: t.common.contextualErrorMap }, a = t.data;
-		if (this._def.returns instanceof Bt) {
+		if (this._def.returns instanceof Vt) {
 			let e = this;
-			return Me(async function(...t) {
-				let o = new Te([]), s = await e._def.args.parseAsync(t, i).catch((e) => {
+			return Ne(async function(...t) {
+				let o = new Ee([]), s = await e._def.args.parseAsync(t, i).catch((e) => {
 					throw o.addIssue(n(t, e)), o;
 				}), c = await Reflect.apply(a, this, s);
 				return await e._def.returns._def.type.parseAsync(c, i).catch((e) => {
@@ -3650,11 +3650,11 @@ var Pt = class e extends j {
 		}
 		{
 			let e = this;
-			return Me(function(...t) {
+			return Ne(function(...t) {
 				let o = e._def.args.safeParse(t, i);
-				if (!o.success) throw new Te([n(t, o.error)]);
+				if (!o.success) throw new Ee([n(t, o.error)]);
 				let s = Reflect.apply(a, this, o.data), c = e._def.returns.safeParse(s, i);
-				if (!c.success) throw new Te([r(s, c.error)]);
+				if (!c.success) throw new Ee([r(s, c.error)]);
 				return c.data;
 			});
 		}
@@ -3668,7 +3668,7 @@ var Pt = class e extends j {
 	args(...t) {
 		return new e({
 			...this._def,
-			args: At.create(t).rest(yt.create())
+			args: jt.create(t).rest(bt.create())
 		});
 	}
 	returns(t) {
@@ -3685,13 +3685,13 @@ var Pt = class e extends j {
 	}
 	static create(t, n, r) {
 		return new e({
-			args: t || At.create([]).rest(yt.create()),
-			returns: n || yt.create(),
-			typeName: M.ZodFunction,
-			...A(r)
+			args: t || jt.create([]).rest(bt.create()),
+			returns: n || bt.create(),
+			typeName: N.ZodFunction,
+			...j(r)
 		});
 	}
-}, Ft = class extends j {
+}, It = class extends M {
 	get schema() {
 		return this._def.getter();
 	}
@@ -3704,20 +3704,20 @@ var Pt = class e extends j {
 		});
 	}
 };
-Ft.create = (e, t) => new Ft({
+It.create = (e, t) => new It({
 	getter: e,
-	typeName: M.ZodLazy,
-	...A(t)
+	typeName: N.ZodLazy,
+	...j(t)
 });
-var It = class extends j {
+var Lt = class extends M {
 	_parse(e) {
 		if (e.data !== this._def.value) {
 			let t = this._getOrReturnCtx(e);
-			return D(t, {
+			return O(t, {
 				received: t.data,
-				code: E.invalid_literal,
+				code: D.invalid_literal,
 				expected: this._def.value
-			}), O;
+			}), k;
 		}
 		return {
 			status: "valid",
@@ -3728,37 +3728,37 @@ var It = class extends j {
 		return this._def.value;
 	}
 };
-It.create = (e, t) => new It({
+Lt.create = (e, t) => new Lt({
 	value: e,
-	typeName: M.ZodLiteral,
-	...A(t)
+	typeName: N.ZodLiteral,
+	...j(t)
 });
-function Lt(e, t) {
-	return new Rt({
+function Rt(e, t) {
+	return new zt({
 		values: e,
-		typeName: M.ZodEnum,
-		...A(t)
+		typeName: N.ZodEnum,
+		...j(t)
 	});
 }
-var Rt = class e extends j {
+var zt = class e extends M {
 	_parse(e) {
 		if (typeof e.data != "string") {
 			let t = this._getOrReturnCtx(e), n = this._def.values;
-			return D(t, {
-				expected: w.joinValues(n),
+			return O(t, {
+				expected: T.joinValues(n),
 				received: t.parsedType,
-				code: E.invalid_type
-			}), O;
+				code: D.invalid_type
+			}), k;
 		}
 		if (this._cache ||= new Set(this._def.values), !this._cache.has(e.data)) {
 			let t = this._getOrReturnCtx(e), n = this._def.values;
-			return D(t, {
+			return O(t, {
 				received: t.data,
-				code: E.invalid_enum_value,
+				code: D.invalid_enum_value,
 				options: n
-			}), O;
+			}), k;
 		}
-		return Me(e.data);
+		return Ne(e.data);
 	}
 	get options() {
 		return this._def.values;
@@ -3791,69 +3791,69 @@ var Rt = class e extends j {
 		});
 	}
 };
-Rt.create = Lt;
-var zt = class extends j {
+zt.create = Rt;
+var Bt = class extends M {
 	_parse(e) {
-		let t = w.getValidEnumValues(this._def.values), n = this._getOrReturnCtx(e);
-		if (n.parsedType !== T.string && n.parsedType !== T.number) {
-			let e = w.objectValues(t);
-			return D(n, {
-				expected: w.joinValues(e),
+		let t = T.getValidEnumValues(this._def.values), n = this._getOrReturnCtx(e);
+		if (n.parsedType !== E.string && n.parsedType !== E.number) {
+			let e = T.objectValues(t);
+			return O(n, {
+				expected: T.joinValues(e),
 				received: n.parsedType,
-				code: E.invalid_type
-			}), O;
+				code: D.invalid_type
+			}), k;
 		}
-		if (this._cache ||= new Set(w.getValidEnumValues(this._def.values)), !this._cache.has(e.data)) {
-			let e = w.objectValues(t);
-			return D(n, {
+		if (this._cache ||= new Set(T.getValidEnumValues(this._def.values)), !this._cache.has(e.data)) {
+			let e = T.objectValues(t);
+			return O(n, {
 				received: n.data,
-				code: E.invalid_enum_value,
+				code: D.invalid_enum_value,
 				options: e
-			}), O;
+			}), k;
 		}
-		return Me(e.data);
+		return Ne(e.data);
 	}
 	get enum() {
 		return this._def.values;
 	}
 };
-zt.create = (e, t) => new zt({
+Bt.create = (e, t) => new Bt({
 	values: e,
-	typeName: M.ZodNativeEnum,
-	...A(t)
+	typeName: N.ZodNativeEnum,
+	...j(t)
 });
-var Bt = class extends j {
+var Vt = class extends M {
 	unwrap() {
 		return this._def.type;
 	}
 	_parse(e) {
 		let { ctx: t } = this._processInputParams(e);
-		return t.parsedType !== T.promise && t.common.async === !1 ? (D(t, {
-			code: E.invalid_type,
-			expected: T.promise,
+		return t.parsedType !== E.promise && t.common.async === !1 ? (O(t, {
+			code: D.invalid_type,
+			expected: E.promise,
 			received: t.parsedType
-		}), O) : Me((t.parsedType === T.promise ? t.data : Promise.resolve(t.data)).then((e) => this._def.type.parseAsync(e, {
+		}), k) : Ne((t.parsedType === E.promise ? t.data : Promise.resolve(t.data)).then((e) => this._def.type.parseAsync(e, {
 			path: t.path,
 			errorMap: t.common.contextualErrorMap
 		})));
 	}
 };
-Bt.create = (e, t) => new Bt({
+Vt.create = (e, t) => new Vt({
 	type: e,
-	typeName: M.ZodPromise,
-	...A(t)
+	typeName: N.ZodPromise,
+	...j(t)
 });
-var Vt = class extends j {
+var Ht = class extends M {
 	innerType() {
 		return this._def.schema;
 	}
 	sourceType() {
-		return this._def.schema._def.typeName === M.ZodEffects ? this._def.schema.sourceType() : this._def.schema;
+		return this._def.schema._def.typeName === N.ZodEffects ? this._def.schema.sourceType() : this._def.schema;
 	}
 	_parse(e) {
 		let { status: t, ctx: n } = this._processInputParams(e), r = this._def.effect || null, i = {
 			addIssue: (e) => {
-				D(n, e), e.fatal ? t.abort() : t.dirty();
+				O(n, e), e.fatal ? t.abort() : t.dirty();
 			},
 			get path() {
 				return n.path;
@@ -3862,22 +3862,22 @@ var Vt = class extends j {
 		if (i.addIssue = i.addIssue.bind(i), r.type === "preprocess") {
 			let e = r.transform(n.data, i);
 			if (n.common.async) return Promise.resolve(e).then(async (e) => {
-				if (t.value === "aborted") return O;
+				if (t.value === "aborted") return k;
 				let r = await this._def.schema._parseAsync({
 					data: e,
 					path: n.path,
 					parent: n
 				});
-				return r.status === "aborted" ? O : r.status === "dirty" || t.value === "dirty" ? je(r.value) : r;
+				return r.status === "aborted" ? k : r.status === "dirty" || t.value === "dirty" ? Me(r.value) : r;
 			});
 			{
-				if (t.value === "aborted") return O;
+				if (t.value === "aborted") return k;
 				let r = this._def.schema._parseSync({
 					data: e,
 					path: n.path,
 					parent: n
 				});
-				return r.status === "aborted" ? O : r.status === "dirty" || t.value === "dirty" ? je(r.value) : r;
+				return r.status === "aborted" ? k : r.status === "dirty" || t.value === "dirty" ? Me(r.value) : r;
 			}
 		}
 		if (r.type === "refinement") {
@@ -3893,7 +3893,7 @@ var Vt = class extends j {
 					path: n.path,
 					parent: n
 				});
-				return r.status === "aborted" ? O : (r.status === "dirty" && t.dirty(), e(r.value), {
+				return r.status === "aborted" ? k : (r.status === "dirty" && t.dirty(), e(r.value), {
 					status: t.value,
 					value: r.value
 				});
@@ -3902,7 +3902,7 @@ var Vt = class extends j {
 				data: n.data,
 				path: n.path,
 				parent: n
-			}).then((n) => n.status === "aborted" ? O : (n.status === "dirty" && t.dirty(), e(n.value).then(() => ({
+			}).then((n) => n.status === "aborted" ? k : (n.status === "dirty" && t.dirty(), e(n.value).then(() => ({
 				status: t.value,
 				value: n.value
 			}))));
@@ -3914,7 +3914,7 @@ var Vt = class extends j {
 					path: n.path,
 					parent: n
 				});
-				if (!Fe(e)) return O;
+				if (!Ie(e)) return k;
 				let a = r.transform(e.value, i);
 				if (a instanceof Promise) throw Error("Asynchronous transform encountered during synchronous parse operation. Use .parseAsync instead.");
 				return {
@@ -3926,44 +3926,31 @@ var Vt = class extends j {
 				data: n.data,
 				path: n.path,
 				parent: n
-			}).then((e) => Fe(e) ? Promise.resolve(r.transform(e.value, i)).then((e) => ({
+			}).then((e) => Ie(e) ? Promise.resolve(r.transform(e.value, i)).then((e) => ({
 				status: t.value,
 				value: e
-			})) : O);
+			})) : k);
 		}
-		w.assertNever(r);
+		T.assertNever(r);
 	}
 };
-Vt.create = (e, t, n) => new Vt({
+Ht.create = (e, t, n) => new Ht({
 	schema: e,
-	typeName: M.ZodEffects,
+	typeName: N.ZodEffects,
 	effect: t,
-	...A(n)
-}), Vt.createWithPreprocess = (e, t, n) => new Vt({
+	...j(n)
+}), Ht.createWithPreprocess = (e, t, n) => new Ht({
 	schema: t,
 	effect: {
 		type: "preprocess",
 		transform: e
 	},
-	typeName: M.ZodEffects,
-	...A(n)
+	typeName: N.ZodEffects,
+	...j(n)
 });
-var Ht = class extends j {
+var Ut = class extends M {
 	_parse(e) {
-		return this._getType(e) === T.undefined ? Me(void 0) : this._def.innerType._parse(e);
-	}
-	unwrap() {
-		return this._def.innerType;
-	}
-};
-Ht.create = (e, t) => new Ht({
-	innerType: e,
-	typeName: M.ZodOptional,
-	...A(t)
-});
-var Ut = class extends j {
-	_parse(e) {
-		return this._getType(e) === T.null ? Me(null) : this._def.innerType._parse(e);
+		return this._getType(e) === E.undefined ? Ne(void 0) : this._def.innerType._parse(e);
 	}
 	unwrap() {
 		return this._def.innerType;
@@ -3971,13 +3958,26 @@ var Ut = class extends j {
 };
 Ut.create = (e, t) => new Ut({
 	innerType: e,
-	typeName: M.ZodNullable,
-	...A(t)
+	typeName: N.ZodOptional,
+	...j(t)
 });
-var Wt = class extends j {
+var Wt = class extends M {
+	_parse(e) {
+		return this._getType(e) === E.null ? Ne(null) : this._def.innerType._parse(e);
+	}
+	unwrap() {
+		return this._def.innerType;
+	}
+};
+Wt.create = (e, t) => new Wt({
+	innerType: e,
+	typeName: N.ZodNullable,
+	...j(t)
+});
+var Gt = class extends M {
 	_parse(e) {
 		let { ctx: t } = this._processInputParams(e), n = t.data;
-		return t.parsedType === T.undefined && (n = this._def.defaultValue()), this._def.innerType._parse({
+		return t.parsedType === E.undefined && (n = this._def.defaultValue()), this._def.innerType._parse({
 			data: n,
 			path: t.path,
 			parent: t
@@ -3987,13 +3987,13 @@ var Wt = class extends j {
 		return this._def.innerType;
 	}
 };
-Wt.create = (e, t) => new Wt({
+Gt.create = (e, t) => new Gt({
 	innerType: e,
-	typeName: M.ZodDefault,
+	typeName: N.ZodDefault,
 	defaultValue: typeof t.default == "function" ? t.default : () => t.default,
-	...A(t)
+	...j(t)
 });
-var Gt = class extends j {
+var Kt = class extends M {
 	_parse(e) {
 		let { ctx: t } = this._processInputParams(e), n = {
 			...t,
@@ -4006,11 +4006,11 @@ var Gt = class extends j {
 			path: n.path,
 			parent: { ...n }
 		});
-		return Ie(r) ? r.then((e) => ({
+		return Le(r) ? r.then((e) => ({
 			status: "valid",
 			value: e.status === "valid" ? e.value : this._def.catchValue({
 				get error() {
-					return new Te(n.common.issues);
+					return new Ee(n.common.issues);
 				},
 				input: n.data
 			})
@@ -4018,7 +4018,7 @@ var Gt = class extends j {
 			status: "valid",
 			value: r.status === "valid" ? r.value : this._def.catchValue({
 				get error() {
-					return new Te(n.common.issues);
+					return new Ee(n.common.issues);
 				},
 				input: n.data
 			})
@@ -4028,21 +4028,21 @@ var Gt = class extends j {
 		return this._def.innerType;
 	}
 };
-Gt.create = (e, t) => new Gt({
+Kt.create = (e, t) => new Kt({
 	innerType: e,
-	typeName: M.ZodCatch,
+	typeName: N.ZodCatch,
 	catchValue: typeof t.catch == "function" ? t.catch : () => t.catch,
-	...A(t)
+	...j(t)
 });
-var Kt = class extends j {
+var qt = class extends M {
 	_parse(e) {
-		if (this._getType(e) !== T.nan) {
+		if (this._getType(e) !== E.nan) {
 			let t = this._getOrReturnCtx(e);
-			return D(t, {
-				code: E.invalid_type,
-				expected: T.nan,
+			return O(t, {
+				code: D.invalid_type,
+				expected: E.nan,
 				received: t.parsedType
-			}), O;
+			}), k;
 		}
 		return {
 			status: "valid",
@@ -4050,11 +4050,11 @@ var Kt = class extends j {
 		};
 	}
 };
-Kt.create = (e) => new Kt({
-	typeName: M.ZodNaN,
-	...A(e)
+qt.create = (e) => new qt({
+	typeName: N.ZodNaN,
+	...j(e)
 });
-var qt = class extends j {
+var Jt = class extends M {
 	_parse(e) {
 		let { ctx: t } = this._processInputParams(e), n = t.data;
 		return this._def.type._parse({
@@ -4066,7 +4066,7 @@ var qt = class extends j {
 	unwrap() {
 		return this._def.type;
 	}
-}, Jt = class e extends j {
+}, Yt = class e extends M {
 	_parse(e) {
 		let { status: t, ctx: n } = this._processInputParams(e);
 		if (n.common.async) return (async () => {
@@ -4075,7 +4075,7 @@ var qt = class extends j {
 				path: n.path,
 				parent: n
 			});
-			return e.status === "aborted" ? O : e.status === "dirty" ? (t.dirty(), je(e.value)) : this._def.out._parseAsync({
+			return e.status === "aborted" ? k : e.status === "dirty" ? (t.dirty(), Me(e.value)) : this._def.out._parseAsync({
 				data: e.value,
 				path: n.path,
 				parent: n
@@ -4087,7 +4087,7 @@ var qt = class extends j {
 				path: n.path,
 				parent: n
 			});
-			return e.status === "aborted" ? O : e.status === "dirty" ? (t.dirty(), {
+			return e.status === "aborted" ? k : e.status === "dirty" ? (t.dirty(), {
 				status: "dirty",
 				value: e.value
 			}) : this._def.out._parseSync({
@@ -4101,36 +4101,36 @@ var qt = class extends j {
 		return new e({
 			in: t,
 			out: n,
-			typeName: M.ZodPipeline
+			typeName: N.ZodPipeline
 		});
 	}
-}, Yt = class extends j {
+}, Xt = class extends M {
 	_parse(e) {
-		let t = this._def.innerType._parse(e), n = (e) => (Fe(e) && (e.value = Object.freeze(e.value)), e);
-		return Ie(t) ? t.then((e) => n(e)) : n(t);
+		let t = this._def.innerType._parse(e), n = (e) => (Ie(e) && (e.value = Object.freeze(e.value)), e);
+		return Le(t) ? t.then((e) => n(e)) : n(t);
 	}
 	unwrap() {
 		return this._def.innerType;
 	}
 };
-Yt.create = (e, t) => new Yt({
+Xt.create = (e, t) => new Xt({
 	innerType: e,
-	typeName: M.ZodReadonly,
-	...A(t)
-}), wt.lazycreate;
-var M;
+	typeName: N.ZodReadonly,
+	...j(t)
+}), Tt.lazycreate;
+var N;
 (function(e) {
 	e.ZodString = "ZodString", e.ZodNumber = "ZodNumber", e.ZodNaN = "ZodNaN", e.ZodBigInt = "ZodBigInt", e.ZodBoolean = "ZodBoolean", e.ZodDate = "ZodDate", e.ZodSymbol = "ZodSymbol", e.ZodUndefined = "ZodUndefined", e.ZodNull = "ZodNull", e.ZodAny = "ZodAny", e.ZodUnknown = "ZodUnknown", e.ZodNever = "ZodNever", e.ZodVoid = "ZodVoid", e.ZodArray = "ZodArray", e.ZodObject = "ZodObject", e.ZodUnion = "ZodUnion", e.ZodDiscriminatedUnion = "ZodDiscriminatedUnion", e.ZodIntersection = "ZodIntersection", e.ZodTuple = "ZodTuple", e.ZodRecord = "ZodRecord", e.ZodMap = "ZodMap", e.ZodSet = "ZodSet", e.ZodFunction = "ZodFunction", e.ZodLazy = "ZodLazy", e.ZodLiteral = "ZodLiteral", e.ZodEnum = "ZodEnum", e.ZodEffects = "ZodEffects", e.ZodNativeEnum = "ZodNativeEnum", e.ZodOptional = "ZodOptional", e.ZodNullable = "ZodNullable", e.ZodDefault = "ZodDefault", e.ZodCatch = "ZodCatch", e.ZodPromise = "ZodPromise", e.ZodBranded = "ZodBranded", e.ZodPipeline = "ZodPipeline", e.ZodReadonly = "ZodReadonly";
-})(M ||= {});
-var Xt = lt.create, Zt = dt.create;
-Kt.create, ft.create;
-var Qt = pt.create;
-mt.create, ht.create, gt.create, _t.create, vt.create, yt.create, bt.create, xt.create, St.create;
-var $t = wt.create;
-wt.strictCreate, Tt.create, Dt.create, kt.create, At.create, jt.create, Mt.create, Nt.create, Pt.create, Ft.create, It.create;
-var en = Rt.create;
-zt.create, Bt.create, Vt.create, Ht.create, Ut.create, Vt.createWithPreprocess, Jt.create, Object.freeze({ status: "aborted" });
-function N(e, t, n) {
+})(N ||= {});
+var Zt = ut.create, Qt = ft.create;
+qt.create, pt.create;
+var $t = mt.create;
+ht.create, gt.create, _t.create, vt.create, yt.create, bt.create, xt.create, St.create, Ct.create;
+var en = Tt.create;
+Tt.strictCreate, Et.create, Ot.create, At.create, jt.create, Mt.create, Nt.create, Pt.create, Ft.create, It.create, Lt.create;
+var tn = zt.create;
+Bt.create, Vt.create, Ht.create, Ut.create, Wt.create, Ht.createWithPreprocess, Yt.create, Object.freeze({ status: "aborted" });
+function P(e, t, n) {
 	function r(n, r) {
 		var i;
 		Object.defineProperty(n, "_zod", {
@@ -4152,24 +4152,24 @@ function N(e, t, n) {
 	}
 	return Object.defineProperty(o, "init", { value: r }), Object.defineProperty(o, Symbol.hasInstance, { value: (t) => n?.Parent && t instanceof n.Parent ? !0 : t?._zod?.traits?.has(e) }), Object.defineProperty(o, "name", { value: e }), o;
 }
-var tn = class extends Error {
+var nn = class extends Error {
 	constructor() {
 		super("Encountered Promise during synchronous parse. Use .parseAsync() instead.");
 	}
-}, nn = {};
-function rn(e) {
-	return e && Object.assign(nn, e), nn;
+}, rn = {};
+function an(e) {
+	return e && Object.assign(rn, e), rn;
 }
 //#endregion
 //#region node_modules/zod/v4/core/util.js
-function an(e) {
+function on(e) {
 	let t = Object.values(e).filter((e) => typeof e == "number");
 	return Object.entries(e).filter(([e, n]) => t.indexOf(+e) === -1).map(([e, t]) => t);
 }
-function on(e, t) {
+function sn(e, t) {
 	return typeof t == "bigint" ? t.toString() : t;
 }
-function sn(e) {
+function cn(e) {
 	return { get value() {
 		{
 			let t = e();
@@ -4177,18 +4177,18 @@ function sn(e) {
 		}
 	} };
 }
-function cn(e) {
+function ln(e) {
 	return e == null;
 }
-function ln(e) {
+function un(e) {
 	let t = +!!e.startsWith("^"), n = e.endsWith("$") ? e.length - 1 : e.length;
 	return e.slice(t, n);
 }
-function un(e, t) {
+function dn(e, t) {
 	let n = (e.toString().split(".")[1] || "").length, r = (t.toString().split(".")[1] || "").length, i = n > r ? n : r;
 	return Number.parseInt(e.toFixed(i).replace(".", "")) % Number.parseInt(t.toFixed(i).replace(".", "")) / 10 ** i;
 }
-function P(e, t, n) {
+function F(e, t, n) {
 	Object.defineProperty(e, t, {
 		get() {
 			{
@@ -4202,7 +4202,7 @@ function P(e, t, n) {
 		configurable: !0
 	});
 }
-function dn(e, t, n) {
+function fn(e, t, n) {
 	Object.defineProperty(e, t, {
 		value: n,
 		writable: !0,
@@ -4210,14 +4210,14 @@ function dn(e, t, n) {
 		configurable: !0
 	});
 }
-function fn(e) {
+function pn(e) {
 	return JSON.stringify(e);
 }
-var pn = Error.captureStackTrace ? Error.captureStackTrace : (...e) => {};
-function mn(e) {
+var mn = Error.captureStackTrace ? Error.captureStackTrace : (...e) => {};
+function hn(e) {
 	return typeof e == "object" && !!e && !Array.isArray(e);
 }
-var hn = sn(() => {
+var gn = cn(() => {
 	if (typeof navigator < "u" && navigator?.userAgent?.includes("Cloudflare")) return !1;
 	try {
 		return Function(""), !0;
@@ -4225,26 +4225,26 @@ var hn = sn(() => {
 		return !1;
 	}
 });
-function gn(e) {
-	if (mn(e) === !1) return !1;
+function _n(e) {
+	if (hn(e) === !1) return !1;
 	let t = e.constructor;
 	if (t === void 0) return !0;
 	let n = t.prototype;
-	return mn(n) !== !1 && Object.prototype.hasOwnProperty.call(n, "isPrototypeOf") !== !1;
+	return hn(n) !== !1 && Object.prototype.hasOwnProperty.call(n, "isPrototypeOf") !== !1;
 }
-var _n = /* @__PURE__ */ new Set([
+var vn = /* @__PURE__ */ new Set([
 	"string",
 	"number",
 	"symbol"
 ]);
-function vn(e) {
+function yn(e) {
 	return e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-function yn(e, t, n) {
+function bn(e, t, n) {
 	let r = new e._zod.constr(t ?? e._zod.def);
 	return (!t || n?.parent) && (r._zod.parent = e), r;
 }
-function F(e) {
+function I(e) {
 	let t = e;
 	if (!t) return {};
 	if (typeof t == "string") return { error: () => t };
@@ -4257,69 +4257,69 @@ function F(e) {
 		error: () => t.error
 	} : t;
 }
-function bn(e) {
+function xn(e) {
 	return Object.keys(e).filter((t) => e[t]._zod.optin === "optional" && e[t]._zod.optout === "optional");
 }
-var xn = {
+var Sn = {
 	safeint: [-(2 ** 53 - 1), 2 ** 53 - 1],
 	int32: [-2147483648, 2147483647],
 	uint32: [0, 4294967295],
 	float32: [-34028234663852886e22, 34028234663852886e22],
 	float64: [-Number.MAX_VALUE, Number.MAX_VALUE]
 };
-function Sn(e, t) {
+function Cn(e, t) {
 	let n = {}, r = e._zod.def;
 	for (let e in t) {
 		if (!(e in r.shape)) throw Error(`Unrecognized key: "${e}"`);
 		t[e] && (n[e] = r.shape[e]);
 	}
-	return yn(e, {
-		...e._zod.def,
-		shape: n,
-		checks: []
-	});
-}
-function Cn(e, t) {
-	let n = { ...e._zod.def.shape }, r = e._zod.def;
-	for (let e in t) {
-		if (!(e in r.shape)) throw Error(`Unrecognized key: "${e}"`);
-		t[e] && delete n[e];
-	}
-	return yn(e, {
+	return bn(e, {
 		...e._zod.def,
 		shape: n,
 		checks: []
 	});
 }
 function wn(e, t) {
-	if (!gn(t)) throw Error("Invalid input to extend: expected a plain object");
-	return yn(e, {
+	let n = { ...e._zod.def.shape }, r = e._zod.def;
+	for (let e in t) {
+		if (!(e in r.shape)) throw Error(`Unrecognized key: "${e}"`);
+		t[e] && delete n[e];
+	}
+	return bn(e, {
+		...e._zod.def,
+		shape: n,
+		checks: []
+	});
+}
+function Tn(e, t) {
+	if (!_n(t)) throw Error("Invalid input to extend: expected a plain object");
+	return bn(e, {
 		...e._zod.def,
 		get shape() {
 			let n = {
 				...e._zod.def.shape,
 				...t
 			};
-			return dn(this, "shape", n), n;
+			return fn(this, "shape", n), n;
 		},
 		checks: []
 	});
 }
-function Tn(e, t) {
-	return yn(e, {
+function En(e, t) {
+	return bn(e, {
 		...e._zod.def,
 		get shape() {
 			let n = {
 				...e._zod.def.shape,
 				...t._zod.def.shape
 			};
-			return dn(this, "shape", n), n;
+			return fn(this, "shape", n), n;
 		},
 		catchall: t._zod.def.catchall,
 		checks: []
 	});
 }
-function En(e, t, n) {
+function Dn(e, t, n) {
 	let r = t._zod.def.shape, i = { ...r };
 	if (n) for (let t in n) {
 		if (!(t in r)) throw Error(`Unrecognized key: "${t}"`);
@@ -4332,13 +4332,13 @@ function En(e, t, n) {
 		type: "optional",
 		innerType: r[t]
 	}) : r[t];
-	return yn(t, {
+	return bn(t, {
 		...t._zod.def,
 		shape: i,
 		checks: []
 	});
 }
-function Dn(e, t, n) {
+function On(e, t, n) {
 	let r = t._zod.def.shape, i = { ...r };
 	if (n) for (let t in n) {
 		if (!(t in i)) throw Error(`Unrecognized key: "${t}"`);
@@ -4351,36 +4351,36 @@ function Dn(e, t, n) {
 		type: "nonoptional",
 		innerType: r[t]
 	});
-	return yn(t, {
+	return bn(t, {
 		...t._zod.def,
 		shape: i,
 		checks: []
 	});
 }
-function On(e, t = 0) {
+function kn(e, t = 0) {
 	for (let n = t; n < e.issues.length; n++) if (e.issues[n]?.continue !== !0) return !0;
 	return !1;
 }
-function kn(e, t) {
+function An(e, t) {
 	return t.map((t) => {
 		var n;
 		return (n = t).path ?? (n.path = []), t.path.unshift(e), t;
 	});
 }
-function An(e) {
+function jn(e) {
 	return typeof e == "string" ? e : e?.message;
 }
-function jn(e, t, n) {
+function Mn(e, t, n) {
 	let r = {
 		...e,
 		path: e.path ?? []
 	};
-	return e.message || (r.message = An(e.inst?._zod.def?.error?.(e)) ?? An(t?.error?.(e)) ?? An(n.customError?.(e)) ?? An(n.localeError?.(e)) ?? "Invalid input"), delete r.inst, delete r.continue, t?.reportInput || delete r.input, r;
+	return e.message || (r.message = jn(e.inst?._zod.def?.error?.(e)) ?? jn(t?.error?.(e)) ?? jn(n.customError?.(e)) ?? jn(n.localeError?.(e)) ?? "Invalid input"), delete r.inst, delete r.continue, t?.reportInput || delete r.input, r;
 }
-function Mn(e) {
+function Nn(e) {
 	return Array.isArray(e) ? "array" : typeof e == "string" ? "string" : "unknown";
 }
-function Nn(...e) {
+function Pn(...e) {
 	let [t, n, r] = e;
 	return typeof t == "string" ? {
 		message: t,
@@ -4391,7 +4391,7 @@ function Nn(...e) {
 }
 //#endregion
 //#region node_modules/zod/v4/core/errors.js
-var Pn = (e, t) => {
+var Fn = (e, t) => {
 	e.name = "$ZodError", Object.defineProperty(e, "_zod", {
 		value: e._zod,
 		enumerable: !1
@@ -4400,15 +4400,15 @@ var Pn = (e, t) => {
 		enumerable: !1
 	}), Object.defineProperty(e, "message", {
 		get() {
-			return JSON.stringify(t, on, 2);
+			return JSON.stringify(t, sn, 2);
 		},
 		enumerable: !0
 	}), Object.defineProperty(e, "toString", {
 		value: () => e.message,
 		enumerable: !1
 	});
-}, Fn = N("$ZodError", Pn), In = N("$ZodError", Pn, { Parent: Error });
-function Ln(e, t = (e) => e.message) {
+}, In = P("$ZodError", Fn), Ln = P("$ZodError", Fn, { Parent: Error });
+function Rn(e, t = (e) => e.message) {
 	let n = {}, r = [];
 	for (let i of e.issues) i.path.length > 0 ? (n[i.path[0]] = n[i.path[0]] || [], n[i.path[0]].push(t(i))) : r.push(t(i));
 	return {
@@ -4416,7 +4416,7 @@ function Ln(e, t = (e) => e.message) {
 		fieldErrors: n
 	};
 }
-function Rn(e, t) {
+function zn(e, t) {
 	let n = t || function(e) {
 		return e.message;
 	}, r = { _errors: [] }, i = (e) => {
@@ -4436,28 +4436,28 @@ function Rn(e, t) {
 }
 //#endregion
 //#region node_modules/zod/v4/core/parse.js
-var zn = (e) => (t, n, r, i) => {
+var Bn = (e) => (t, n, r, i) => {
 	let a = r ? Object.assign(r, { async: !1 }) : { async: !1 }, o = t._zod.run({
 		value: n,
 		issues: []
 	}, a);
-	if (o instanceof Promise) throw new tn();
+	if (o instanceof Promise) throw new nn();
 	if (o.issues.length) {
-		let t = new ((i?.Err) ?? e)(o.issues.map((e) => jn(e, a, rn())));
-		throw pn(t, i?.callee), t;
+		let t = new ((i?.Err) ?? e)(o.issues.map((e) => Mn(e, a, an())));
+		throw mn(t, i?.callee), t;
 	}
 	return o.value;
-}, Bn = /* @__PURE__*/ zn(In), Vn = (e) => async (t, n, r, i) => {
+}, Vn = /* @__PURE__*/ Bn(Ln), Hn = (e) => async (t, n, r, i) => {
 	let a = r ? Object.assign(r, { async: !0 }) : { async: !0 }, o = t._zod.run({
 		value: n,
 		issues: []
 	}, a);
 	if (o instanceof Promise && (o = await o), o.issues.length) {
-		let t = new ((i?.Err) ?? e)(o.issues.map((e) => jn(e, a, rn())));
-		throw pn(t, i?.callee), t;
+		let t = new ((i?.Err) ?? e)(o.issues.map((e) => Mn(e, a, an())));
+		throw mn(t, i?.callee), t;
 	}
 	return o.value;
-}, Hn = /* @__PURE__*/ Vn(In), Un = (e) => (t, n, r) => {
+}, Un = /* @__PURE__*/ Hn(Ln), Wn = (e) => (t, n, r) => {
 	let i = r ? {
 		...r,
 		async: !1
@@ -4465,57 +4465,57 @@ var zn = (e) => (t, n, r, i) => {
 		value: n,
 		issues: []
 	}, i);
-	if (a instanceof Promise) throw new tn();
+	if (a instanceof Promise) throw new nn();
 	return a.issues.length ? {
 		success: !1,
-		error: new (e ?? Fn)(a.issues.map((e) => jn(e, i, rn())))
+		error: new (e ?? In)(a.issues.map((e) => Mn(e, i, an())))
 	} : {
 		success: !0,
 		data: a.value
 	};
-}, Wn = /* @__PURE__*/ Un(In), Gn = (e) => async (t, n, r) => {
+}, Gn = /* @__PURE__*/ Wn(Ln), Kn = (e) => async (t, n, r) => {
 	let i = r ? Object.assign(r, { async: !0 }) : { async: !0 }, a = t._zod.run({
 		value: n,
 		issues: []
 	}, i);
 	return a instanceof Promise && (a = await a), a.issues.length ? {
 		success: !1,
-		error: new e(a.issues.map((e) => jn(e, i, rn())))
+		error: new e(a.issues.map((e) => Mn(e, i, an())))
 	} : {
 		success: !0,
 		data: a.value
 	};
-}, Kn = /* @__PURE__*/ Gn(In), qn = /^[cC][^\s-]{8,}$/, Jn = /^[0-9a-z]+$/, Yn = /^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$/, Xn = /^[0-9a-vA-V]{20}$/, Zn = /^[A-Za-z0-9]{27}$/, Qn = /^[a-zA-Z0-9_-]{21}$/, $n = /^P(?:(\d+W)|(?!.*W)(?=\d|T\d)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+([.,]\d+)?S)?)?)$/, er = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/, tr = (e) => e ? RegExp(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-${e}[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`) : /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$/, nr = /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/, rr = "^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$";
-function ir() {
-	return new RegExp(rr, "u");
+}, qn = /* @__PURE__*/ Kn(Ln), Jn = /^[cC][^\s-]{8,}$/, Yn = /^[0-9a-z]+$/, Xn = /^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$/, Zn = /^[0-9a-vA-V]{20}$/, Qn = /^[A-Za-z0-9]{27}$/, $n = /^[a-zA-Z0-9_-]{21}$/, er = /^P(?:(\d+W)|(?!.*W)(?=\d|T\d)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+([.,]\d+)?S)?)?)$/, tr = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/, nr = (e) => e ? RegExp(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-${e}[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`) : /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000)$/, rr = /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/, ir = "^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$";
+function ar() {
+	return new RegExp(ir, "u");
 }
-var ar = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/, or = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|::|([0-9a-fA-F]{1,4})?::([0-9a-fA-F]{1,4}:?){0,6})$/, sr = /^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/([0-9]|[1-2][0-9]|3[0-2])$/, cr = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|::|([0-9a-fA-F]{1,4})?::([0-9a-fA-F]{1,4}:?){0,6})\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/, lr = /^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$/, ur = /^[A-Za-z0-9_-]*$/, dr = /^([a-zA-Z0-9-]+\.)*[a-zA-Z0-9-]+$/, fr = /^\+(?:[0-9]){6,14}[0-9]$/, pr = "(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))", mr = /*@__PURE__*/ RegExp(`^${pr}$`);
-function hr(e) {
+var or = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/, sr = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|::|([0-9a-fA-F]{1,4})?::([0-9a-fA-F]{1,4}:?){0,6})$/, cr = /^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/([0-9]|[1-2][0-9]|3[0-2])$/, lr = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|::|([0-9a-fA-F]{1,4})?::([0-9a-fA-F]{1,4}:?){0,6})\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/, ur = /^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$/, dr = /^[A-Za-z0-9_-]*$/, fr = /^([a-zA-Z0-9-]+\.)*[a-zA-Z0-9-]+$/, pr = /^\+(?:[0-9]){6,14}[0-9]$/, mr = "(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))", hr = /*@__PURE__*/ RegExp(`^${mr}$`);
+function gr(e) {
 	let t = "(?:[01]\\d|2[0-3]):[0-5]\\d";
 	return typeof e.precision == "number" ? e.precision === -1 ? `${t}` : e.precision === 0 ? `${t}:[0-5]\\d` : `${t}:[0-5]\\d\\.\\d{${e.precision}}` : `${t}(?::[0-5]\\d(?:\\.\\d+)?)?`;
 }
-function gr(e) {
-	return RegExp(`^${hr(e)}$`);
-}
 function _r(e) {
-	let t = hr({ precision: e.precision }), n = ["Z"];
+	return RegExp(`^${gr(e)}$`);
+}
+function vr(e) {
+	let t = gr({ precision: e.precision }), n = ["Z"];
 	e.local && n.push(""), e.offset && n.push("([+-]\\d{2}:\\d{2})");
 	let r = `${t}(?:${n.join("|")})`;
-	return RegExp(`^${pr}T(?:${r})$`);
+	return RegExp(`^${mr}T(?:${r})$`);
 }
-var vr = (e) => {
+var yr = (e) => {
 	let t = e ? `[\\s\\S]{${e?.minimum ?? 0},${e?.maximum ?? ""}}` : "[\\s\\S]*";
 	return RegExp(`^${t}$`);
-}, yr = /^\d+$/, br = /^-?\d+(?:\.\d+)?/i, xr = /true|false/i, Sr = /null/i, Cr = /^[^A-Z]*$/, wr = /^[^a-z]*$/, Tr = /*@__PURE__*/ N("$ZodCheck", (e, t) => {
+}, br = /^\d+$/, xr = /^-?\d+(?:\.\d+)?/i, Sr = /true|false/i, Cr = /null/i, wr = /^[^A-Z]*$/, Tr = /^[^a-z]*$/, Er = /*@__PURE__*/ P("$ZodCheck", (e, t) => {
 	var n;
 	e._zod ??= {}, e._zod.def = t, (n = e._zod).onattach ?? (n.onattach = []);
-}), Er = {
+}), Dr = {
 	number: "number",
 	bigint: "bigint",
 	object: "date"
-}, Dr = /*@__PURE__*/ N("$ZodCheckLessThan", (e, t) => {
-	Tr.init(e, t);
-	let n = Er[typeof t.value];
+}, Or = /*@__PURE__*/ P("$ZodCheckLessThan", (e, t) => {
+	Er.init(e, t);
+	let n = Dr[typeof t.value];
 	e._zod.onattach.push((e) => {
 		let n = e._zod.bag, r = (t.inclusive ? n.maximum : n.exclusiveMaximum) ?? Infinity;
 		t.value < r && (t.inclusive ? n.maximum = t.value : n.exclusiveMaximum = t.value);
@@ -4530,9 +4530,9 @@ var vr = (e) => {
 			continue: !t.abort
 		});
 	};
-}), Or = /*@__PURE__*/ N("$ZodCheckGreaterThan", (e, t) => {
-	Tr.init(e, t);
-	let n = Er[typeof t.value];
+}), kr = /*@__PURE__*/ P("$ZodCheckGreaterThan", (e, t) => {
+	Er.init(e, t);
+	let n = Dr[typeof t.value];
 	e._zod.onattach.push((e) => {
 		let n = e._zod.bag, r = (t.inclusive ? n.minimum : n.exclusiveMinimum) ?? -Infinity;
 		t.value > r && (t.inclusive ? n.minimum = t.value : n.exclusiveMinimum = t.value);
@@ -4547,13 +4547,13 @@ var vr = (e) => {
 			continue: !t.abort
 		});
 	};
-}), kr = /*@__PURE__*/ N("$ZodCheckMultipleOf", (e, t) => {
-	Tr.init(e, t), e._zod.onattach.push((e) => {
+}), Ar = /*@__PURE__*/ P("$ZodCheckMultipleOf", (e, t) => {
+	Er.init(e, t), e._zod.onattach.push((e) => {
 		var n;
 		(n = e._zod.bag).multipleOf ?? (n.multipleOf = t.value);
 	}), e._zod.check = (n) => {
 		if (typeof n.value != typeof t.value) throw Error("Cannot mix number and bigint in multiple_of check.");
-		(typeof n.value == "bigint" ? n.value % t.value === BigInt(0) : un(n.value, t.value) === 0) || n.issues.push({
+		(typeof n.value == "bigint" ? n.value % t.value === BigInt(0) : dn(n.value, t.value) === 0) || n.issues.push({
 			origin: typeof n.value,
 			code: "not_multiple_of",
 			divisor: t.value,
@@ -4562,12 +4562,12 @@ var vr = (e) => {
 			continue: !t.abort
 		});
 	};
-}), Ar = /*@__PURE__*/ N("$ZodCheckNumberFormat", (e, t) => {
-	Tr.init(e, t), t.format = t.format || "float64";
-	let n = t.format?.includes("int"), r = n ? "int" : "number", [i, a] = xn[t.format];
+}), jr = /*@__PURE__*/ P("$ZodCheckNumberFormat", (e, t) => {
+	Er.init(e, t), t.format = t.format || "float64";
+	let n = t.format?.includes("int"), r = n ? "int" : "number", [i, a] = Sn[t.format];
 	e._zod.onattach.push((e) => {
 		let r = e._zod.bag;
-		r.format = t.format, r.minimum = i, r.maximum = a, n && (r.pattern = yr);
+		r.format = t.format, r.minimum = i, r.maximum = a, n && (r.pattern = br);
 	}), e._zod.check = (o) => {
 		let s = o.value;
 		if (n) {
@@ -4618,18 +4618,18 @@ var vr = (e) => {
 			inst: e
 		});
 	};
-}), jr = /*@__PURE__*/ N("$ZodCheckMaxLength", (e, t) => {
+}), Mr = /*@__PURE__*/ P("$ZodCheckMaxLength", (e, t) => {
 	var n;
-	Tr.init(e, t), (n = e._zod.def).when ?? (n.when = (e) => {
+	Er.init(e, t), (n = e._zod.def).when ?? (n.when = (e) => {
 		let t = e.value;
-		return !cn(t) && t.length !== void 0;
+		return !ln(t) && t.length !== void 0;
 	}), e._zod.onattach.push((e) => {
 		let n = e._zod.bag.maximum ?? Infinity;
 		t.maximum < n && (e._zod.bag.maximum = t.maximum);
 	}), e._zod.check = (n) => {
 		let r = n.value;
 		if (r.length <= t.maximum) return;
-		let i = Mn(r);
+		let i = Nn(r);
 		n.issues.push({
 			origin: i,
 			code: "too_big",
@@ -4640,18 +4640,18 @@ var vr = (e) => {
 			continue: !t.abort
 		});
 	};
-}), Mr = /*@__PURE__*/ N("$ZodCheckMinLength", (e, t) => {
+}), Nr = /*@__PURE__*/ P("$ZodCheckMinLength", (e, t) => {
 	var n;
-	Tr.init(e, t), (n = e._zod.def).when ?? (n.when = (e) => {
+	Er.init(e, t), (n = e._zod.def).when ?? (n.when = (e) => {
 		let t = e.value;
-		return !cn(t) && t.length !== void 0;
+		return !ln(t) && t.length !== void 0;
 	}), e._zod.onattach.push((e) => {
 		let n = e._zod.bag.minimum ?? -Infinity;
 		t.minimum > n && (e._zod.bag.minimum = t.minimum);
 	}), e._zod.check = (n) => {
 		let r = n.value;
 		if (r.length >= t.minimum) return;
-		let i = Mn(r);
+		let i = Nn(r);
 		n.issues.push({
 			origin: i,
 			code: "too_small",
@@ -4662,18 +4662,18 @@ var vr = (e) => {
 			continue: !t.abort
 		});
 	};
-}), Nr = /*@__PURE__*/ N("$ZodCheckLengthEquals", (e, t) => {
+}), Pr = /*@__PURE__*/ P("$ZodCheckLengthEquals", (e, t) => {
 	var n;
-	Tr.init(e, t), (n = e._zod.def).when ?? (n.when = (e) => {
+	Er.init(e, t), (n = e._zod.def).when ?? (n.when = (e) => {
 		let t = e.value;
-		return !cn(t) && t.length !== void 0;
+		return !ln(t) && t.length !== void 0;
 	}), e._zod.onattach.push((e) => {
 		let n = e._zod.bag;
 		n.minimum = t.length, n.maximum = t.length, n.length = t.length;
 	}), e._zod.check = (n) => {
 		let r = n.value, i = r.length;
 		if (i === t.length) return;
-		let a = Mn(r), o = i > t.length;
+		let a = Nn(r), o = i > t.length;
 		n.issues.push({
 			origin: a,
 			...o ? {
@@ -4690,9 +4690,9 @@ var vr = (e) => {
 			continue: !t.abort
 		});
 	};
-}), Pr = /*@__PURE__*/ N("$ZodCheckStringFormat", (e, t) => {
+}), Fr = /*@__PURE__*/ P("$ZodCheckStringFormat", (e, t) => {
 	var n, r;
-	Tr.init(e, t), e._zod.onattach.push((e) => {
+	Er.init(e, t), e._zod.onattach.push((e) => {
 		let n = e._zod.bag;
 		n.format = t.format, t.pattern && (n.patterns ??= /* @__PURE__ */ new Set(), n.patterns.add(t.pattern));
 	}), t.pattern ? (n = e._zod).check ?? (n.check = (n) => {
@@ -4706,8 +4706,8 @@ var vr = (e) => {
 			continue: !t.abort
 		});
 	}) : (r = e._zod).check ?? (r.check = () => {});
-}), Fr = /*@__PURE__*/ N("$ZodCheckRegex", (e, t) => {
-	Pr.init(e, t), e._zod.check = (n) => {
+}), Ir = /*@__PURE__*/ P("$ZodCheckRegex", (e, t) => {
+	Fr.init(e, t), e._zod.check = (n) => {
 		t.pattern.lastIndex = 0, !t.pattern.test(n.value) && n.issues.push({
 			origin: "string",
 			code: "invalid_format",
@@ -4718,13 +4718,13 @@ var vr = (e) => {
 			continue: !t.abort
 		});
 	};
-}), Ir = /*@__PURE__*/ N("$ZodCheckLowerCase", (e, t) => {
-	t.pattern ??= Cr, Pr.init(e, t);
-}), Lr = /*@__PURE__*/ N("$ZodCheckUpperCase", (e, t) => {
-	t.pattern ??= wr, Pr.init(e, t);
-}), Rr = /*@__PURE__*/ N("$ZodCheckIncludes", (e, t) => {
-	Tr.init(e, t);
-	let n = vn(t.includes), r = new RegExp(typeof t.position == "number" ? `^.{${t.position}}${n}` : n);
+}), Lr = /*@__PURE__*/ P("$ZodCheckLowerCase", (e, t) => {
+	t.pattern ??= wr, Fr.init(e, t);
+}), Rr = /*@__PURE__*/ P("$ZodCheckUpperCase", (e, t) => {
+	t.pattern ??= Tr, Fr.init(e, t);
+}), zr = /*@__PURE__*/ P("$ZodCheckIncludes", (e, t) => {
+	Er.init(e, t);
+	let n = yn(t.includes), r = new RegExp(typeof t.position == "number" ? `^.{${t.position}}${n}` : n);
 	t.pattern = r, e._zod.onattach.push((e) => {
 		let t = e._zod.bag;
 		t.patterns ??= /* @__PURE__ */ new Set(), t.patterns.add(r);
@@ -4739,9 +4739,9 @@ var vr = (e) => {
 			continue: !t.abort
 		});
 	};
-}), zr = /*@__PURE__*/ N("$ZodCheckStartsWith", (e, t) => {
-	Tr.init(e, t);
-	let n = RegExp(`^${vn(t.prefix)}.*`);
+}), Br = /*@__PURE__*/ P("$ZodCheckStartsWith", (e, t) => {
+	Er.init(e, t);
+	let n = RegExp(`^${yn(t.prefix)}.*`);
 	t.pattern ??= n, e._zod.onattach.push((e) => {
 		let t = e._zod.bag;
 		t.patterns ??= /* @__PURE__ */ new Set(), t.patterns.add(n);
@@ -4756,9 +4756,9 @@ var vr = (e) => {
 			continue: !t.abort
 		});
 	};
-}), Br = /*@__PURE__*/ N("$ZodCheckEndsWith", (e, t) => {
-	Tr.init(e, t);
-	let n = RegExp(`.*${vn(t.suffix)}$`);
+}), Vr = /*@__PURE__*/ P("$ZodCheckEndsWith", (e, t) => {
+	Er.init(e, t);
+	let n = RegExp(`.*${yn(t.suffix)}$`);
 	t.pattern ??= n, e._zod.onattach.push((e) => {
 		let t = e._zod.bag;
 		t.patterns ??= /* @__PURE__ */ new Set(), t.patterns.add(n);
@@ -4773,11 +4773,11 @@ var vr = (e) => {
 			continue: !t.abort
 		});
 	};
-}), Vr = /*@__PURE__*/ N("$ZodCheckOverwrite", (e, t) => {
-	Tr.init(e, t), e._zod.check = (e) => {
+}), Hr = /*@__PURE__*/ P("$ZodCheckOverwrite", (e, t) => {
+	Er.init(e, t), e._zod.check = (e) => {
 		e.value = t.tx(e.value);
 	};
-}), Hr = class {
+}), Ur = class {
 	constructor(e = []) {
 		this.content = [], this.indent = 0, this && (this.args = e);
 	}
@@ -4796,13 +4796,13 @@ var vr = (e) => {
 		let e = Function, t = this?.args, n = [...(this?.content ?? [""]).map((e) => `  ${e}`)];
 		return new e(...t, n.join("\n"));
 	}
-}, Ur = {
+}, Wr = {
 	major: 4,
 	minor: 0,
 	patch: 0
-}, I = /*@__PURE__*/ N("$ZodType", (e, t) => {
+}, L = /*@__PURE__*/ P("$ZodType", (e, t) => {
 	var n;
-	e ??= {}, e._zod.def = t, e._zod.bag = e._zod.bag || {}, e._zod.version = Ur;
+	e ??= {}, e._zod.def = t, e._zod.bag = e._zod.bag || {}, e._zod.version = Wr;
 	let r = [...e._zod.def.checks ?? []];
 	e._zod.traits.has("$ZodCheck") && r.unshift(e);
 	for (let t of r) for (let n of t._zod.onattach) n(e);
@@ -4811,19 +4811,19 @@ var vr = (e) => {
 	});
 	else {
 		let t = (e, t, n) => {
-			let r = On(e), i;
+			let r = kn(e), i;
 			for (let a of t) {
 				if (a._zod.def.when) {
 					if (!a._zod.def.when(e)) continue;
 				} else if (r) continue;
 				let t = e.issues.length, o = a._zod.check(e);
-				if (o instanceof Promise && n?.async === !1) throw new tn();
+				if (o instanceof Promise && n?.async === !1) throw new nn();
 				if (i || o instanceof Promise) i = (i ?? Promise.resolve()).then(async () => {
-					await o, e.issues.length !== t && (r ||= On(e, t));
+					await o, e.issues.length !== t && (r ||= kn(e, t));
 				});
 				else {
 					if (e.issues.length === t) continue;
-					r ||= On(e, t);
+					r ||= kn(e, t);
 				}
 			}
 			return i ? i.then(() => e) : e;
@@ -4831,7 +4831,7 @@ var vr = (e) => {
 		e._zod.run = (n, i) => {
 			let a = e._zod.parse(n, i);
 			if (a instanceof Promise) {
-				if (i.async === !1) throw new tn();
+				if (i.async === !1) throw new nn();
 				return a.then((e) => t(e, r, i));
 			}
 			return t(a, r, i);
@@ -4840,17 +4840,17 @@ var vr = (e) => {
 	e["~standard"] = {
 		validate: (t) => {
 			try {
-				let n = Wn(e, t);
+				let n = Gn(e, t);
 				return n.success ? { value: n.data } : { issues: n.error?.issues };
 			} catch {
-				return Kn(e, t).then((e) => e.success ? { value: e.data } : { issues: e.error?.issues });
+				return qn(e, t).then((e) => e.success ? { value: e.data } : { issues: e.error?.issues });
 			}
 		},
 		vendor: "zod",
 		version: 1
 	};
-}), Wr = /*@__PURE__*/ N("$ZodString", (e, t) => {
-	I.init(e, t), e._zod.pattern = [...e?._zod.bag?.patterns ?? []].pop() ?? vr(e._zod.bag), e._zod.parse = (n, r) => {
+}), Gr = /*@__PURE__*/ P("$ZodString", (e, t) => {
+	L.init(e, t), e._zod.pattern = [...e?._zod.bag?.patterns ?? []].pop() ?? yr(e._zod.bag), e._zod.parse = (n, r) => {
 		if (t.coerce) try {
 			n.value = String(n.value);
 		} catch {}
@@ -4861,11 +4861,11 @@ var vr = (e) => {
 			inst: e
 		}), n;
 	};
-}), L = /*@__PURE__*/ N("$ZodStringFormat", (e, t) => {
-	Pr.init(e, t), Wr.init(e, t);
-}), Gr = /*@__PURE__*/ N("$ZodGUID", (e, t) => {
-	t.pattern ??= er, L.init(e, t);
-}), Kr = /*@__PURE__*/ N("$ZodUUID", (e, t) => {
+}), R = /*@__PURE__*/ P("$ZodStringFormat", (e, t) => {
+	Fr.init(e, t), Gr.init(e, t);
+}), Kr = /*@__PURE__*/ P("$ZodGUID", (e, t) => {
+	t.pattern ??= tr, R.init(e, t);
+}), qr = /*@__PURE__*/ P("$ZodUUID", (e, t) => {
 	if (t.version) {
 		let e = {
 			v1: 1,
@@ -4878,20 +4878,20 @@ var vr = (e) => {
 			v8: 8
 		}[t.version];
 		if (e === void 0) throw Error(`Invalid UUID version: "${t.version}"`);
-		t.pattern ??= tr(e);
-	} else t.pattern ??= tr();
-	L.init(e, t);
-}), qr = /*@__PURE__*/ N("$ZodEmail", (e, t) => {
-	t.pattern ??= nr, L.init(e, t);
-}), Jr = /*@__PURE__*/ N("$ZodURL", (e, t) => {
-	L.init(e, t), e._zod.check = (n) => {
+		t.pattern ??= nr(e);
+	} else t.pattern ??= nr();
+	R.init(e, t);
+}), Jr = /*@__PURE__*/ P("$ZodEmail", (e, t) => {
+	t.pattern ??= rr, R.init(e, t);
+}), Yr = /*@__PURE__*/ P("$ZodURL", (e, t) => {
+	R.init(e, t), e._zod.check = (n) => {
 		try {
 			let r = n.value, i = new URL(r), a = i.href;
 			t.hostname && (t.hostname.lastIndex = 0, t.hostname.test(i.hostname) || n.issues.push({
 				code: "invalid_format",
 				format: "url",
 				note: "Invalid hostname",
-				pattern: dr.source,
+				pattern: fr.source,
 				input: n.value,
 				inst: e,
 				continue: !t.abort
@@ -4915,35 +4915,35 @@ var vr = (e) => {
 			});
 		}
 	};
-}), Yr = /*@__PURE__*/ N("$ZodEmoji", (e, t) => {
-	t.pattern ??= ir(), L.init(e, t);
-}), Xr = /*@__PURE__*/ N("$ZodNanoID", (e, t) => {
-	t.pattern ??= Qn, L.init(e, t);
-}), Zr = /*@__PURE__*/ N("$ZodCUID", (e, t) => {
-	t.pattern ??= qn, L.init(e, t);
-}), Qr = /*@__PURE__*/ N("$ZodCUID2", (e, t) => {
-	t.pattern ??= Jn, L.init(e, t);
-}), $r = /*@__PURE__*/ N("$ZodULID", (e, t) => {
-	t.pattern ??= Yn, L.init(e, t);
-}), ei = /*@__PURE__*/ N("$ZodXID", (e, t) => {
-	t.pattern ??= Xn, L.init(e, t);
-}), ti = /*@__PURE__*/ N("$ZodKSUID", (e, t) => {
-	t.pattern ??= Zn, L.init(e, t);
-}), ni = /*@__PURE__*/ N("$ZodISODateTime", (e, t) => {
-	t.pattern ??= _r(t), L.init(e, t);
-}), ri = /*@__PURE__*/ N("$ZodISODate", (e, t) => {
-	t.pattern ??= mr, L.init(e, t);
-}), ii = /*@__PURE__*/ N("$ZodISOTime", (e, t) => {
-	t.pattern ??= gr(t), L.init(e, t);
-}), ai = /*@__PURE__*/ N("$ZodISODuration", (e, t) => {
-	t.pattern ??= $n, L.init(e, t);
-}), oi = /*@__PURE__*/ N("$ZodIPv4", (e, t) => {
-	t.pattern ??= ar, L.init(e, t), e._zod.onattach.push((e) => {
+}), Xr = /*@__PURE__*/ P("$ZodEmoji", (e, t) => {
+	t.pattern ??= ar(), R.init(e, t);
+}), Zr = /*@__PURE__*/ P("$ZodNanoID", (e, t) => {
+	t.pattern ??= $n, R.init(e, t);
+}), Qr = /*@__PURE__*/ P("$ZodCUID", (e, t) => {
+	t.pattern ??= Jn, R.init(e, t);
+}), $r = /*@__PURE__*/ P("$ZodCUID2", (e, t) => {
+	t.pattern ??= Yn, R.init(e, t);
+}), ei = /*@__PURE__*/ P("$ZodULID", (e, t) => {
+	t.pattern ??= Xn, R.init(e, t);
+}), ti = /*@__PURE__*/ P("$ZodXID", (e, t) => {
+	t.pattern ??= Zn, R.init(e, t);
+}), ni = /*@__PURE__*/ P("$ZodKSUID", (e, t) => {
+	t.pattern ??= Qn, R.init(e, t);
+}), ri = /*@__PURE__*/ P("$ZodISODateTime", (e, t) => {
+	t.pattern ??= vr(t), R.init(e, t);
+}), ii = /*@__PURE__*/ P("$ZodISODate", (e, t) => {
+	t.pattern ??= hr, R.init(e, t);
+}), ai = /*@__PURE__*/ P("$ZodISOTime", (e, t) => {
+	t.pattern ??= _r(t), R.init(e, t);
+}), oi = /*@__PURE__*/ P("$ZodISODuration", (e, t) => {
+	t.pattern ??= er, R.init(e, t);
+}), si = /*@__PURE__*/ P("$ZodIPv4", (e, t) => {
+	t.pattern ??= or, R.init(e, t), e._zod.onattach.push((e) => {
 		let t = e._zod.bag;
 		t.format = "ipv4";
 	});
-}), si = /*@__PURE__*/ N("$ZodIPv6", (e, t) => {
-	t.pattern ??= or, L.init(e, t), e._zod.onattach.push((e) => {
+}), ci = /*@__PURE__*/ P("$ZodIPv6", (e, t) => {
+	t.pattern ??= sr, R.init(e, t), e._zod.onattach.push((e) => {
 		let t = e._zod.bag;
 		t.format = "ipv6";
 	}), e._zod.check = (n) => {
@@ -4959,10 +4959,10 @@ var vr = (e) => {
 			});
 		}
 	};
-}), ci = /*@__PURE__*/ N("$ZodCIDRv4", (e, t) => {
-	t.pattern ??= sr, L.init(e, t);
-}), li = /*@__PURE__*/ N("$ZodCIDRv6", (e, t) => {
-	t.pattern ??= cr, L.init(e, t), e._zod.check = (n) => {
+}), li = /*@__PURE__*/ P("$ZodCIDRv4", (e, t) => {
+	t.pattern ??= cr, R.init(e, t);
+}), ui = /*@__PURE__*/ P("$ZodCIDRv6", (e, t) => {
+	t.pattern ??= lr, R.init(e, t), e._zod.check = (n) => {
 		let [r, i] = n.value.split("/");
 		try {
 			if (!i) throw Error();
@@ -4980,7 +4980,7 @@ var vr = (e) => {
 		}
 	};
 });
-function ui(e) {
+function di(e) {
 	if (e === "") return !0;
 	if (e.length % 4 != 0) return !1;
 	try {
@@ -4989,11 +4989,11 @@ function ui(e) {
 		return !1;
 	}
 }
-var di = /*@__PURE__*/ N("$ZodBase64", (e, t) => {
-	t.pattern ??= lr, L.init(e, t), e._zod.onattach.push((e) => {
+var fi = /*@__PURE__*/ P("$ZodBase64", (e, t) => {
+	t.pattern ??= ur, R.init(e, t), e._zod.onattach.push((e) => {
 		e._zod.bag.contentEncoding = "base64";
 	}), e._zod.check = (n) => {
-		ui(n.value) || n.issues.push({
+		di(n.value) || n.issues.push({
 			code: "invalid_format",
 			format: "base64",
 			input: n.value,
@@ -5002,16 +5002,16 @@ var di = /*@__PURE__*/ N("$ZodBase64", (e, t) => {
 		});
 	};
 });
-function fi(e) {
-	if (!ur.test(e)) return !1;
+function pi(e) {
+	if (!dr.test(e)) return !1;
 	let t = e.replace(/[-_]/g, (e) => e === "-" ? "+" : "/");
-	return ui(t.padEnd(Math.ceil(t.length / 4) * 4, "="));
+	return di(t.padEnd(Math.ceil(t.length / 4) * 4, "="));
 }
-var pi = /*@__PURE__*/ N("$ZodBase64URL", (e, t) => {
-	t.pattern ??= ur, L.init(e, t), e._zod.onattach.push((e) => {
+var mi = /*@__PURE__*/ P("$ZodBase64URL", (e, t) => {
+	t.pattern ??= dr, R.init(e, t), e._zod.onattach.push((e) => {
 		e._zod.bag.contentEncoding = "base64url";
 	}), e._zod.check = (n) => {
-		fi(n.value) || n.issues.push({
+		pi(n.value) || n.issues.push({
 			code: "invalid_format",
 			format: "base64url",
 			input: n.value,
@@ -5019,10 +5019,10 @@ var pi = /*@__PURE__*/ N("$ZodBase64URL", (e, t) => {
 			continue: !t.abort
 		});
 	};
-}), mi = /*@__PURE__*/ N("$ZodE164", (e, t) => {
-	t.pattern ??= fr, L.init(e, t);
+}), hi = /*@__PURE__*/ P("$ZodE164", (e, t) => {
+	t.pattern ??= pr, R.init(e, t);
 });
-function hi(e, t = null) {
+function gi(e, t = null) {
 	try {
 		let n = e.split(".");
 		if (n.length !== 3) return !1;
@@ -5034,9 +5034,9 @@ function hi(e, t = null) {
 		return !1;
 	}
 }
-var gi = /*@__PURE__*/ N("$ZodJWT", (e, t) => {
-	L.init(e, t), e._zod.check = (n) => {
-		hi(n.value, t.alg) || n.issues.push({
+var _i = /*@__PURE__*/ P("$ZodJWT", (e, t) => {
+	R.init(e, t), e._zod.check = (n) => {
+		gi(n.value, t.alg) || n.issues.push({
 			code: "invalid_format",
 			format: "jwt",
 			input: n.value,
@@ -5044,8 +5044,8 @@ var gi = /*@__PURE__*/ N("$ZodJWT", (e, t) => {
 			continue: !t.abort
 		});
 	};
-}), _i = /*@__PURE__*/ N("$ZodNumber", (e, t) => {
-	I.init(e, t), e._zod.pattern = e._zod.bag.pattern ?? br, e._zod.parse = (n, r) => {
+}), vi = /*@__PURE__*/ P("$ZodNumber", (e, t) => {
+	L.init(e, t), e._zod.pattern = e._zod.bag.pattern ?? xr, e._zod.parse = (n, r) => {
 		if (t.coerce) try {
 			n.value = Number(n.value);
 		} catch {}
@@ -5060,10 +5060,10 @@ var gi = /*@__PURE__*/ N("$ZodJWT", (e, t) => {
 			...a ? { received: a } : {}
 		}), n;
 	};
-}), vi = /*@__PURE__*/ N("$ZodNumber", (e, t) => {
-	Ar.init(e, t), _i.init(e, t);
-}), yi = /*@__PURE__*/ N("$ZodBoolean", (e, t) => {
-	I.init(e, t), e._zod.pattern = xr, e._zod.parse = (n, r) => {
+}), yi = /*@__PURE__*/ P("$ZodNumber", (e, t) => {
+	jr.init(e, t), vi.init(e, t);
+}), bi = /*@__PURE__*/ P("$ZodBoolean", (e, t) => {
+	L.init(e, t), e._zod.pattern = Sr, e._zod.parse = (n, r) => {
 		if (t.coerce) try {
 			n.value = !!n.value;
 		} catch {}
@@ -5075,8 +5075,8 @@ var gi = /*@__PURE__*/ N("$ZodJWT", (e, t) => {
 			inst: e
 		}), n;
 	};
-}), bi = /*@__PURE__*/ N("$ZodNull", (e, t) => {
-	I.init(e, t), e._zod.pattern = Sr, e._zod.values = /* @__PURE__ */ new Set([null]), e._zod.parse = (t, n) => {
+}), xi = /*@__PURE__*/ P("$ZodNull", (e, t) => {
+	L.init(e, t), e._zod.pattern = Cr, e._zod.values = /* @__PURE__ */ new Set([null]), e._zod.parse = (t, n) => {
 		let r = t.value;
 		return r === null || t.issues.push({
 			expected: "null",
@@ -5085,21 +5085,21 @@ var gi = /*@__PURE__*/ N("$ZodJWT", (e, t) => {
 			inst: e
 		}), t;
 	};
-}), xi = /*@__PURE__*/ N("$ZodUnknown", (e, t) => {
-	I.init(e, t), e._zod.parse = (e) => e;
-}), Si = /*@__PURE__*/ N("$ZodNever", (e, t) => {
-	I.init(e, t), e._zod.parse = (t, n) => (t.issues.push({
+}), Si = /*@__PURE__*/ P("$ZodUnknown", (e, t) => {
+	L.init(e, t), e._zod.parse = (e) => e;
+}), Ci = /*@__PURE__*/ P("$ZodNever", (e, t) => {
+	L.init(e, t), e._zod.parse = (t, n) => (t.issues.push({
 		expected: "never",
 		code: "invalid_type",
 		input: t.value,
 		inst: e
 	}), t);
 });
-function Ci(e, t, n) {
-	e.issues.length && t.issues.push(...kn(n, e.issues)), t.value[n] = e.value;
+function wi(e, t, n) {
+	e.issues.length && t.issues.push(...An(n, e.issues)), t.value[n] = e.value;
 }
-var wi = /*@__PURE__*/ N("$ZodArray", (e, t) => {
-	I.init(e, t), e._zod.parse = (n, r) => {
+var Ti = /*@__PURE__*/ P("$ZodArray", (e, t) => {
+	L.init(e, t), e._zod.parse = (n, r) => {
 		let i = n.value;
 		if (!Array.isArray(i)) return n.issues.push({
 			expected: "array",
@@ -5114,23 +5114,23 @@ var wi = /*@__PURE__*/ N("$ZodArray", (e, t) => {
 				value: o,
 				issues: []
 			}, r);
-			s instanceof Promise ? a.push(s.then((t) => Ci(t, n, e))) : Ci(s, n, e);
+			s instanceof Promise ? a.push(s.then((t) => wi(t, n, e))) : wi(s, n, e);
 		}
 		return a.length ? Promise.all(a).then(() => n) : n;
 	};
 });
-function Ti(e, t, n) {
-	e.issues.length && t.issues.push(...kn(n, e.issues)), t.value[n] = e.value;
+function Ei(e, t, n) {
+	e.issues.length && t.issues.push(...An(n, e.issues)), t.value[n] = e.value;
 }
-function Ei(e, t, n, r) {
-	e.issues.length ? r[n] === void 0 ? n in r ? t.value[n] = void 0 : t.value[n] = e.value : t.issues.push(...kn(n, e.issues)) : e.value === void 0 ? n in r && (t.value[n] = void 0) : t.value[n] = e.value;
+function Di(e, t, n, r) {
+	e.issues.length ? r[n] === void 0 ? n in r ? t.value[n] = void 0 : t.value[n] = e.value : t.issues.push(...An(n, e.issues)) : e.value === void 0 ? n in r && (t.value[n] = void 0) : t.value[n] = e.value;
 }
-var Di = /*@__PURE__*/ N("$ZodObject", (e, t) => {
-	I.init(e, t);
-	let n = sn(() => {
+var Oi = /*@__PURE__*/ P("$ZodObject", (e, t) => {
+	L.init(e, t);
+	let n = cn(() => {
 		let e = Object.keys(t.shape);
-		for (let n of e) if (!(t.shape[n] instanceof I)) throw Error(`Invalid element at key "${n}": expected a Zod schema`);
-		let n = bn(t.shape);
+		for (let n of e) if (!(t.shape[n] instanceof L)) throw Error(`Invalid element at key "${n}": expected a Zod schema`);
+		let n = xn(t.shape);
 		return {
 			shape: t.shape,
 			keys: e,
@@ -5139,7 +5139,7 @@ var Di = /*@__PURE__*/ N("$ZodObject", (e, t) => {
 			optionalKeys: new Set(n)
 		};
 	});
-	P(e._zod, "propValues", () => {
+	F(e._zod, "propValues", () => {
 		let e = t.shape, n = {};
 		for (let t in e) {
 			let r = e[t]._zod;
@@ -5151,12 +5151,12 @@ var Di = /*@__PURE__*/ N("$ZodObject", (e, t) => {
 		return n;
 	});
 	let r = (e) => {
-		let t = new Hr([
+		let t = new Ur([
 			"shape",
 			"payload",
 			"ctx"
 		]), r = n.value, i = (e) => {
-			let t = fn(e);
+			let t = pn(e);
 			return `shape[${t}]._zod.run({ value: input[${t}], issues: [] }, ctx)`;
 		};
 		t.write("const input = payload.value;");
@@ -5166,7 +5166,7 @@ var Di = /*@__PURE__*/ N("$ZodObject", (e, t) => {
 		for (let e of r.keys) if (r.optionalKeys.has(e)) {
 			let n = a[e];
 			t.write(`const ${n} = ${i(e)};`);
-			let r = fn(e);
+			let r = pn(e);
 			t.write(`
         if (${n}.issues.length) {
           if (input[${r}] === undefined) {
@@ -5192,13 +5192,13 @@ var Di = /*@__PURE__*/ N("$ZodObject", (e, t) => {
 			t.write(`const ${n} = ${i(e)};`), t.write(`
           if (${n}.issues.length) payload.issues = payload.issues.concat(${n}.issues.map(iss => ({
             ...iss,
-            path: iss.path ? [${fn(e)}, ...iss.path] : [${fn(e)}]
-          })));`), t.write(`newResult[${fn(e)}] = ${n}.value`);
+            path: iss.path ? [${pn(e)}, ...iss.path] : [${pn(e)}]
+          })));`), t.write(`newResult[${pn(e)}] = ${n}.value`);
 		}
 		t.write("payload.value = newResult;"), t.write("return payload;");
 		let s = t.compile();
 		return (t, n) => s(e, t, n);
-	}, i, a = mn, o = !nn.jitless, s = o && hn.value, c = t.catchall, l;
+	}, i, a = hn, o = !rn.jitless, s = o && gn.value, c = t.catchall, l;
 	e._zod.parse = (u, d) => {
 		l ??= n.value;
 		let f = u.value;
@@ -5218,7 +5218,7 @@ var Di = /*@__PURE__*/ N("$ZodObject", (e, t) => {
 					value: f[t],
 					issues: []
 				}, d), i = n._zod.optin === "optional" && n._zod.optout === "optional";
-				r instanceof Promise ? p.push(r.then((e) => i ? Ei(e, u, t, f) : Ti(e, u, t))) : i ? Ei(r, u, t, f) : Ti(r, u, t);
+				r instanceof Promise ? p.push(r.then((e) => i ? Di(e, u, t, f) : Ei(e, u, t))) : i ? Di(r, u, t, f) : Ei(r, u, t);
 			}
 		}
 		if (!c) return p.length ? Promise.all(p).then(() => u) : u;
@@ -5233,7 +5233,7 @@ var Di = /*@__PURE__*/ N("$ZodObject", (e, t) => {
 				value: f[e],
 				issues: []
 			}, d);
-			t instanceof Promise ? p.push(t.then((t) => Ti(t, u, e))) : Ti(t, u, e);
+			t instanceof Promise ? p.push(t.then((t) => Ei(t, u, e))) : Ei(t, u, e);
 		}
 		return m.length && u.issues.push({
 			code: "unrecognized_keys",
@@ -5243,22 +5243,22 @@ var Di = /*@__PURE__*/ N("$ZodObject", (e, t) => {
 		}), p.length ? Promise.all(p).then(() => u) : u;
 	};
 });
-function Oi(e, t, n, r) {
+function ki(e, t, n, r) {
 	for (let n of e) if (n.issues.length === 0) return t.value = n.value, t;
 	return t.issues.push({
 		code: "invalid_union",
 		input: t.value,
 		inst: n,
-		errors: e.map((e) => e.issues.map((e) => jn(e, r, rn())))
+		errors: e.map((e) => e.issues.map((e) => Mn(e, r, an())))
 	}), t;
 }
-var ki = /*@__PURE__*/ N("$ZodUnion", (e, t) => {
-	I.init(e, t), P(e._zod, "optin", () => t.options.some((e) => e._zod.optin === "optional") ? "optional" : void 0), P(e._zod, "optout", () => t.options.some((e) => e._zod.optout === "optional") ? "optional" : void 0), P(e._zod, "values", () => {
+var Ai = /*@__PURE__*/ P("$ZodUnion", (e, t) => {
+	L.init(e, t), F(e._zod, "optin", () => t.options.some((e) => e._zod.optin === "optional") ? "optional" : void 0), F(e._zod, "optout", () => t.options.some((e) => e._zod.optout === "optional") ? "optional" : void 0), F(e._zod, "values", () => {
 		if (t.options.every((e) => e._zod.values)) return new Set(t.options.flatMap((e) => Array.from(e._zod.values)));
-	}), P(e._zod, "pattern", () => {
+	}), F(e._zod, "pattern", () => {
 		if (t.options.every((e) => e._zod.pattern)) {
 			let e = t.options.map((e) => e._zod.pattern);
-			return RegExp(`^(${e.map((e) => ln(e.source)).join("|")})$`);
+			return RegExp(`^(${e.map((e) => un(e.source)).join("|")})$`);
 		}
 	}), e._zod.parse = (n, r) => {
 		let i = !1, a = [];
@@ -5273,12 +5273,12 @@ var ki = /*@__PURE__*/ N("$ZodUnion", (e, t) => {
 				a.push(t);
 			}
 		}
-		return i ? Promise.all(a).then((t) => Oi(t, n, e, r)) : Oi(a, n, e, r);
+		return i ? Promise.all(a).then((t) => ki(t, n, e, r)) : ki(a, n, e, r);
 	};
-}), Ai = /*@__PURE__*/ N("$ZodDiscriminatedUnion", (e, t) => {
-	ki.init(e, t);
+}), ji = /*@__PURE__*/ P("$ZodDiscriminatedUnion", (e, t) => {
+	Ai.init(e, t);
 	let n = e._zod.parse;
-	P(e._zod, "propValues", () => {
+	F(e._zod, "propValues", () => {
 		let e = {};
 		for (let n of t.options) {
 			let r = n._zod.propValues;
@@ -5290,7 +5290,7 @@ var ki = /*@__PURE__*/ N("$ZodUnion", (e, t) => {
 		}
 		return e;
 	});
-	let r = sn(() => {
+	let r = cn(() => {
 		let e = t.options, n = /* @__PURE__ */ new Map();
 		for (let r of e) {
 			let e = r._zod.propValues[t.discriminator];
@@ -5304,7 +5304,7 @@ var ki = /*@__PURE__*/ N("$ZodUnion", (e, t) => {
 	});
 	e._zod.parse = (i, a) => {
 		let o = i.value;
-		if (!mn(o)) return i.issues.push({
+		if (!hn(o)) return i.issues.push({
 			code: "invalid_type",
 			expected: "object",
 			input: o,
@@ -5320,8 +5320,8 @@ var ki = /*@__PURE__*/ N("$ZodUnion", (e, t) => {
 			inst: e
 		}), i);
 	};
-}), ji = /*@__PURE__*/ N("$ZodIntersection", (e, t) => {
-	I.init(e, t), e._zod.parse = (e, n) => {
+}), Mi = /*@__PURE__*/ P("$ZodIntersection", (e, t) => {
+	L.init(e, t), e._zod.parse = (e, n) => {
 		let r = e.value, i = t.left._zod.run({
 			value: r,
 			issues: []
@@ -5329,21 +5329,21 @@ var ki = /*@__PURE__*/ N("$ZodUnion", (e, t) => {
 			value: r,
 			issues: []
 		}, n);
-		return i instanceof Promise || a instanceof Promise ? Promise.all([i, a]).then(([t, n]) => Ni(e, t, n)) : Ni(e, i, a);
+		return i instanceof Promise || a instanceof Promise ? Promise.all([i, a]).then(([t, n]) => Pi(e, t, n)) : Pi(e, i, a);
 	};
 });
-function Mi(e, t) {
+function Ni(e, t) {
 	if (e === t || e instanceof Date && t instanceof Date && +e == +t) return {
 		valid: !0,
 		data: e
 	};
-	if (gn(e) && gn(t)) {
+	if (_n(e) && _n(t)) {
 		let n = Object.keys(t), r = Object.keys(e).filter((e) => n.indexOf(e) !== -1), i = {
 			...e,
 			...t
 		};
 		for (let n of r) {
-			let r = Mi(e[n], t[n]);
+			let r = Ni(e[n], t[n]);
 			if (!r.valid) return {
 				valid: !1,
 				mergeErrorPath: [n, ...r.mergeErrorPath]
@@ -5362,7 +5362,7 @@ function Mi(e, t) {
 		};
 		let n = [];
 		for (let r = 0; r < e.length; r++) {
-			let i = e[r], a = t[r], o = Mi(i, a);
+			let i = e[r], a = t[r], o = Ni(i, a);
 			if (!o.valid) return {
 				valid: !1,
 				mergeErrorPath: [r, ...o.mergeErrorPath]
@@ -5379,16 +5379,16 @@ function Mi(e, t) {
 		mergeErrorPath: []
 	};
 }
-function Ni(e, t, n) {
-	if (t.issues.length && e.issues.push(...t.issues), n.issues.length && e.issues.push(...n.issues), On(e)) return e;
-	let r = Mi(t.value, n.value);
+function Pi(e, t, n) {
+	if (t.issues.length && e.issues.push(...t.issues), n.issues.length && e.issues.push(...n.issues), kn(e)) return e;
+	let r = Ni(t.value, n.value);
 	if (!r.valid) throw Error(`Unmergable intersection. Error path: ${JSON.stringify(r.mergeErrorPath)}`);
 	return e.value = r.data, e;
 }
-var Pi = /*@__PURE__*/ N("$ZodRecord", (e, t) => {
-	I.init(e, t), e._zod.parse = (n, r) => {
+var Fi = /*@__PURE__*/ P("$ZodRecord", (e, t) => {
+	L.init(e, t), e._zod.parse = (n, r) => {
 		let i = n.value;
-		if (!gn(i)) return n.issues.push({
+		if (!_n(i)) return n.issues.push({
 			expected: "record",
 			code: "invalid_type",
 			input: i,
@@ -5404,8 +5404,8 @@ var Pi = /*@__PURE__*/ N("$ZodRecord", (e, t) => {
 					issues: []
 				}, r);
 				o instanceof Promise ? a.push(o.then((t) => {
-					t.issues.length && n.issues.push(...kn(e, t.issues)), n.value[e] = t.value;
-				})) : (o.issues.length && n.issues.push(...kn(e, o.issues)), n.value[e] = o.value);
+					t.issues.length && n.issues.push(...An(e, t.issues)), n.value[e] = t.value;
+				})) : (o.issues.length && n.issues.push(...An(e, o.issues)), n.value[e] = o.value);
 			}
 			let s;
 			for (let e in i) o.has(e) || (s ??= [], s.push(e));
@@ -5428,7 +5428,7 @@ var Pi = /*@__PURE__*/ N("$ZodRecord", (e, t) => {
 					n.issues.push({
 						origin: "record",
 						code: "invalid_key",
-						issues: s.issues.map((e) => jn(e, r, rn())),
+						issues: s.issues.map((e) => Mn(e, r, an())),
 						input: o,
 						path: [o],
 						inst: e
@@ -5440,16 +5440,16 @@ var Pi = /*@__PURE__*/ N("$ZodRecord", (e, t) => {
 					issues: []
 				}, r);
 				c instanceof Promise ? a.push(c.then((e) => {
-					e.issues.length && n.issues.push(...kn(o, e.issues)), n.value[s.value] = e.value;
-				})) : (c.issues.length && n.issues.push(...kn(o, c.issues)), n.value[s.value] = c.value);
+					e.issues.length && n.issues.push(...An(o, e.issues)), n.value[s.value] = e.value;
+				})) : (c.issues.length && n.issues.push(...An(o, c.issues)), n.value[s.value] = c.value);
 			}
 		}
 		return a.length ? Promise.all(a).then(() => n) : n;
 	};
-}), Fi = /*@__PURE__*/ N("$ZodEnum", (e, t) => {
-	I.init(e, t);
-	let n = an(t.entries);
-	e._zod.values = new Set(n), e._zod.pattern = RegExp(`^(${n.filter((e) => _n.has(typeof e)).map((e) => typeof e == "string" ? vn(e) : e.toString()).join("|")})$`), e._zod.parse = (t, r) => {
+}), Ii = /*@__PURE__*/ P("$ZodEnum", (e, t) => {
+	L.init(e, t);
+	let n = on(t.entries);
+	e._zod.values = new Set(n), e._zod.pattern = RegExp(`^(${n.filter((e) => vn.has(typeof e)).map((e) => typeof e == "string" ? yn(e) : e.toString()).join("|")})$`), e._zod.parse = (t, r) => {
 		let i = t.value;
 		return e._zod.values.has(i) || t.issues.push({
 			code: "invalid_value",
@@ -5458,8 +5458,8 @@ var Pi = /*@__PURE__*/ N("$ZodRecord", (e, t) => {
 			inst: e
 		}), t;
 	};
-}), Ii = /*@__PURE__*/ N("$ZodLiteral", (e, t) => {
-	I.init(e, t), e._zod.values = new Set(t.values), e._zod.pattern = RegExp(`^(${t.values.map((e) => typeof e == "string" ? vn(e) : e ? e.toString() : String(e)).join("|")})$`), e._zod.parse = (n, r) => {
+}), Li = /*@__PURE__*/ P("$ZodLiteral", (e, t) => {
+	L.init(e, t), e._zod.values = new Set(t.values), e._zod.pattern = RegExp(`^(${t.values.map((e) => typeof e == "string" ? yn(e) : e ? e.toString() : String(e)).join("|")})$`), e._zod.parse = (n, r) => {
 		let i = n.value;
 		return e._zod.values.has(i) || n.issues.push({
 			code: "invalid_value",
@@ -5468,45 +5468,45 @@ var Pi = /*@__PURE__*/ N("$ZodRecord", (e, t) => {
 			inst: e
 		}), n;
 	};
-}), Li = /*@__PURE__*/ N("$ZodTransform", (e, t) => {
-	I.init(e, t), e._zod.parse = (e, n) => {
+}), Ri = /*@__PURE__*/ P("$ZodTransform", (e, t) => {
+	L.init(e, t), e._zod.parse = (e, n) => {
 		let r = t.transform(e.value, e);
 		if (n.async) return (r instanceof Promise ? r : Promise.resolve(r)).then((t) => (e.value = t, e));
-		if (r instanceof Promise) throw new tn();
+		if (r instanceof Promise) throw new nn();
 		return e.value = r, e;
 	};
-}), Ri = /*@__PURE__*/ N("$ZodOptional", (e, t) => {
-	I.init(e, t), e._zod.optin = "optional", e._zod.optout = "optional", P(e._zod, "values", () => t.innerType._zod.values ? /* @__PURE__ */ new Set([...t.innerType._zod.values, void 0]) : void 0), P(e._zod, "pattern", () => {
+}), zi = /*@__PURE__*/ P("$ZodOptional", (e, t) => {
+	L.init(e, t), e._zod.optin = "optional", e._zod.optout = "optional", F(e._zod, "values", () => t.innerType._zod.values ? /* @__PURE__ */ new Set([...t.innerType._zod.values, void 0]) : void 0), F(e._zod, "pattern", () => {
 		let e = t.innerType._zod.pattern;
-		return e ? RegExp(`^(${ln(e.source)})?$`) : void 0;
+		return e ? RegExp(`^(${un(e.source)})?$`) : void 0;
 	}), e._zod.parse = (e, n) => t.innerType._zod.optin === "optional" ? t.innerType._zod.run(e, n) : e.value === void 0 ? e : t.innerType._zod.run(e, n);
-}), zi = /*@__PURE__*/ N("$ZodNullable", (e, t) => {
-	I.init(e, t), P(e._zod, "optin", () => t.innerType._zod.optin), P(e._zod, "optout", () => t.innerType._zod.optout), P(e._zod, "pattern", () => {
+}), Bi = /*@__PURE__*/ P("$ZodNullable", (e, t) => {
+	L.init(e, t), F(e._zod, "optin", () => t.innerType._zod.optin), F(e._zod, "optout", () => t.innerType._zod.optout), F(e._zod, "pattern", () => {
 		let e = t.innerType._zod.pattern;
-		return e ? RegExp(`^(${ln(e.source)}|null)$`) : void 0;
-	}), P(e._zod, "values", () => t.innerType._zod.values ? /* @__PURE__ */ new Set([...t.innerType._zod.values, null]) : void 0), e._zod.parse = (e, n) => e.value === null ? e : t.innerType._zod.run(e, n);
-}), Bi = /*@__PURE__*/ N("$ZodDefault", (e, t) => {
-	I.init(e, t), e._zod.optin = "optional", P(e._zod, "values", () => t.innerType._zod.values), e._zod.parse = (e, n) => {
+		return e ? RegExp(`^(${un(e.source)}|null)$`) : void 0;
+	}), F(e._zod, "values", () => t.innerType._zod.values ? /* @__PURE__ */ new Set([...t.innerType._zod.values, null]) : void 0), e._zod.parse = (e, n) => e.value === null ? e : t.innerType._zod.run(e, n);
+}), Vi = /*@__PURE__*/ P("$ZodDefault", (e, t) => {
+	L.init(e, t), e._zod.optin = "optional", F(e._zod, "values", () => t.innerType._zod.values), e._zod.parse = (e, n) => {
 		if (e.value === void 0) return e.value = t.defaultValue, e;
 		let r = t.innerType._zod.run(e, n);
-		return r instanceof Promise ? r.then((e) => Vi(e, t)) : Vi(r, t);
+		return r instanceof Promise ? r.then((e) => Hi(e, t)) : Hi(r, t);
 	};
 });
-function Vi(e, t) {
+function Hi(e, t) {
 	return e.value === void 0 && (e.value = t.defaultValue), e;
 }
-var Hi = /*@__PURE__*/ N("$ZodPrefault", (e, t) => {
-	I.init(e, t), e._zod.optin = "optional", P(e._zod, "values", () => t.innerType._zod.values), e._zod.parse = (e, n) => (e.value === void 0 && (e.value = t.defaultValue), t.innerType._zod.run(e, n));
-}), Ui = /*@__PURE__*/ N("$ZodNonOptional", (e, t) => {
-	I.init(e, t), P(e._zod, "values", () => {
+var Ui = /*@__PURE__*/ P("$ZodPrefault", (e, t) => {
+	L.init(e, t), e._zod.optin = "optional", F(e._zod, "values", () => t.innerType._zod.values), e._zod.parse = (e, n) => (e.value === void 0 && (e.value = t.defaultValue), t.innerType._zod.run(e, n));
+}), Wi = /*@__PURE__*/ P("$ZodNonOptional", (e, t) => {
+	L.init(e, t), F(e._zod, "values", () => {
 		let e = t.innerType._zod.values;
 		return e ? new Set([...e].filter((e) => e !== void 0)) : void 0;
 	}), e._zod.parse = (n, r) => {
 		let i = t.innerType._zod.run(n, r);
-		return i instanceof Promise ? i.then((t) => Wi(t, e)) : Wi(i, e);
+		return i instanceof Promise ? i.then((t) => Gi(t, e)) : Gi(i, e);
 	};
 });
-function Wi(e, t) {
+function Gi(e, t) {
 	return !e.issues.length && e.value === void 0 && e.issues.push({
 		code: "invalid_type",
 		expected: "nonoptional",
@@ -5514,48 +5514,48 @@ function Wi(e, t) {
 		inst: t
 	}), e;
 }
-var Gi = /*@__PURE__*/ N("$ZodCatch", (e, t) => {
-	I.init(e, t), e._zod.optin = "optional", P(e._zod, "optout", () => t.innerType._zod.optout), P(e._zod, "values", () => t.innerType._zod.values), e._zod.parse = (e, n) => {
+var Ki = /*@__PURE__*/ P("$ZodCatch", (e, t) => {
+	L.init(e, t), e._zod.optin = "optional", F(e._zod, "optout", () => t.innerType._zod.optout), F(e._zod, "values", () => t.innerType._zod.values), e._zod.parse = (e, n) => {
 		let r = t.innerType._zod.run(e, n);
 		return r instanceof Promise ? r.then((r) => (e.value = r.value, r.issues.length && (e.value = t.catchValue({
 			...e,
-			error: { issues: r.issues.map((e) => jn(e, n, rn())) },
+			error: { issues: r.issues.map((e) => Mn(e, n, an())) },
 			input: e.value
 		}), e.issues = []), e)) : (e.value = r.value, r.issues.length && (e.value = t.catchValue({
 			...e,
-			error: { issues: r.issues.map((e) => jn(e, n, rn())) },
+			error: { issues: r.issues.map((e) => Mn(e, n, an())) },
 			input: e.value
 		}), e.issues = []), e);
 	};
-}), Ki = /*@__PURE__*/ N("$ZodPipe", (e, t) => {
-	I.init(e, t), P(e._zod, "values", () => t.in._zod.values), P(e._zod, "optin", () => t.in._zod.optin), P(e._zod, "optout", () => t.out._zod.optout), e._zod.parse = (e, n) => {
+}), qi = /*@__PURE__*/ P("$ZodPipe", (e, t) => {
+	L.init(e, t), F(e._zod, "values", () => t.in._zod.values), F(e._zod, "optin", () => t.in._zod.optin), F(e._zod, "optout", () => t.out._zod.optout), e._zod.parse = (e, n) => {
 		let r = t.in._zod.run(e, n);
-		return r instanceof Promise ? r.then((e) => qi(e, t, n)) : qi(r, t, n);
+		return r instanceof Promise ? r.then((e) => Ji(e, t, n)) : Ji(r, t, n);
 	};
 });
-function qi(e, t, n) {
-	return On(e) ? e : t.out._zod.run({
+function Ji(e, t, n) {
+	return kn(e) ? e : t.out._zod.run({
 		value: e.value,
 		issues: e.issues
 	}, n);
 }
-var Ji = /*@__PURE__*/ N("$ZodReadonly", (e, t) => {
-	I.init(e, t), P(e._zod, "propValues", () => t.innerType._zod.propValues), P(e._zod, "values", () => t.innerType._zod.values), P(e._zod, "optin", () => t.innerType._zod.optin), P(e._zod, "optout", () => t.innerType._zod.optout), e._zod.parse = (e, n) => {
+var Yi = /*@__PURE__*/ P("$ZodReadonly", (e, t) => {
+	L.init(e, t), F(e._zod, "propValues", () => t.innerType._zod.propValues), F(e._zod, "values", () => t.innerType._zod.values), F(e._zod, "optin", () => t.innerType._zod.optin), F(e._zod, "optout", () => t.innerType._zod.optout), e._zod.parse = (e, n) => {
 		let r = t.innerType._zod.run(e, n);
-		return r instanceof Promise ? r.then(Yi) : Yi(r);
+		return r instanceof Promise ? r.then(Xi) : Xi(r);
 	};
 });
-function Yi(e) {
+function Xi(e) {
 	return e.value = Object.freeze(e.value), e;
 }
-var Xi = /*@__PURE__*/ N("$ZodCustom", (e, t) => {
-	Tr.init(e, t), I.init(e, t), e._zod.parse = (e, t) => e, e._zod.check = (n) => {
+var Zi = /*@__PURE__*/ P("$ZodCustom", (e, t) => {
+	Er.init(e, t), L.init(e, t), e._zod.parse = (e, t) => e, e._zod.check = (n) => {
 		let r = n.value, i = t.fn(r);
-		if (i instanceof Promise) return i.then((t) => Zi(t, n, r, e));
-		Zi(i, n, r, e);
+		if (i instanceof Promise) return i.then((t) => Qi(t, n, r, e));
+		Qi(i, n, r, e);
 	};
 });
-function Zi(e, t, n, r) {
+function Qi(e, t, n, r) {
 	if (!e) {
 		let e = {
 			code: "custom",
@@ -5564,12 +5564,12 @@ function Zi(e, t, n, r) {
 			path: [...r._zod.def.path ?? []],
 			continue: !r._zod.def.abort
 		};
-		r._zod.def.params && (e.params = r._zod.def.params), t.issues.push(Nn(e));
+		r._zod.def.params && (e.params = r._zod.def.params), t.issues.push(Pn(e));
 	}
 }
 //#endregion
 //#region node_modules/zod/v4/core/registries.js
-var Qi = class {
+var $i = class {
 	constructor() {
 		this._map = /* @__PURE__ */ new Map(), this._idmap = /* @__PURE__ */ new Map();
 	}
@@ -5603,43 +5603,34 @@ var Qi = class {
 		return this._map.has(e);
 	}
 };
-function $i() {
-	return new Qi();
+function ea() {
+	return new $i();
 }
-var ea = /*@__PURE__*/ $i();
+var ta = /*@__PURE__*/ ea();
 //#endregion
 //#region node_modules/zod/v4/core/api.js
-function ta(e, t) {
-	return new e({
-		type: "string",
-		...F(t)
-	});
-}
 function na(e, t) {
 	return new e({
 		type: "string",
-		format: "email",
-		check: "string_format",
-		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function ra(e, t) {
 	return new e({
 		type: "string",
-		format: "guid",
+		format: "email",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function ia(e, t) {
 	return new e({
 		type: "string",
-		format: "uuid",
+		format: "guid",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function aa(e, t) {
@@ -5648,8 +5639,7 @@ function aa(e, t) {
 		format: "uuid",
 		check: "string_format",
 		abort: !1,
-		version: "v4",
-		...F(t)
+		...I(t)
 	});
 }
 function oa(e, t) {
@@ -5658,8 +5648,8 @@ function oa(e, t) {
 		format: "uuid",
 		check: "string_format",
 		abort: !1,
-		version: "v6",
-		...F(t)
+		version: "v4",
+		...I(t)
 	});
 }
 function sa(e, t) {
@@ -5668,155 +5658,165 @@ function sa(e, t) {
 		format: "uuid",
 		check: "string_format",
 		abort: !1,
-		version: "v7",
-		...F(t)
+		version: "v6",
+		...I(t)
 	});
 }
 function ca(e, t) {
 	return new e({
 		type: "string",
-		format: "url",
+		format: "uuid",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		version: "v7",
+		...I(t)
 	});
 }
 function la(e, t) {
 	return new e({
 		type: "string",
-		format: "emoji",
+		format: "url",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function ua(e, t) {
 	return new e({
 		type: "string",
-		format: "nanoid",
+		format: "emoji",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function da(e, t) {
 	return new e({
 		type: "string",
-		format: "cuid",
+		format: "nanoid",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function fa(e, t) {
 	return new e({
 		type: "string",
-		format: "cuid2",
+		format: "cuid",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function pa(e, t) {
 	return new e({
 		type: "string",
-		format: "ulid",
+		format: "cuid2",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function ma(e, t) {
 	return new e({
 		type: "string",
-		format: "xid",
+		format: "ulid",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function ha(e, t) {
 	return new e({
 		type: "string",
-		format: "ksuid",
+		format: "xid",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function ga(e, t) {
 	return new e({
 		type: "string",
-		format: "ipv4",
+		format: "ksuid",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function _a(e, t) {
 	return new e({
 		type: "string",
-		format: "ipv6",
+		format: "ipv4",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function va(e, t) {
 	return new e({
 		type: "string",
-		format: "cidrv4",
+		format: "ipv6",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function ya(e, t) {
 	return new e({
 		type: "string",
-		format: "cidrv6",
+		format: "cidrv4",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function ba(e, t) {
 	return new e({
 		type: "string",
-		format: "base64",
+		format: "cidrv6",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function xa(e, t) {
 	return new e({
 		type: "string",
-		format: "base64url",
+		format: "base64",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function Sa(e, t) {
 	return new e({
 		type: "string",
-		format: "e164",
+		format: "base64url",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function Ca(e, t) {
 	return new e({
 		type: "string",
-		format: "jwt",
+		format: "e164",
 		check: "string_format",
 		abort: !1,
-		...F(t)
+		...I(t)
 	});
 }
 function wa(e, t) {
+	return new e({
+		type: "string",
+		format: "jwt",
+		check: "string_format",
+		abort: !1,
+		...I(t)
+	});
+}
+function Ta(e, t) {
 	return new e({
 		type: "string",
 		format: "datetime",
@@ -5824,204 +5824,204 @@ function wa(e, t) {
 		offset: !1,
 		local: !1,
 		precision: null,
-		...F(t)
-	});
-}
-function Ta(e, t) {
-	return new e({
-		type: "string",
-		format: "date",
-		check: "string_format",
-		...F(t)
+		...I(t)
 	});
 }
 function Ea(e, t) {
 	return new e({
 		type: "string",
-		format: "time",
+		format: "date",
 		check: "string_format",
-		precision: null,
-		...F(t)
+		...I(t)
 	});
 }
 function Da(e, t) {
 	return new e({
 		type: "string",
-		format: "duration",
+		format: "time",
 		check: "string_format",
-		...F(t)
+		precision: null,
+		...I(t)
 	});
 }
 function Oa(e, t) {
 	return new e({
-		type: "number",
-		checks: [],
-		...F(t)
+		type: "string",
+		format: "duration",
+		check: "string_format",
+		...I(t)
 	});
 }
 function ka(e, t) {
 	return new e({
 		type: "number",
-		check: "number_format",
-		abort: !1,
-		format: "safeint",
-		...F(t)
+		checks: [],
+		...I(t)
 	});
 }
 function Aa(e, t) {
 	return new e({
-		type: "boolean",
-		...F(t)
+		type: "number",
+		check: "number_format",
+		abort: !1,
+		format: "safeint",
+		...I(t)
 	});
 }
 function ja(e, t) {
 	return new e({
-		type: "null",
-		...F(t)
+		type: "boolean",
+		...I(t)
 	});
 }
-function Ma(e) {
+function Ma(e, t) {
+	return new e({
+		type: "null",
+		...I(t)
+	});
+}
+function Na(e) {
 	return new e({ type: "unknown" });
 }
-function Na(e, t) {
+function Pa(e, t) {
 	return new e({
 		type: "never",
-		...F(t)
-	});
-}
-function Pa(e, t) {
-	return new Dr({
-		check: "less_than",
-		...F(t),
-		value: e,
-		inclusive: !1
+		...I(t)
 	});
 }
 function Fa(e, t) {
-	return new Dr({
+	return new Or({
 		check: "less_than",
-		...F(t),
+		...I(t),
 		value: e,
-		inclusive: !0
+		inclusive: !1
 	});
 }
 function Ia(e, t) {
 	return new Or({
-		check: "greater_than",
-		...F(t),
-		value: e,
-		inclusive: !1
-	});
-}
-function La(e, t) {
-	return new Or({
-		check: "greater_than",
-		...F(t),
+		check: "less_than",
+		...I(t),
 		value: e,
 		inclusive: !0
 	});
 }
+function La(e, t) {
+	return new kr({
+		check: "greater_than",
+		...I(t),
+		value: e,
+		inclusive: !1
+	});
+}
 function Ra(e, t) {
 	return new kr({
-		check: "multiple_of",
-		...F(t),
-		value: e
+		check: "greater_than",
+		...I(t),
+		value: e,
+		inclusive: !0
 	});
 }
 function za(e, t) {
-	return new jr({
-		check: "max_length",
-		...F(t),
-		maximum: e
+	return new Ar({
+		check: "multiple_of",
+		...I(t),
+		value: e
 	});
 }
 function Ba(e, t) {
 	return new Mr({
-		check: "min_length",
-		...F(t),
-		minimum: e
+		check: "max_length",
+		...I(t),
+		maximum: e
 	});
 }
 function Va(e, t) {
 	return new Nr({
-		check: "length_equals",
-		...F(t),
-		length: e
+		check: "min_length",
+		...I(t),
+		minimum: e
 	});
 }
 function Ha(e, t) {
-	return new Fr({
-		check: "string_format",
-		format: "regex",
-		...F(t),
-		pattern: e
+	return new Pr({
+		check: "length_equals",
+		...I(t),
+		length: e
 	});
 }
-function Ua(e) {
+function Ua(e, t) {
 	return new Ir({
 		check: "string_format",
-		format: "lowercase",
-		...F(e)
+		format: "regex",
+		...I(t),
+		pattern: e
 	});
 }
 function Wa(e) {
 	return new Lr({
 		check: "string_format",
-		format: "uppercase",
-		...F(e)
+		format: "lowercase",
+		...I(e)
 	});
 }
-function Ga(e, t) {
+function Ga(e) {
 	return new Rr({
 		check: "string_format",
-		format: "includes",
-		...F(t),
-		includes: e
+		format: "uppercase",
+		...I(e)
 	});
 }
 function Ka(e, t) {
 	return new zr({
 		check: "string_format",
-		format: "starts_with",
-		...F(t),
-		prefix: e
+		format: "includes",
+		...I(t),
+		includes: e
 	});
 }
 function qa(e, t) {
 	return new Br({
 		check: "string_format",
+		format: "starts_with",
+		...I(t),
+		prefix: e
+	});
+}
+function Ja(e, t) {
+	return new Vr({
+		check: "string_format",
 		format: "ends_with",
-		...F(t),
+		...I(t),
 		suffix: e
 	});
 }
-function Ja(e) {
-	return new Vr({
+function Ya(e) {
+	return new Hr({
 		check: "overwrite",
 		tx: e
 	});
 }
-function Ya(e) {
-	return Ja((t) => t.normalize(e));
-}
-function Xa() {
-	return Ja((e) => e.trim());
+function Xa(e) {
+	return Ya((t) => t.normalize(e));
 }
 function Za() {
-	return Ja((e) => e.toLowerCase());
+	return Ya((e) => e.trim());
 }
 function Qa() {
-	return Ja((e) => e.toUpperCase());
+	return Ya((e) => e.toLowerCase());
 }
-function $a(e, t, n) {
+function $a() {
+	return Ya((e) => e.toUpperCase());
+}
+function eo(e, t, n) {
 	return new e({
 		type: "array",
 		element: t,
-		...F(n)
+		...I(n)
 	});
 }
-function eo(e, t, n) {
-	let r = F(n);
+function to(e, t, n) {
+	let r = I(n);
 	return r.abort ??= !0, new e({
 		type: "custom",
 		check: "custom",
@@ -6029,19 +6029,19 @@ function eo(e, t, n) {
 		...r
 	});
 }
-function to(e, t, n) {
+function no(e, t, n) {
 	return new e({
 		type: "custom",
 		check: "custom",
 		fn: t,
-		...F(n)
+		...I(n)
 	});
 }
 //#endregion
 //#region node_modules/zod/v4/core/to-json-schema.js
-var no = class {
+var ro = class {
 	constructor(e) {
-		this.counter = 0, this.metadataRegistry = e?.metadata ?? ea, this.target = e?.target ?? "draft-2020-12", this.unrepresentable = e?.unrepresentable ?? "throw", this.override = e?.override ?? (() => {}), this.io = e?.io ?? "output", this.seen = /* @__PURE__ */ new Map();
+		this.counter = 0, this.metadataRegistry = e?.metadata ?? ta, this.target = e?.target ?? "draft-2020-12", this.unrepresentable = e?.unrepresentable ?? "throw", this.override = e?.override ?? (() => {}), this.io = e?.io ?? "output", this.seen = /* @__PURE__ */ new Map();
 	}
 	process(e, t = {
 		path: [],
@@ -6226,7 +6226,7 @@ var no = class {
 						if (this.unrepresentable === "throw") throw Error("Set cannot be represented in JSON Schema");
 						break;
 					case "enum": {
-						let e = t, n = an(r.entries);
+						let e = t, n = on(r.entries);
 						n.every((e) => typeof e == "number") && (e.type = "number"), n.every((e) => typeof e == "string") && (e.type = "string"), e.enum = n;
 						break;
 					}
@@ -6322,7 +6322,7 @@ var no = class {
 			}
 		}
 		let c = this.metadataRegistry.get(e);
-		return c && Object.assign(o.schema, c), this.io === "input" && io(e) && (delete o.schema.examples, delete o.schema.default), this.io === "input" && o.schema._prefault && ((n = o.schema).default ?? (n.default = o.schema._prefault)), delete o.schema._prefault, this.seen.get(e).schema;
+		return c && Object.assign(o.schema, c), this.io === "input" && ao(e) && (delete o.schema.examples, delete o.schema.default), this.io === "input" && o.schema._prefault && ((n = o.schema).default ?? (n.default = o.schema._prefault)), delete o.schema._prefault, this.seen.get(e).schema;
 	}
 	emit(e, t) {
 		let n = {
@@ -6424,9 +6424,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		}
 	}
 };
-function ro(e, t) {
-	if (e instanceof Qi) {
-		let n = new no(t), r = {};
+function io(e, t) {
+	if (e instanceof $i) {
+		let n = new ro(t), r = {};
 		for (let t of e._idmap.entries()) {
 			let [e, r] = t;
 			n.process(r);
@@ -6445,10 +6445,10 @@ function ro(e, t) {
 		}
 		return Object.keys(r).length > 0 && (i.__shared = { [n.target === "draft-2020-12" ? "$defs" : "definitions"]: r }), { schemas: i };
 	}
-	let n = new no(t);
+	let n = new ro(t);
 	return n.process(e), n.emit(e, t);
 }
-function io(e, t) {
+function ao(e, t) {
 	let n = t ?? { seen: /* @__PURE__ */ new Set() };
 	if (n.seen.has(e)) return !1;
 	n.seen.add(e);
@@ -6471,31 +6471,31 @@ function io(e, t) {
 		case "nan":
 		case "file":
 		case "template_literal": return !1;
-		case "array": return io(r.element, n);
+		case "array": return ao(r.element, n);
 		case "object":
-			for (let e in r.shape) if (io(r.shape[e], n)) return !0;
+			for (let e in r.shape) if (ao(r.shape[e], n)) return !0;
 			return !1;
 		case "union":
-			for (let e of r.options) if (io(e, n)) return !0;
+			for (let e of r.options) if (ao(e, n)) return !0;
 			return !1;
-		case "intersection": return io(r.left, n) || io(r.right, n);
+		case "intersection": return ao(r.left, n) || ao(r.right, n);
 		case "tuple":
-			for (let e of r.items) if (io(e, n)) return !0;
-			return !!(r.rest && io(r.rest, n));
-		case "record": return io(r.keyType, n) || io(r.valueType, n);
-		case "map": return io(r.keyType, n) || io(r.valueType, n);
-		case "set": return io(r.valueType, n);
+			for (let e of r.items) if (ao(e, n)) return !0;
+			return !!(r.rest && ao(r.rest, n));
+		case "record": return ao(r.keyType, n) || ao(r.valueType, n);
+		case "map": return ao(r.keyType, n) || ao(r.valueType, n);
+		case "set": return ao(r.valueType, n);
 		case "promise":
 		case "optional":
 		case "nonoptional":
 		case "nullable":
-		case "readonly": return io(r.innerType, n);
-		case "lazy": return io(r.getter(), n);
-		case "default": return io(r.innerType, n);
-		case "prefault": return io(r.innerType, n);
+		case "readonly": return ao(r.innerType, n);
+		case "lazy": return ao(r.getter(), n);
+		case "default": return ao(r.innerType, n);
+		case "prefault": return ao(r.innerType, n);
 		case "custom": return !1;
 		case "transform": return !0;
-		case "pipe": return io(r.in, n) || io(r.out, n);
+		case "pipe": return ao(r.in, n) || ao(r.out, n);
 		case "success": return !1;
 		case "catch": return !1;
 	}
@@ -6503,51 +6503,51 @@ function io(e, t) {
 }
 //#endregion
 //#region node_modules/zod/v4/mini/schemas.js
-var ao = /*@__PURE__*/ N("ZodMiniType", (e, t) => {
+var oo = /*@__PURE__*/ P("ZodMiniType", (e, t) => {
 	if (!e._zod) throw Error("Uninitialized schema in ZodMiniType.");
-	I.init(e, t), e.def = t, e.parse = (t, n) => Bn(e, t, n, { callee: e.parse }), e.safeParse = (t, n) => Wn(e, t, n), e.parseAsync = async (t, n) => Hn(e, t, n, { callee: e.parseAsync }), e.safeParseAsync = async (t, n) => Kn(e, t, n), e.check = (...n) => e.clone({
+	L.init(e, t), e.def = t, e.parse = (t, n) => Vn(e, t, n, { callee: e.parse }), e.safeParse = (t, n) => Gn(e, t, n), e.parseAsync = async (t, n) => Un(e, t, n, { callee: e.parseAsync }), e.safeParseAsync = async (t, n) => qn(e, t, n), e.check = (...n) => e.clone({
 		...t,
 		checks: [...t.checks ?? [], ...n.map((e) => typeof e == "function" ? { _zod: {
 			check: e,
 			def: { check: "custom" },
 			onattach: []
 		} } : e)]
-	}), e.clone = (t, n) => yn(e, t, n), e.brand = () => e, e.register = ((t, n) => (t.add(e, n), e));
-}), oo = /*@__PURE__*/ N("ZodMiniObject", (e, t) => {
-	Di.init(e, t), ao.init(e, t), P(e, "shape", () => t.shape);
+	}), e.clone = (t, n) => bn(e, t, n), e.brand = () => e, e.register = ((t, n) => (t.add(e, n), e));
+}), so = /*@__PURE__*/ P("ZodMiniObject", (e, t) => {
+	Oi.init(e, t), oo.init(e, t), F(e, "shape", () => t.shape);
 });
-function so(e, t) {
-	return new oo({
+function co(e, t) {
+	return new so({
 		type: "object",
 		get shape() {
-			return dn(this, "shape", { ...e }), this.shape;
+			return fn(this, "shape", { ...e }), this.shape;
 		},
-		...F(t)
+		...I(t)
 	});
 }
 //#endregion
 //#region node_modules/@modelcontextprotocol/sdk/dist/esm/server/zod-compat.js
-function co(e) {
+function lo(e) {
 	return !!e._zod;
 }
-function lo(e) {
+function uo(e) {
 	let t = Object.values(e);
-	if (t.length === 0) return so({});
-	let n = t.every(co), r = t.every((e) => !co(e));
-	if (n) return so(e);
-	if (r) return $t(e);
+	if (t.length === 0) return co({});
+	let n = t.every(lo), r = t.every((e) => !lo(e));
+	if (n) return co(e);
+	if (r) return en(e);
 	throw Error("Mixed Zod versions detected in object shape.");
 }
-function uo(e, t) {
-	return co(e) ? Wn(e, t) : e.safeParse(t);
+function fo(e, t) {
+	return lo(e) ? Gn(e, t) : e.safeParse(t);
 }
-async function fo(e, t) {
-	return co(e) ? await Kn(e, t) : await e.safeParseAsync(t);
+async function po(e, t) {
+	return lo(e) ? await qn(e, t) : await e.safeParseAsync(t);
 }
-function po(e) {
+function mo(e) {
 	if (!e) return;
 	let t;
-	if (t = co(e) ? e._zod?.def?.shape : e.shape, t) {
+	if (t = lo(e) ? e._zod?.def?.shape : e.shape, t) {
 		if (typeof t == "function") try {
 			return t();
 		} catch {
@@ -6556,27 +6556,27 @@ function po(e) {
 		return t;
 	}
 }
-function mo(e) {
+function ho(e) {
 	if (e) {
 		if (typeof e == "object") {
 			let t = e, n = e;
 			if (!t._def && !n._zod) {
 				let t = Object.values(e);
-				if (t.length > 0 && t.every((e) => typeof e == "object" && !!e && (e._def !== void 0 || e._zod !== void 0 || typeof e.parse == "function"))) return lo(e);
+				if (t.length > 0 && t.every((e) => typeof e == "object" && !!e && (e._def !== void 0 || e._zod !== void 0 || typeof e.parse == "function"))) return uo(e);
 			}
 		}
-		if (co(e)) {
+		if (lo(e)) {
 			let t = e._zod?.def;
 			if (t && (t.type === "object" || t.shape !== void 0)) return e;
 		} else if (e.shape !== void 0) return e;
 	}
 }
-function ho(e) {
+function go(e) {
 	return e.length === 0 ? "object root" : e.reduce((e, t, n) => n === 0 ? String(t) : typeof t == "number" ? `${e}[${t}]` : `${e}.${t}`, "");
 }
-function go(e) {
+function _o(e) {
 	if (e && typeof e == "object") {
-		if ("issues" in e && Array.isArray(e.issues) && e.issues.length > 0) return e.issues.map((e) => e.path?.length ? `${e.message} at ${ho(e.path)}` : e.message).join("\n");
+		if ("issues" in e && Array.isArray(e.issues) && e.issues.length > 0) return e.issues.map((e) => e.path?.length ? `${e.message} at ${go(e.path)}` : e.message).join("\n");
 		if ("message" in e && typeof e.message == "string") return e.message;
 		try {
 			return JSON.stringify(e);
@@ -6586,16 +6586,16 @@ function go(e) {
 	}
 	return String(e);
 }
-function _o(e) {
+function vo(e) {
 	return e.description;
 }
-function vo(e) {
-	if (co(e)) return e._zod?.def?.type === "optional";
+function yo(e) {
+	if (lo(e)) return e._zod?.def?.type === "optional";
 	let t = e;
 	return typeof e.isOptional == "function" ? e.isOptional() : t._def?.typeName === "ZodOptional";
 }
-function yo(e) {
-	if (co(e)) {
+function bo(e) {
+	if (lo(e)) {
 		let t = e._zod?.def;
 		if (t) {
 			if (t.value !== void 0) return t.value;
@@ -6612,36 +6612,36 @@ function yo(e) {
 }
 //#endregion
 //#region node_modules/zod/v4/classic/iso.js
-var bo = /*@__PURE__*/ N("ZodISODateTime", (e, t) => {
-	ni.init(e, t), Io.init(e, t);
+var xo = /*@__PURE__*/ P("ZodISODateTime", (e, t) => {
+	ri.init(e, t), Ro.init(e, t);
 });
-function xo(e) {
-	return wa(bo, e);
+function So(e) {
+	return Ta(xo, e);
 }
-var So = /*@__PURE__*/ N("ZodISODate", (e, t) => {
-	ri.init(e, t), Io.init(e, t);
+var Co = /*@__PURE__*/ P("ZodISODate", (e, t) => {
+	ii.init(e, t), Ro.init(e, t);
 });
-function Co(e) {
-	return Ta(So, e);
+function wo(e) {
+	return Ea(Co, e);
 }
-var wo = /*@__PURE__*/ N("ZodISOTime", (e, t) => {
-	ii.init(e, t), Io.init(e, t);
+var To = /*@__PURE__*/ P("ZodISOTime", (e, t) => {
+	ai.init(e, t), Ro.init(e, t);
 });
-function To(e) {
-	return Ea(wo, e);
+function Eo(e) {
+	return Da(To, e);
 }
-var Eo = /*@__PURE__*/ N("ZodISODuration", (e, t) => {
-	ai.init(e, t), Io.init(e, t);
+var Do = /*@__PURE__*/ P("ZodISODuration", (e, t) => {
+	oi.init(e, t), Ro.init(e, t);
 });
-function Do(e) {
-	return Da(Eo, e);
+function Oo(e) {
+	return Oa(Do, e);
 }
 //#endregion
 //#region node_modules/zod/v4/classic/errors.js
-var Oo = (e, t) => {
-	Fn.init(e, t), e.name = "ZodError", Object.defineProperties(e, {
-		format: { value: (t) => Rn(e, t) },
-		flatten: { value: (t) => Ln(e, t) },
+var ko = (e, t) => {
+	In.init(e, t), e.name = "ZodError", Object.defineProperties(e, {
+		format: { value: (t) => zn(e, t) },
+		flatten: { value: (t) => Rn(e, t) },
 		addIssue: { value: (t) => e.issues.push(t) },
 		addIssues: { value: (t) => e.issues.push(...t) },
 		isEmpty: { get() {
@@ -6649,286 +6649,286 @@ var Oo = (e, t) => {
 		} }
 	});
 };
-N("ZodError", Oo);
-var ko = N("ZodError", Oo, { Parent: Error }), Ao = /* @__PURE__ */ zn(ko), jo = /* @__PURE__ */ Vn(ko), Mo = /* @__PURE__ */ Un(ko), No = /* @__PURE__ */ Gn(ko), R = /*@__PURE__*/ N("ZodType", (e, t) => (I.init(e, t), e.def = t, Object.defineProperty(e, "_def", { value: t }), e.check = (...n) => e.clone({
+P("ZodError", ko);
+var Ao = P("ZodError", ko, { Parent: Error }), jo = /* @__PURE__ */ Bn(Ao), Mo = /* @__PURE__ */ Hn(Ao), No = /* @__PURE__ */ Wn(Ao), Po = /* @__PURE__ */ Kn(Ao), Fo = /*@__PURE__*/ P("ZodType", (e, t) => (L.init(e, t), e.def = t, Object.defineProperty(e, "_def", { value: t }), e.check = (...n) => e.clone({
 	...t,
 	checks: [...t.checks ?? [], ...n.map((e) => typeof e == "function" ? { _zod: {
 		check: e,
 		def: { check: "custom" },
 		onattach: []
 	} } : e)]
-}), e.clone = (t, n) => yn(e, t, n), e.brand = () => e, e.register = ((t, n) => (t.add(e, n), e)), e.parse = (t, n) => Ao(e, t, n, { callee: e.parse }), e.safeParse = (t, n) => Mo(e, t, n), e.parseAsync = async (t, n) => jo(e, t, n, { callee: e.parseAsync }), e.safeParseAsync = async (t, n) => No(e, t, n), e.spa = e.safeParseAsync, e.refine = (t, n) => e.check(Ks(t, n)), e.superRefine = (t) => e.check(qs(t)), e.overwrite = (t) => e.check(Ja(t)), e.optional = () => Os(e), e.nullable = () => As(e), e.nullish = () => Os(As(e)), e.nonoptional = (t) => Is(e, t), e.array = () => V(e), e.or = (t) => U([e, t]), e.and = (t) => bs(e, t), e.transform = (t) => Bs(e, Es(t)), e.default = (t) => Ms(e, t), e.prefault = (t) => Ps(e, t), e.catch = (t) => Rs(e, t), e.pipe = (t) => Bs(e, t), e.readonly = () => Hs(e), e.describe = (t) => {
+}), e.clone = (t, n) => bn(e, t, n), e.brand = () => e, e.register = ((t, n) => (t.add(e, n), e)), e.parse = (t, n) => jo(e, t, n, { callee: e.parse }), e.safeParse = (t, n) => No(e, t, n), e.parseAsync = async (t, n) => Mo(e, t, n, { callee: e.parseAsync }), e.safeParseAsync = async (t, n) => Po(e, t, n), e.spa = e.safeParseAsync, e.refine = (t, n) => e.check(Js(t, n)), e.superRefine = (t) => e.check(Ys(t)), e.overwrite = (t) => e.check(Ya(t)), e.optional = () => As(e), e.nullable = () => Ms(e), e.nullish = () => As(Ms(e)), e.nonoptional = (t) => Rs(e, t), e.array = () => V(e), e.or = (t) => U([e, t]), e.and = (t) => Ss(e, t), e.transform = (t) => Hs(e, Os(t)), e.default = (t) => Ps(e, t), e.prefault = (t) => Is(e, t), e.catch = (t) => Bs(e, t), e.pipe = (t) => Hs(e, t), e.readonly = () => Ws(e), e.describe = (t) => {
 	let n = e.clone();
-	return ea.add(n, { description: t }), n;
+	return ta.add(n, { description: t }), n;
 }, Object.defineProperty(e, "description", {
 	get() {
-		return ea.get(e)?.description;
+		return ta.get(e)?.description;
 	},
 	configurable: !0
 }), e.meta = (...t) => {
-	if (t.length === 0) return ea.get(e);
+	if (t.length === 0) return ta.get(e);
 	let n = e.clone();
-	return ea.add(n, t[0]), n;
-}, e.isOptional = () => e.safeParse(void 0).success, e.isNullable = () => e.safeParse(null).success, e)), Po = /*@__PURE__*/ N("_ZodString", (e, t) => {
-	Wr.init(e, t), R.init(e, t);
+	return ta.add(n, t[0]), n;
+}, e.isOptional = () => e.safeParse(void 0).success, e.isNullable = () => e.safeParse(null).success, e)), Io = /*@__PURE__*/ P("_ZodString", (e, t) => {
+	Gr.init(e, t), Fo.init(e, t);
 	let n = e._zod.bag;
-	e.format = n.format ?? null, e.minLength = n.minimum ?? null, e.maxLength = n.maximum ?? null, e.regex = (...t) => e.check(Ha(...t)), e.includes = (...t) => e.check(Ga(...t)), e.startsWith = (...t) => e.check(Ka(...t)), e.endsWith = (...t) => e.check(qa(...t)), e.min = (...t) => e.check(Ba(...t)), e.max = (...t) => e.check(za(...t)), e.length = (...t) => e.check(Va(...t)), e.nonempty = (...t) => e.check(Ba(1, ...t)), e.lowercase = (t) => e.check(Ua(t)), e.uppercase = (t) => e.check(Wa(t)), e.trim = () => e.check(Xa()), e.normalize = (...t) => e.check(Ya(...t)), e.toLowerCase = () => e.check(Za()), e.toUpperCase = () => e.check(Qa());
-}), Fo = /*@__PURE__*/ N("ZodString", (e, t) => {
-	Wr.init(e, t), Po.init(e, t), e.email = (t) => e.check(na(Lo, t)), e.url = (t) => e.check(ca(Bo, t)), e.jwt = (t) => e.check(Ca(ts, t)), e.emoji = (t) => e.check(la(Vo, t)), e.guid = (t) => e.check(ra(Ro, t)), e.uuid = (t) => e.check(ia(zo, t)), e.uuidv4 = (t) => e.check(aa(zo, t)), e.uuidv6 = (t) => e.check(oa(zo, t)), e.uuidv7 = (t) => e.check(sa(zo, t)), e.nanoid = (t) => e.check(ua(Ho, t)), e.guid = (t) => e.check(ra(Ro, t)), e.cuid = (t) => e.check(da(Uo, t)), e.cuid2 = (t) => e.check(fa(Wo, t)), e.ulid = (t) => e.check(pa(Go, t)), e.base64 = (t) => e.check(ba(Qo, t)), e.base64url = (t) => e.check(xa($o, t)), e.xid = (t) => e.check(ma(Ko, t)), e.ksuid = (t) => e.check(ha(qo, t)), e.ipv4 = (t) => e.check(ga(Jo, t)), e.ipv6 = (t) => e.check(_a(Yo, t)), e.cidrv4 = (t) => e.check(va(Xo, t)), e.cidrv6 = (t) => e.check(ya(Zo, t)), e.e164 = (t) => e.check(Sa(es, t)), e.datetime = (t) => e.check(xo(t)), e.date = (t) => e.check(Co(t)), e.time = (t) => e.check(To(t)), e.duration = (t) => e.check(Do(t));
+	e.format = n.format ?? null, e.minLength = n.minimum ?? null, e.maxLength = n.maximum ?? null, e.regex = (...t) => e.check(Ua(...t)), e.includes = (...t) => e.check(Ka(...t)), e.startsWith = (...t) => e.check(qa(...t)), e.endsWith = (...t) => e.check(Ja(...t)), e.min = (...t) => e.check(Va(...t)), e.max = (...t) => e.check(Ba(...t)), e.length = (...t) => e.check(Ha(...t)), e.nonempty = (...t) => e.check(Va(1, ...t)), e.lowercase = (t) => e.check(Wa(t)), e.uppercase = (t) => e.check(Ga(t)), e.trim = () => e.check(Za()), e.normalize = (...t) => e.check(Xa(...t)), e.toLowerCase = () => e.check(Qa()), e.toUpperCase = () => e.check($a());
+}), Lo = /*@__PURE__*/ P("ZodString", (e, t) => {
+	Gr.init(e, t), Io.init(e, t), e.email = (t) => e.check(ra(zo, t)), e.url = (t) => e.check(la(Ho, t)), e.jwt = (t) => e.check(wa(rs, t)), e.emoji = (t) => e.check(ua(Uo, t)), e.guid = (t) => e.check(ia(Bo, t)), e.uuid = (t) => e.check(aa(Vo, t)), e.uuidv4 = (t) => e.check(oa(Vo, t)), e.uuidv6 = (t) => e.check(sa(Vo, t)), e.uuidv7 = (t) => e.check(ca(Vo, t)), e.nanoid = (t) => e.check(da(Wo, t)), e.guid = (t) => e.check(ia(Bo, t)), e.cuid = (t) => e.check(fa(Go, t)), e.cuid2 = (t) => e.check(pa(Ko, t)), e.ulid = (t) => e.check(ma(qo, t)), e.base64 = (t) => e.check(xa(es, t)), e.base64url = (t) => e.check(Sa(ts, t)), e.xid = (t) => e.check(ha(Jo, t)), e.ksuid = (t) => e.check(ga(Yo, t)), e.ipv4 = (t) => e.check(_a(Xo, t)), e.ipv6 = (t) => e.check(va(Zo, t)), e.cidrv4 = (t) => e.check(ya(Qo, t)), e.cidrv6 = (t) => e.check(ba($o, t)), e.e164 = (t) => e.check(Ca(ns, t)), e.datetime = (t) => e.check(So(t)), e.date = (t) => e.check(wo(t)), e.time = (t) => e.check(Eo(t)), e.duration = (t) => e.check(Oo(t));
 });
 function z(e) {
-	return ta(Fo, e);
+	return na(Lo, e);
 }
-var Io = /*@__PURE__*/ N("ZodStringFormat", (e, t) => {
-	L.init(e, t), Po.init(e, t);
-}), Lo = /*@__PURE__*/ N("ZodEmail", (e, t) => {
-	qr.init(e, t), Io.init(e, t);
-}), Ro = /*@__PURE__*/ N("ZodGUID", (e, t) => {
-	Gr.init(e, t), Io.init(e, t);
-}), zo = /*@__PURE__*/ N("ZodUUID", (e, t) => {
-	Kr.init(e, t), Io.init(e, t);
-}), Bo = /*@__PURE__*/ N("ZodURL", (e, t) => {
-	Jr.init(e, t), Io.init(e, t);
-}), Vo = /*@__PURE__*/ N("ZodEmoji", (e, t) => {
-	Yr.init(e, t), Io.init(e, t);
-}), Ho = /*@__PURE__*/ N("ZodNanoID", (e, t) => {
-	Xr.init(e, t), Io.init(e, t);
-}), Uo = /*@__PURE__*/ N("ZodCUID", (e, t) => {
-	Zr.init(e, t), Io.init(e, t);
-}), Wo = /*@__PURE__*/ N("ZodCUID2", (e, t) => {
-	Qr.init(e, t), Io.init(e, t);
-}), Go = /*@__PURE__*/ N("ZodULID", (e, t) => {
-	$r.init(e, t), Io.init(e, t);
-}), Ko = /*@__PURE__*/ N("ZodXID", (e, t) => {
-	ei.init(e, t), Io.init(e, t);
-}), qo = /*@__PURE__*/ N("ZodKSUID", (e, t) => {
-	ti.init(e, t), Io.init(e, t);
-}), Jo = /*@__PURE__*/ N("ZodIPv4", (e, t) => {
-	oi.init(e, t), Io.init(e, t);
-}), Yo = /*@__PURE__*/ N("ZodIPv6", (e, t) => {
-	si.init(e, t), Io.init(e, t);
-}), Xo = /*@__PURE__*/ N("ZodCIDRv4", (e, t) => {
-	ci.init(e, t), Io.init(e, t);
-}), Zo = /*@__PURE__*/ N("ZodCIDRv6", (e, t) => {
-	li.init(e, t), Io.init(e, t);
-}), Qo = /*@__PURE__*/ N("ZodBase64", (e, t) => {
-	di.init(e, t), Io.init(e, t);
-}), $o = /*@__PURE__*/ N("ZodBase64URL", (e, t) => {
-	pi.init(e, t), Io.init(e, t);
-}), es = /*@__PURE__*/ N("ZodE164", (e, t) => {
-	mi.init(e, t), Io.init(e, t);
-}), ts = /*@__PURE__*/ N("ZodJWT", (e, t) => {
-	gi.init(e, t), Io.init(e, t);
-}), ns = /*@__PURE__*/ N("ZodNumber", (e, t) => {
-	_i.init(e, t), R.init(e, t), e.gt = (t, n) => e.check(Ia(t, n)), e.gte = (t, n) => e.check(La(t, n)), e.min = (t, n) => e.check(La(t, n)), e.lt = (t, n) => e.check(Pa(t, n)), e.lte = (t, n) => e.check(Fa(t, n)), e.max = (t, n) => e.check(Fa(t, n)), e.int = (t) => e.check(is(t)), e.safe = (t) => e.check(is(t)), e.positive = (t) => e.check(Ia(0, t)), e.nonnegative = (t) => e.check(La(0, t)), e.negative = (t) => e.check(Pa(0, t)), e.nonpositive = (t) => e.check(Fa(0, t)), e.multipleOf = (t, n) => e.check(Ra(t, n)), e.step = (t, n) => e.check(Ra(t, n)), e.finite = () => e;
+var Ro = /*@__PURE__*/ P("ZodStringFormat", (e, t) => {
+	R.init(e, t), Io.init(e, t);
+}), zo = /*@__PURE__*/ P("ZodEmail", (e, t) => {
+	Jr.init(e, t), Ro.init(e, t);
+}), Bo = /*@__PURE__*/ P("ZodGUID", (e, t) => {
+	Kr.init(e, t), Ro.init(e, t);
+}), Vo = /*@__PURE__*/ P("ZodUUID", (e, t) => {
+	qr.init(e, t), Ro.init(e, t);
+}), Ho = /*@__PURE__*/ P("ZodURL", (e, t) => {
+	Yr.init(e, t), Ro.init(e, t);
+}), Uo = /*@__PURE__*/ P("ZodEmoji", (e, t) => {
+	Xr.init(e, t), Ro.init(e, t);
+}), Wo = /*@__PURE__*/ P("ZodNanoID", (e, t) => {
+	Zr.init(e, t), Ro.init(e, t);
+}), Go = /*@__PURE__*/ P("ZodCUID", (e, t) => {
+	Qr.init(e, t), Ro.init(e, t);
+}), Ko = /*@__PURE__*/ P("ZodCUID2", (e, t) => {
+	$r.init(e, t), Ro.init(e, t);
+}), qo = /*@__PURE__*/ P("ZodULID", (e, t) => {
+	ei.init(e, t), Ro.init(e, t);
+}), Jo = /*@__PURE__*/ P("ZodXID", (e, t) => {
+	ti.init(e, t), Ro.init(e, t);
+}), Yo = /*@__PURE__*/ P("ZodKSUID", (e, t) => {
+	ni.init(e, t), Ro.init(e, t);
+}), Xo = /*@__PURE__*/ P("ZodIPv4", (e, t) => {
+	si.init(e, t), Ro.init(e, t);
+}), Zo = /*@__PURE__*/ P("ZodIPv6", (e, t) => {
+	ci.init(e, t), Ro.init(e, t);
+}), Qo = /*@__PURE__*/ P("ZodCIDRv4", (e, t) => {
+	li.init(e, t), Ro.init(e, t);
+}), $o = /*@__PURE__*/ P("ZodCIDRv6", (e, t) => {
+	ui.init(e, t), Ro.init(e, t);
+}), es = /*@__PURE__*/ P("ZodBase64", (e, t) => {
+	fi.init(e, t), Ro.init(e, t);
+}), ts = /*@__PURE__*/ P("ZodBase64URL", (e, t) => {
+	mi.init(e, t), Ro.init(e, t);
+}), ns = /*@__PURE__*/ P("ZodE164", (e, t) => {
+	hi.init(e, t), Ro.init(e, t);
+}), rs = /*@__PURE__*/ P("ZodJWT", (e, t) => {
+	_i.init(e, t), Ro.init(e, t);
+}), is = /*@__PURE__*/ P("ZodNumber", (e, t) => {
+	vi.init(e, t), Fo.init(e, t), e.gt = (t, n) => e.check(La(t, n)), e.gte = (t, n) => e.check(Ra(t, n)), e.min = (t, n) => e.check(Ra(t, n)), e.lt = (t, n) => e.check(Fa(t, n)), e.lte = (t, n) => e.check(Ia(t, n)), e.max = (t, n) => e.check(Ia(t, n)), e.int = (t) => e.check(os(t)), e.safe = (t) => e.check(os(t)), e.positive = (t) => e.check(La(0, t)), e.nonnegative = (t) => e.check(Ra(0, t)), e.negative = (t) => e.check(Fa(0, t)), e.nonpositive = (t) => e.check(Ia(0, t)), e.multipleOf = (t, n) => e.check(za(t, n)), e.step = (t, n) => e.check(za(t, n)), e.finite = () => e;
 	let n = e._zod.bag;
 	e.minValue = Math.max(n.minimum ?? -Infinity, n.exclusiveMinimum ?? -Infinity) ?? null, e.maxValue = Math.min(n.maximum ?? Infinity, n.exclusiveMaximum ?? Infinity) ?? null, e.isInt = (n.format ?? "").includes("int") || Number.isSafeInteger(n.multipleOf ?? .5), e.isFinite = !0, e.format = n.format ?? null;
 });
 function B(e) {
-	return Oa(ns, e);
+	return ka(is, e);
 }
-var rs = /*@__PURE__*/ N("ZodNumberFormat", (e, t) => {
-	vi.init(e, t), ns.init(e, t);
-});
-function is(e) {
-	return ka(rs, e);
-}
-var as = /*@__PURE__*/ N("ZodBoolean", (e, t) => {
-	yi.init(e, t), R.init(e, t);
+var as = /*@__PURE__*/ P("ZodNumberFormat", (e, t) => {
+	yi.init(e, t), is.init(e, t);
 });
 function os(e) {
 	return Aa(as, e);
 }
-var ss = /*@__PURE__*/ N("ZodNull", (e, t) => {
-	bi.init(e, t), R.init(e, t);
+var ss = /*@__PURE__*/ P("ZodBoolean", (e, t) => {
+	bi.init(e, t), Fo.init(e, t);
 });
 function cs(e) {
 	return ja(ss, e);
 }
-var ls = /*@__PURE__*/ N("ZodUnknown", (e, t) => {
-	xi.init(e, t), R.init(e, t);
+var ls = /*@__PURE__*/ P("ZodNull", (e, t) => {
+	xi.init(e, t), Fo.init(e, t);
 });
-function us() {
-	return Ma(ls);
+function us(e) {
+	return Ma(ls, e);
 }
-var ds = /*@__PURE__*/ N("ZodNever", (e, t) => {
-	Si.init(e, t), R.init(e, t);
+var ds = /*@__PURE__*/ P("ZodUnknown", (e, t) => {
+	Si.init(e, t), Fo.init(e, t);
 });
-function fs(e) {
-	return Na(ds, e);
+function fs() {
+	return Na(ds);
 }
-var ps = /*@__PURE__*/ N("ZodArray", (e, t) => {
-	wi.init(e, t), R.init(e, t), e.element = t.element, e.min = (t, n) => e.check(Ba(t, n)), e.nonempty = (t) => e.check(Ba(1, t)), e.max = (t, n) => e.check(za(t, n)), e.length = (t, n) => e.check(Va(t, n)), e.unwrap = () => e.element;
+var ps = /*@__PURE__*/ P("ZodNever", (e, t) => {
+	Ci.init(e, t), Fo.init(e, t);
+});
+function ms(e) {
+	return Pa(ps, e);
+}
+var hs = /*@__PURE__*/ P("ZodArray", (e, t) => {
+	Ti.init(e, t), Fo.init(e, t), e.element = t.element, e.min = (t, n) => e.check(Va(t, n)), e.nonempty = (t) => e.check(Va(1, t)), e.max = (t, n) => e.check(Ba(t, n)), e.length = (t, n) => e.check(Ha(t, n)), e.unwrap = () => e.element;
 });
 function V(e, t) {
-	return $a(ps, e, t);
+	return eo(hs, e, t);
 }
-var ms = /*@__PURE__*/ N("ZodObject", (e, t) => {
-	Di.init(e, t), R.init(e, t), P(e, "shape", () => t.shape), e.keyof = () => Cs(Object.keys(e._zod.def.shape)), e.catchall = (t) => e.clone({
+var gs = /*@__PURE__*/ P("ZodObject", (e, t) => {
+	Oi.init(e, t), Fo.init(e, t), F(e, "shape", () => t.shape), e.keyof = () => Ts(Object.keys(e._zod.def.shape)), e.catchall = (t) => e.clone({
 		...e._zod.def,
 		catchall: t
 	}), e.passthrough = () => e.clone({
 		...e._zod.def,
-		catchall: us()
+		catchall: fs()
 	}), e.loose = () => e.clone({
 		...e._zod.def,
-		catchall: us()
+		catchall: fs()
 	}), e.strict = () => e.clone({
 		...e._zod.def,
-		catchall: fs()
+		catchall: ms()
 	}), e.strip = () => e.clone({
 		...e._zod.def,
 		catchall: void 0
-	}), e.extend = (t) => wn(e, t), e.merge = (t) => Tn(e, t), e.pick = (t) => Sn(e, t), e.omit = (t) => Cn(e, t), e.partial = (...t) => En(Ds, e, t[0]), e.required = (...t) => Dn(Fs, e, t[0]);
+	}), e.extend = (t) => Tn(e, t), e.merge = (t) => En(e, t), e.pick = (t) => Cn(e, t), e.omit = (t) => wn(e, t), e.partial = (...t) => Dn(ks, e, t[0]), e.required = (...t) => On(Ls, e, t[0]);
 });
 function H(e, t) {
-	return new ms({
+	return new gs({
 		type: "object",
 		get shape() {
-			return dn(this, "shape", { ...e }), this.shape;
+			return fn(this, "shape", { ...e }), this.shape;
 		},
-		...F(t)
+		...I(t)
 	});
 }
-function hs(e, t) {
-	return new ms({
+function _s(e, t) {
+	return new gs({
 		type: "object",
 		get shape() {
-			return dn(this, "shape", { ...e }), this.shape;
+			return fn(this, "shape", { ...e }), this.shape;
 		},
-		catchall: us(),
-		...F(t)
+		catchall: fs(),
+		...I(t)
 	});
 }
-var gs = /*@__PURE__*/ N("ZodUnion", (e, t) => {
-	ki.init(e, t), R.init(e, t), e.options = t.options;
+var vs = /*@__PURE__*/ P("ZodUnion", (e, t) => {
+	Ai.init(e, t), Fo.init(e, t), e.options = t.options;
 });
 function U(e, t) {
-	return new gs({
+	return new vs({
 		type: "union",
 		options: e,
-		...F(t)
+		...I(t)
 	});
 }
-var _s = /*@__PURE__*/ N("ZodDiscriminatedUnion", (e, t) => {
-	gs.init(e, t), Ai.init(e, t);
+var ys = /*@__PURE__*/ P("ZodDiscriminatedUnion", (e, t) => {
+	vs.init(e, t), ji.init(e, t);
 });
-function vs(e, t, n) {
-	return new _s({
+function bs(e, t, n) {
+	return new ys({
 		type: "union",
 		options: t,
 		discriminator: e,
-		...F(n)
+		...I(n)
 	});
 }
-var ys = /*@__PURE__*/ N("ZodIntersection", (e, t) => {
-	ji.init(e, t), R.init(e, t);
+var xs = /*@__PURE__*/ P("ZodIntersection", (e, t) => {
+	Mi.init(e, t), Fo.init(e, t);
 });
-function bs(e, t) {
-	return new ys({
+function Ss(e, t) {
+	return new xs({
 		type: "intersection",
 		left: e,
 		right: t
 	});
 }
-var xs = /*@__PURE__*/ N("ZodRecord", (e, t) => {
-	Pi.init(e, t), R.init(e, t), e.keyType = t.keyType, e.valueType = t.valueType;
+var Cs = /*@__PURE__*/ P("ZodRecord", (e, t) => {
+	Fi.init(e, t), Fo.init(e, t), e.keyType = t.keyType, e.valueType = t.valueType;
 });
 function W(e, t, n) {
-	return new xs({
+	return new Cs({
 		type: "record",
 		keyType: e,
 		valueType: t,
-		...F(n)
+		...I(n)
 	});
 }
-var Ss = /*@__PURE__*/ N("ZodEnum", (e, t) => {
-	Fi.init(e, t), R.init(e, t), e.enum = t.entries, e.options = Object.values(t.entries);
+var ws = /*@__PURE__*/ P("ZodEnum", (e, t) => {
+	Ii.init(e, t), Fo.init(e, t), e.enum = t.entries, e.options = Object.values(t.entries);
 	let n = new Set(Object.keys(t.entries));
 	e.extract = (e, r) => {
 		let i = {};
 		for (let r of e) if (n.has(r)) i[r] = t.entries[r];
 		else throw Error(`Key ${r} not found in enum`);
-		return new Ss({
+		return new ws({
 			...t,
 			checks: [],
-			...F(r),
+			...I(r),
 			entries: i
 		});
 	}, e.exclude = (e, r) => {
 		let i = { ...t.entries };
 		for (let t of e) if (n.has(t)) delete i[t];
 		else throw Error(`Key ${t} not found in enum`);
-		return new Ss({
+		return new ws({
 			...t,
 			checks: [],
-			...F(r),
+			...I(r),
 			entries: i
 		});
 	};
 });
-function Cs(e, t) {
-	return new Ss({
+function Ts(e, t) {
+	return new ws({
 		type: "enum",
 		entries: Array.isArray(e) ? Object.fromEntries(e.map((e) => [e, e])) : e,
-		...F(t)
+		...I(t)
 	});
 }
-var ws = /*@__PURE__*/ N("ZodLiteral", (e, t) => {
-	Ii.init(e, t), R.init(e, t), e.values = new Set(t.values), Object.defineProperty(e, "value", { get() {
+var Es = /*@__PURE__*/ P("ZodLiteral", (e, t) => {
+	Li.init(e, t), Fo.init(e, t), e.values = new Set(t.values), Object.defineProperty(e, "value", { get() {
 		if (t.values.length > 1) throw Error("This schema contains multiple valid literal values. Use `.values` instead.");
 		return t.values[0];
 	} });
 });
 function G(e, t) {
-	return new ws({
+	return new Es({
 		type: "literal",
 		values: Array.isArray(e) ? e : [e],
-		...F(t)
+		...I(t)
 	});
 }
-var Ts = /*@__PURE__*/ N("ZodTransform", (e, t) => {
-	Li.init(e, t), R.init(e, t), e._zod.parse = (n, r) => {
+var Ds = /*@__PURE__*/ P("ZodTransform", (e, t) => {
+	Ri.init(e, t), Fo.init(e, t), e._zod.parse = (n, r) => {
 		n.addIssue = (r) => {
-			if (typeof r == "string") n.issues.push(Nn(r, n.value, t));
+			if (typeof r == "string") n.issues.push(Pn(r, n.value, t));
 			else {
 				let t = r;
-				t.fatal && (t.continue = !1), t.code ??= "custom", t.input ??= n.value, t.inst ??= e, t.continue ??= !0, n.issues.push(Nn(t));
+				t.fatal && (t.continue = !1), t.code ??= "custom", t.input ??= n.value, t.inst ??= e, t.continue ??= !0, n.issues.push(Pn(t));
 			}
 		};
 		let i = t.transform(n.value, n);
 		return i instanceof Promise ? i.then((e) => (n.value = e, n)) : (n.value = i, n);
 	};
 });
-function Es(e) {
-	return new Ts({
+function Os(e) {
+	return new Ds({
 		type: "transform",
 		transform: e
 	});
 }
-var Ds = /*@__PURE__*/ N("ZodOptional", (e, t) => {
-	Ri.init(e, t), R.init(e, t), e.unwrap = () => e._zod.def.innerType;
+var ks = /*@__PURE__*/ P("ZodOptional", (e, t) => {
+	zi.init(e, t), Fo.init(e, t), e.unwrap = () => e._zod.def.innerType;
 });
-function Os(e) {
-	return new Ds({
+function As(e) {
+	return new ks({
 		type: "optional",
 		innerType: e
 	});
 }
-var ks = /*@__PURE__*/ N("ZodNullable", (e, t) => {
-	zi.init(e, t), R.init(e, t), e.unwrap = () => e._zod.def.innerType;
+var js = /*@__PURE__*/ P("ZodNullable", (e, t) => {
+	Bi.init(e, t), Fo.init(e, t), e.unwrap = () => e._zod.def.innerType;
 });
-function As(e) {
-	return new ks({
+function Ms(e) {
+	return new js({
 		type: "nullable",
 		innerType: e
 	});
 }
-var js = /*@__PURE__*/ N("ZodDefault", (e, t) => {
-	Bi.init(e, t), R.init(e, t), e.unwrap = () => e._zod.def.innerType, e.removeDefault = e.unwrap;
+var Ns = /*@__PURE__*/ P("ZodDefault", (e, t) => {
+	Vi.init(e, t), Fo.init(e, t), e.unwrap = () => e._zod.def.innerType, e.removeDefault = e.unwrap;
 });
-function Ms(e, t) {
-	return new js({
+function Ps(e, t) {
+	return new Ns({
 		type: "default",
 		innerType: e,
 		get defaultValue() {
@@ -6936,11 +6936,11 @@ function Ms(e, t) {
 		}
 	});
 }
-var Ns = /*@__PURE__*/ N("ZodPrefault", (e, t) => {
-	Hi.init(e, t), R.init(e, t), e.unwrap = () => e._zod.def.innerType;
+var Fs = /*@__PURE__*/ P("ZodPrefault", (e, t) => {
+	Ui.init(e, t), Fo.init(e, t), e.unwrap = () => e._zod.def.innerType;
 });
-function Ps(e, t) {
-	return new Ns({
+function Is(e, t) {
+	return new Fs({
 		type: "prefault",
 		innerType: e,
 		get defaultValue() {
@@ -6948,389 +6948,389 @@ function Ps(e, t) {
 		}
 	});
 }
-var Fs = /*@__PURE__*/ N("ZodNonOptional", (e, t) => {
-	Ui.init(e, t), R.init(e, t), e.unwrap = () => e._zod.def.innerType;
-});
-function Is(e, t) {
-	return new Fs({
-		type: "nonoptional",
-		innerType: e,
-		...F(t)
-	});
-}
-var Ls = /*@__PURE__*/ N("ZodCatch", (e, t) => {
-	Gi.init(e, t), R.init(e, t), e.unwrap = () => e._zod.def.innerType, e.removeCatch = e.unwrap;
+var Ls = /*@__PURE__*/ P("ZodNonOptional", (e, t) => {
+	Wi.init(e, t), Fo.init(e, t), e.unwrap = () => e._zod.def.innerType;
 });
 function Rs(e, t) {
 	return new Ls({
+		type: "nonoptional",
+		innerType: e,
+		...I(t)
+	});
+}
+var zs = /*@__PURE__*/ P("ZodCatch", (e, t) => {
+	Ki.init(e, t), Fo.init(e, t), e.unwrap = () => e._zod.def.innerType, e.removeCatch = e.unwrap;
+});
+function Bs(e, t) {
+	return new zs({
 		type: "catch",
 		innerType: e,
 		catchValue: typeof t == "function" ? t : () => t
 	});
 }
-var zs = /*@__PURE__*/ N("ZodPipe", (e, t) => {
-	Ki.init(e, t), R.init(e, t), e.in = t.in, e.out = t.out;
+var Vs = /*@__PURE__*/ P("ZodPipe", (e, t) => {
+	qi.init(e, t), Fo.init(e, t), e.in = t.in, e.out = t.out;
 });
-function Bs(e, t) {
-	return new zs({
+function Hs(e, t) {
+	return new Vs({
 		type: "pipe",
 		in: e,
 		out: t
 	});
 }
-var Vs = /*@__PURE__*/ N("ZodReadonly", (e, t) => {
-	Ji.init(e, t), R.init(e, t);
+var Us = /*@__PURE__*/ P("ZodReadonly", (e, t) => {
+	Yi.init(e, t), Fo.init(e, t);
 });
-function Hs(e) {
-	return new Vs({
+function Ws(e) {
+	return new Us({
 		type: "readonly",
 		innerType: e
 	});
 }
-var Us = /*@__PURE__*/ N("ZodCustom", (e, t) => {
-	Xi.init(e, t), R.init(e, t);
+var Gs = /*@__PURE__*/ P("ZodCustom", (e, t) => {
+	Zi.init(e, t), Fo.init(e, t);
 });
-function Ws(e) {
-	let t = new Tr({ check: "custom" });
+function Ks(e) {
+	let t = new Er({ check: "custom" });
 	return t._zod.check = e, t;
 }
-function Gs(e, t) {
-	return eo(Us, e ?? (() => !0), t);
+function qs(e, t) {
+	return to(Gs, e ?? (() => !0), t);
 }
-function Ks(e, t = {}) {
-	return to(Us, e, t);
+function Js(e, t = {}) {
+	return no(Gs, e, t);
 }
-function qs(e) {
-	let t = Ws((n) => (n.addIssue = (e) => {
-		if (typeof e == "string") n.issues.push(Nn(e, n.value, t._zod.def));
+function Ys(e) {
+	let t = Ks((n) => (n.addIssue = (e) => {
+		if (typeof e == "string") n.issues.push(Pn(e, n.value, t._zod.def));
 		else {
 			let r = e;
-			r.fatal && (r.continue = !1), r.code ??= "custom", r.input ??= n.value, r.inst ??= t, r.continue ??= !t._zod.def.abort, n.issues.push(Nn(r));
+			r.fatal && (r.continue = !1), r.code ??= "custom", r.input ??= n.value, r.inst ??= t, r.continue ??= !t._zod.def.abort, n.issues.push(Pn(r));
 		}
 	}, e(n.value, n)));
 	return t;
 }
-function Js(e, t) {
-	return Bs(Es(e), t);
+function Xs(e, t) {
+	return Hs(Os(e), t);
 }
 //#endregion
 //#region node_modules/@modelcontextprotocol/sdk/dist/esm/types.js
-var Ys = "2025-11-25", Xs = [
-	Ys,
+var Zs = "2025-11-25", Qs = [
+	Zs,
 	"2025-06-18",
 	"2025-03-26",
 	"2024-11-05",
 	"2024-10-07"
-], Zs = "io.modelcontextprotocol/related-task", Qs = Gs((e) => e !== null && (typeof e == "object" || typeof e == "function")), $s = U([z(), B().int()]), ec = z();
-hs({
+], $s = "io.modelcontextprotocol/related-task", ec = qs((e) => e !== null && (typeof e == "object" || typeof e == "function")), tc = U([z(), B().int()]), nc = z();
+_s({
 	ttl: B().optional(),
 	pollInterval: B().optional()
 });
-var tc = H({ ttl: B().optional() }), nc = H({ taskId: z() }), rc = hs({
-	progressToken: $s.optional(),
-	[Zs]: nc.optional()
-}), ic = H({ _meta: rc.optional() }), ac = ic.extend({ task: tc.optional() }), oc = (e) => ac.safeParse(e).success, sc = H({
+var rc = H({ ttl: B().optional() }), ic = H({ taskId: z() }), ac = _s({
+	progressToken: tc.optional(),
+	[$s]: ic.optional()
+}), oc = H({ _meta: ac.optional() }), sc = oc.extend({ task: rc.optional() }), cc = (e) => sc.safeParse(e).success, lc = H({
 	method: z(),
-	params: ic.loose().optional()
-}), cc = H({ _meta: rc.optional() }), lc = H({
+	params: oc.loose().optional()
+}), uc = H({ _meta: ac.optional() }), dc = H({
 	method: z(),
-	params: cc.loose().optional()
-}), uc = hs({ _meta: rc.optional() }), dc = U([z(), B().int()]), fc = H({
+	params: uc.loose().optional()
+}), fc = _s({ _meta: ac.optional() }), pc = U([z(), B().int()]), mc = H({
 	jsonrpc: G("2.0"),
-	id: dc,
-	...sc.shape
-}).strict(), pc = (e) => fc.safeParse(e).success, mc = H({
-	jsonrpc: G("2.0"),
+	id: pc,
 	...lc.shape
 }).strict(), hc = (e) => mc.safeParse(e).success, gc = H({
 	jsonrpc: G("2.0"),
-	id: dc,
-	result: uc
-}).strict(), _c = (e) => gc.safeParse(e).success, K;
+	...dc.shape
+}).strict(), _c = (e) => gc.safeParse(e).success, vc = H({
+	jsonrpc: G("2.0"),
+	id: pc,
+	result: fc
+}).strict(), yc = (e) => vc.safeParse(e).success, K;
 (function(e) {
 	e[e.ConnectionClosed = -32e3] = "ConnectionClosed", e[e.RequestTimeout = -32001] = "RequestTimeout", e[e.ParseError = -32700] = "ParseError", e[e.InvalidRequest = -32600] = "InvalidRequest", e[e.MethodNotFound = -32601] = "MethodNotFound", e[e.InvalidParams = -32602] = "InvalidParams", e[e.InternalError = -32603] = "InternalError", e[e.UrlElicitationRequired = -32042] = "UrlElicitationRequired";
 })(K ||= {});
-var vc = H({
+var bc = H({
 	jsonrpc: G("2.0"),
-	id: dc.optional(),
+	id: pc.optional(),
 	error: H({
 		code: B().int(),
 		message: z(),
-		data: us().optional()
+		data: fs().optional()
 	})
-}).strict(), yc = (e) => vc.safeParse(e).success, bc = U([
-	fc,
+}).strict(), xc = (e) => bc.safeParse(e).success, Sc = U([
 	mc,
 	gc,
-	vc
+	vc,
+	bc
 ]);
-U([gc, vc]);
-var xc = uc.strict(), Sc = cc.extend({
-	requestId: dc.optional(),
+U([vc, bc]);
+var Cc = fc.strict(), wc = uc.extend({
+	requestId: pc.optional(),
 	reason: z().optional()
-}), Cc = lc.extend({
+}), Tc = dc.extend({
 	method: G("notifications/cancelled"),
-	params: Sc
-}), wc = H({ icons: V(H({
+	params: wc
+}), Ec = H({ icons: V(H({
 	src: z(),
 	mimeType: z().optional(),
 	sizes: V(z()).optional(),
-	theme: Cs(["light", "dark"]).optional()
-})).optional() }), Tc = H({
+	theme: Ts(["light", "dark"]).optional()
+})).optional() }), Dc = H({
 	name: z(),
 	title: z().optional()
-}), Ec = Tc.extend({
-	...Tc.shape,
-	...wc.shape,
+}), Oc = Dc.extend({
+	...Dc.shape,
+	...Ec.shape,
 	version: z(),
 	websiteUrl: z().optional(),
 	description: z().optional()
-}), Dc = Js((e) => e && typeof e == "object" && !Array.isArray(e) && Object.keys(e).length === 0 ? { form: {} } : e, bs(H({
-	form: bs(H({ applyDefaults: os().optional() }), W(z(), us())).optional(),
-	url: Qs.optional()
-}), W(z(), us()).optional())), Oc = hs({
-	list: Qs.optional(),
-	cancel: Qs.optional(),
-	requests: hs({
-		sampling: hs({ createMessage: Qs.optional() }).optional(),
-		elicitation: hs({ create: Qs.optional() }).optional()
+}), kc = Xs((e) => e && typeof e == "object" && !Array.isArray(e) && Object.keys(e).length === 0 ? { form: {} } : e, Ss(H({
+	form: Ss(H({ applyDefaults: cs().optional() }), W(z(), fs())).optional(),
+	url: ec.optional()
+}), W(z(), fs()).optional())), Ac = _s({
+	list: ec.optional(),
+	cancel: ec.optional(),
+	requests: _s({
+		sampling: _s({ createMessage: ec.optional() }).optional(),
+		elicitation: _s({ create: ec.optional() }).optional()
 	}).optional()
-}), kc = hs({
-	list: Qs.optional(),
-	cancel: Qs.optional(),
-	requests: hs({ tools: hs({ call: Qs.optional() }).optional() }).optional()
-}), Ac = H({
-	experimental: W(z(), Qs).optional(),
+}), jc = _s({
+	list: ec.optional(),
+	cancel: ec.optional(),
+	requests: _s({ tools: _s({ call: ec.optional() }).optional() }).optional()
+}), Mc = H({
+	experimental: W(z(), ec).optional(),
 	sampling: H({
-		context: Qs.optional(),
-		tools: Qs.optional()
+		context: ec.optional(),
+		tools: ec.optional()
 	}).optional(),
-	elicitation: Dc.optional(),
-	roots: H({ listChanged: os().optional() }).optional(),
-	tasks: Oc.optional(),
-	extensions: W(z(), Qs).optional()
-}), jc = ic.extend({
+	elicitation: kc.optional(),
+	roots: H({ listChanged: cs().optional() }).optional(),
+	tasks: Ac.optional(),
+	extensions: W(z(), ec).optional()
+}), Nc = oc.extend({
 	protocolVersion: z(),
-	capabilities: Ac,
-	clientInfo: Ec
-}), Mc = sc.extend({
+	capabilities: Mc,
+	clientInfo: Oc
+}), Pc = lc.extend({
 	method: G("initialize"),
-	params: jc
-}), Nc = H({
-	experimental: W(z(), Qs).optional(),
-	logging: Qs.optional(),
-	completions: Qs.optional(),
-	prompts: H({ listChanged: os().optional() }).optional(),
+	params: Nc
+}), Fc = H({
+	experimental: W(z(), ec).optional(),
+	logging: ec.optional(),
+	completions: ec.optional(),
+	prompts: H({ listChanged: cs().optional() }).optional(),
 	resources: H({
-		subscribe: os().optional(),
-		listChanged: os().optional()
+		subscribe: cs().optional(),
+		listChanged: cs().optional()
 	}).optional(),
-	tools: H({ listChanged: os().optional() }).optional(),
-	tasks: kc.optional(),
-	extensions: W(z(), Qs).optional()
-}), Pc = uc.extend({
+	tools: H({ listChanged: cs().optional() }).optional(),
+	tasks: jc.optional(),
+	extensions: W(z(), ec).optional()
+}), Ic = fc.extend({
 	protocolVersion: z(),
-	capabilities: Nc,
-	serverInfo: Ec,
+	capabilities: Fc,
+	serverInfo: Oc,
 	instructions: z().optional()
-}), Fc = lc.extend({
+}), Lc = dc.extend({
 	method: G("notifications/initialized"),
-	params: cc.optional()
-}), Ic = sc.extend({
+	params: uc.optional()
+}), Rc = lc.extend({
 	method: G("ping"),
-	params: ic.optional()
-}), Lc = H({
+	params: oc.optional()
+}), zc = H({
 	progress: B(),
-	total: Os(B()),
-	message: Os(z())
-}), Rc = H({
-	...cc.shape,
-	...Lc.shape,
-	progressToken: $s
-}), zc = lc.extend({
+	total: As(B()),
+	message: As(z())
+}), Bc = H({
+	...uc.shape,
+	...zc.shape,
+	progressToken: tc
+}), Vc = dc.extend({
 	method: G("notifications/progress"),
-	params: Rc
-}), Bc = ic.extend({ cursor: ec.optional() }), Vc = sc.extend({ params: Bc.optional() }), Hc = uc.extend({ nextCursor: ec.optional() }), Uc = Cs([
+	params: Bc
+}), Hc = oc.extend({ cursor: nc.optional() }), Uc = lc.extend({ params: Hc.optional() }), Wc = fc.extend({ nextCursor: nc.optional() }), Gc = Ts([
 	"working",
 	"input_required",
 	"completed",
 	"failed",
 	"cancelled"
-]), Wc = H({
+]), Kc = H({
 	taskId: z(),
-	status: Uc,
-	ttl: U([B(), cs()]),
+	status: Gc,
+	ttl: U([B(), us()]),
 	createdAt: z(),
 	lastUpdatedAt: z(),
-	pollInterval: Os(B()),
-	statusMessage: Os(z())
-}), Gc = uc.extend({ task: Wc }), Kc = cc.merge(Wc), qc = lc.extend({
+	pollInterval: As(B()),
+	statusMessage: As(z())
+}), qc = fc.extend({ task: Kc }), Jc = uc.merge(Kc), Yc = dc.extend({
 	method: G("notifications/tasks/status"),
-	params: Kc
-}), Jc = sc.extend({
+	params: Jc
+}), Xc = lc.extend({
 	method: G("tasks/get"),
-	params: ic.extend({ taskId: z() })
-}), Yc = uc.merge(Wc), Xc = sc.extend({
+	params: oc.extend({ taskId: z() })
+}), Zc = fc.merge(Kc), Qc = lc.extend({
 	method: G("tasks/result"),
-	params: ic.extend({ taskId: z() })
+	params: oc.extend({ taskId: z() })
 });
-uc.loose();
-var Zc = Vc.extend({ method: G("tasks/list") }), Qc = Hc.extend({ tasks: V(Wc) }), $c = sc.extend({
+fc.loose();
+var $c = Uc.extend({ method: G("tasks/list") }), el = Wc.extend({ tasks: V(Kc) }), tl = lc.extend({
 	method: G("tasks/cancel"),
-	params: ic.extend({ taskId: z() })
-}), el = uc.merge(Wc), tl = H({
+	params: oc.extend({ taskId: z() })
+}), nl = fc.merge(Kc), rl = H({
 	uri: z(),
-	mimeType: Os(z()),
-	_meta: W(z(), us()).optional()
-}), nl = tl.extend({ text: z() }), rl = z().refine((e) => {
+	mimeType: As(z()),
+	_meta: W(z(), fs()).optional()
+}), il = rl.extend({ text: z() }), al = z().refine((e) => {
 	try {
 		return atob(e), !0;
 	} catch {
 		return !1;
 	}
-}, { message: "Invalid Base64 string" }), il = tl.extend({ blob: rl }), al = Cs(["user", "assistant"]), ol = H({
-	audience: V(al).optional(),
+}, { message: "Invalid Base64 string" }), ol = rl.extend({ blob: al }), sl = Ts(["user", "assistant"]), cl = H({
+	audience: V(sl).optional(),
 	priority: B().min(0).max(1).optional(),
-	lastModified: xo({ offset: !0 }).optional()
-}), sl = H({
-	...Tc.shape,
-	...wc.shape,
+	lastModified: So({ offset: !0 }).optional()
+}), ll = H({
+	...Dc.shape,
+	...Ec.shape,
 	uri: z(),
-	description: Os(z()),
-	mimeType: Os(z()),
-	size: Os(B()),
-	annotations: ol.optional(),
-	_meta: Os(hs({}))
-}), cl = H({
-	...Tc.shape,
-	...wc.shape,
+	description: As(z()),
+	mimeType: As(z()),
+	size: As(B()),
+	annotations: cl.optional(),
+	_meta: As(_s({}))
+}), ul = H({
+	...Dc.shape,
+	...Ec.shape,
 	uriTemplate: z(),
-	description: Os(z()),
-	mimeType: Os(z()),
-	annotations: ol.optional(),
-	_meta: Os(hs({}))
-}), ll = Vc.extend({ method: G("resources/list") }), ul = Hc.extend({ resources: V(sl) }), dl = Vc.extend({ method: G("resources/templates/list") }), fl = Hc.extend({ resourceTemplates: V(cl) }), pl = ic.extend({ uri: z() }), ml = pl, hl = sc.extend({
+	description: As(z()),
+	mimeType: As(z()),
+	annotations: cl.optional(),
+	_meta: As(_s({}))
+}), dl = Uc.extend({ method: G("resources/list") }), fl = Wc.extend({ resources: V(ll) }), pl = Uc.extend({ method: G("resources/templates/list") }), ml = Wc.extend({ resourceTemplates: V(ul) }), hl = oc.extend({ uri: z() }), gl = hl, _l = lc.extend({
 	method: G("resources/read"),
-	params: ml
-}), gl = uc.extend({ contents: V(U([nl, il])) }), _l = lc.extend({
+	params: gl
+}), vl = fc.extend({ contents: V(U([il, ol])) }), yl = dc.extend({
 	method: G("notifications/resources/list_changed"),
-	params: cc.optional()
-}), vl = pl, yl = sc.extend({
+	params: uc.optional()
+}), bl = hl, xl = lc.extend({
 	method: G("resources/subscribe"),
-	params: vl
-}), bl = pl, xl = sc.extend({
-	method: G("resources/unsubscribe"),
 	params: bl
-}), Sl = cc.extend({ uri: z() }), Cl = lc.extend({
-	method: G("notifications/resources/updated"),
+}), Sl = hl, Cl = lc.extend({
+	method: G("resources/unsubscribe"),
 	params: Sl
-}), wl = H({
+}), wl = uc.extend({ uri: z() }), Tl = dc.extend({
+	method: G("notifications/resources/updated"),
+	params: wl
+}), El = H({
 	name: z(),
-	description: Os(z()),
-	required: Os(os())
-}), Tl = H({
-	...Tc.shape,
-	...wc.shape,
-	description: Os(z()),
-	arguments: Os(V(wl)),
-	_meta: Os(hs({}))
-}), El = Vc.extend({ method: G("prompts/list") }), Dl = Hc.extend({ prompts: V(Tl) }), Ol = ic.extend({
+	description: As(z()),
+	required: As(cs())
+}), Dl = H({
+	...Dc.shape,
+	...Ec.shape,
+	description: As(z()),
+	arguments: As(V(El)),
+	_meta: As(_s({}))
+}), Ol = Uc.extend({ method: G("prompts/list") }), kl = Wc.extend({ prompts: V(Dl) }), Al = oc.extend({
 	name: z(),
 	arguments: W(z(), z()).optional()
-}), kl = sc.extend({
+}), jl = lc.extend({
 	method: G("prompts/get"),
-	params: Ol
-}), Al = H({
+	params: Al
+}), Ml = H({
 	type: G("text"),
 	text: z(),
-	annotations: ol.optional(),
-	_meta: W(z(), us()).optional()
-}), jl = H({
-	type: G("image"),
-	data: rl,
-	mimeType: z(),
-	annotations: ol.optional(),
-	_meta: W(z(), us()).optional()
-}), Ml = H({
-	type: G("audio"),
-	data: rl,
-	mimeType: z(),
-	annotations: ol.optional(),
-	_meta: W(z(), us()).optional()
+	annotations: cl.optional(),
+	_meta: W(z(), fs()).optional()
 }), Nl = H({
+	type: G("image"),
+	data: al,
+	mimeType: z(),
+	annotations: cl.optional(),
+	_meta: W(z(), fs()).optional()
+}), Pl = H({
+	type: G("audio"),
+	data: al,
+	mimeType: z(),
+	annotations: cl.optional(),
+	_meta: W(z(), fs()).optional()
+}), Fl = H({
 	type: G("tool_use"),
 	name: z(),
 	id: z(),
-	input: W(z(), us()),
-	_meta: W(z(), us()).optional()
-}), Pl = H({
+	input: W(z(), fs()),
+	_meta: W(z(), fs()).optional()
+}), Il = H({
 	type: G("resource"),
-	resource: U([nl, il]),
-	annotations: ol.optional(),
-	_meta: W(z(), us()).optional()
-}), Fl = U([
-	Al,
-	jl,
+	resource: U([il, ol]),
+	annotations: cl.optional(),
+	_meta: W(z(), fs()).optional()
+}), Ll = U([
 	Ml,
-	sl.extend({ type: G("resource_link") }),
-	Pl
-]), Il = H({
-	role: al,
-	content: Fl
-}), Ll = uc.extend({
+	Nl,
+	Pl,
+	ll.extend({ type: G("resource_link") }),
+	Il
+]), Rl = H({
+	role: sl,
+	content: Ll
+}), zl = fc.extend({
 	description: z().optional(),
-	messages: V(Il)
-}), Rl = lc.extend({
+	messages: V(Rl)
+}), Bl = dc.extend({
 	method: G("notifications/prompts/list_changed"),
-	params: cc.optional()
-}), zl = H({
+	params: uc.optional()
+}), Vl = H({
 	title: z().optional(),
-	readOnlyHint: os().optional(),
-	destructiveHint: os().optional(),
-	idempotentHint: os().optional(),
-	openWorldHint: os().optional()
-}), Bl = H({ taskSupport: Cs([
+	readOnlyHint: cs().optional(),
+	destructiveHint: cs().optional(),
+	idempotentHint: cs().optional(),
+	openWorldHint: cs().optional()
+}), Hl = H({ taskSupport: Ts([
 	"required",
 	"optional",
 	"forbidden"
-]).optional() }), Vl = H({
-	...Tc.shape,
-	...wc.shape,
+]).optional() }), Ul = H({
+	...Dc.shape,
+	...Ec.shape,
 	description: z().optional(),
 	inputSchema: H({
 		type: G("object"),
-		properties: W(z(), Qs).optional(),
+		properties: W(z(), ec).optional(),
 		required: V(z()).optional()
-	}).catchall(us()),
+	}).catchall(fs()),
 	outputSchema: H({
 		type: G("object"),
-		properties: W(z(), Qs).optional(),
+		properties: W(z(), ec).optional(),
 		required: V(z()).optional()
-	}).catchall(us()).optional(),
-	annotations: zl.optional(),
-	execution: Bl.optional(),
-	_meta: W(z(), us()).optional()
-}), Hl = Vc.extend({ method: G("tools/list") }), Ul = Hc.extend({ tools: V(Vl) }), Wl = uc.extend({
-	content: V(Fl).default([]),
-	structuredContent: W(z(), us()).optional(),
-	isError: os().optional()
+	}).catchall(fs()).optional(),
+	annotations: Vl.optional(),
+	execution: Hl.optional(),
+	_meta: W(z(), fs()).optional()
+}), Wl = Uc.extend({ method: G("tools/list") }), Gl = Wc.extend({ tools: V(Ul) }), Kl = fc.extend({
+	content: V(Ll).default([]),
+	structuredContent: W(z(), fs()).optional(),
+	isError: cs().optional()
 });
-Wl.or(uc.extend({ toolResult: us() }));
-var Gl = ac.extend({
+Kl.or(fc.extend({ toolResult: fs() }));
+var ql = sc.extend({
 	name: z(),
-	arguments: W(z(), us()).optional()
-}), Kl = sc.extend({
+	arguments: W(z(), fs()).optional()
+}), Jl = lc.extend({
 	method: G("tools/call"),
-	params: Gl
-}), ql = lc.extend({
+	params: ql
+}), Yl = dc.extend({
 	method: G("notifications/tools/list_changed"),
-	params: cc.optional()
+	params: uc.optional()
 });
 H({
-	autoRefresh: os().default(!0),
+	autoRefresh: cs().default(!0),
 	debounceMs: B().int().nonnegative().default(300)
 });
-var Jl = Cs([
+var Xl = Ts([
 	"debug",
 	"info",
 	"notice",
@@ -7339,51 +7339,51 @@ var Jl = Cs([
 	"critical",
 	"alert",
 	"emergency"
-]), Yl = ic.extend({ level: Jl }), Xl = sc.extend({
+]), Zl = oc.extend({ level: Xl }), Ql = lc.extend({
 	method: G("logging/setLevel"),
-	params: Yl
-}), Zl = cc.extend({
-	level: Jl,
-	logger: z().optional(),
-	data: us()
-}), Ql = lc.extend({
-	method: G("notifications/message"),
 	params: Zl
-}), $l = H({
+}), $l = uc.extend({
+	level: Xl,
+	logger: z().optional(),
+	data: fs()
+}), eu = dc.extend({
+	method: G("notifications/message"),
+	params: $l
+}), tu = H({
 	hints: V(H({ name: z().optional() })).optional(),
 	costPriority: B().min(0).max(1).optional(),
 	speedPriority: B().min(0).max(1).optional(),
 	intelligencePriority: B().min(0).max(1).optional()
-}), eu = H({ mode: Cs([
+}), nu = H({ mode: Ts([
 	"auto",
 	"required",
 	"none"
-]).optional() }), tu = H({
+]).optional() }), ru = H({
 	type: G("tool_result"),
 	toolUseId: z().describe("The unique identifier for the corresponding tool call."),
-	content: V(Fl).default([]),
+	content: V(Ll).default([]),
 	structuredContent: H({}).loose().optional(),
-	isError: os().optional(),
-	_meta: W(z(), us()).optional()
-}), nu = vs("type", [
-	Al,
-	jl,
-	Ml
-]), ru = vs("type", [
-	Al,
-	jl,
+	isError: cs().optional(),
+	_meta: W(z(), fs()).optional()
+}), iu = bs("type", [
 	Ml,
 	Nl,
-	tu
-]), iu = H({
-	role: al,
-	content: U([ru, V(ru)]),
-	_meta: W(z(), us()).optional()
-}), au = ac.extend({
-	messages: V(iu),
-	modelPreferences: $l.optional(),
+	Pl
+]), au = bs("type", [
+	Ml,
+	Nl,
+	Pl,
+	Fl,
+	ru
+]), ou = H({
+	role: sl,
+	content: U([au, V(au)]),
+	_meta: W(z(), fs()).optional()
+}), su = sc.extend({
+	messages: V(ou),
+	modelPreferences: tu.optional(),
 	systemPrompt: z().optional(),
-	includeContext: Cs([
+	includeContext: Ts([
 		"none",
 		"thisServer",
 		"allServers"
@@ -7391,63 +7391,63 @@ var Jl = Cs([
 	temperature: B().optional(),
 	maxTokens: B().int(),
 	stopSequences: V(z()).optional(),
-	metadata: Qs.optional(),
-	tools: V(Vl).optional(),
-	toolChoice: eu.optional()
-}), ou = sc.extend({
+	metadata: ec.optional(),
+	tools: V(Ul).optional(),
+	toolChoice: nu.optional()
+}), cu = lc.extend({
 	method: G("sampling/createMessage"),
-	params: au
-}), su = uc.extend({
+	params: su
+}), lu = fc.extend({
 	model: z(),
-	stopReason: Os(Cs([
+	stopReason: As(Ts([
 		"endTurn",
 		"stopSequence",
 		"maxTokens"
 	]).or(z())),
-	role: al,
-	content: nu
-}), cu = uc.extend({
+	role: sl,
+	content: iu
+}), uu = fc.extend({
 	model: z(),
-	stopReason: Os(Cs([
+	stopReason: As(Ts([
 		"endTurn",
 		"stopSequence",
 		"maxTokens",
 		"toolUse"
 	]).or(z())),
-	role: al,
-	content: U([ru, V(ru)])
-}), lu = H({
+	role: sl,
+	content: U([au, V(au)])
+}), du = H({
 	type: G("boolean"),
 	title: z().optional(),
 	description: z().optional(),
-	default: os().optional()
-}), uu = H({
+	default: cs().optional()
+}), fu = H({
 	type: G("string"),
 	title: z().optional(),
 	description: z().optional(),
 	minLength: B().optional(),
 	maxLength: B().optional(),
-	format: Cs([
+	format: Ts([
 		"email",
 		"uri",
 		"date",
 		"date-time"
 	]).optional(),
 	default: z().optional()
-}), du = H({
-	type: Cs(["number", "integer"]),
+}), pu = H({
+	type: Ts(["number", "integer"]),
 	title: z().optional(),
 	description: z().optional(),
 	minimum: B().optional(),
 	maximum: B().optional(),
 	default: B().optional()
-}), fu = H({
+}), mu = H({
 	type: G("string"),
 	title: z().optional(),
 	description: z().optional(),
 	enum: V(z()),
 	default: z().optional()
-}), pu = H({
+}), hu = H({
 	type: G("string"),
 	title: z().optional(),
 	description: z().optional(),
@@ -7456,7 +7456,7 @@ var Jl = Cs([
 		title: z()
 	})),
 	default: z().optional()
-}), mu = U([
+}), gu = U([
 	U([
 		H({
 			type: G("string"),
@@ -7466,7 +7466,7 @@ var Jl = Cs([
 			enumNames: V(z()).optional(),
 			default: z().optional()
 		}),
-		U([fu, pu]),
+		U([mu, hu]),
 		U([H({
 			type: G("array"),
 			title: z().optional(),
@@ -7491,144 +7491,144 @@ var Jl = Cs([
 			default: V(z()).optional()
 		})])
 	]),
-	lu,
-	uu,
-	du
-]), hu = U([ac.extend({
+	du,
+	fu,
+	pu
+]), _u = U([sc.extend({
 	mode: G("form").optional(),
 	message: z(),
 	requestedSchema: H({
 		type: G("object"),
-		properties: W(z(), mu),
+		properties: W(z(), gu),
 		required: V(z()).optional()
 	})
-}), ac.extend({
+}), sc.extend({
 	mode: G("url"),
 	message: z(),
 	elicitationId: z(),
 	url: z().url()
-})]), gu = sc.extend({
+})]), vu = lc.extend({
 	method: G("elicitation/create"),
-	params: hu
-}), _u = cc.extend({ elicitationId: z() }), vu = lc.extend({
-	method: G("notifications/elicitation/complete"),
 	params: _u
-}), yu = uc.extend({
-	action: Cs([
+}), yu = uc.extend({ elicitationId: z() }), bu = dc.extend({
+	method: G("notifications/elicitation/complete"),
+	params: yu
+}), xu = fc.extend({
+	action: Ts([
 		"accept",
 		"decline",
 		"cancel"
 	]),
-	content: Js((e) => e === null ? void 0 : e, W(z(), U([
+	content: Xs((e) => e === null ? void 0 : e, W(z(), U([
 		z(),
 		B(),
-		os(),
+		cs(),
 		V(z())
 	])).optional())
-}), bu = H({
+}), Su = H({
 	type: G("ref/resource"),
 	uri: z()
-}), xu = H({
+}), Cu = H({
 	type: G("ref/prompt"),
 	name: z()
-}), Su = ic.extend({
-	ref: U([xu, bu]),
+}), wu = oc.extend({
+	ref: U([Cu, Su]),
 	argument: H({
 		name: z(),
 		value: z()
 	}),
 	context: H({ arguments: W(z(), z()).optional() }).optional()
-}), Cu = sc.extend({
+}), Tu = lc.extend({
 	method: G("completion/complete"),
-	params: Su
+	params: wu
 });
-function wu(e) {
+function Eu(e) {
 	if (e.params.ref.type !== "ref/prompt") throw TypeError(`Expected CompleteRequestPrompt, but got ${e.params.ref.type}`);
 }
-function Tu(e) {
+function Du(e) {
 	if (e.params.ref.type !== "ref/resource") throw TypeError(`Expected CompleteRequestResourceTemplate, but got ${e.params.ref.type}`);
 }
-var Eu = uc.extend({ completion: hs({
+var Ou = fc.extend({ completion: _s({
 	values: V(z()).max(100),
-	total: Os(B().int()),
-	hasMore: Os(os())
-}) }), Du = H({
+	total: As(B().int()),
+	hasMore: As(cs())
+}) }), ku = H({
 	uri: z().startsWith("file://"),
 	name: z().optional(),
-	_meta: W(z(), us()).optional()
-}), Ou = sc.extend({
+	_meta: W(z(), fs()).optional()
+}), Au = lc.extend({
 	method: G("roots/list"),
-	params: ic.optional()
-}), ku = uc.extend({ roots: V(Du) }), Au = lc.extend({
+	params: oc.optional()
+}), ju = fc.extend({ roots: V(ku) }), Mu = dc.extend({
 	method: G("notifications/roots/list_changed"),
-	params: cc.optional()
+	params: uc.optional()
 });
 U([
-	Ic,
-	Mc,
-	Cu,
-	Xl,
-	kl,
-	El,
-	ll,
+	Rc,
+	Pc,
+	Tu,
+	Ql,
+	jl,
+	Ol,
 	dl,
-	hl,
-	yl,
+	pl,
+	_l,
 	xl,
-	Kl,
-	Hl,
-	Jc,
+	Cl,
+	Jl,
+	Wl,
 	Xc,
-	Zc,
-	$c
+	Qc,
+	$c,
+	tl
+]), U([
+	Tc,
+	Vc,
+	Lc,
+	Mu,
+	Yc
 ]), U([
 	Cc,
-	zc,
-	Fc,
-	Au,
+	lu,
+	uu,
+	xu,
+	ju,
+	Zc,
+	el,
 	qc
 ]), U([
-	xc,
-	su,
+	Rc,
 	cu,
-	yu,
-	ku,
-	Yc,
-	Qc,
-	Gc
-]), U([
-	Ic,
-	ou,
-	gu,
-	Ou,
-	Jc,
+	vu,
+	Au,
 	Xc,
-	Zc,
-	$c
+	Qc,
+	$c,
+	tl
+]), U([
+	Tc,
+	Vc,
+	eu,
+	Tl,
+	yl,
+	Yl,
+	Bl,
+	Yc,
+	bu
 ]), U([
 	Cc,
-	zc,
-	Ql,
-	Cl,
-	_l,
-	ql,
-	Rl,
-	qc,
-	vu
-]), U([
-	xc,
-	Pc,
-	Eu,
-	Ll,
-	Dl,
-	ul,
+	Ic,
+	Ou,
+	zl,
+	kl,
 	fl,
-	gl,
-	Wl,
-	Ul,
-	Yc,
-	Qc,
-	Gc
+	ml,
+	vl,
+	Kl,
+	Gl,
+	Zc,
+	el,
+	qc
 ]);
 var q = class e extends Error {
 	constructor(e, t, n) {
@@ -7637,11 +7637,11 @@ var q = class e extends Error {
 	static fromError(t, n, r) {
 		if (t === K.UrlElicitationRequired && r) {
 			let e = r;
-			if (e.elicitations) return new ju(e.elicitations, n);
+			if (e.elicitations) return new Nu(e.elicitations, n);
 		}
 		return new e(t, n, r);
 	}
-}, ju = class extends q {
+}, Nu = class extends q {
 	constructor(e, t = `URL elicitation${e.length > 1 ? "s" : ""} required`) {
 		super(K.UrlElicitationRequired, t, { elicitations: e });
 	}
@@ -7651,12 +7651,12 @@ var q = class e extends Error {
 };
 //#endregion
 //#region node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/interfaces.js
-function Mu(e) {
+function Pu(e) {
 	return e === "completed" || e === "failed" || e === "cancelled";
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/Options.js
-var Nu = Symbol("Let zodToJsonSchema decide on which parser to use"), Pu = {
+var Fu = Symbol("Let zodToJsonSchema decide on which parser to use"), Iu = {
 	name: void 0,
 	$refStrategy: "root",
 	basePath: ["#"],
@@ -7679,14 +7679,14 @@ var Nu = Symbol("Let zodToJsonSchema decide on which parser to use"), Pu = {
 	base64Strategy: "contentEncoding:base64",
 	nameStrategy: "ref",
 	openAiAnyTypeName: "OpenAiAnyType"
-}, Fu = (e) => typeof e == "string" ? {
-	...Pu,
+}, Lu = (e) => typeof e == "string" ? {
+	...Iu,
 	name: e
 } : {
-	...Pu,
+	...Iu,
 	...e
-}, Iu = (e) => {
-	let t = Fu(e), n = t.name === void 0 ? t.basePath : [
+}, Ru = (e) => {
+	let t = Lu(e), n = t.name === void 0 ? t.basePath : [
 		...t.basePath,
 		t.definitionPath,
 		t.name
@@ -7709,45 +7709,45 @@ var Nu = Symbol("Let zodToJsonSchema decide on which parser to use"), Pu = {
 };
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/errorMessages.js
-function Lu(e, t, n, r) {
+function zu(e, t, n, r) {
 	r?.errorMessages && n && (e.errorMessage = {
 		...e.errorMessage,
 		[t]: n
 	});
 }
 function J(e, t, n, r, i) {
-	e[t] = n, Lu(e, t, r, i);
+	e[t] = n, zu(e, t, r, i);
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/getRelativePath.js
-var Ru = (e, t) => {
+var Bu = (e, t) => {
 	let n = 0;
 	for (; n < e.length && n < t.length && e[n] === t[n]; n++);
 	return [(e.length - n).toString(), ...t.slice(n)].join("/");
 };
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/any.js
-function zu(e) {
+function Vu(e) {
 	if (e.target !== "openAi") return {};
 	let t = [
 		...e.basePath,
 		e.definitionPath,
 		e.openAiAnyTypeName
 	];
-	return e.flags.hasReferencedOpenAiAnyType = !0, { $ref: e.$refStrategy === "relative" ? Ru(t, e.currentPath) : t.join("/") };
+	return e.flags.hasReferencedOpenAiAnyType = !0, { $ref: e.$refStrategy === "relative" ? Bu(t, e.currentPath) : t.join("/") };
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/array.js
-function Bu(e, t) {
+function Hu(e, t) {
 	let n = { type: "array" };
-	return e.type?._def && e.type?._def?.typeName !== M.ZodAny && (n.items = Y(e.type._def, {
+	return e.type?._def && e.type?._def?.typeName !== N.ZodAny && (n.items = Y(e.type._def, {
 		...t,
 		currentPath: [...t.currentPath, "items"]
 	})), e.minLength && J(n, "minItems", e.minLength.value, e.minLength.message, t), e.maxLength && J(n, "maxItems", e.maxLength.value, e.maxLength.message, t), e.exactLength && (J(n, "minItems", e.exactLength.value, e.exactLength.message, t), J(n, "maxItems", e.exactLength.value, e.exactLength.message, t)), n;
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/bigint.js
-function Vu(e, t) {
+function Uu(e, t) {
 	let n = {
 		type: "integer",
 		format: "int64"
@@ -7766,22 +7766,22 @@ function Vu(e, t) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/boolean.js
-function Hu() {
+function Wu() {
 	return { type: "boolean" };
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/branded.js
-function Uu(e, t) {
+function Gu(e, t) {
 	return Y(e.type._def, t);
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/catch.js
-var Wu = (e, t) => Y(e.innerType._def, t);
+var Ku = (e, t) => Y(e.innerType._def, t);
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/date.js
-function Gu(e, t, n) {
+function qu(e, t, n) {
 	let r = n ?? t.dateStrategy;
-	if (Array.isArray(r)) return { anyOf: r.map((n, r) => Gu(e, t, n)) };
+	if (Array.isArray(r)) return { anyOf: r.map((n, r) => qu(e, t, n)) };
 	switch (r) {
 		case "string":
 		case "format:date-time": return {
@@ -7792,10 +7792,10 @@ function Gu(e, t, n) {
 			type: "string",
 			format: "date"
 		};
-		case "integer": return Ku(e, t);
+		case "integer": return Ju(e, t);
 	}
 }
-var Ku = (e, t) => {
+var Ju = (e, t) => {
 	let n = {
 		type: "integer",
 		format: "unix-time"
@@ -7811,7 +7811,7 @@ var Ku = (e, t) => {
 };
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/default.js
-function qu(e, t) {
+function Yu(e, t) {
 	return {
 		...Y(e.innerType._def, t),
 		default: e.defaultValue()
@@ -7819,12 +7819,12 @@ function qu(e, t) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/effects.js
-function Ju(e, t) {
-	return t.effectStrategy === "input" ? Y(e.schema._def, t) : zu(t);
+function Xu(e, t) {
+	return t.effectStrategy === "input" ? Y(e.schema._def, t) : Vu(t);
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/enum.js
-function Yu(e) {
+function Zu(e) {
 	return {
 		type: "string",
 		enum: Array.from(e.values)
@@ -7832,8 +7832,8 @@ function Yu(e) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/intersection.js
-var Xu = (e) => "type" in e && e.type === "string" ? !1 : "allOf" in e;
-function Zu(e, t) {
+var Qu = (e) => "type" in e && e.type === "string" ? !1 : "allOf" in e;
+function $u(e, t) {
 	let n = [Y(e.left._def, {
 		...t,
 		currentPath: [
@@ -7850,7 +7850,7 @@ function Zu(e, t) {
 		]
 	})].filter((e) => !!e), r = t.target === "jsonSchema2019-09" ? { unevaluatedProperties: !1 } : void 0, i = [];
 	return n.forEach((e) => {
-		if (Xu(e)) i.push(...e.allOf), e.unevaluatedProperties === void 0 && (r = void 0);
+		if (Qu(e)) i.push(...e.allOf), e.unevaluatedProperties === void 0 && (r = void 0);
 		else {
 			let t = e;
 			if ("additionalProperties" in e && e.additionalProperties === !1) {
@@ -7866,7 +7866,7 @@ function Zu(e, t) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/literal.js
-function Qu(e, t) {
+function ed(e, t) {
 	let n = typeof e.value;
 	return n !== "bigint" && n !== "number" && n !== "boolean" && n !== "string" ? { type: Array.isArray(e.value) ? "array" : "object" } : t.target === "openApi3" ? {
 		type: n === "bigint" ? "integer" : n,
@@ -7878,12 +7878,12 @@ function Qu(e, t) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/string.js
-var $u = void 0, ed = {
+var td = void 0, nd = {
 	cuid: /^[cC][^\s-]{8,}$/,
 	cuid2: /^[0-9a-z]+$/,
 	ulid: /^[0-9A-HJKMNP-TV-Z]{26}$/,
 	email: /^(?!\.)(?!.*\.\.)([a-zA-Z0-9_'+\-\.]*)[a-zA-Z0-9_+-]@([a-zA-Z0-9][a-zA-Z0-9\-]*\.)+[a-zA-Z]{2,}$/,
-	emoji: () => ($u === void 0 && ($u = RegExp("^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$", "u")), $u),
+	emoji: () => (td === void 0 && (td = RegExp("^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$", "u")), td),
 	uuid: /^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$/,
 	ipv4: /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/,
 	ipv4Cidr: /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/(3[0-2]|[12]?[0-9])$/,
@@ -7894,7 +7894,7 @@ var $u = void 0, ed = {
 	nanoid: /^[a-zA-Z0-9_-]{21}$/,
 	jwt: /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]*$/
 };
-function td(e, t) {
+function rd(e, t) {
 	let n = { type: "string" };
 	if (e.checks) for (let r of e.checks) switch (r.kind) {
 		case "min":
@@ -7906,96 +7906,96 @@ function td(e, t) {
 		case "email":
 			switch (t.emailStrategy) {
 				case "format:email":
-					ad(n, "email", r.message, t);
+					sd(n, "email", r.message, t);
 					break;
 				case "format:idn-email":
-					ad(n, "idn-email", r.message, t);
+					sd(n, "idn-email", r.message, t);
 					break;
-				case "pattern:zod": od(n, ed.email, r.message, t);
+				case "pattern:zod": cd(n, nd.email, r.message, t);
 			}
 			break;
 		case "url":
-			ad(n, "uri", r.message, t);
+			sd(n, "uri", r.message, t);
 			break;
 		case "uuid":
-			ad(n, "uuid", r.message, t);
+			sd(n, "uuid", r.message, t);
 			break;
 		case "regex":
-			od(n, r.regex, r.message, t);
+			cd(n, r.regex, r.message, t);
 			break;
 		case "cuid":
-			od(n, ed.cuid, r.message, t);
+			cd(n, nd.cuid, r.message, t);
 			break;
 		case "cuid2":
-			od(n, ed.cuid2, r.message, t);
+			cd(n, nd.cuid2, r.message, t);
 			break;
 		case "startsWith":
-			od(n, RegExp(`^${nd(r.value, t)}`), r.message, t);
+			cd(n, RegExp(`^${id(r.value, t)}`), r.message, t);
 			break;
 		case "endsWith":
-			od(n, RegExp(`${nd(r.value, t)}$`), r.message, t);
+			cd(n, RegExp(`${id(r.value, t)}$`), r.message, t);
 			break;
 		case "datetime":
-			ad(n, "date-time", r.message, t);
+			sd(n, "date-time", r.message, t);
 			break;
 		case "date":
-			ad(n, "date", r.message, t);
+			sd(n, "date", r.message, t);
 			break;
 		case "time":
-			ad(n, "time", r.message, t);
+			sd(n, "time", r.message, t);
 			break;
 		case "duration":
-			ad(n, "duration", r.message, t);
+			sd(n, "duration", r.message, t);
 			break;
 		case "length":
 			J(n, "minLength", typeof n.minLength == "number" ? Math.max(n.minLength, r.value) : r.value, r.message, t), J(n, "maxLength", typeof n.maxLength == "number" ? Math.min(n.maxLength, r.value) : r.value, r.message, t);
 			break;
 		case "includes":
-			od(n, RegExp(nd(r.value, t)), r.message, t);
+			cd(n, RegExp(id(r.value, t)), r.message, t);
 			break;
 		case "ip":
-			r.version !== "v6" && ad(n, "ipv4", r.message, t), r.version !== "v4" && ad(n, "ipv6", r.message, t);
+			r.version !== "v6" && sd(n, "ipv4", r.message, t), r.version !== "v4" && sd(n, "ipv6", r.message, t);
 			break;
 		case "base64url":
-			od(n, ed.base64url, r.message, t);
+			cd(n, nd.base64url, r.message, t);
 			break;
 		case "jwt":
-			od(n, ed.jwt, r.message, t);
+			cd(n, nd.jwt, r.message, t);
 			break;
 		case "cidr":
-			r.version !== "v6" && od(n, ed.ipv4Cidr, r.message, t), r.version !== "v4" && od(n, ed.ipv6Cidr, r.message, t);
+			r.version !== "v6" && cd(n, nd.ipv4Cidr, r.message, t), r.version !== "v4" && cd(n, nd.ipv6Cidr, r.message, t);
 			break;
 		case "emoji":
-			od(n, ed.emoji(), r.message, t);
+			cd(n, nd.emoji(), r.message, t);
 			break;
 		case "ulid":
-			od(n, ed.ulid, r.message, t);
+			cd(n, nd.ulid, r.message, t);
 			break;
 		case "base64":
 			switch (t.base64Strategy) {
 				case "format:binary":
-					ad(n, "binary", r.message, t);
+					sd(n, "binary", r.message, t);
 					break;
 				case "contentEncoding:base64":
 					J(n, "contentEncoding", "base64", r.message, t);
 					break;
-				case "pattern:zod": od(n, ed.base64, r.message, t);
+				case "pattern:zod": cd(n, nd.base64, r.message, t);
 			}
 			break;
-		case "nanoid": od(n, ed.nanoid, r.message, t);
+		case "nanoid": cd(n, nd.nanoid, r.message, t);
 	}
 	return n;
 }
-function nd(e, t) {
-	return t.patternStrategy === "escape" ? id(e) : e;
+function id(e, t) {
+	return t.patternStrategy === "escape" ? od(e) : e;
 }
-var rd = /* @__PURE__ */ new Set("ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvxyz0123456789");
-function id(e) {
+var ad = /* @__PURE__ */ new Set("ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvxyz0123456789");
+function od(e) {
 	let t = "";
-	for (let n = 0; n < e.length; n++) rd.has(e[n]) || (t += "\\"), t += e[n];
+	for (let n = 0; n < e.length; n++) ad.has(e[n]) || (t += "\\"), t += e[n];
 	return t;
 }
-function ad(e, t, n, r) {
+function sd(e, t, n, r) {
 	e.format || e.anyOf?.some((e) => e.format) ? (e.anyOf ||= [], e.format && (e.anyOf.push({
 		format: e.format,
 		...e.errorMessage && r.errorMessages && { errorMessage: { format: e.errorMessage.format } }
@@ -8004,16 +8004,16 @@ function ad(e, t, n, r) {
 		...n && r.errorMessages && { errorMessage: { format: n } }
 	})) : J(e, "format", t, n, r);
 }
-function od(e, t, n, r) {
+function cd(e, t, n, r) {
 	e.pattern || e.allOf?.some((e) => e.pattern) ? (e.allOf ||= [], e.pattern && (e.allOf.push({
 		pattern: e.pattern,
 		...e.errorMessage && r.errorMessages && { errorMessage: { pattern: e.errorMessage.pattern } }
 	}), delete e.pattern, e.errorMessage && (delete e.errorMessage.pattern, Object.keys(e.errorMessage).length === 0 && delete e.errorMessage)), e.allOf.push({
-		pattern: sd(t, r),
+		pattern: ld(t, r),
 		...n && r.errorMessages && { errorMessage: { pattern: n } }
-	})) : J(e, "pattern", sd(t, r), n, r);
+	})) : J(e, "pattern", ld(t, r), n, r);
 }
-function sd(e, t) {
+function ld(e, t) {
 	if (!t.applyRegexFlags || !e.flags) return e.source;
 	let n = {
 		i: e.flags.includes("i"),
@@ -8061,8 +8061,8 @@ function sd(e, t) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/record.js
-function cd(e, t) {
-	if (t.target === "openAi" && console.warn("Warning: OpenAI may not support records in schemas! Try an array of key-value pairs instead."), t.target === "openApi3" && e.keyType?._def.typeName === M.ZodEnum) return {
+function ud(e, t) {
+	if (t.target === "openAi" && console.warn("Warning: OpenAI may not support records in schemas! Try an array of key-value pairs instead."), t.target === "openApi3" && e.keyType?._def.typeName === N.ZodEnum) return {
 		type: "object",
 		required: e.keyType._def.values,
 		properties: e.keyType._def.values.reduce((n, r) => ({
@@ -8074,7 +8074,7 @@ function cd(e, t) {
 					"properties",
 					r
 				]
-			}) ?? zu(t)
+			}) ?? Vu(t)
 		}), {}),
 		additionalProperties: t.rejectedAdditionalProperties
 	};
@@ -8086,19 +8086,19 @@ function cd(e, t) {
 		}) ?? t.allowedAdditionalProperties
 	};
 	if (t.target === "openApi3") return n;
-	if (e.keyType?._def.typeName === M.ZodString && e.keyType._def.checks?.length) {
-		let { type: r, ...i } = td(e.keyType._def, t);
+	if (e.keyType?._def.typeName === N.ZodString && e.keyType._def.checks?.length) {
+		let { type: r, ...i } = rd(e.keyType._def, t);
 		return {
 			...n,
 			propertyNames: i
 		};
 	}
-	if (e.keyType?._def.typeName === M.ZodEnum) return {
+	if (e.keyType?._def.typeName === N.ZodEnum) return {
 		...n,
 		propertyNames: { enum: e.keyType._def.values }
 	};
-	if (e.keyType?._def.typeName === M.ZodBranded && e.keyType._def.type._def.typeName === M.ZodString && e.keyType._def.type._def.checks?.length) {
-		let { type: r, ...i } = Uu(e.keyType._def, t);
+	if (e.keyType?._def.typeName === N.ZodBranded && e.keyType._def.type._def.typeName === N.ZodString && e.keyType._def.type._def.checks?.length) {
+		let { type: r, ...i } = Gu(e.keyType._def, t);
 		return {
 			...n,
 			propertyNames: i
@@ -8108,8 +8108,8 @@ function cd(e, t) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/map.js
-function ld(e, t) {
-	return t.mapStrategy === "record" ? cd(e, t) : {
+function dd(e, t) {
+	return t.mapStrategy === "record" ? ud(e, t) : {
 		type: "array",
 		maxItems: 125,
 		items: {
@@ -8122,7 +8122,7 @@ function ld(e, t) {
 					"items",
 					"0"
 				]
-			}) || zu(t), Y(e.valueType._def, {
+			}) || Vu(t), Y(e.valueType._def, {
 				...t,
 				currentPath: [
 					...t.currentPath,
@@ -8130,7 +8130,7 @@ function ld(e, t) {
 					"items",
 					"1"
 				]
-			}) || zu(t)],
+			}) || Vu(t)],
 			minItems: 2,
 			maxItems: 2
 		}
@@ -8138,7 +8138,7 @@ function ld(e, t) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/nativeEnum.js
-function ud(e) {
+function fd(e) {
 	let t = e.values, n = Object.keys(e.values).filter((e) => typeof t[t[e]] != "number").map((e) => t[e]), r = Array.from(new Set(n.map((e) => typeof e)));
 	return {
 		type: r.length === 1 ? r[0] === "string" ? "string" : "number" : ["string", "number"],
@@ -8147,15 +8147,15 @@ function ud(e) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/never.js
-function dd(e) {
-	return e.target === "openAi" ? void 0 : { not: zu({
+function pd(e) {
+	return e.target === "openAi" ? void 0 : { not: Vu({
 		...e,
 		currentPath: [...e.currentPath, "not"]
 	}) };
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/null.js
-function fd(e) {
+function md(e) {
 	return e.target === "openApi3" ? {
 		enum: ["null"],
 		nullable: !0
@@ -8163,19 +8163,19 @@ function fd(e) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/union.js
-var pd = {
+var hd = {
 	ZodString: "string",
 	ZodNumber: "number",
 	ZodBigInt: "integer",
 	ZodBoolean: "boolean",
 	ZodNull: "null"
 };
-function md(e, t) {
-	if (t.target === "openApi3") return hd(e, t);
+function gd(e, t) {
+	if (t.target === "openApi3") return _d(e, t);
 	let n = e.options instanceof Map ? Array.from(e.options.values()) : e.options;
-	if (n.every((e) => e._def.typeName in pd && (!e._def.checks || !e._def.checks.length))) {
+	if (n.every((e) => e._def.typeName in hd && (!e._def.checks || !e._def.checks.length))) {
 		let e = n.reduce((e, t) => {
-			let n = pd[t._def.typeName];
+			let n = hd[t._def.typeName];
 			return n && !e.includes(n) ? [...e, n] : e;
 		}, []);
 		return { type: e.length > 1 ? e : e[0] };
@@ -8203,9 +8203,9 @@ function md(e, t) {
 		type: "string",
 		enum: n.reduce((e, t) => [...e, ...t._def.values.filter((t) => !e.includes(t))], [])
 	};
-	return hd(e, t);
+	return _d(e, t);
 }
-var hd = (e, t) => {
+var _d = (e, t) => {
 	let n = (e.options instanceof Map ? Array.from(e.options.values()) : e.options).map((e, n) => Y(e._def, {
 		...t,
 		currentPath: [
@@ -8218,7 +8218,7 @@ var hd = (e, t) => {
 };
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/nullable.js
-function gd(e, t) {
+function vd(e, t) {
 	if ([
 		"ZodString",
 		"ZodNumber",
@@ -8226,9 +8226,9 @@ function gd(e, t) {
 		"ZodBoolean",
 		"ZodNull"
 	].includes(e.innerType._def.typeName) && (!e.innerType._def.checks || !e.innerType._def.checks.length)) return t.target === "openApi3" ? {
-		type: pd[e.innerType._def.typeName],
+		type: hd[e.innerType._def.typeName],
 		nullable: !0
-	} : { type: [pd[e.innerType._def.typeName], "null"] };
+	} : { type: [hd[e.innerType._def.typeName], "null"] };
 	if (t.target === "openApi3") {
 		let n = Y(e.innerType._def, {
 			...t,
@@ -8254,12 +8254,12 @@ function gd(e, t) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/number.js
-function _d(e, t) {
+function yd(e, t) {
 	let n = { type: "number" };
 	if (!e.checks) return n;
 	for (let r of e.checks) switch (r.kind) {
 		case "int":
-			n.type = "integer", Lu(n, "type", r.message, t);
+			n.type = "integer", zu(n, "type", r.message, t);
 			break;
 		case "min":
 			t.target === "jsonSchema7" ? r.inclusive ? J(n, "minimum", r.value, r.message, t) : J(n, "exclusiveMinimum", r.value, r.message, t) : (r.inclusive || (n.exclusiveMinimum = !0), J(n, "minimum", r.value, r.message, t));
@@ -8273,7 +8273,7 @@ function _d(e, t) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/object.js
-function vd(e, t) {
+function bd(e, t) {
 	let n = t.target === "openAi", r = {
 		type: "object",
 		properties: {}
@@ -8281,7 +8281,7 @@ function vd(e, t) {
 	for (let e in a) {
 		let o = a[e];
 		if (o === void 0 || o._def === void 0) continue;
-		let s = bd(o);
+		let s = Sd(o);
 		s && n && (o._def.typeName === "ZodOptional" && (o = o._def.innerType), o.isNullable() || (o = o.nullable()), s = !1);
 		let c = Y(o._def, {
 			...t,
@@ -8299,10 +8299,10 @@ function vd(e, t) {
 		c !== void 0 && (r.properties[e] = c, s || i.push(e));
 	}
 	i.length && (r.required = i);
-	let o = yd(e, t);
+	let o = xd(e, t);
 	return o !== void 0 && (r.additionalProperties = o), r;
 }
-function yd(e, t) {
+function xd(e, t) {
 	if (e.catchall._def.typeName !== "ZodNever") return Y(e.catchall._def, {
 		...t,
 		currentPath: [...t.currentPath, "additionalProperties"]
@@ -8313,7 +8313,7 @@ function yd(e, t) {
 		case "strip": return t.removeAdditionalStrategy === "strict" ? t.allowedAdditionalProperties : t.rejectedAdditionalProperties;
 	}
 }
-function bd(e) {
+function Sd(e) {
 	try {
 		return e.isOptional();
 	} catch {
@@ -8322,7 +8322,7 @@ function bd(e) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/optional.js
-var xd = (e, t) => {
+var Cd = (e, t) => {
 	if (t.currentPath.toString() === t.propertyPath?.toString()) return Y(e.innerType._def, t);
 	let n = Y(e.innerType._def, {
 		...t,
@@ -8332,8 +8332,8 @@ var xd = (e, t) => {
 			"1"
 		]
 	});
-	return n ? { anyOf: [{ not: zu(t) }, n] } : zu(t);
-}, Sd = (e, t) => {
+	return n ? { anyOf: [{ not: Vu(t) }, n] } : Vu(t);
+}, wd = (e, t) => {
 	if (t.pipeStrategy === "input") return Y(e.in._def, t);
 	if (t.pipeStrategy === "output") return Y(e.out._def, t);
 	let n = Y(e.in._def, {
@@ -8355,12 +8355,12 @@ var xd = (e, t) => {
 };
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/promise.js
-function Cd(e, t) {
+function Td(e, t) {
 	return Y(e.type._def, t);
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/set.js
-function wd(e, t) {
+function Ed(e, t) {
 	let n = {
 		type: "array",
 		uniqueItems: !0,
@@ -8373,7 +8373,7 @@ function wd(e, t) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/tuple.js
-function Td(e, t) {
+function Dd(e, t) {
 	return e.rest ? {
 		type: "array",
 		minItems: e.items.length,
@@ -8405,54 +8405,54 @@ function Td(e, t) {
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/undefined.js
-function Ed(e) {
-	return { not: zu(e) };
+function Od(e) {
+	return { not: Vu(e) };
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/unknown.js
-function Dd(e) {
-	return zu(e);
+function kd(e) {
+	return Vu(e);
 }
 //#endregion
 //#region node_modules/zod-to-json-schema/dist/esm/parsers/readonly.js
-var Od = (e, t) => Y(e.innerType._def, t), kd = (e, t, n) => {
+var Ad = (e, t) => Y(e.innerType._def, t), jd = (e, t, n) => {
 	switch (t) {
-		case M.ZodString: return td(e, n);
-		case M.ZodNumber: return _d(e, n);
-		case M.ZodObject: return vd(e, n);
-		case M.ZodBigInt: return Vu(e, n);
-		case M.ZodBoolean: return Hu();
-		case M.ZodDate: return Gu(e, n);
-		case M.ZodUndefined: return Ed(n);
-		case M.ZodNull: return fd(n);
-		case M.ZodArray: return Bu(e, n);
-		case M.ZodUnion:
-		case M.ZodDiscriminatedUnion: return md(e, n);
-		case M.ZodIntersection: return Zu(e, n);
-		case M.ZodTuple: return Td(e, n);
-		case M.ZodRecord: return cd(e, n);
-		case M.ZodLiteral: return Qu(e, n);
-		case M.ZodEnum: return Yu(e);
-		case M.ZodNativeEnum: return ud(e);
-		case M.ZodNullable: return gd(e, n);
-		case M.ZodOptional: return xd(e, n);
-		case M.ZodMap: return ld(e, n);
-		case M.ZodSet: return wd(e, n);
-		case M.ZodLazy: return () => e.getter()._def;
-		case M.ZodPromise: return Cd(e, n);
-		case M.ZodNaN:
-		case M.ZodNever: return dd(n);
-		case M.ZodEffects: return Ju(e, n);
-		case M.ZodAny: return zu(n);
-		case M.ZodUnknown: return Dd(n);
-		case M.ZodDefault: return qu(e, n);
-		case M.ZodBranded: return Uu(e, n);
-		case M.ZodReadonly: return Od(e, n);
-		case M.ZodCatch: return Wu(e, n);
-		case M.ZodPipeline: return Sd(e, n);
-		case M.ZodFunction:
-		case M.ZodVoid:
-		case M.ZodSymbol: return;
+		case N.ZodString: return rd(e, n);
+		case N.ZodNumber: return yd(e, n);
+		case N.ZodObject: return bd(e, n);
+		case N.ZodBigInt: return Uu(e, n);
+		case N.ZodBoolean: return Wu();
+		case N.ZodDate: return qu(e, n);
+		case N.ZodUndefined: return Od(n);
+		case N.ZodNull: return md(n);
+		case N.ZodArray: return Hu(e, n);
+		case N.ZodUnion:
+		case N.ZodDiscriminatedUnion: return gd(e, n);
+		case N.ZodIntersection: return $u(e, n);
+		case N.ZodTuple: return Dd(e, n);
+		case N.ZodRecord: return ud(e, n);
+		case N.ZodLiteral: return ed(e, n);
+		case N.ZodEnum: return Zu(e);
+		case N.ZodNativeEnum: return fd(e);
+		case N.ZodNullable: return vd(e, n);
+		case N.ZodOptional: return Cd(e, n);
+		case N.ZodMap: return dd(e, n);
+		case N.ZodSet: return Ed(e, n);
+		case N.ZodLazy: return () => e.getter()._def;
+		case N.ZodPromise: return Td(e, n);
+		case N.ZodNaN:
+		case N.ZodNever: return pd(n);
+		case N.ZodEffects: return Xu(e, n);
+		case N.ZodAny: return Vu(n);
+		case N.ZodUnknown: return kd(n);
+		case N.ZodDefault: return Yu(e, n);
+		case N.ZodBranded: return Gu(e, n);
+		case N.ZodReadonly: return Ad(e, n);
+		case N.ZodCatch: return Ku(e, n);
+		case N.ZodPipeline: return wd(e, n);
+		case N.ZodFunction:
+		case N.ZodVoid:
+		case N.ZodSymbol: return;
 		default: return ((e) => void 0)(t);
 	}
 };
@@ -8462,10 +8462,10 @@ function Y(e, t, n = !1) {
 	let r = t.seen.get(e);
 	if (t.override) {
 		let i = t.override?.(e, t, r, n);
-		if (i !== Nu) return i;
+		if (i !== Fu) return i;
 	}
 	if (r && !n) {
-		let e = Ad(r, t);
+		let e = Md(r, t);
 		if (e !== void 0) return e;
 	}
 	let i = {
@@ -8474,22 +8474,22 @@ function Y(e, t, n = !1) {
 		jsonSchema: void 0
 	};
 	t.seen.set(e, i);
-	let a = kd(e, e.typeName, t), o = typeof a == "function" ? Y(a(), t) : a;
-	if (o && jd(e, t, o), t.postProcess) {
+	let a = jd(e, e.typeName, t), o = typeof a == "function" ? Y(a(), t) : a;
+	if (o && Nd(e, t, o), t.postProcess) {
 		let n = t.postProcess(o, e, t);
 		return i.jsonSchema = o, n;
 	}
 	return i.jsonSchema = o, o;
 }
-var Ad = (e, t) => {
+var Md = (e, t) => {
 	switch (t.$refStrategy) {
 		case "root": return { $ref: e.path.join("/") };
-		case "relative": return { $ref: Ru(t.currentPath, e.path) };
+		case "relative": return { $ref: Bu(t.currentPath, e.path) };
 		case "none":
-		case "seen": return e.path.length < t.currentPath.length && e.path.every((e, n) => t.currentPath[n] === e) ? (console.warn(`Recursive reference detected at ${t.currentPath.join("/")}! Defaulting to any`), zu(t)) : t.$refStrategy === "seen" ? zu(t) : void 0;
+		case "seen": return e.path.length < t.currentPath.length && e.path.every((e, n) => t.currentPath[n] === e) ? (console.warn(`Recursive reference detected at ${t.currentPath.join("/")}! Defaulting to any`), Vu(t)) : t.$refStrategy === "seen" ? Vu(t) : void 0;
 	}
-}, jd = (e, t, n) => (e.description && (n.description = e.description, t.markdownDescription && (n.markdownDescription = e.description)), n), Md = (e, t) => {
-	let n = Iu(t), r = typeof t == "object" && t.definitions ? Object.entries(t.definitions).reduce((e, [t, r]) => ({
+}, Nd = (e, t, n) => (e.description && (n.description = e.description, t.markdownDescription && (n.markdownDescription = e.description)), n), Pd = (e, t) => {
+	let n = Ru(t), r = typeof t == "object" && t.definitions ? Object.entries(t.definitions).reduce((e, [t, r]) => ({
 		...e,
 		[t]: Y(r._def, {
 			...n,
@@ -8498,7 +8498,7 @@ var Ad = (e, t) => {
 				n.definitionPath,
 				t
 			]
-		}, !0) ?? zu(n)
+		}, !0) ?? Vu(n)
 	}), {}) : void 0, i = typeof t == "string" ? t : t?.nameStrategy === "title" ? void 0 : t?.name, a = Y(e._def, i === void 0 ? n : {
 		...n,
 		currentPath: [
@@ -8506,7 +8506,7 @@ var Ad = (e, t) => {
 			n.definitionPath,
 			i
 		]
-	}, !1) ?? zu(n), o = typeof t == "object" && t.name !== void 0 && t.nameStrategy === "title" ? t.name : void 0;
+	}, !1) ?? Vu(n), o = typeof t == "object" && t.name !== void 0 && t.nameStrategy === "title" ? t.name : void 0;
 	o !== void 0 && (a.title = o), n.flags.hasReferencedOpenAiAnyType && (r ||= {}, r[n.openAiAnyTypeName] || (r[n.openAiAnyTypeName] = {
 		type: [
 			"string",
@@ -8540,41 +8540,41 @@ var Ad = (e, t) => {
 };
 //#endregion
 //#region node_modules/@modelcontextprotocol/sdk/dist/esm/server/zod-json-schema-compat.js
-function Nd(e) {
+function Fd(e) {
 	return !e || e === "jsonSchema7" || e === "draft-7" ? "draft-7" : e === "jsonSchema2019-09" || e === "draft-2020-12" ? "draft-2020-12" : "draft-7";
 }
-function Pd(e, t) {
-	return co(e) ? ro(e, {
-		target: Nd(t?.target),
+function Id(e, t) {
+	return lo(e) ? io(e, {
+		target: Fd(t?.target),
 		io: t?.pipeStrategy ?? "input"
-	}) : Md(e, {
+	}) : Pd(e, {
 		strictUnions: t?.strictUnions ?? !0,
 		pipeStrategy: t?.pipeStrategy ?? "input"
 	});
 }
-function Fd(e) {
-	let t = po(e)?.method;
+function Ld(e) {
+	let t = mo(e)?.method;
 	if (!t) throw Error("Schema is missing a method literal");
-	let n = yo(t);
+	let n = bo(t);
 	if (typeof n != "string") throw Error("Schema method literal must be a string");
 	return n;
 }
-function Id(e, t) {
-	let n = uo(e, t);
+function Rd(e, t) {
+	let n = fo(e, t);
 	if (!n.success) throw n.error;
 	return n.data;
 }
-var Ld = class {
+var zd = class {
 	constructor(e) {
-		this._options = e, this._requestMessageId = 0, this._requestHandlers = /* @__PURE__ */ new Map(), this._requestHandlerAbortControllers = /* @__PURE__ */ new Map(), this._notificationHandlers = /* @__PURE__ */ new Map(), this._responseHandlers = /* @__PURE__ */ new Map(), this._progressHandlers = /* @__PURE__ */ new Map(), this._timeoutInfo = /* @__PURE__ */ new Map(), this._pendingDebouncedNotifications = /* @__PURE__ */ new Set(), this._taskProgressTokens = /* @__PURE__ */ new Map(), this._requestResolvers = /* @__PURE__ */ new Map(), this.setNotificationHandler(Cc, (e) => {
+		this._options = e, this._requestMessageId = 0, this._requestHandlers = /* @__PURE__ */ new Map(), this._requestHandlerAbortControllers = /* @__PURE__ */ new Map(), this._notificationHandlers = /* @__PURE__ */ new Map(), this._responseHandlers = /* @__PURE__ */ new Map(), this._progressHandlers = /* @__PURE__ */ new Map(), this._timeoutInfo = /* @__PURE__ */ new Map(), this._pendingDebouncedNotifications = /* @__PURE__ */ new Set(), this._taskProgressTokens = /* @__PURE__ */ new Map(), this._requestResolvers = /* @__PURE__ */ new Map(), this.setNotificationHandler(Tc, (e) => {
 			this._oncancel(e);
-		}), this.setNotificationHandler(zc, (e) => {
+		}), this.setNotificationHandler(Vc, (e) => {
 			this._onprogress(e);
-		}), this.setRequestHandler(Ic, (e) => ({})), this._taskStore = e?.taskStore, this._taskMessageQueue = e?.taskMessageQueue, this._taskStore && (this.setRequestHandler(Jc, async (e, t) => {
+		}), this.setRequestHandler(Rc, (e) => ({})), this._taskStore = e?.taskStore, this._taskMessageQueue = e?.taskMessageQueue, this._taskStore && (this.setRequestHandler(Xc, async (e, t) => {
 			let n = await this._taskStore.getTask(e.params.taskId, t.sessionId);
 			if (!n) throw new q(K.InvalidParams, "Failed to retrieve task: Task not found");
 			return { ...n };
-		}), this.setRequestHandler(Xc, async (e, t) => {
+		}), this.setRequestHandler(Qc, async (e, t) => {
 			let n = async () => {
 				let r = e.params.taskId;
 				if (this._taskMessageQueue) {
@@ -8599,21 +8599,21 @@ var Ld = class {
 				}
 				let i = await this._taskStore.getTask(r, t.sessionId);
 				if (!i) throw new q(K.InvalidParams, `Task not found: ${r}`);
-				if (!Mu(i.status)) return await this._waitForTaskUpdate(r, t.signal), await n();
-				if (Mu(i.status)) {
+				if (!Pu(i.status)) return await this._waitForTaskUpdate(r, t.signal), await n();
+				if (Pu(i.status)) {
 					let e = await this._taskStore.getTaskResult(r, t.sessionId);
 					return this._clearTaskQueue(r), {
 						...e,
 						_meta: {
 							...e._meta,
-							[Zs]: { taskId: r }
+							[$s]: { taskId: r }
 						}
 					};
 				}
 				return await n();
 			};
 			return await n();
-		}), this.setRequestHandler(Zc, async (e, t) => {
+		}), this.setRequestHandler($c, async (e, t) => {
 			try {
 				let { tasks: n, nextCursor: r } = await this._taskStore.listTasks(e.params?.cursor, t.sessionId);
 				return {
@@ -8624,11 +8624,11 @@ var Ld = class {
 			} catch (e) {
 				throw new q(K.InvalidParams, `Failed to list tasks: ${e instanceof Error ? e.message : String(e)}`);
 			}
-		}), this.setRequestHandler($c, async (e, t) => {
+		}), this.setRequestHandler(tl, async (e, t) => {
 			try {
 				let n = await this._taskStore.getTask(e.params.taskId, t.sessionId);
 				if (!n) throw new q(K.InvalidParams, `Task not found: ${e.params.taskId}`);
-				if (Mu(n.status)) throw new q(K.InvalidParams, `Cannot cancel task in terminal status: ${n.status}`);
+				if (Pu(n.status)) throw new q(K.InvalidParams, `Cannot cancel task in terminal status: ${n.status}`);
 				await this._taskStore.updateTaskStatus(e.params.taskId, "cancelled", "Client cancelled task execution.", t.sessionId), this._clearTaskQueue(e.params.taskId);
 				let r = await this._taskStore.getTask(e.params.taskId, t.sessionId);
 				if (!r) throw new q(K.InvalidParams, `Task not found after cancellation: ${e.params.taskId}`);
@@ -8681,7 +8681,7 @@ var Ld = class {
 		};
 		let r = this._transport?.onmessage;
 		this._transport.onmessage = (e, t) => {
-			r?.(e, t), _c(e) || yc(e) ? this._onresponse(e) : pc(e) ? this._onrequest(e, t) : hc(e) ? this._onnotification(e) : this._onerror(/* @__PURE__ */ Error(`Unknown message type: ${JSON.stringify(e)}`));
+			r?.(e, t), yc(e) || xc(e) ? this._onresponse(e) : hc(e) ? this._onrequest(e, t) : _c(e) ? this._onnotification(e) : this._onerror(/* @__PURE__ */ Error(`Unknown message type: ${JSON.stringify(e)}`));
 		}, await this._transport.start();
 	}
 	_onclose() {
@@ -8703,7 +8703,7 @@ var Ld = class {
 		t !== void 0 && Promise.resolve().then(() => t(e)).catch((e) => this._onerror(/* @__PURE__ */ Error(`Uncaught error in notification handler: ${e}`)));
 	}
 	_onrequest(e, t) {
-		let n = this._requestHandlers.get(e.method) ?? this.fallbackRequestHandler, r = this._transport, i = e.params?._meta?.[Zs]?.taskId;
+		let n = this._requestHandlers.get(e.method) ?? this.fallbackRequestHandler, r = this._transport, i = e.params?._meta?.[$s]?.taskId;
 		if (n === void 0) {
 			let t = {
 				jsonrpc: "2.0",
@@ -8722,7 +8722,7 @@ var Ld = class {
 		}
 		let a = new AbortController();
 		this._requestHandlerAbortControllers.set(e.id, a);
-		let o = oc(e.params) ? e.params.task : void 0, s = this._taskStore ? this.requestTaskStore(e, r?.sessionId) : void 0, c = {
+		let o = cc(e.params) ? e.params.task : void 0, s = this._taskStore ? this.requestTaskStore(e, r?.sessionId) : void 0, c = {
 			signal: a.signal,
 			sessionId: r?.sessionId,
 			_meta: e.params?._meta,
@@ -8802,7 +8802,7 @@ var Ld = class {
 	_onresponse(e) {
 		let t = Number(e.id), n = this._requestResolvers.get(t);
 		if (n) {
-			this._requestResolvers.delete(t), _c(e) ? n(e) : n(new q(e.error.code, e.error.message, e.error.data));
+			this._requestResolvers.delete(t), yc(e) ? n(e) : n(new q(e.error.code, e.error.message, e.error.data));
 			return;
 		}
 		let r = this._responseHandlers.get(t);
@@ -8812,14 +8812,14 @@ var Ld = class {
 		}
 		this._responseHandlers.delete(t), this._cleanupTimeout(t);
 		let i = !1;
-		if (_c(e) && e.result && typeof e.result == "object") {
+		if (yc(e) && e.result && typeof e.result == "object") {
 			let n = e.result;
 			if (n.task && typeof n.task == "object") {
 				let e = n.task;
 				typeof e.taskId == "string" && (i = !0, this._taskProgressTokens.set(e.taskId, t));
 			}
 		}
-		i || this._progressHandlers.delete(t), _c(e) ? r(e) : r(q.fromError(e.error.code, e.error.message, e.error.data));
+		i || this._progressHandlers.delete(t), yc(e) ? r(e) : r(q.fromError(e.error.code, e.error.message, e.error.data));
 	}
 	get transport() {
 		return this._transport;
@@ -8845,7 +8845,7 @@ var Ld = class {
 		}
 		let i;
 		try {
-			let r = await this.request(e, Gc, n);
+			let r = await this.request(e, qc, n);
 			if (r.task) i = r.task.taskId, yield {
 				type: "taskCreated",
 				task: r.task
@@ -8856,7 +8856,7 @@ var Ld = class {
 				if (yield {
 					type: "taskStatus",
 					task: e
-				}, Mu(e.status)) {
+				}, Pu(e.status)) {
 					e.status === "completed" ? yield {
 						type: "result",
 						result: await this.getTaskResult({ taskId: i }, t, n)
@@ -8921,7 +8921,7 @@ var Ld = class {
 				...f.params,
 				_meta: {
 					...f.params?._meta || {},
-					[Zs]: s
+					[$s]: s
 				}
 			});
 			let p = (e) => {
@@ -8942,7 +8942,7 @@ var Ld = class {
 				if (!n?.signal?.aborted) {
 					if (e instanceof Error) return l(e);
 					try {
-						let n = uo(t, e.result);
+						let n = fo(t, e.result);
 						n.success ? c(n.data) : l(n.error);
 					} catch (e) {
 						l(e);
@@ -8976,7 +8976,7 @@ var Ld = class {
 		return this.request({
 			method: "tasks/get",
 			params: e
-		}, Yc, t);
+		}, Zc, t);
 	}
 	async getTaskResult(e, t, n) {
 		return this.request({
@@ -8988,13 +8988,13 @@ var Ld = class {
 		return this.request({
 			method: "tasks/list",
 			params: e
-		}, Qc, t);
+		}, el, t);
 	}
 	async cancelTask(e, t) {
 		return this.request({
 			method: "tasks/cancel",
 			params: e
-		}, el, t);
+		}, nl, t);
 	}
 	async notification(e, t) {
 		if (!this._transport) throw Error("Not connected");
@@ -9008,7 +9008,7 @@ var Ld = class {
 					...e.params,
 					_meta: {
 						...e.params?._meta || {},
-						[Zs]: t.relatedTask
+						[$s]: t.relatedTask
 					}
 				}
 			};
@@ -9033,7 +9033,7 @@ var Ld = class {
 						...n.params,
 						_meta: {
 							...n.params?._meta || {},
-							[Zs]: t.relatedTask
+							[$s]: t.relatedTask
 						}
 					}
 				}), this._transport?.send(n, t).catch((e) => this._onerror(e));
@@ -9050,15 +9050,15 @@ var Ld = class {
 				...r.params,
 				_meta: {
 					...r.params?._meta || {},
-					[Zs]: t.relatedTask
+					[$s]: t.relatedTask
 				}
 			}
 		}), await this._transport.send(r, t);
 	}
 	setRequestHandler(e, t) {
-		let n = Fd(e);
+		let n = Ld(e);
 		this.assertRequestHandlerCapability(n), this._requestHandlers.set(n, (n, r) => {
-			let i = Id(e, n);
+			let i = Rd(e, n);
 			return Promise.resolve(t(i, r));
 		});
 	}
@@ -9069,9 +9069,9 @@ var Ld = class {
 		if (this._requestHandlers.has(e)) throw Error(`A request handler for ${e} already exists, which would be overridden`);
 	}
 	setNotificationHandler(e, t) {
-		let n = Fd(e);
+		let n = Ld(e);
 		this._notificationHandlers.set(n, (n) => {
-			let r = Id(e, n);
+			let r = Rd(e, n);
 			return Promise.resolve(t(r));
 		});
 	}
@@ -9090,7 +9090,7 @@ var Ld = class {
 	async _clearTaskQueue(e, t) {
 		if (this._taskMessageQueue) {
 			let n = await this._taskMessageQueue.dequeueAll(e, t);
-			for (let t of n) if (t.type === "request" && pc(t.message)) {
+			for (let t of n) if (t.type === "request" && hc(t.message)) {
 				let n = t.message.id, r = this._requestResolvers.get(n);
 				r ? (r(new q(K.InternalError, "Task cancelled or completed")), this._requestResolvers.delete(n)) : this._onerror(/* @__PURE__ */ Error(`Resolver missing for request ${n} during task ${e} cleanup`));
 			}
@@ -9133,42 +9133,42 @@ var Ld = class {
 				await n.storeTaskResult(e, r, i, t);
 				let a = await n.getTask(e, t);
 				if (a) {
-					let t = qc.parse({
+					let t = Yc.parse({
 						method: "notifications/tasks/status",
 						params: a
 					});
-					await this.notification(t), Mu(a.status) && this._cleanupTaskProgressHandler(e);
+					await this.notification(t), Pu(a.status) && this._cleanupTaskProgressHandler(e);
 				}
 			},
 			getTaskResult: (e) => n.getTaskResult(e, t),
 			updateTaskStatus: async (e, r, i) => {
 				let a = await n.getTask(e, t);
 				if (!a) throw new q(K.InvalidParams, `Task "${e}" not found - it may have been cleaned up`);
-				if (Mu(a.status)) throw new q(K.InvalidParams, `Cannot update task "${e}" from terminal status "${a.status}" to "${r}". Terminal states (completed, failed, cancelled) cannot transition to other states.`);
+				if (Pu(a.status)) throw new q(K.InvalidParams, `Cannot update task "${e}" from terminal status "${a.status}" to "${r}". Terminal states (completed, failed, cancelled) cannot transition to other states.`);
 				await n.updateTaskStatus(e, r, i, t);
 				let o = await n.getTask(e, t);
 				if (o) {
-					let t = qc.parse({
+					let t = Yc.parse({
 						method: "notifications/tasks/status",
 						params: o
 					});
-					await this.notification(t), Mu(o.status) && this._cleanupTaskProgressHandler(e);
+					await this.notification(t), Pu(o.status) && this._cleanupTaskProgressHandler(e);
 				}
 			},
 			listTasks: (e) => n.listTasks(e, t)
 		};
 	}
 };
-function Rd(e) {
+function Bd(e) {
 	return typeof e == "object" && !!e && !Array.isArray(e);
 }
-function zd(e, t) {
+function Vd(e, t) {
 	let n = { ...e };
 	for (let e in t) {
 		let r = e, i = t[r];
 		if (i === void 0) continue;
 		let a = n[r];
-		n[r] = Rd(a) && Rd(i) ? {
+		n[r] = Bd(a) && Bd(i) ? {
 			...a,
 			...i
 		} : i;
@@ -9177,7 +9177,7 @@ function zd(e, t) {
 }
 //#endregion
 //#region node_modules/ajv/dist/compile/codegen/code.js
-var Bd = /* @__PURE__ */ a(((e) => {
+var Hd = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.regexpCode = e.getEsmExportName = e.getProperty = e.safeStringify = e.stringify = e.strConcat = e.addCodeArg = e.str = e._ = e.nil = e._Code = e.Name = e.IDENTIFIER = e._CodeOrName = void 0;
 	var t = class {};
 	e._CodeOrName = t, e.IDENTIFIER = /^[a-z$_][a-z$_0-9]*$/i;
@@ -9282,9 +9282,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		return new r(e.toString());
 	}
 	e.regexpCode = g;
-})), Vd = /* @__PURE__ */ a(((e) => {
+})), Ud = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.ValueScope = e.ValueScopeName = e.Scope = e.varKinds = e.UsedValueState = void 0;
-	var t = Bd(), n = class extends Error {
+	var t = Hd(), n = class extends Error {
 		constructor(e) {
 			super(`CodeGen: "code" for ${e} not defined`), this.value = e.value;
 		}
@@ -9395,7 +9395,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 	};
 })), X = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.or = e.and = e.not = e.CodeGen = e.operators = e.varKinds = e.ValueScopeName = e.ValueScope = e.Scope = e.Name = e.regexpCode = e.stringify = e.getProperty = e.nil = e.strConcat = e.str = e._ = void 0;
-	var t = Bd(), n = Vd(), r = Bd();
+	var t = Hd(), n = Ud(), r = Hd();
 	Object.defineProperty(e, "_", {
 		enumerable: !0,
 		get: function() {
@@ -9437,7 +9437,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			return r.Name;
 		}
 	});
-	var i = Vd();
+	var i = Ud();
 	Object.defineProperty(e, "Scope", {
 		enumerable: !0,
 		get: function() {
@@ -9486,7 +9486,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			return `${r} ${this.name}${i};` + t;
 		}
 		optimizeNames(e, t) {
-			if (e[this.name.str]) return this.rhs &&= ae(this.rhs, e, t), this;
+			if (e[this.name.str]) return this.rhs &&= ie(this.rhs, e, t), this;
 		}
 		get names() {
 			return this.rhs instanceof t._CodeOrName ? this.rhs.names : {};
@@ -9499,10 +9499,10 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			return `${this.lhs} = ${this.rhs};` + e;
 		}
 		optimizeNames(e, n) {
-			if (!(this.lhs instanceof t.Name && !e[this.lhs.str] && !this.sideEffects)) return this.rhs = ae(this.rhs, e, n), this;
+			if (!(this.lhs instanceof t.Name && !e[this.lhs.str] && !this.sideEffects)) return this.rhs = ie(this.rhs, e, n), this;
 		}
 		get names() {
-			return ie(this.lhs instanceof t.Name ? {} : { ...this.lhs.names }, this.rhs);
+			return re(this.lhs instanceof t.Name ? {} : { ...this.lhs.names }, this.rhs);
 		}
 	}, c = class extends s {
 		constructor(e, t, n, r) {
@@ -9546,7 +9546,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			return `${this.code}` ? this : void 0;
 		}
 		optimizeNames(e, t) {
-			return this.code = ae(this.code, e, t), this;
+			return this.code = ie(this.code, e, t), this;
 		}
 		get names() {
 			return this.code instanceof t._CodeOrName ? this.code.names : {};
@@ -9570,12 +9570,12 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			let { nodes: n } = this, r = n.length;
 			for (; r--;) {
 				let i = n[r];
-				i.optimizeNames(e, t) || (oe(e, i.names), n.splice(r, 1));
+				i.optimizeNames(e, t) || (ae(e, i.names), n.splice(r, 1));
 			}
 			return n.length > 0 ? this : void 0;
 		}
 		get names() {
-			return this.nodes.reduce((e, t) => re(e, t.names), {});
+			return this.nodes.reduce((e, t) => ne(e, t.names), {});
 		}
 	}, m = class extends p {
 		render(e) {
@@ -9600,15 +9600,15 @@ var Bd = /* @__PURE__ */ a(((e) => {
 				let e = n.optimizeNodes();
 				n = this.else = Array.isArray(e) ? new g(e) : e;
 			}
-			if (n) return t === !1 ? n instanceof e ? n : n.nodes : this.nodes.length ? this : new e(se(t), n instanceof e ? [n] : n.nodes);
+			if (n) return t === !1 ? n instanceof e ? n : n.nodes : this.nodes.length ? this : new e(oe(t), n instanceof e ? [n] : n.nodes);
 			if (!(t === !1 || !this.nodes.length)) return this;
 		}
 		optimizeNames(e, t) {
-			if (this.else = this.else?.optimizeNames(e, t), super.optimizeNames(e, t) || this.else) return this.condition = ae(this.condition, e, t), this;
+			if (this.else = this.else?.optimizeNames(e, t), super.optimizeNames(e, t) || this.else) return this.condition = ie(this.condition, e, t), this;
 		}
 		get names() {
 			let e = super.names;
-			return ie(e, this.condition), this.else && re(e, this.else.names), e;
+			return re(e, this.condition), this.else && ne(e, this.else.names), e;
 		}
 	};
 	_.kind = "if";
@@ -9622,10 +9622,10 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			return `for(${this.iteration})` + super.render(e);
 		}
 		optimizeNames(e, t) {
-			if (super.optimizeNames(e, t)) return this.iteration = ae(this.iteration, e, t), this;
+			if (super.optimizeNames(e, t)) return this.iteration = ie(this.iteration, e, t), this;
 		}
 		get names() {
-			return re(super.names, this.iteration.names);
+			return ne(super.names, this.iteration.names);
 		}
 	}, b = class extends v {
 		constructor(e, t, n, r) {
@@ -9636,7 +9636,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			return `for(${t} ${r}=${i}; ${r}<${a}; ${r}++)` + super.render(e);
 		}
 		get names() {
-			return ie(ie(super.names, this.from), this.to);
+			return re(re(super.names, this.from), this.to);
 		}
 	}, x = class extends v {
 		constructor(e, t, n, r) {
@@ -9646,10 +9646,10 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			return `for(${this.varKind} ${this.name} ${this.loop} ${this.iterable})` + super.render(e);
 		}
 		optimizeNames(e, t) {
-			if (super.optimizeNames(e, t)) return this.iterable = ae(this.iterable, e, t), this;
+			if (super.optimizeNames(e, t)) return this.iterable = ie(this.iterable, e, t), this;
 		}
 		get names() {
-			return re(super.names, this.iterable.names);
+			return ne(super.names, this.iterable.names);
 		}
 	}, S = class extends m {
 		constructor(e, t, n) {
@@ -9666,7 +9666,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 	};
 	C.kind = "return";
-	var ee = class extends m {
+	var w = class extends m {
 		render(e) {
 			let t = "try" + super.render(e);
 			return this.catch && (t += this.catch.render(e)), this.finally && (t += this.finally.render(e)), t;
@@ -9681,9 +9681,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 		get names() {
 			let e = super.names;
-			return this.catch && re(e, this.catch.names), this.finally && re(e, this.finally.names), e;
+			return this.catch && ne(e, this.catch.names), this.finally && ne(e, this.finally.names), e;
 		}
-	}, te = class extends m {
+	}, ee = class extends m {
 		constructor(e) {
 			super(), this.error = e;
 		}
@@ -9691,13 +9691,13 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			return `catch(${this.error})` + super.render(e);
 		}
 	};
-	te.kind = "catch";
-	var ne = class extends m {
+	ee.kind = "catch";
+	var te = class extends m {
 		render(e) {
 			return "finally" + super.render(e);
 		}
 	};
-	ne.kind = "finally", e.CodeGen = class {
+	te.kind = "finally", e.CodeGen = class {
 		constructor(e, t = {}) {
 			this._values = {}, this._blockStarts = [], this._constants = {}, this.opts = {
 				...t,
@@ -9809,12 +9809,12 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 		try(e, t, n) {
 			if (!t && !n) throw Error("CodeGen: \"try\" without \"catch\" and \"finally\"");
-			let r = new ee();
+			let r = new w();
 			if (this._blockNode(r), this.code(e), t) {
 				let e = this.name("e");
-				this._currNode = r.catch = new te(e), t(e);
+				this._currNode = r.catch = new ee(e), t(e);
 			}
-			return n && (this._currNode = r.finally = new ne(), this.code(n)), this._endBlockNode(te, ne);
+			return n && (this._currNode = r.finally = new te(), this.code(n)), this._endBlockNode(ee, te);
 		}
 		throw(e) {
 			return this._leafNode(new d(e));
@@ -9866,14 +9866,14 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			t[t.length - 1] = e;
 		}
 	};
-	function re(e, t) {
+	function ne(e, t) {
 		for (let n in t) e[n] = (e[n] || 0) + (t[n] || 0);
 		return e;
 	}
-	function ie(e, n) {
-		return n instanceof t._CodeOrName ? re(e, n.names) : e;
+	function re(e, n) {
+		return n instanceof t._CodeOrName ? ne(e, n.names) : e;
 	}
-	function ae(e, n, r) {
+	function ie(e, n, r) {
 		if (e instanceof t.Name) return i(e);
 		if (!a(e)) return e;
 		return new t._Code(e._items.reduce((e, n) => (n instanceof t.Name && (n = i(n)), n instanceof t._Code ? e.push(...n._items) : e.push(n), e), []));
@@ -9885,32 +9885,32 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			return e instanceof t._Code && e._items.some((e) => e instanceof t.Name && n[e.str] === 1 && r[e.str] !== void 0);
 		}
 	}
-	function oe(e, t) {
+	function ae(e, t) {
 		for (let n in t) e[n] = (e[n] || 0) - (t[n] || 0);
 	}
-	function se(e) {
-		return typeof e == "boolean" || typeof e == "number" || e === null ? !e : (0, t._)`!${pe(e)}`;
+	function oe(e) {
+		return typeof e == "boolean" || typeof e == "number" || e === null ? !e : (0, t._)`!${fe(e)}`;
 	}
-	e.not = se;
-	var ce = fe(e.operators.AND);
-	function le(...e) {
-		return e.reduce(ce);
+	e.not = oe;
+	var se = de(e.operators.AND);
+	function ce(...e) {
+		return e.reduce(se);
 	}
-	e.and = le;
-	var ue = fe(e.operators.OR);
-	function de(...e) {
-		return e.reduce(ue);
+	e.and = ce;
+	var le = de(e.operators.OR);
+	function ue(...e) {
+		return e.reduce(le);
 	}
-	e.or = de;
+	e.or = ue;
+	function de(e) {
+		return (n, r) => n === t.nil ? r : r === t.nil ? n : (0, t._)`${fe(n)} ${e} ${fe(r)}`;
+	}
 	function fe(e) {
-		return (n, r) => n === t.nil ? r : r === t.nil ? n : (0, t._)`${pe(n)} ${e} ${pe(r)}`;
-	}
-	function pe(e) {
 		return e instanceof t.Name ? e : (0, t._)`(${e})`;
 	}
 })), Z = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.checkStrictMode = e.getErrorPath = e.Type = e.useFunc = e.setEvaluated = e.evaluatedPropsToName = e.mergeEvaluated = e.eachItem = e.unescapeJsonPointer = e.escapeJsonPointer = e.escapeFragment = e.unescapeFragment = e.schemaRefOrVal = e.schemaHasRulesButRef = e.schemaHasRules = e.checkUnknownRules = e.alwaysValidSchema = e.toHash = void 0;
-	var t = X(), n = Bd();
+	var t = X(), n = Hd();
 	function r(e) {
 		let t = {};
 		for (let n of e) t[n] = !0;
@@ -10033,7 +10033,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 	}
 	e.checkStrictMode = x;
-})), Hd = /* @__PURE__ */ a(((e) => {
+})), Wd = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = X();
 	e.default = {
@@ -10054,9 +10054,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		jsonLen: new t.Name("jsonLen"),
 		jsonPart: new t.Name("jsonPart")
 	};
-})), Ud = /* @__PURE__ */ a(((e) => {
+})), Gd = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.extendErrors = e.resetErrorsCount = e.reportExtraError = e.reportError = e.keyword$DataError = e.keywordError = void 0;
-	var t = X(), n = Z(), r = Hd();
+	var t = X(), n = Z(), r = Wd();
 	e.keywordError = { message: ({ keyword: e }) => (0, t.str)`must pass "${e}" keyword validation` }, e.keyword$DataError = { message: ({ keyword: e, schemaType: n }) => n ? (0, t.str)`"${e}" keyword must be ${n} ($data)` : (0, t.str)`"${e}" keyword is invalid ($data)` };
 	function i(n, r = e.keywordError, i, a) {
 		let { it: o } = n, { gen: s, compositeRule: u, allErrors: f } = o, p = d(n, r, i);
@@ -10118,9 +10118,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		let { keyword: o, data: s, schemaValue: c, it: l } = e, { opts: d, propertyName: f, topSchemaRef: p, schemaPath: m } = l;
 		a.push([u.keyword, o], [u.params, typeof n == "function" ? n(e) : n || (0, t._)`{}`]), d.messages && a.push([u.message, typeof i == "function" ? i(e) : i]), d.verbose && a.push([u.schema, c], [u.parentSchema, (0, t._)`${p}${m}`], [r.default.data, s]), f && a.push([u.propertyName, f]);
 	}
-})), Wd = /* @__PURE__ */ a(((e) => {
+})), Kd = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.boolOrEmptySchema = e.topBoolOrEmptySchema = void 0;
-	var t = Ud(), n = X(), r = Hd(), i = { message: "boolean schema is false" };
+	var t = Gd(), n = X(), r = Wd(), i = { message: "boolean schema is false" };
 	function a(e) {
 		let { gen: t, schema: i, validateName: a } = e;
 		i === !1 ? s(e, !1) : typeof i == "object" && i.$async === !0 ? t.return(r.default.data) : (t.assign((0, n._)`${a}.errors`, null), t.return(!0));
@@ -10144,7 +10144,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		};
 		(0, t.reportError)(o, i, void 0, n);
 	}
-})), Gd = /* @__PURE__ */ a(((e) => {
+})), qd = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.getRules = e.isJSONType = void 0;
 	var t = /* @__PURE__ */ new Set([
 		"string",
@@ -10198,7 +10198,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		};
 	}
 	e.getRules = r;
-})), Kd = /* @__PURE__ */ a(((e) => {
+})), Jd = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.shouldUseRule = e.shouldUseGroup = e.schemaHasRulesForType = void 0;
 	function t({ schema: e, self: t }, r) {
 		let i = t.RULES.types[r];
@@ -10213,9 +10213,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		return e[t.keyword] !== void 0 || t.definition.implements?.some((t) => e[t] !== void 0);
 	}
 	e.shouldUseRule = r;
-})), qd = /* @__PURE__ */ a(((e) => {
+})), Yd = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.reportTypeError = e.checkDataTypes = e.checkDataType = e.coerceAndCheckDataType = e.getJSONTypes = e.getSchemaTypes = e.DataType = void 0;
-	var t = Gd(), n = Kd(), r = Ud(), i = X(), a = Z(), o;
+	var t = qd(), n = Jd(), r = Gd(), i = X(), a = Z(), o;
 	(function(e) {
 		e[e.Correct = 0] = "Correct", e[e.Wrong = 1] = "Wrong";
 	})(o || (e.DataType = o = {}));
@@ -10350,7 +10350,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			it: e
 		};
 	}
-})), Jd = /* @__PURE__ */ a(((e) => {
+})), Xd = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.assignDefaults = void 0;
 	var t = X(), n = Z();
 	function r(e, t) {
@@ -10370,9 +10370,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		let u = (0, t._)`${l} === undefined`;
 		c.useDefaults === "empty" && (u = (0, t._)`${u} || ${l} === null || ${l} === ""`), a.if(u, (0, t._)`${l} = ${(0, t.stringify)(i)}`);
 	}
-})), Yd = /* @__PURE__ */ a(((e) => {
+})), Zd = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.validateUnion = e.validateArray = e.usePattern = e.callValidateCode = e.schemaProperties = e.allSchemaProperties = e.noPropertyInData = e.propertyInData = e.isOwnProperty = e.hasPropFunc = e.reportMissingProp = e.checkMissingProp = e.checkReportMissingProp = void 0;
-	var t = X(), n = Z(), r = Hd(), i = Z();
+	var t = X(), n = Z(), r = Wd(), i = Z();
 	function a(e, n) {
 		let { gen: r, data: i, it: a } = e;
 		r.if(d(r, i, n, a.opts.ownProperties), () => {
@@ -10474,9 +10474,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		})), e.result(s, () => e.reset(), () => e.error(!0));
 	}
 	e.validateUnion = v;
-})), Xd = /* @__PURE__ */ a(((e) => {
+})), Qd = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.validateKeywordUsage = e.validSchemaType = e.funcKeywordCode = e.macroKeywordCode = void 0;
-	var t = X(), n = Hd(), r = Yd(), i = Ud();
+	var t = X(), n = Wd(), r = Zd(), i = Gd();
 	function a(e, n) {
 		let { gen: r, keyword: i, schema: a, parentSchema: o, it: s } = e, c = n.macro.call(s.self, a, o, s), l = u(r, i, c);
 		s.opts.validateSchema !== !1 && s.self.validateSchema(c, !0);
@@ -10555,7 +10555,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 	}
 	e.validateKeywordUsage = f;
-})), Zd = /* @__PURE__ */ a(((e) => {
+})), $d = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.extendSubschemaMode = e.extendSubschemaData = e.getSubschema = void 0;
 	var t = X(), n = Z();
 	function r(e, { keyword: r, schemaProp: i, schema: a, schemaPath: o, errSchemaPath: s, topSchemaRef: c }) {
@@ -10601,7 +10601,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		r !== void 0 && (e.compositeRule = r), i !== void 0 && (e.createErrors = i), a !== void 0 && (e.allErrors = a), e.jtdDiscriminator = t, e.jtdMetadata = n;
 	}
 	e.extendSubschemaMode = a;
-})), Qd = /* @__PURE__ */ a(((e, t) => {
+})), ef = /* @__PURE__ */ a(((e, t) => {
 	t.exports = function e(t, n) {
 		if (t === n) return !0;
 		if (t && n && typeof t == "object" && typeof n == "object") {
@@ -10625,7 +10625,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 		return t !== t && n !== n;
 	};
-})), $d = /* @__PURE__ */ a(((e, t) => {
+})), tf = /* @__PURE__ */ a(((e, t) => {
 	var n = t.exports = function(e, t, n) {
 		typeof t == "function" && (n = t, t = {}), n = t.cb || n;
 		var i = typeof n == "function" ? n : n.pre || function() {}, a = n.post || function() {};
@@ -10688,9 +10688,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 	function i(e) {
 		return e.replace(/~/g, "~0").replace(/\//g, "~1");
 	}
-})), ef = /* @__PURE__ */ a(((e) => {
+})), nf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.getSchemaRefs = e.resolveUrl = e.normalizeId = e._getFullPath = e.getFullPath = e.inlineRef = void 0;
-	var t = Z(), n = Qd(), r = $d(), i = /* @__PURE__ */ new Set([
+	var t = Z(), n = ef(), r = tf(), i = /* @__PURE__ */ new Set([
 		"type",
 		"format",
 		"pattern",
@@ -10779,11 +10779,11 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 	}
 	e.getSchemaRefs = h;
-})), tf = /* @__PURE__ */ a(((e) => {
+})), rf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.getData = e.KeywordCxt = e.validateFunctionCode = void 0;
-	var t = Wd(), n = qd(), r = Kd(), i = qd(), a = Jd(), o = Xd(), s = Zd(), c = X(), l = Hd(), u = ef(), d = Z(), f = Ud();
+	var t = Kd(), n = Yd(), r = Jd(), i = Yd(), a = Xd(), o = Qd(), s = $d(), c = X(), l = Wd(), u = nf(), d = Z(), f = Gd();
 	function p(e) {
-		if (S(e) && (ee(e), x(e))) {
+		if (S(e) && (w(e), x(e))) {
 			_(e);
 			return;
 		}
@@ -10808,7 +10808,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 	function _(e) {
 		let { schema: t, opts: n, gen: r } = e;
 		m(e, () => {
-			n.$comment && t.$comment && oe(e), re(e), r.let(l.default.vErrors, null), r.let(l.default.errors, 0), n.unevaluated && v(e), te(e), se(e);
+			n.$comment && t.$comment && ae(e), ne(e), r.let(l.default.vErrors, null), r.let(l.default.errors, 0), n.unevaluated && v(e), ee(e), oe(e);
 		});
 	}
 	function v(e) {
@@ -10820,7 +10820,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		return n && (t.code.source || t.code.process) ? (0, c._)`/*# sourceURL=${n} */` : c.nil;
 	}
 	function b(e, n) {
-		if (S(e) && (ee(e), x(e))) {
+		if (S(e) && (w(e), x(e))) {
 			C(e, n);
 			return;
 		}
@@ -10836,34 +10836,34 @@ var Bd = /* @__PURE__ */ a(((e) => {
 	}
 	function C(e, t) {
 		let { schema: n, gen: r, opts: i } = e;
-		i.$comment && n.$comment && oe(e), ie(e), ae(e);
+		i.$comment && n.$comment && ae(e), re(e), ie(e);
 		let a = r.const("_errs", l.default.errors);
-		te(e, a), r.var(t, (0, c._)`${a} === ${l.default.errors}`);
+		ee(e, a), r.var(t, (0, c._)`${a} === ${l.default.errors}`);
 	}
-	function ee(e) {
-		(0, d.checkUnknownRules)(e), ne(e);
+	function w(e) {
+		(0, d.checkUnknownRules)(e), te(e);
 	}
-	function te(e, t) {
-		if (e.opts.jtd) return le(e, [], !1, t);
+	function ee(e, t) {
+		if (e.opts.jtd) return ce(e, [], !1, t);
 		let r = (0, n.getSchemaTypes)(e.schema);
-		le(e, r, !(0, n.coerceAndCheckDataType)(e, r), t);
+		ce(e, r, !(0, n.coerceAndCheckDataType)(e, r), t);
 	}
-	function ne(e) {
+	function te(e) {
 		let { schema: t, errSchemaPath: n, opts: r, self: i } = e;
 		t.$ref && r.ignoreKeywordsWithRef && (0, d.schemaHasRulesButRef)(t, i.RULES) && i.logger.warn(`$ref: keywords ignored in schema at path "${n}"`);
 	}
-	function re(e) {
+	function ne(e) {
 		let { schema: t, opts: n } = e;
 		t.default !== void 0 && n.useDefaults && n.strictSchema && (0, d.checkStrictMode)(e, "default is ignored in the schema root");
 	}
-	function ie(e) {
+	function re(e) {
 		let t = e.schema[e.opts.schemaId];
 		t && (e.baseId = (0, u.resolveUrl)(e.opts.uriResolver, e.baseId, t));
 	}
-	function ae(e) {
+	function ie(e) {
 		if (e.schema.$async && !e.schemaEnv.$async) throw Error("async schema in sync schema");
 	}
-	function oe({ gen: e, schemaEnv: t, schema: n, errSchemaPath: r, opts: i }) {
+	function ae({ gen: e, schemaEnv: t, schema: n, errSchemaPath: r, opts: i }) {
 		let a = n.$comment;
 		if (i.$comment === !0) e.code((0, c._)`${l.default.self}.logger.log(${a})`);
 		else if (typeof i.$comment == "function") {
@@ -10871,78 +10871,78 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			e.code((0, c._)`${l.default.self}.opts.$comment(${a}, ${n}, ${i}.schema)`);
 		}
 	}
-	function se(e) {
+	function oe(e) {
 		let { gen: t, schemaEnv: n, validateName: r, ValidationError: i, opts: a } = e;
-		n.$async ? t.if((0, c._)`${l.default.errors} === 0`, () => t.return(l.default.data), () => t.throw((0, c._)`new ${i}(${l.default.vErrors})`)) : (t.assign((0, c._)`${r}.errors`, l.default.vErrors), a.unevaluated && ce(e), t.return((0, c._)`${l.default.errors} === 0`));
+		n.$async ? t.if((0, c._)`${l.default.errors} === 0`, () => t.return(l.default.data), () => t.throw((0, c._)`new ${i}(${l.default.vErrors})`)) : (t.assign((0, c._)`${r}.errors`, l.default.vErrors), a.unevaluated && se(e), t.return((0, c._)`${l.default.errors} === 0`));
 	}
-	function ce({ gen: e, evaluated: t, props: n, items: r }) {
+	function se({ gen: e, evaluated: t, props: n, items: r }) {
 		n instanceof c.Name && e.assign((0, c._)`${t}.props`, n), r instanceof c.Name && e.assign((0, c._)`${t}.items`, r);
 	}
-	function le(e, t, n, a) {
+	function ce(e, t, n, a) {
 		let { gen: o, schema: s, data: u, allErrors: f, opts: p, self: m } = e, { RULES: h } = m;
 		if (s.$ref && (p.ignoreKeywordsWithRef || !(0, d.schemaHasRulesButRef)(s, h))) {
-			o.block(() => be(e, "$ref", h.all.$ref.definition));
+			o.block(() => ye(e, "$ref", h.all.$ref.definition));
 			return;
 		}
-		p.jtd || de(e, t), o.block(() => {
+		p.jtd || ue(e, t), o.block(() => {
 			for (let e of h.rules) g(e);
 			g(h.post);
 		});
 		function g(d) {
-			(0, r.shouldUseGroup)(s, d) && (d.type ? (o.if((0, i.checkDataType)(d.type, u, p.strictNumbers)), ue(e, d), t.length === 1 && t[0] === d.type && n && (o.else(), (0, i.reportTypeError)(e)), o.endIf()) : ue(e, d), f || o.if((0, c._)`${l.default.errors} === ${a || 0}`));
+			(0, r.shouldUseGroup)(s, d) && (d.type ? (o.if((0, i.checkDataType)(d.type, u, p.strictNumbers)), le(e, d), t.length === 1 && t[0] === d.type && n && (o.else(), (0, i.reportTypeError)(e)), o.endIf()) : le(e, d), f || o.if((0, c._)`${l.default.errors} === ${a || 0}`));
 		}
 	}
-	function ue(e, t) {
+	function le(e, t) {
 		let { gen: n, schema: i, opts: { useDefaults: o } } = e;
 		o && (0, a.assignDefaults)(e, t.type), n.block(() => {
-			for (let n of t.rules) (0, r.shouldUseRule)(i, n) && be(e, n.keyword, n.definition, t.type);
+			for (let n of t.rules) (0, r.shouldUseRule)(i, n) && ye(e, n.keyword, n.definition, t.type);
 		});
 	}
-	function de(e, t) {
-		e.schemaEnv.meta || !e.opts.strictTypes || (fe(e, t), e.opts.allowUnionTypes || pe(e, t), me(e, e.dataTypes));
+	function ue(e, t) {
+		e.schemaEnv.meta || !e.opts.strictTypes || (de(e, t), e.opts.allowUnionTypes || fe(e, t), pe(e, e.dataTypes));
 	}
-	function fe(e, t) {
+	function de(e, t) {
 		if (t.length) {
 			if (!e.dataTypes.length) {
 				e.dataTypes = t;
 				return;
 			}
 			t.forEach((t) => {
-				ge(e.dataTypes, t) || ve(e, `type "${t}" not allowed by context "${e.dataTypes.join(",")}"`);
-			}), _e(e, t);
+				he(e.dataTypes, t) || _e(e, `type "${t}" not allowed by context "${e.dataTypes.join(",")}"`);
+			}), ge(e, t);
 		}
 	}
-	function pe(e, t) {
-		t.length > 1 && !(t.length === 2 && t.includes("null")) && ve(e, "use allowUnionTypes to allow union type keyword");
+	function fe(e, t) {
+		t.length > 1 && !(t.length === 2 && t.includes("null")) && _e(e, "use allowUnionTypes to allow union type keyword");
 	}
-	function me(e, t) {
+	function pe(e, t) {
 		let n = e.self.RULES.all;
 		for (let i in n) {
 			let a = n[i];
 			if (typeof a == "object" && (0, r.shouldUseRule)(e.schema, a)) {
 				let { type: n } = a.definition;
-				n.length && !n.some((e) => he(t, e)) && ve(e, `missing type "${n.join(",")}" for keyword "${i}"`);
+				n.length && !n.some((e) => me(t, e)) && _e(e, `missing type "${n.join(",")}" for keyword "${i}"`);
 			}
 		}
 	}
-	function he(e, t) {
+	function me(e, t) {
 		return e.includes(t) || t === "number" && e.includes("integer");
 	}
-	function ge(e, t) {
+	function he(e, t) {
 		return e.includes(t) || t === "integer" && e.includes("number");
 	}
-	function _e(e, t) {
+	function ge(e, t) {
 		let n = [];
-		for (let r of e.dataTypes) ge(t, r) ? n.push(r) : t.includes("integer") && r === "number" && n.push("integer");
+		for (let r of e.dataTypes) he(t, r) ? n.push(r) : t.includes("integer") && r === "number" && n.push("integer");
 		e.dataTypes = n;
 	}
-	function ve(e, t) {
+	function _e(e, t) {
 		let n = e.schemaEnv.baseId + e.errSchemaPath;
 		t += ` at "${n}" (strictTypes)`, (0, d.checkStrictMode)(e, t, e.opts.strictTypes);
 	}
-	var ye = class {
+	var ve = class {
 		constructor(e, t, n) {
-			if ((0, o.validateKeywordUsage)(e, t, n), this.gen = e.gen, this.allErrors = e.allErrors, this.keyword = n, this.data = e.data, this.schema = e.schema[n], this.$data = t.$data && e.opts.$data && this.schema && this.schema.$data, this.schemaValue = (0, d.schemaRefOrVal)(e, this.schema, n, this.$data), this.schemaType = t.schemaType, this.parentSchema = e.schema, this.params = {}, this.it = e, this.def = t, this.$data) this.schemaCode = e.gen.const("vSchema", w(this.$data, e));
+			if ((0, o.validateKeywordUsage)(e, t, n), this.gen = e.gen, this.allErrors = e.allErrors, this.keyword = n, this.data = e.data, this.schema = e.schema[n], this.$data = t.$data && e.opts.$data && this.schema && this.schema.$data, this.schemaValue = (0, d.schemaRefOrVal)(e, this.schema, n, this.$data), this.schemaType = t.schemaType, this.parentSchema = e.schema, this.params = {}, this.it = e, this.def = t, this.$data) this.schemaCode = e.gen.const("vSchema", Se(this.$data, e));
 			else if (this.schemaCode = this.schemaValue, !(0, o.validSchemaType)(this.schema, t.schemaType, t.allowUndefined)) throw Error(`${n} value must be ${JSON.stringify(t.schemaType)}`);
 			("code" in t ? t.trackErrors : t.errors !== !1) && (this.errsCount = e.gen.const("_errs", l.default.errors));
 		}
@@ -11040,20 +11040,20 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			if (n.opts.unevaluated && (n.props !== !0 || n.items !== !0)) return r.if(t, () => this.mergeEvaluated(e, c.Name)), !0;
 		}
 	};
-	e.KeywordCxt = ye;
-	function be(e, t, n, r) {
-		let i = new ye(e, n, t);
+	e.KeywordCxt = ve;
+	function ye(e, t, n, r) {
+		let i = new ve(e, n, t);
 		"code" in n ? n.code(i, r) : i.$data && n.validate ? (0, o.funcKeywordCode)(i, n) : "macro" in n ? (0, o.macroKeywordCode)(i, n) : (n.compile || n.validate) && (0, o.funcKeywordCode)(i, n);
 	}
-	var xe = /^\/(?:[^~]|~0|~1)*$/, Se = /^([0-9]+)(#|\/(?:[^~]|~0|~1)*)?$/;
-	function w(e, { dataLevel: t, dataNames: n, dataPathArr: r }) {
+	var be = /^\/(?:[^~]|~0|~1)*$/, xe = /^([0-9]+)(#|\/(?:[^~]|~0|~1)*)?$/;
+	function Se(e, { dataLevel: t, dataNames: n, dataPathArr: r }) {
 		let i, a;
 		if (e === "") return l.default.rootData;
 		if (e[0] === "/") {
-			if (!xe.test(e)) throw Error(`Invalid JSON-pointer: ${e}`);
+			if (!be.test(e)) throw Error(`Invalid JSON-pointer: ${e}`);
 			i = e, a = l.default.rootData;
 		} else {
-			let o = Se.exec(e);
+			let o = xe.exec(e);
 			if (!o) throw Error(`Invalid JSON-pointer: ${e}`);
 			let s = +o[1];
 			if (i = o[2], i === "#") {
@@ -11070,24 +11070,24 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			return `Cannot access ${e} ${n} levels up, current level is ${t}`;
 		}
 	}
-	e.getData = w;
-})), nf = /* @__PURE__ */ a(((e) => {
+	e.getData = Se;
+})), af = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.default = class extends Error {
 		constructor(e) {
 			super("validation failed"), this.errors = e, this.ajv = this.validation = !0;
 		}
 	};
-})), rf = /* @__PURE__ */ a(((e) => {
+})), of = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = ef();
+	var t = nf();
 	e.default = class extends Error {
 		constructor(e, n, r, i) {
 			super(i || `can't resolve reference ${r} from id ${n}`), this.missingRef = (0, t.resolveUrl)(e, n, r), this.missingSchema = (0, t.normalizeId)((0, t.getFullPath)(e, this.missingRef));
 		}
 	};
-})), af = /* @__PURE__ */ a(((e) => {
+})), sf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.resolveSchema = e.getCompilingSchema = e.resolveRef = e.compileSchema = e.SchemaEnv = void 0;
-	var t = X(), n = nf(), r = Hd(), i = ef(), a = Z(), o = tf(), s = class {
+	var t = X(), n = af(), r = Wd(), i = nf(), a = Z(), o = rf(), s = class {
 		constructor(e) {
 			this.refs = {}, this.dynamicAnchors = {};
 			let t;
@@ -11246,27 +11246,27 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			baseId: t
 		}), o.schema !== o.root.schema) return o;
 	}
-})), of = /* @__PURE__ */ i({
-	$id: () => sf,
+})), cf = /* @__PURE__ */ i({
+	$id: () => lf,
 	additionalProperties: () => !1,
-	default: () => ff,
-	description: () => cf,
-	properties: () => df,
-	required: () => uf,
-	type: () => lf
-}), sf, cf, lf, uf, df, ff, pf = n((() => {
-	sf = "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/data.json#", cf = "Meta-schema for $data reference (JSON AnySchema extension proposal)", lf = "object", uf = ["$data"], df = { $data: {
+	default: () => mf,
+	description: () => uf,
+	properties: () => pf,
+	required: () => ff,
+	type: () => df
+}), lf, uf, df, ff, pf, mf, hf = n((() => {
+	lf = "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/data.json#", uf = "Meta-schema for $data reference (JSON AnySchema extension proposal)", df = "object", ff = ["$data"], pf = { $data: {
 		type: "string",
 		anyOf: [{ format: "relative-json-pointer" }, { format: "json-pointer" }]
-	} }, ff = {
-		$id: sf,
-		description: cf,
-		type: lf,
-		required: uf,
-		properties: df,
+	} }, mf = {
+		$id: lf,
+		description: uf,
+		type: df,
+		required: ff,
+		properties: pf,
 		additionalProperties: !1
 	};
-})), mf = /* @__PURE__ */ a(((e, t) => {
+})), gf = /* @__PURE__ */ a(((e, t) => {
 	var n = RegExp.prototype.test.bind(/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/iu), r = RegExp.prototype.test.bind(/^(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]\d|\d)$/u), i = RegExp.prototype.test.bind(/^[\da-f]{2}$/iu), a = RegExp.prototype.test.bind(/^[\da-z\-._~]$/iu), o = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/]$/u), s = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:@/?]$/u), c = RegExp.prototype.test.bind(/^[A-Za-z0-9\-._~!$&'()*+,;=:]$/u), l = Array(256);
 	{
 		let e = "0123456789ABCDEF";
@@ -11437,12 +11437,12 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		"?": "%3F",
 		"#": "%23",
 		":": "%3A"
-	}, C = /[@/?#:]/g, ee = /[@/?#]/g;
-	function te(e, t) {
-		let n = t ? ee : C;
+	}, C = /[@/?#:]/g, w = /[@/?#]/g;
+	function ee(e, t) {
+		let n = t ? w : C;
 		return n.lastIndex = 0, e.replace(n, (e) => S[e]);
 	}
-	function ne(e, t = !1) {
+	function te(e, t = !1) {
 		if (e.indexOf("%") === -1) return e;
 		let n = "";
 		for (let r = 0; r < e.length; r++) {
@@ -11458,7 +11458,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 		return n;
 	}
-	function re(e) {
+	function ne(e) {
 		let t = "";
 		for (let n = 0; n < e.length; n++) {
 			let r = e[n];
@@ -11473,7 +11473,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			if (o(r)) t += r;
 			else {
 				let i = e.charCodeAt(n);
-				if (i < 128) t += le(i) ? r : l[i];
+				if (i < 128) t += ce(i) ? r : l[i];
 				else if (i < 55296 || i > 57343) t += u(i);
 				else if (i <= 56319 && n + 1 < e.length) {
 					let r = e.charCodeAt(n + 1);
@@ -11483,7 +11483,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 		return t;
 	}
-	function ie(e, t = !1) {
+	function re(e, t = !1) {
 		let n = "", r = t && e[0] !== "/";
 		for (let t = 0; t < e.length; t++) {
 			let a = e[t];
@@ -11507,7 +11507,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 		return n;
 	}
-	function ae(e, t) {
+	function ie(e, t) {
 		let n = "";
 		for (let r = 0; r < e.length; r++) {
 			let a = e[r];
@@ -11531,19 +11531,19 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 		return n;
 	}
+	function ae(e) {
+		return ie(e, c);
+	}
 	function oe(e) {
-		return ae(e, c);
+		return ie(e, s);
 	}
 	function se(e) {
-		return ae(e, s);
+		return ie(e, s);
 	}
 	function ce(e) {
-		return ae(e, s);
-	}
-	function le(e) {
 		return e >= 48 && e <= 57 || e >= 65 && e <= 90 || e >= 97 && e <= 122 || e === 42 || e === 43 || e === 45 || e === 46 || e === 47 || e === 64 || e === 95;
 	}
-	function ue(e) {
+	function le(e) {
 		let t = "";
 		for (let n = 0; n < e.length; n++) {
 			let r = e[n];
@@ -11558,7 +11558,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			if (s(r)) t += r;
 			else {
 				let i = e.charCodeAt(n);
-				if (i < 128) t += le(i) ? r : l[i];
+				if (i < 128) t += ce(i) ? r : l[i];
 				else if (i < 55296 || i > 57343) t += u(i);
 				else if (i <= 56319 && n + 1 < e.length) {
 					let r = e.charCodeAt(n + 1);
@@ -11568,7 +11568,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 		return t;
 	}
-	function de(e) {
+	function ue(e) {
 		let t = "";
 		for (let n = 0; n < e.length; n++) {
 			if (e[n] === "%" && n + 2 < e.length) {
@@ -11582,13 +11582,13 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 		return t;
 	}
-	function fe(e) {
+	function de(e) {
 		let t = [];
-		if (e.userinfo !== void 0 && (t.push(oe(e.userinfo)), t.push("@")), e.host !== void 0) {
+		if (e.userinfo !== void 0 && (t.push(ae(e.userinfo)), t.push("@")), e.host !== void 0) {
 			let n = e.host;
 			if (!r(n)) {
 				let e = y(n);
-				e.isIPV6 !== !0 && e.isIPVFuture !== !0 && (n = ne(n, !0), e = y(n)), n = e.isIPV6 === !0 || e.isIPVFuture === !0 ? `[${e.escapedHost}]` : te(n, !1);
+				e.isIPV6 !== !0 && e.isIPVFuture !== !0 && (n = te(n, !0), e = y(n)), n = e.isIPV6 === !0 || e.isIPVFuture === !0 ? `[${e.escapedHost}]` : ee(n, !1);
 			}
 			t.push(n);
 		}
@@ -11596,24 +11596,24 @@ var Bd = /* @__PURE__ */ a(((e) => {
 	}
 	t.exports = {
 		nonSimpleDomain: h,
-		recomposeAuthority: fe,
-		reescapeHostDelimiters: te,
-		normalizePercentEncoding: ne,
-		normalizePathEncoding: re,
-		serializePathEncoding: ie,
-		normalizeQueryFragmentEncoding: ue,
-		encodeUserinfo: oe,
-		encodeQuery: se,
-		encodeFragment: ce,
-		escapePreservingEscapes: de,
+		recomposeAuthority: de,
+		reescapeHostDelimiters: ee,
+		normalizePercentEncoding: te,
+		normalizePathEncoding: ne,
+		serializePathEncoding: re,
+		normalizeQueryFragmentEncoding: le,
+		encodeUserinfo: ae,
+		encodeQuery: oe,
+		encodeFragment: se,
+		escapePreservingEscapes: ue,
 		removeDotSegments: x,
 		isIPv4: r,
 		isUUID: n,
 		normalizeIPv6: y,
 		stringArrayToHexStripped: d
 	};
-})), hf = /* @__PURE__ */ a(((e, t) => {
-	var { isUUID: n } = mf(), r = /^([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-./:;=@]|%[\da-f]{2})+)$/iu, i = [
+})), _f = /* @__PURE__ */ a(((e, t) => {
+	var { isUUID: n } = gf(), r = /^([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-./:;=@]|%[\da-f]{2})+)$/iu, i = [
 		"http",
 		"https",
 		"ws",
@@ -11718,31 +11718,31 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		isValidSchemeName: a,
 		getSchemeHandler: y
 	};
-})), gf = /* @__PURE__ */ a(((e, t) => {
-	var { normalizeIPv6: n, removeDotSegments: r, recomposeAuthority: i, normalizePercentEncoding: a, normalizePathEncoding: o, serializePathEncoding: s, normalizeQueryFragmentEncoding: c, encodeQuery: l, encodeFragment: u, reescapeHostDelimiters: d, isIPv4: f, nonSimpleDomain: p } = mf(), { SCHEMES: m, getSchemeHandler: h } = hf(), g = /^[A-Za-z][A-Za-z0-9+.-]*$/u, _ = "URI scheme is malformed.";
+})), vf = /* @__PURE__ */ a(((e, t) => {
+	var { normalizeIPv6: n, removeDotSegments: r, recomposeAuthority: i, normalizePercentEncoding: a, normalizePathEncoding: o, serializePathEncoding: s, normalizeQueryFragmentEncoding: c, encodeQuery: l, encodeFragment: u, reescapeHostDelimiters: d, isIPv4: f, nonSimpleDomain: p } = gf(), { SCHEMES: m, getSchemeHandler: h } = _f(), g = /^[A-Za-z][A-Za-z0-9+.-]*$/u, _ = "URI scheme is malformed.";
 	function v(e) {
 		let t = unescape(String(e));
 		if (!g.test(t)) throw TypeError(_);
 		return t;
 	}
 	function y(e, t) {
-		return typeof e == "string" ? e = le(e, t) : typeof e == "object" && (e = ce(C(e, t), t)), e;
+		return typeof e == "string" ? e = ce(e, t) : typeof e == "object" && (e = se(C(e, t), t)), e;
 	}
 	function b(e, t, r) {
-		let i = r ? Object.assign({ scheme: "null" }, r) : { scheme: "null" }, { parsed: a, malformedAuthorityOrPort: o, malformedPercentEncoding: s, malformedSchemeSpecific: c, malformedHost: l, malformedScheme: u } = se(e, i), { parsed: d, malformedAuthorityOrPort: p, malformedPercentEncoding: m, malformedSchemeSpecific: g, malformedHost: _, malformedScheme: v } = se(t, i);
+		let i = r ? Object.assign({ scheme: "null" }, r) : { scheme: "null" }, { parsed: a, malformedAuthorityOrPort: o, malformedPercentEncoding: s, malformedSchemeSpecific: c, malformedHost: l, malformedScheme: u } = oe(e, i), { parsed: d, malformedAuthorityOrPort: p, malformedPercentEncoding: m, malformedSchemeSpecific: g, malformedHost: _, malformedScheme: v } = oe(t, i);
 		if (o || p || s || m || c || g || l || _ || u || v) throw Error(a.error || d.error || "URI is malformed.");
-		let y = x(a, d, i, !0), b = h(r && r.scheme || y.scheme), S = y.host, ee = S !== void 0 && S !== "" && (f(S) || n(S).isIPV6);
-		oe(y, r || {}, b, ee);
-		let te = S && S.indexOf("%") !== -1 && !/\P{ASCII}/u.test(S);
-		if (y.error && !te) throw Error(y.error);
+		let y = x(a, d, i, !0), b = h(r && r.scheme || y.scheme), S = y.host, w = S !== void 0 && S !== "" && (f(S) || n(S).isIPV6);
+		ae(y, r || {}, b, w);
+		let ee = S && S.indexOf("%") !== -1 && !/\P{ASCII}/u.test(S);
+		if (y.error && !ee) throw Error(y.error);
 		return i.skipEscape = !0, C(y, i);
 	}
 	function x(e, t, n, i) {
 		let a = {};
-		return i || (e = ce(C(e, n), n), t = ce(C(t, n), n)), n ||= {}, !n.tolerant && t.scheme ? (a.scheme = t.scheme, a.userinfo = t.userinfo, a.host = t.host, a.port = t.port, a.path = r(t.path || ""), a.query = t.query) : (t.userinfo !== void 0 || t.host !== void 0 || t.port !== void 0 ? (a.userinfo = t.userinfo, a.host = t.host, a.port = t.port, a.path = r(t.path || ""), a.query = t.query) : (t.path ? (t.path[0] === "/" ? a.path = r(t.path) : (a.path = (e.userinfo !== void 0 || e.host !== void 0 || e.port !== void 0) && !e.path ? "/" + t.path : e.path ? e.path.slice(0, e.path.lastIndexOf("/") + 1) + t.path : t.path, a.path = r(a.path)), a.query = t.query) : (a.path = e.path, a.query = t.query === void 0 ? e.query : t.query), a.userinfo = e.userinfo, a.host = e.host, a.port = e.port), a.scheme = e.scheme), a.fragment = t.fragment, a;
+		return i || (e = se(C(e, n), n), t = se(C(t, n), n)), n ||= {}, !n.tolerant && t.scheme ? (a.scheme = t.scheme, a.userinfo = t.userinfo, a.host = t.host, a.port = t.port, a.path = r(t.path || ""), a.query = t.query) : (t.userinfo !== void 0 || t.host !== void 0 || t.port !== void 0 ? (a.userinfo = t.userinfo, a.host = t.host, a.port = t.port, a.path = r(t.path || ""), a.query = t.query) : (t.path ? (t.path[0] === "/" ? a.path = r(t.path) : (a.path = (e.userinfo !== void 0 || e.host !== void 0 || e.port !== void 0) && !e.path ? "/" + t.path : e.path ? e.path.slice(0, e.path.lastIndexOf("/") + 1) + t.path : t.path, a.path = r(a.path)), a.query = t.query) : (a.path = e.path, a.query = t.query === void 0 ? e.query : t.query), a.userinfo = e.userinfo, a.host = e.host, a.port = e.port), a.scheme = e.scheme), a.fragment = t.fragment, a;
 	}
 	function S(e, t, n) {
-		let r = de(e, n), i = de(t, n);
+		let r = ue(e, n), i = ue(t, n);
 		return r !== void 0 && i !== void 0 && r === i;
 	}
 	function C(e, t) {
@@ -11774,12 +11774,12 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 		return n.query !== void 0 && c.push("?", l(n.query)), n.fragment !== void 0 && c.push("#", u(n.fragment)), c.join("");
 	}
-	var ee = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u, te = /^(?:[^#/:?]+:)?\/\/([^/?#]*)/, ne = /^(?:[^#/:?]+:)?([/\\\t\n\r]*)/;
-	function re(e, t) {
+	var w = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u, ee = /^(?:[^#/:?]+:)?\/\/([^/?#]*)/, te = /^(?:[^#/:?]+:)?([/\\\t\n\r]*)/;
+	function ne(e, t) {
 		if (t[2] !== void 0 && e.path && e.path[0] !== "/") return "URI path must start with \"/\" when authority is present.";
 		if (typeof e.port == "number" && (e.port < 0 || e.port > 65535)) return "URI port is malformed.";
 	}
-	function ie(e) {
+	function re(e) {
 		if (e === void 0) return !1;
 		let t = e.indexOf("%");
 		for (; t !== -1;) {
@@ -11788,11 +11788,11 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 		return !1;
 	}
-	function ae(e) {
+	function ie(e) {
 		let t = e[4];
-		return ie(e[3]) || t !== void 0 && (t[0] !== "[" || t[t.length - 1] !== "]") && ie(t) || ie(e[6]) || ie(e[7]) || ie(e[8]);
+		return re(e[3]) || t !== void 0 && (t[0] !== "[" || t[t.length - 1] !== "]") && re(t) || re(e[6]) || re(e[7]) || re(e[8]);
 	}
-	function oe(e, t, n, r) {
+	function ae(e, t, n, r) {
 		if (!t.unicodeSupport && (!n || !n.unicodeSupport) && e.host && e.host[0] !== "[" && (t.domainHost || n && n.domainHost) && r === !1 && p(e.host)) try {
 			e.host = new URL("http://" + e.host).hostname;
 		} catch (t) {
@@ -11800,7 +11800,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 		return !1;
 	}
-	function se(e, t) {
+	function oe(e, t) {
 		let r = Object.assign({}, t), i = {
 			scheme: void 0,
 			userinfo: void 0,
@@ -11811,21 +11811,21 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			fragment: void 0
 		}, s = !1, l = !1, u = !1, p = !1, v = !1, y = !1, b = !1;
 		r.reference === "suffix" && (e = r.scheme ? r.scheme + ":" + e : "//" + e);
-		let x = e.match(te);
+		let x = e.match(ee);
 		x !== null && x[1].indexOf("\\") !== -1 && (i.error = "URI authority must not contain a literal backslash.", s = !0);
-		let S = e.match(ne);
+		let S = e.match(te);
 		if (S !== null) {
 			let e = S[1], t = e.replace(/[\t\n\r]/g, "");
 			t.length >= 2 && (t.slice(0, 2) === "//" ? e.length !== t.length && (i.error = i.error || "URI authority introducer must not contain whitespace.", s = !0) : (i.error = i.error || "URI authority must not contain a literal backslash.", s = !0));
 		}
-		let C = e.match(ee);
+		let C = e.match(w);
 		if (C) {
 			if (i.scheme = C[1], i.userinfo = C[3], i.host = C[4], i.port = parseInt(C[5], 10), i.path = C[6] || "", i.query = C[7], i.fragment = C[8], i.scheme !== void 0) {
 				let e = unescape(i.scheme);
 				g.test(e) ? i.scheme = e.toLowerCase() : (i.error = i.error || _, y = !0);
 			}
-			l = ae(C), l && (i.error = i.error || "URI contains malformed percent-encoding."), isNaN(i.port) && (i.port = C[5]);
-			let t = re(i, C);
+			l = ie(C), l && (i.error = i.error || "URI contains malformed percent-encoding."), isNaN(i.port) && (i.port = C[5]);
+			let t = ne(i, C);
 			if (t !== void 0 && (i.error = i.error || t, s = !0), i.host) {
 				if (f(i.host) === !1) {
 					let e = i.host[0] === "[" && i.host[i.host.length - 1] === "]", t = n(i.host);
@@ -11834,7 +11834,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}
 			i.reference = i.scheme === void 0 && i.userinfo === void 0 && i.host === void 0 && i.port === void 0 && i.query === void 0 && !i.path ? "same-document" : i.scheme === void 0 ? "relative" : i.fragment === void 0 ? "absolute" : "uri", r.reference && r.reference !== "suffix" && r.reference !== i.reference && (i.error = i.error || "URI is not a " + r.reference + " reference.");
 			let x = h(r.scheme || i.scheme);
-			p = oe(i, r, x, b), (!x || x && !x.skipNormalize) && (e.indexOf("%") !== -1 && i.host !== void 0 && !v && (i.host = d(b ? i.host : a(i.host, !0), b)), i.path &&= o(i.path), i.query &&= c(i.query), i.fragment &&= c(i.fragment)), x && x.parse && (x.parse(i, r), x === m.urn && i.nid === void 0 && (u = !0));
+			p = ae(i, r, x, b), (!x || x && !x.skipNormalize) && (e.indexOf("%") !== -1 && i.host !== void 0 && !v && (i.host = d(b ? i.host : a(i.host, !0), b)), i.path &&= o(i.path), i.query &&= c(i.query), i.fragment &&= c(i.fragment)), x && x.parse && (x.parse(i, r), x === m.urn && i.nid === void 0 && (u = !0));
 		} else i.error = i.error || "URI can not be parsed.";
 		return {
 			parsed: i,
@@ -11845,14 +11845,14 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			malformedScheme: y
 		};
 	}
+	function se(e, t) {
+		return oe(e, t).parsed;
+	}
 	function ce(e, t) {
-		return se(e, t).parsed;
+		return le(e, t).normalized;
 	}
 	function le(e, t) {
-		return ue(e, t).normalized;
-	}
-	function ue(e, t) {
-		let { parsed: n, malformedAuthorityOrPort: r, malformedPercentEncoding: i, malformedSchemeSpecific: a, malformedHost: o, malformedScheme: s } = se(e, t);
+		let { parsed: n, malformedAuthorityOrPort: r, malformedPercentEncoding: i, malformedSchemeSpecific: a, malformedHost: o, malformedScheme: s } = oe(e, t);
 		return {
 			normalized: r || i || a || o || s ? e : C(n, t),
 			malformedAuthorityOrPort: r,
@@ -11862,7 +11862,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			malformedScheme: s
 		};
 	}
-	function de(e, t) {
+	function ue(e, t) {
 		if (typeof e != "string" && typeof e != "object") return;
 		let n;
 		try {
@@ -11870,26 +11870,26 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		} catch {
 			return;
 		}
-		let { normalized: r, malformedAuthorityOrPort: i, malformedPercentEncoding: a, malformedSchemeSpecific: o, malformedHost: s, malformedScheme: c } = ue(n, t);
+		let { normalized: r, malformedAuthorityOrPort: i, malformedPercentEncoding: a, malformedSchemeSpecific: o, malformedHost: s, malformedScheme: c } = le(n, t);
 		return i || a || o || s || c ? void 0 : r;
 	}
-	var fe = {
+	var de = {
 		SCHEMES: m,
 		normalize: y,
 		resolve: b,
 		resolveComponent: x,
 		equal: S,
 		serialize: C,
-		parse: ce
+		parse: se
 	};
-	t.exports = fe, t.exports.default = fe, t.exports.fastUri = fe;
-})), _f = /* @__PURE__ */ a(((e) => {
+	t.exports = de, t.exports.default = de, t.exports.fastUri = de;
+})), yf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = gf();
+	var t = vf();
 	t.code = "require(\"ajv/dist/runtime/uri\").default", e.default = t;
-})), vf = /* @__PURE__ */ a(((t) => {
+})), bf = /* @__PURE__ */ a(((t) => {
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.CodeGen = t.Name = t.nil = t.stringify = t.str = t._ = t.KeywordCxt = void 0;
-	var n = tf();
+	var n = rf();
 	Object.defineProperty(t, "KeywordCxt", {
 		enumerable: !0,
 		get: function() {
@@ -11928,7 +11928,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			return r.CodeGen;
 		}
 	});
-	var i = nf(), a = rf(), o = Gd(), s = af(), c = X(), l = ef(), u = qd(), d = Z(), f = (pf(), e(of).default), p = _f(), m = (e, t) => new RegExp(e, t);
+	var i = af(), a = of(), o = qd(), s = sf(), c = X(), l = nf(), u = Yd(), d = Z(), f = (hf(), e(cf).default), p = yf(), m = (e, t) => new RegExp(e, t);
 	m.code = "new RegExp";
 	var h = [
 		"removeAdditional",
@@ -12011,9 +12011,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 				prefixes: g,
 				es5: t,
 				lines: n
-			}), this.logger = ae(e.logger);
+			}), this.logger = ie(e.logger);
 			let r = e.validateFormats;
-			e.validateFormats = !1, this.RULES = (0, o.getRules)(), S.call(this, _, e, "NOT SUPPORTED"), S.call(this, v, e, "DEPRECATED", "warn"), this._metaOpts = re.call(this), e.formats && te.call(this), this._addVocabularies(), this._addDefaultMetaSchema(), e.keywords && ne.call(this, e.keywords), typeof e.meta == "object" && this.addMetaSchema(e.meta), ee.call(this), e.validateFormats = r;
+			e.validateFormats = !1, this.RULES = (0, o.getRules)(), S.call(this, _, e, "NOT SUPPORTED"), S.call(this, v, e, "DEPRECATED", "warn"), this._metaOpts = ne.call(this), e.formats && ee.call(this), this._addVocabularies(), this._addDefaultMetaSchema(), e.keywords && te.call(this, e.keywords), typeof e.meta == "object" && this.addMetaSchema(e.meta), w.call(this), e.validateFormats = r;
 		}
 		_addVocabularies() {
 			this.addKeyword("$async");
@@ -12143,14 +12143,14 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			else if (typeof e == "object" && t === void 0) {
 				if (t = e, n = t.keyword, Array.isArray(n) && !n.length) throw Error("addKeywords: keyword must be string or non-empty array");
 			} else throw Error("invalid addKeywords parameters");
-			if (se.call(this, n, t), !t) return (0, d.eachItem)(n, (e) => ce.call(this, e)), this;
-			ue.call(this, t);
+			if (oe.call(this, n, t), !t) return (0, d.eachItem)(n, (e) => se.call(this, e)), this;
+			le.call(this, t);
 			let r = {
 				...t,
 				type: (0, u.getJSONTypes)(t.type),
 				schemaType: (0, u.getJSONTypes)(t.schemaType)
 			};
-			return (0, d.eachItem)(n, r.type.length === 0 ? (e) => ce.call(this, e, r) : (e) => r.type.forEach((t) => ce.call(this, e, r, t))), this;
+			return (0, d.eachItem)(n, r.type.length === 0 ? (e) => se.call(this, e, r) : (e) => r.type.forEach((t) => se.call(this, e, r, t))), this;
 		}
 		getKeyword(e) {
 			let t = this.RULES.all[e];
@@ -12181,7 +12181,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 					let t = n[e];
 					if (typeof t != "object") continue;
 					let { $data: r } = t.definition, a = i[e];
-					r && a && (i[e] = fe(a));
+					r && a && (i[e] = de(a));
 				}
 			}
 			return e;
@@ -12237,20 +12237,20 @@ var Bd = /* @__PURE__ */ a(((e) => {
 	function C(e) {
 		return e = (0, l.normalizeId)(e), this.schemas[e] || this.refs[e];
 	}
-	function ee() {
+	function w() {
 		let e = this.opts.schemas;
 		if (e) {
 			if (Array.isArray(e)) this.addSchema(e);
 			else for (let t in e) this.addSchema(e[t], t);
 		}
 	}
-	function te() {
+	function ee() {
 		for (let e in this.opts.formats) {
 			let t = this.opts.formats[e];
 			t && this.addFormat(e, t);
 		}
 	}
-	function ne(e) {
+	function te(e) {
 		if (Array.isArray(e)) {
 			this.addVocabulary(e);
 			return;
@@ -12261,31 +12261,31 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			n.keyword ||= t, this.addKeyword(n);
 		}
 	}
-	function re() {
+	function ne() {
 		let e = { ...this.opts };
 		for (let t of h) delete e[t];
 		return e;
 	}
-	var ie = {
+	var re = {
 		log() {},
 		warn() {},
 		error() {}
 	};
-	function ae(e) {
-		if (e === !1) return ie;
+	function ie(e) {
+		if (e === !1) return re;
 		if (e === void 0) return console;
 		if (e.log && e.warn && e.error) return e;
 		throw Error("logger must implement log, warn and error methods");
 	}
-	var oe = /^[a-z_$][a-z0-9_$:-]*$/i;
-	function se(e, t) {
+	var ae = /^[a-z_$][a-z0-9_$:-]*$/i;
+	function oe(e, t) {
 		let { RULES: n } = this;
 		if ((0, d.eachItem)(e, (e) => {
 			if (n.keywords[e]) throw Error(`Keyword ${e} is already defined`);
-			if (!oe.test(e)) throw Error(`Keyword ${e} has invalid name`);
+			if (!ae.test(e)) throw Error(`Keyword ${e} has invalid name`);
 		}), t && t.$data && !("code" in t || "validate" in t)) throw Error("$data keyword must have \"code\" or \"validate\" function");
 	}
-	function ce(e, t, n) {
+	function se(e, t, n) {
 		var r;
 		let i = t?.post;
 		if (n && i) throw Error("keyword with \"post\" flag cannot have \"type\"");
@@ -12302,30 +12302,30 @@ var Bd = /* @__PURE__ */ a(((e) => {
 				schemaType: (0, u.getJSONTypes)(t.schemaType)
 			}
 		};
-		t.before ? le.call(this, o, s, t.before) : o.rules.push(s), a.all[e] = s, (r = t.implements) == null || r.forEach((e) => this.addKeyword(e));
+		t.before ? ce.call(this, o, s, t.before) : o.rules.push(s), a.all[e] = s, (r = t.implements) == null || r.forEach((e) => this.addKeyword(e));
 	}
-	function le(e, t, n) {
+	function ce(e, t, n) {
 		let r = e.rules.findIndex((e) => e.keyword === n);
 		r >= 0 ? e.rules.splice(r, 0, t) : (e.rules.push(t), this.logger.warn(`rule ${n} is not defined`));
 	}
-	function ue(e) {
+	function le(e) {
 		let { metaSchema: t } = e;
-		t !== void 0 && (e.$data && this.opts.$data && (t = fe(t)), e.validateSchema = this.compile(t, !0));
+		t !== void 0 && (e.$data && this.opts.$data && (t = de(t)), e.validateSchema = this.compile(t, !0));
 	}
-	var de = { $ref: "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/data.json#" };
-	function fe(e) {
-		return { anyOf: [e, de] };
+	var ue = { $ref: "https://raw.githubusercontent.com/ajv-validator/ajv/master/lib/refs/data.json#" };
+	function de(e) {
+		return { anyOf: [e, ue] };
 	}
-})), yf = /* @__PURE__ */ a(((e) => {
+})), xf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.default = {
 		keyword: "id",
 		code() {
 			throw Error("NOT SUPPORTED: keyword \"id\", use \"$id\" for schema ID");
 		}
 	};
-})), bf = /* @__PURE__ */ a(((e) => {
+})), Sf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.callRef = e.getValidate = void 0;
-	var t = rf(), n = Yd(), r = X(), i = Hd(), a = af(), o = Z(), s = {
+	var t = of(), n = Zd(), r = X(), i = Wd(), a = sf(), o = Z(), s = {
 		keyword: "$ref",
 		schemaType: "string",
 		code(e) {
@@ -12402,9 +12402,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 	}
 	e.callRef = l, e.default = s;
-})), xf = /* @__PURE__ */ a(((e) => {
+})), Cf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = yf(), n = bf();
+	var t = xf(), n = Sf();
 	e.default = [
 		"$schema",
 		"$id",
@@ -12415,7 +12415,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		t.default,
 		n.default
 	];
-})), Sf = /* @__PURE__ */ a(((e) => {
+})), wf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = X(), n = t.operators, r = {
 		maximum: {
@@ -12453,7 +12453,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			e.fail$data((0, t._)`${i} ${r[n].fail} ${a} || isNaN(${i})`);
 		}
 	};
-})), Cf = /* @__PURE__ */ a(((e) => {
+})), Tf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = X();
 	e.default = {
@@ -12470,7 +12470,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			e.fail$data((0, t._)`(${i} === 0 || (${s} = ${r}/${i}, ${c}))`);
 		}
 	};
-})), wf = /* @__PURE__ */ a(((e) => {
+})), Ef = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	function t(e) {
 		let t = e.length, n = 0, r = 0, i;
@@ -12478,9 +12478,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		return n;
 	}
 	e.default = t, t.code = "require(\"ajv/dist/runtime/ucs2length\").default";
-})), Tf = /* @__PURE__ */ a(((e) => {
+})), Df = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = X(), n = Z(), r = wf();
+	var t = X(), n = Z(), r = Ef();
 	e.default = {
 		keyword: ["maxLength", "minLength"],
 		type: "string",
@@ -12498,9 +12498,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			e.fail$data((0, t._)`${l} ${c} ${o}`);
 		}
 	};
-})), Ef = /* @__PURE__ */ a(((e) => {
+})), Of = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = Yd(), n = Z(), r = X();
+	var t = Zd(), n = Z(), r = X();
 	e.default = {
 		keyword: "pattern",
 		type: "string",
@@ -12521,7 +12521,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}
 		}
 	};
-})), Df = /* @__PURE__ */ a(((e) => {
+})), kf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = X();
 	e.default = {
@@ -12541,9 +12541,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			e.fail$data((0, t._)`Object.keys(${r}).length ${a} ${i}`);
 		}
 	};
-})), Of = /* @__PURE__ */ a(((e) => {
+})), Af = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = Yd(), n = X(), r = Z();
+	var t = Zd(), n = X(), r = Z();
 	e.default = {
 		keyword: "required",
 		type: "object",
@@ -12589,7 +12589,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}
 		}
 	};
-})), kf = /* @__PURE__ */ a(((e) => {
+})), jf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = X();
 	e.default = {
@@ -12609,13 +12609,13 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			e.fail$data((0, t._)`${r}.length ${a} ${i}`);
 		}
 	};
-})), Af = /* @__PURE__ */ a(((e) => {
+})), Mf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = Qd();
+	var t = ef();
 	t.code = "require(\"ajv/dist/runtime/equal\").default", e.default = t;
-})), jf = /* @__PURE__ */ a(((e) => {
+})), Nf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = qd(), n = X(), r = Z(), i = Af();
+	var t = Yd(), n = X(), r = Z(), i = Mf();
 	e.default = {
 		keyword: "uniqueItems",
 		type: "array",
@@ -12656,9 +12656,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}
 		}
 	};
-})), Mf = /* @__PURE__ */ a(((e) => {
+})), Pf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = X(), n = Z(), r = Af();
+	var t = X(), n = Z(), r = Mf();
 	e.default = {
 		keyword: "const",
 		$data: !0,
@@ -12671,9 +12671,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			o || c && typeof c == "object" ? e.fail$data((0, t._)`!${(0, n.useFunc)(i, r.default)}(${a}, ${s})`) : e.fail((0, t._)`${c} !== ${a}`);
 		}
 	};
-})), Nf = /* @__PURE__ */ a(((e) => {
+})), Ff = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = X(), n = Z(), r = Af();
+	var t = X(), n = Z(), r = Mf();
 	e.default = {
 		keyword: "enum",
 		schemaType: "array",
@@ -12703,9 +12703,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}
 		}
 	};
-})), Pf = /* @__PURE__ */ a(((e) => {
+})), If = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = Sf(), n = Cf(), r = Tf(), i = Ef(), a = Df(), o = Of(), s = kf(), c = jf(), l = Mf(), u = Nf();
+	var t = wf(), n = Tf(), r = Df(), i = Of(), a = kf(), o = Af(), s = jf(), c = Nf(), l = Pf(), u = Ff();
 	e.default = [
 		t.default,
 		n.default,
@@ -12726,7 +12726,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		l.default,
 		u.default
 	];
-})), Ff = /* @__PURE__ */ a(((e) => {
+})), Lf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.validateAdditionalItems = void 0;
 	var t = X(), n = Z(), r = {
 		keyword: "additionalItems",
@@ -12766,9 +12766,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 	}
 	e.validateAdditionalItems = i, e.default = r;
-})), If = /* @__PURE__ */ a(((e) => {
+})), Rf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.validateTuple = void 0;
-	var t = X(), n = Z(), r = Yd(), i = {
+	var t = X(), n = Z(), r = Zd(), i = {
 		keyword: "items",
 		type: "array",
 		schemaType: [
@@ -12803,9 +12803,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 	}
 	e.validateTuple = a, e.default = i;
-})), Lf = /* @__PURE__ */ a(((e) => {
+})), zf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = If();
+	var t = Rf();
 	e.default = {
 		keyword: "prefixItems",
 		type: "array",
@@ -12813,9 +12813,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		before: "uniqueItems",
 		code: (e) => (0, t.validateTuple)(e, "items")
 	};
-})), Rf = /* @__PURE__ */ a(((e) => {
+})), Bf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = X(), n = Z(), r = Yd(), i = Ff();
+	var t = X(), n = Z(), r = Zd(), i = Lf();
 	e.default = {
 		keyword: "items",
 		type: "array",
@@ -12830,7 +12830,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			o.items = !0, !(0, n.alwaysValidSchema)(o, t) && (s ? (0, i.validateAdditionalItems)(e, s) : e.ok((0, r.validateArray)(e)));
 		}
 	};
-})), zf = /* @__PURE__ */ a(((e) => {
+})), Vf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = X(), n = Z();
 	e.default = {
@@ -12885,9 +12885,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}
 		}
 	};
-})), Bf = /* @__PURE__ */ a(((e) => {
+})), Hf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.validateSchemaDeps = e.validatePropertyDeps = e.error = void 0;
-	var t = X(), n = Z(), r = Yd();
+	var t = X(), n = Z(), r = Zd();
 	e.error = {
 		message: ({ params: { property: e, depsCount: n, deps: r } }) => {
 			let i = n === 1 ? "property" : "properties";
@@ -12946,7 +12946,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}, () => i.var(c, !0)), e.ok(c));
 	}
 	e.validateSchemaDeps = s, e.default = i;
-})), Vf = /* @__PURE__ */ a(((e) => {
+})), Uf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = X(), n = Z();
 	e.default = {
@@ -12974,9 +12974,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}), e.ok(s);
 		}
 	};
-})), Hf = /* @__PURE__ */ a(((e) => {
+})), Wf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = Yd(), n = X(), r = Hd(), i = Z();
+	var t = Zd(), n = X(), r = Wd(), i = Z();
 	e.default = {
 		keyword: "additionalProperties",
 		type: ["object"],
@@ -13041,9 +13041,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}
 		}
 	};
-})), Uf = /* @__PURE__ */ a(((e) => {
+})), Gf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = tf(), n = Yd(), r = Z(), i = Hf();
+	var t = rf(), n = Zd(), r = Z(), i = Wf();
 	e.default = {
 		keyword: "properties",
 		type: "object",
@@ -13070,9 +13070,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}
 		}
 	};
-})), Wf = /* @__PURE__ */ a(((e) => {
+})), Kf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = Yd(), n = X(), r = Z(), i = Z();
+	var t = Zd(), n = X(), r = Z(), i = Z();
 	e.default = {
 		keyword: "patternProperties",
 		type: "object",
@@ -13105,7 +13105,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}
 		}
 	};
-})), Gf = /* @__PURE__ */ a(((e) => {
+})), qf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = Z();
 	e.default = {
@@ -13128,15 +13128,15 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		},
 		error: { message: "must NOT be valid" }
 	};
-})), Kf = /* @__PURE__ */ a(((e) => {
+})), Jf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.default = {
 		keyword: "anyOf",
 		schemaType: "array",
 		trackErrors: !0,
-		code: Yd().validateUnion,
+		code: Zd().validateUnion,
 		error: { message: "must match a schema in anyOf" }
 	};
-})), qf = /* @__PURE__ */ a(((e) => {
+})), Yf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = X(), n = Z();
 	e.default = {
@@ -13168,7 +13168,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}
 		}
 	};
-})), Jf = /* @__PURE__ */ a(((e) => {
+})), Xf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = Z();
 	e.default = {
@@ -13189,7 +13189,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			});
 		}
 	};
-})), Yf = /* @__PURE__ */ a(((e) => {
+})), Zf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = X(), n = Z(), r = {
 		keyword: "if",
@@ -13232,7 +13232,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		return r !== void 0 && !(0, n.alwaysValidSchema)(e, r);
 	}
 	e.default = r;
-})), Xf = /* @__PURE__ */ a(((e) => {
+})), Qf = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = Z();
 	e.default = {
@@ -13242,9 +13242,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			n.if === void 0 && (0, t.checkStrictMode)(r, `"${e}" without "if" is ignored`);
 		}
 	};
-})), Zf = /* @__PURE__ */ a(((e) => {
+})), $f = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = Ff(), n = Lf(), r = If(), i = Rf(), a = zf(), o = Bf(), s = Vf(), c = Hf(), l = Uf(), u = Wf(), d = Gf(), f = Kf(), p = qf(), m = Jf(), h = Yf(), g = Xf();
+	var t = Lf(), n = zf(), r = Rf(), i = Bf(), a = Vf(), o = Hf(), s = Uf(), c = Wf(), l = Gf(), u = Kf(), d = qf(), f = Jf(), p = Yf(), m = Xf(), h = Zf(), g = Qf();
 	function _(e = !1) {
 		let _ = [
 			d.default,
@@ -13262,7 +13262,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		return e ? _.push(n.default, i.default) : _.push(t.default, r.default), _.push(a.default), _;
 	}
 	e.default = _;
-})), Qf = /* @__PURE__ */ a(((e) => {
+})), ep = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
 	var t = X();
 	e.default = {
@@ -13337,9 +13337,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}
 		}
 	};
-})), $f = /* @__PURE__ */ a(((e) => {
-	Object.defineProperty(e, "__esModule", { value: !0 }), e.default = [Qf().default];
-})), ep = /* @__PURE__ */ a(((e) => {
+})), tp = /* @__PURE__ */ a(((e) => {
+	Object.defineProperty(e, "__esModule", { value: !0 }), e.default = [ep().default];
+})), np = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.contentVocabulary = e.metadataVocabulary = void 0, e.metadataVocabulary = [
 		"title",
 		"description",
@@ -13353,9 +13353,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		"contentEncoding",
 		"contentSchema"
 	];
-})), tp = /* @__PURE__ */ a(((e) => {
+})), rp = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = xf(), n = Pf(), r = Zf(), i = $f(), a = ep();
+	var t = Cf(), n = If(), r = $f(), i = tp(), a = np();
 	e.default = [
 		t.default,
 		n.default,
@@ -13364,15 +13364,15 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		a.metadataVocabulary,
 		a.contentVocabulary
 	];
-})), np = /* @__PURE__ */ a(((e) => {
+})), ip = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.DiscrError = void 0;
 	var t;
 	(function(e) {
 		e.Tag = "tag", e.Mapping = "mapping";
 	})(t || (e.DiscrError = t = {}));
-})), rp = /* @__PURE__ */ a(((e) => {
+})), ap = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var t = X(), n = np(), r = af(), i = rf(), a = Z();
+	var t = X(), n = ip(), r = sf(), i = of(), a = Z();
 	e.default = {
 		keyword: "discriminator",
 		type: "object",
@@ -13440,16 +13440,16 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			}
 		}
 	};
-})), ip = /* @__PURE__ */ i({
-	$id: () => op,
-	$schema: () => ap,
-	default: () => dp,
-	definitions: () => cp,
-	properties: () => up,
-	title: () => sp,
-	type: () => lp
-}), ap, op, sp, cp, lp, up, dp, fp = n((() => {
-	ap = "http://json-schema.org/draft-07/schema#", op = "http://json-schema.org/draft-07/schema#", sp = "Core schema meta-schema", cp = {
+})), op = /* @__PURE__ */ i({
+	$id: () => cp,
+	$schema: () => sp,
+	default: () => pp,
+	definitions: () => up,
+	properties: () => fp,
+	title: () => lp,
+	type: () => dp
+}), sp, cp, lp, up, dp, fp, pp, mp = n((() => {
+	sp = "http://json-schema.org/draft-07/schema#", cp = "http://json-schema.org/draft-07/schema#", lp = "Core schema meta-schema", up = {
 		schemaArray: {
 			type: "array",
 			minItems: 1,
@@ -13475,7 +13475,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			uniqueItems: !0,
 			default: []
 		}
-	}, lp = ["object", "boolean"], up = {
+	}, dp = ["object", "boolean"], fp = {
 		$id: {
 			type: "string",
 			format: "uri-reference"
@@ -13574,18 +13574,18 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		anyOf: { $ref: "#/definitions/schemaArray" },
 		oneOf: { $ref: "#/definitions/schemaArray" },
 		not: { $ref: "#" }
-	}, dp = {
-		$schema: ap,
-		$id: op,
-		title: sp,
-		definitions: cp,
-		type: lp,
-		properties: up,
+	}, pp = {
+		$schema: sp,
+		$id: cp,
+		title: lp,
+		definitions: up,
+		type: dp,
+		properties: fp,
 		default: !0
 	};
-})), pp = /* @__PURE__ */ a(((t, n) => {
+})), hp = /* @__PURE__ */ a(((t, n) => {
 	Object.defineProperty(t, "__esModule", { value: !0 }), t.MissingRefError = t.ValidationError = t.CodeGen = t.Name = t.nil = t.stringify = t.str = t._ = t.KeywordCxt = t.Ajv = void 0;
-	var r = vf(), i = tp(), a = rp(), o = (fp(), e(ip).default), s = ["/properties"], c = "http://json-schema.org/draft-07/schema", l = class extends r.default {
+	var r = bf(), i = rp(), a = ap(), o = (mp(), e(op).default), s = ["/properties"], c = "http://json-schema.org/draft-07/schema", l = class extends r.default {
 		_addVocabularies() {
 			super._addVocabularies(), i.default.forEach((e) => this.addVocabulary(e)), this.opts.discriminator && this.addKeyword(a.default);
 		}
@@ -13599,7 +13599,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		}
 	};
 	t.Ajv = l, n.exports = t = l, n.exports.Ajv = l, Object.defineProperty(t, "__esModule", { value: !0 }), t.default = l;
-	var u = tf();
+	var u = rf();
 	Object.defineProperty(t, "KeywordCxt", {
 		enumerable: !0,
 		get: function() {
@@ -13638,21 +13638,21 @@ var Bd = /* @__PURE__ */ a(((e) => {
 			return d.CodeGen;
 		}
 	});
-	var f = nf();
+	var f = af();
 	Object.defineProperty(t, "ValidationError", {
 		enumerable: !0,
 		get: function() {
 			return f.default;
 		}
 	});
-	var p = rf();
+	var p = of();
 	Object.defineProperty(t, "MissingRefError", {
 		enumerable: !0,
 		get: function() {
 			return p.default;
 		}
 	});
-})), mp = /* @__PURE__ */ a(((e) => {
+})), gp = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.formatNames = e.fastFormats = e.fullFormats = void 0;
 	function t(e, t) {
 		return {
@@ -13675,7 +13675,7 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		hostname: /^(?=.{1,253}\.?$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[-0-9a-z]{0,61}[0-9a-z])?)*\.?$/i,
 		ipv4: /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/,
 		ipv6: /^((([0-9a-f]{1,4}:){7}([0-9a-f]{1,4}|:))|(([0-9a-f]{1,4}:){6}(:[0-9a-f]{1,4}|((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){5}(((:[0-9a-f]{1,4}){1,2})|:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3})|:))|(([0-9a-f]{1,4}:){4}(((:[0-9a-f]{1,4}){1,3})|((:[0-9a-f]{1,4})?:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){3}(((:[0-9a-f]{1,4}){1,4})|((:[0-9a-f]{1,4}){0,2}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){2}(((:[0-9a-f]{1,4}){1,5})|((:[0-9a-f]{1,4}){0,3}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(([0-9a-f]{1,4}:){1}(((:[0-9a-f]{1,4}){1,6})|((:[0-9a-f]{1,4}){0,4}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:))|(:(((:[0-9a-f]{1,4}){1,7})|((:[0-9a-f]{1,4}){0,5}:((25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}))|:)))$/i,
-		regex: ne,
+		regex: te,
 		uuid: /^(?:urn:uuid:)?[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i,
 		"json-pointer": /^(?:\/(?:[^~/]|~0|~1)*)*$/,
 		"json-pointer-uri-fragment": /^#(?:\/(?:[a-z0-9_\-.!$&'()*+,;:=@]|%[0-9a-f]{2}|~0|~1)*)*$/i,
@@ -13691,11 +13691,11 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		},
 		float: {
 			type: "number",
-			validate: ee
+			validate: w
 		},
 		double: {
 			type: "number",
-			validate: ee
+			validate: w
 		},
 		password: !0,
 		binary: !0
@@ -13792,21 +13792,21 @@ var Bd = /* @__PURE__ */ a(((e) => {
 	function C(e) {
 		return Number.isInteger(e);
 	}
-	function ee() {
+	function w() {
 		return !0;
 	}
-	var te = /[^\\]\\Z/;
-	function ne(e) {
-		if (te.test(e)) return !1;
+	var ee = /[^\\]\\Z/;
+	function te(e) {
+		if (ee.test(e)) return !1;
 		try {
 			return new RegExp(e), !0;
 		} catch {
 			return !1;
 		}
 	}
-})), hp = /* @__PURE__ */ a(((e) => {
+})), _p = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.formatLimitDefinition = void 0;
-	var t = pp(), n = X(), r = n.operators, i = {
+	var t = hp(), n = X(), r = n.operators, i = {
 		formatMaximum: {
 			okStr: "<=",
 			ok: r.LTE,
@@ -13866,9 +13866,9 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		},
 		dependencies: ["format"]
 	}, e.default = (t) => (t.addKeyword(e.formatLimitDefinition), t);
-})), gp = /* @__PURE__ */ a(((e, t) => {
+})), vp = /* @__PURE__ */ a(((e, t) => {
 	Object.defineProperty(e, "__esModule", { value: !0 });
-	var n = mp(), r = hp(), i = X(), a = new i.Name("fullFormats"), o = new i.Name("fastFormats"), s = (e, t = { keywords: !0 }) => {
+	var n = gp(), r = _p(), i = X(), a = new i.Name("fullFormats"), o = new i.Name("fastFormats"), s = (e, t = { keywords: !0 }) => {
 		if (Array.isArray(t)) return c(e, t, n.fullFormats, a), e;
 		let [i, s] = t.mode === "fast" ? [n.fastFormats, o] : [n.fullFormats, a];
 		return c(e, t.formats || n.formatNames, i, s), t.keywords && (0, r.default)(e), e;
@@ -13884,19 +13884,19 @@ var Bd = /* @__PURE__ */ a(((e) => {
 		for (let r of t) e.addFormat(r, n[r]);
 	}
 	t.exports = e = s, Object.defineProperty(e, "__esModule", { value: !0 }), e.default = s;
-})), _p = /* @__PURE__ */ r(pp(), 1), vp = /* @__PURE__ */ r(gp(), 1);
-function yp() {
-	let e = new _p.default({
+})), yp = /* @__PURE__ */ r(hp(), 1), bp = /* @__PURE__ */ r(vp(), 1);
+function xp() {
+	let e = new yp.default({
 		strict: !1,
 		validateFormats: !0,
 		validateSchema: !1,
 		allErrors: !0
 	});
-	return (0, vp.default)(e), e;
+	return (0, bp.default)(e), e;
 }
-var bp = class {
+var Sp = class {
 	constructor(e) {
-		this._ajv = e ?? yp();
+		this._ajv = e ?? xp();
 	}
 	getValidator(e) {
 		let t = "$id" in e && typeof e.$id == "string" ? this._ajv.getSchema(e.$id) ?? this._ajv.compile(e) : this._ajv.compile(e);
@@ -13910,7 +13910,7 @@ var bp = class {
 			errorMessage: this._ajv.errorsText(t.errors)
 		};
 	}
-}, xp = class {
+}, Cp = class {
 	constructor(e) {
 		this._server = e;
 	}
@@ -13934,7 +13934,7 @@ var bp = class {
 		return this.requestStream({
 			method: "sampling/createMessage",
 			params: e
-		}, su, t);
+		}, lu, t);
 	}
 	elicitInputStream(e, t) {
 		let n = this._server.getClientCapabilities(), r = e.mode ?? "form";
@@ -13951,7 +13951,7 @@ var bp = class {
 		return this.requestStream({
 			method: "elicitation/create",
 			params: i
-		}, yu, t);
+		}, xu, t);
 	}
 	async getTask(e, t) {
 		return this._server.getTask({ taskId: e }, t);
@@ -13968,11 +13968,11 @@ var bp = class {
 };
 //#endregion
 //#region node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/helpers.js
-function Sp(e, t, n) {
+function wp(e, t, n) {
 	if (!e) throw Error(`${n} does not support task creation (required for ${t})`);
 	if (t === "tools/call" && !e.tools?.call) throw Error(`${n} does not support task creation for tools/call (required for ${t})`);
 }
-function Cp(e, t, n) {
+function Tp(e, t, n) {
 	if (!e) throw Error(`${n} does not support task creation (required for ${t})`);
 	switch (t) {
 		case "sampling/createMessage":
@@ -13983,44 +13983,44 @@ function Cp(e, t, n) {
 }
 //#endregion
 //#region node_modules/@modelcontextprotocol/sdk/dist/esm/server/index.js
-var wp = class extends Ld {
+var Ep = class extends zd {
 	constructor(e, t) {
-		super(t), this._serverInfo = e, this._loggingLevels = /* @__PURE__ */ new Map(), this.LOG_LEVEL_SEVERITY = new Map(Jl.options.map((e, t) => [e, t])), this.isMessageIgnored = (e, t) => {
+		super(t), this._serverInfo = e, this._loggingLevels = /* @__PURE__ */ new Map(), this.LOG_LEVEL_SEVERITY = new Map(Xl.options.map((e, t) => [e, t])), this.isMessageIgnored = (e, t) => {
 			let n = this._loggingLevels.get(t);
 			return n ? this.LOG_LEVEL_SEVERITY.get(e) < this.LOG_LEVEL_SEVERITY.get(n) : !1;
-		}, this._capabilities = t?.capabilities ?? {}, this._instructions = t?.instructions, this._jsonSchemaValidator = t?.jsonSchemaValidator ?? new bp(), this.setRequestHandler(Mc, (e) => this._oninitialize(e)), this.setNotificationHandler(Fc, () => this.oninitialized?.()), this._capabilities.logging && this.setRequestHandler(Xl, async (e, t) => {
-			let n = t.sessionId || t.requestInfo?.headers["mcp-session-id"] || void 0, { level: r } = e.params, i = Jl.safeParse(r);
+		}, this._capabilities = t?.capabilities ?? {}, this._instructions = t?.instructions, this._jsonSchemaValidator = t?.jsonSchemaValidator ?? new Sp(), this.setRequestHandler(Pc, (e) => this._oninitialize(e)), this.setNotificationHandler(Lc, () => this.oninitialized?.()), this._capabilities.logging && this.setRequestHandler(Ql, async (e, t) => {
+			let n = t.sessionId || t.requestInfo?.headers["mcp-session-id"] || void 0, { level: r } = e.params, i = Xl.safeParse(r);
 			return i.success && this._loggingLevels.set(n, i.data), {};
 		});
 	}
 	get experimental() {
-		return this._experimental ||= { tasks: new xp(this) }, this._experimental;
+		return this._experimental ||= { tasks: new Cp(this) }, this._experimental;
 	}
 	registerCapabilities(e) {
 		if (this.transport) throw Error("Cannot register capabilities after connecting to transport");
-		this._capabilities = zd(this._capabilities, e);
+		this._capabilities = Vd(this._capabilities, e);
 	}
 	setRequestHandler(e, t) {
-		let n = po(e)?.method;
+		let n = mo(e)?.method;
 		if (!n) throw Error("Schema is missing a method literal");
-		let r = yo(n);
+		let r = bo(n);
 		if (typeof r != "string") throw Error("Schema method literal must be a string");
 		return r === "tools/call" ? super.setRequestHandler(e, async (e, n) => {
-			let r = uo(Kl, e);
+			let r = fo(Jl, e);
 			if (!r.success) {
 				let e = r.error instanceof Error ? r.error.message : String(r.error);
 				throw new q(K.InvalidParams, `Invalid tools/call request: ${e}`);
 			}
 			let { params: i } = r.data, a = await Promise.resolve(t(e, n));
 			if (i.task) {
-				let e = uo(Gc, a);
+				let e = fo(qc, a);
 				if (!e.success) {
 					let t = e.error instanceof Error ? e.error.message : String(e.error);
 					throw new q(K.InvalidParams, `Invalid task creation result: ${t}`);
 				}
 				return e.data;
 			}
-			let o = uo(Wl, a);
+			let o = fo(Kl, a);
 			if (!o.success) {
 				let e = o.error instanceof Error ? o.error.message : String(o.error);
 				throw new q(K.InvalidParams, `Invalid tools/call result: ${e}`);
@@ -14085,15 +14085,15 @@ var wp = class extends Ld {
 		}
 	}
 	assertTaskCapability(e) {
-		Cp(this._clientCapabilities?.tasks?.requests, e, "Client");
+		Tp(this._clientCapabilities?.tasks?.requests, e, "Client");
 	}
 	assertTaskHandlerCapability(e) {
-		this._capabilities && Sp(this._capabilities.tasks?.requests, e, "Server");
+		this._capabilities && wp(this._capabilities.tasks?.requests, e, "Server");
 	}
 	async _oninitialize(e) {
 		let t = e.params.protocolVersion;
 		return this._clientCapabilities = e.params.capabilities, this._clientVersion = e.params.clientInfo, {
-			protocolVersion: Xs.includes(t) ? t : Ys,
+			protocolVersion: Qs.includes(t) ? t : Zs,
 			capabilities: this.getCapabilities(),
 			serverInfo: this._serverInfo,
 			...this._instructions && { instructions: this._instructions }
@@ -14109,7 +14109,7 @@ var wp = class extends Ld {
 		return this._capabilities;
 	}
 	async ping() {
-		return this.request({ method: "ping" }, xc);
+		return this.request({ method: "ping" }, Cc);
 	}
 	async createMessage(e, t) {
 		if ((e.tools || e.toolChoice) && !this._clientCapabilities?.sampling?.tools) throw Error("Client does not support sampling tools capability.");
@@ -14127,10 +14127,10 @@ var wp = class extends Ld {
 		return e.tools ? this.request({
 			method: "sampling/createMessage",
 			params: e
-		}, cu, t) : this.request({
+		}, uu, t) : this.request({
 			method: "sampling/createMessage",
 			params: e
-		}, su, t);
+		}, lu, t);
 	}
 	async elicitInput(e, t) {
 		switch (e.mode ?? "form") {
@@ -14140,7 +14140,7 @@ var wp = class extends Ld {
 				return this.request({
 					method: "elicitation/create",
 					params: n
-				}, yu, t);
+				}, xu, t);
 			}
 			case "form": {
 				if (!this._clientCapabilities?.elicitation?.form) throw Error("Client does not support form elicitation.");
@@ -14150,7 +14150,7 @@ var wp = class extends Ld {
 				}, r = await this.request({
 					method: "elicitation/create",
 					params: n
-				}, yu, t);
+				}, xu, t);
 				if (r.action === "accept" && r.content && n.requestedSchema) try {
 					let e = this._jsonSchemaValidator.getValidator(n.requestedSchema)(r.content);
 					if (!e.valid) throw new q(K.InvalidParams, `Elicitation response content does not match requested schema: ${e.errorMessage}`);
@@ -14172,7 +14172,7 @@ var wp = class extends Ld {
 		return this.request({
 			method: "roots/list",
 			params: e
-		}, ku, t);
+		}, ju, t);
 	}
 	async sendLoggingMessage(e, t) {
 		if (this._capabilities.logging && !this.isMessageIgnored(e.level, t)) return this.notification({
@@ -14195,21 +14195,21 @@ var wp = class extends Ld {
 	async sendPromptListChanged() {
 		return this.notification({ method: "notifications/prompts/list_changed" });
 	}
-}, Tp = Symbol.for("mcp.completable");
-function Ep(e) {
-	return !!e && typeof e == "object" && Tp in e;
+}, Dp = Symbol.for("mcp.completable");
+function Op(e) {
+	return !!e && typeof e == "object" && Dp in e;
 }
-function Dp(e) {
-	return e[Tp]?.complete;
+function kp(e) {
+	return e[Dp]?.complete;
 }
-var Op;
+var Ap;
 (function(e) {
 	e.Completable = "McpCompletable";
-})(Op ||= {});
+})(Ap ||= {});
 //#endregion
 //#region node_modules/@modelcontextprotocol/sdk/dist/esm/shared/toolNameValidation.js
-var kp = /^[A-Za-z0-9._-]{1,128}$/;
-function Ap(e) {
+var jp = /^[A-Za-z0-9._-]{1,128}$/;
+function Mp(e) {
 	let t = [];
 	if (e.length === 0) return {
 		isValid: !1,
@@ -14219,7 +14219,7 @@ function Ap(e) {
 		isValid: !1,
 		warnings: [`Tool name exceeds maximum length of 128 characters (current: ${e.length})`]
 	};
-	if (e.includes(" ") && t.push("Tool name contains spaces, which may cause parsing issues"), e.includes(",") && t.push("Tool name contains commas, which may cause parsing issues"), (e.startsWith("-") || e.endsWith("-")) && t.push("Tool name starts or ends with a dash, which may cause parsing issues in some contexts"), (e.startsWith(".") || e.endsWith(".")) && t.push("Tool name starts or ends with a dot, which may cause parsing issues in some contexts"), !kp.test(e)) {
+	if (e.includes(" ") && t.push("Tool name contains spaces, which may cause parsing issues"), e.includes(",") && t.push("Tool name contains commas, which may cause parsing issues"), (e.startsWith("-") || e.endsWith("-")) && t.push("Tool name starts or ends with a dash, which may cause parsing issues in some contexts"), (e.startsWith(".") || e.endsWith(".")) && t.push("Tool name starts or ends with a dot, which may cause parsing issues in some contexts"), !jp.test(e)) {
 		let n = e.split("").filter((e) => !/[A-Za-z0-9._-]/.test(e)).filter((e, t, n) => n.indexOf(e) === t);
 		return t.push(`Tool name contains invalid characters: ${n.map((e) => `"${e}"`).join(", ")}`, "Allowed characters are: A-Z, a-z, 0-9, underscore (_), dash (-), and dot (.)"), {
 			isValid: !1,
@@ -14231,20 +14231,20 @@ function Ap(e) {
 		warnings: t
 	};
 }
-function jp(e, t) {
+function Np(e, t) {
 	if (t.length > 0) {
 		console.warn(`Tool name validation warning for "${e}":`);
 		for (let e of t) console.warn(`  - ${e}`);
 		console.warn("Tool registration will proceed, but this may cause compatibility issues."), console.warn("Consider updating the tool name to conform to the MCP tool naming standard."), console.warn("See SEP: Specify Format for Tool Names (https://github.com/modelcontextprotocol/modelcontextprotocol/issues/986) for more details.");
 	}
 }
-function Mp(e) {
-	let t = Ap(e);
-	return jp(e, t.warnings), t.isValid;
+function Pp(e) {
+	let t = Mp(e);
+	return Np(e, t.warnings), t.isValid;
 }
 //#endregion
 //#region node_modules/@modelcontextprotocol/sdk/dist/esm/experimental/tasks/mcp-server.js
-var Np = class {
+var Fp = class {
 	constructor(e) {
 		this._mcpServer = e;
 	}
@@ -14256,12 +14256,12 @@ var Np = class {
 		if (r.taskSupport === "forbidden") throw Error(`Cannot register task-based tool '${e}' with taskSupport 'forbidden'. Use registerTool() instead.`);
 		return this._mcpServer._createRegisteredTool(e, t.title, t.description, t.inputSchema, t.outputSchema, t.annotations, r, t._meta, n);
 	}
-}, Pp = class {
+}, Ip = class {
 	constructor(e, t) {
-		this._registeredResources = {}, this._registeredResourceTemplates = {}, this._registeredTools = {}, this._registeredPrompts = {}, this._toolHandlersInitialized = !1, this._completionHandlerInitialized = !1, this._resourceHandlersInitialized = !1, this._promptHandlersInitialized = !1, this.server = new wp(e, t);
+		this._registeredResources = {}, this._registeredResourceTemplates = {}, this._registeredTools = {}, this._registeredPrompts = {}, this._toolHandlersInitialized = !1, this._completionHandlerInitialized = !1, this._resourceHandlersInitialized = !1, this._promptHandlersInitialized = !1, this.server = new Ep(e, t);
 	}
 	get experimental() {
-		return this._experimental ||= { tasks: new Np(this) }, this._experimental;
+		return this._experimental ||= { tasks: new Fp(this) }, this._experimental;
 	}
 	async connect(e) {
 		return await this.server.connect(e);
@@ -14270,31 +14270,31 @@ var Np = class {
 		await this.server.close();
 	}
 	setToolRequestHandlers() {
-		this._toolHandlersInitialized ||= (this.server.assertCanSetRequestHandler(Vp(Hl)), this.server.assertCanSetRequestHandler(Vp(Kl)), this.server.registerCapabilities({ tools: { listChanged: !0 } }), this.server.setRequestHandler(Hl, () => ({ tools: Object.entries(this._registeredTools).filter(([, e]) => e.enabled).map(([e, t]) => {
+		this._toolHandlersInitialized ||= (this.server.assertCanSetRequestHandler(Up(Wl)), this.server.assertCanSetRequestHandler(Up(Jl)), this.server.registerCapabilities({ tools: { listChanged: !0 } }), this.server.setRequestHandler(Wl, () => ({ tools: Object.entries(this._registeredTools).filter(([, e]) => e.enabled).map(([e, t]) => {
 			let n = {
 				name: e,
 				title: t.title,
 				description: t.description,
 				inputSchema: (() => {
-					let e = mo(t.inputSchema);
-					return e ? Pd(e, {
+					let e = ho(t.inputSchema);
+					return e ? Id(e, {
 						strictUnions: !0,
 						pipeStrategy: "input"
-					}) : Fp;
+					}) : Lp;
 				})(),
 				annotations: t.annotations,
 				execution: t.execution,
 				_meta: t._meta
 			};
 			if (t.outputSchema) {
-				let e = mo(t.outputSchema);
-				e && (n.outputSchema = Pd(e, {
+				let e = ho(t.outputSchema);
+				e && (n.outputSchema = Id(e, {
 					strictUnions: !0,
 					pipeStrategy: "output"
 				}));
 			}
 			return n;
-		}) })), this.server.setRequestHandler(Kl, async (e, t) => {
+		}) })), this.server.setRequestHandler(Jl, async (e, t) => {
 			try {
 				let n = this._registeredTools[e.params.name];
 				if (!n) throw new q(K.InvalidParams, `Tool ${e.params.name} not found`);
@@ -14322,9 +14322,9 @@ var Np = class {
 	}
 	async validateToolInput(e, t, n) {
 		if (!e.inputSchema) return;
-		let r = await fo(mo(e.inputSchema) ?? e.inputSchema, t);
+		let r = await po(ho(e.inputSchema) ?? e.inputSchema, t);
 		if (!r.success) {
-			let e = go("error" in r ? r.error : "Unknown error");
+			let e = _o("error" in r ? r.error : "Unknown error");
 			throw new q(K.InvalidParams, `Input validation error: Invalid arguments for tool ${n}: ${e}`);
 		}
 		return r.data;
@@ -14332,9 +14332,9 @@ var Np = class {
 	async validateToolOutput(e, t, n) {
 		if (!e.outputSchema || !("content" in t) || t.isError) return;
 		if (!t.structuredContent) throw new q(K.InvalidParams, `Output validation error: Tool ${n} has an output schema but no structured content was provided`);
-		let r = await fo(mo(e.outputSchema), t.structuredContent);
+		let r = await po(ho(e.outputSchema), t.structuredContent);
 		if (!r.success) {
-			let e = go("error" in r ? r.error : "Unknown error");
+			let e = _o("error" in r ? r.error : "Unknown error");
 			throw new q(K.InvalidParams, `Output validation error: Invalid structured content for tool ${n}: ${e}`);
 		}
 	}
@@ -14379,10 +14379,10 @@ var Np = class {
 		return await n.taskStore.getTaskResult(s);
 	}
 	setCompletionRequestHandler() {
-		this._completionHandlerInitialized ||= (this.server.assertCanSetRequestHandler(Vp(Cu)), this.server.registerCapabilities({ completions: {} }), this.server.setRequestHandler(Cu, async (e) => {
+		this._completionHandlerInitialized ||= (this.server.assertCanSetRequestHandler(Up(Tu)), this.server.registerCapabilities({ completions: {} }), this.server.setRequestHandler(Tu, async (e) => {
 			switch (e.params.ref.type) {
-				case "ref/prompt": return wu(e), this.handlePromptCompletion(e, e.params.ref);
-				case "ref/resource": return Tu(e), this.handleResourceCompletion(e, e.params.ref);
+				case "ref/prompt": return Eu(e), this.handlePromptCompletion(e, e.params.ref);
+				case "ref/resource": return Du(e), this.handleResourceCompletion(e, e.params.ref);
 				default: throw new q(K.InvalidParams, `Invalid completion reference: ${e.params.ref}`);
 			}
 		}), !0);
@@ -14391,23 +14391,23 @@ var Np = class {
 		let n = this._registeredPrompts[t.name];
 		if (!n) throw new q(K.InvalidParams, `Prompt ${t.name} not found`);
 		if (!n.enabled) throw new q(K.InvalidParams, `Prompt ${t.name} disabled`);
-		if (!n.argsSchema) return Up;
-		let r = po(n.argsSchema)?.[e.params.argument.name];
-		if (!Ep(r)) return Up;
-		let i = Dp(r);
-		return i ? Hp(await i(e.params.argument.value, e.params.context)) : Up;
+		if (!n.argsSchema) return Gp;
+		let r = mo(n.argsSchema)?.[e.params.argument.name];
+		if (!Op(r)) return Gp;
+		let i = kp(r);
+		return i ? Wp(await i(e.params.argument.value, e.params.context)) : Gp;
 	}
 	async handleResourceCompletion(e, t) {
 		let n = Object.values(this._registeredResourceTemplates).find((e) => e.resourceTemplate.uriTemplate.toString() === t.uri);
 		if (!n) {
-			if (this._registeredResources[t.uri]) return Up;
+			if (this._registeredResources[t.uri]) return Gp;
 			throw new q(K.InvalidParams, `Resource template ${e.params.ref.uri} not found`);
 		}
 		let r = n.resourceTemplate.completeCallback(e.params.argument.name);
-		return r ? Hp(await r(e.params.argument.value, e.params.context)) : Up;
+		return r ? Wp(await r(e.params.argument.value, e.params.context)) : Gp;
 	}
 	setResourceRequestHandlers() {
-		this._resourceHandlersInitialized ||= (this.server.assertCanSetRequestHandler(Vp(ll)), this.server.assertCanSetRequestHandler(Vp(dl)), this.server.assertCanSetRequestHandler(Vp(hl)), this.server.registerCapabilities({ resources: { listChanged: !0 } }), this.server.setRequestHandler(ll, async (e, t) => {
+		this._resourceHandlersInitialized ||= (this.server.assertCanSetRequestHandler(Up(dl)), this.server.assertCanSetRequestHandler(Up(pl)), this.server.assertCanSetRequestHandler(Up(_l)), this.server.registerCapabilities({ resources: { listChanged: !0 } }), this.server.setRequestHandler(dl, async (e, t) => {
 			let n = Object.entries(this._registeredResources).filter(([e, t]) => t.enabled).map(([e, t]) => ({
 				uri: e,
 				name: t.name,
@@ -14422,11 +14422,11 @@ var Np = class {
 				});
 			}
 			return { resources: [...n, ...r] };
-		}), this.server.setRequestHandler(dl, async () => ({ resourceTemplates: Object.entries(this._registeredResourceTemplates).map(([e, t]) => ({
+		}), this.server.setRequestHandler(pl, async () => ({ resourceTemplates: Object.entries(this._registeredResourceTemplates).map(([e, t]) => ({
 			name: e,
 			uriTemplate: t.resourceTemplate.uriTemplate.toString(),
 			...t.metadata
-		})) })), this.server.setRequestHandler(hl, async (e, t) => {
+		})) })), this.server.setRequestHandler(_l, async (e, t) => {
 			let n = new URL(e.params.uri), r = this._registeredResources[n.toString()];
 			if (r) {
 				if (!r.enabled) throw new q(K.InvalidParams, `Resource ${n} disabled`);
@@ -14440,19 +14440,19 @@ var Np = class {
 		}), !0);
 	}
 	setPromptRequestHandlers() {
-		this._promptHandlersInitialized ||= (this.server.assertCanSetRequestHandler(Vp(El)), this.server.assertCanSetRequestHandler(Vp(kl)), this.server.registerCapabilities({ prompts: { listChanged: !0 } }), this.server.setRequestHandler(El, () => ({ prompts: Object.entries(this._registeredPrompts).filter(([, e]) => e.enabled).map(([e, t]) => ({
+		this._promptHandlersInitialized ||= (this.server.assertCanSetRequestHandler(Up(Ol)), this.server.assertCanSetRequestHandler(Up(jl)), this.server.registerCapabilities({ prompts: { listChanged: !0 } }), this.server.setRequestHandler(Ol, () => ({ prompts: Object.entries(this._registeredPrompts).filter(([, e]) => e.enabled).map(([e, t]) => ({
 			name: e,
 			title: t.title,
 			description: t.description,
-			arguments: t.argsSchema ? Bp(t.argsSchema) : void 0
-		})) })), this.server.setRequestHandler(kl, async (e, t) => {
+			arguments: t.argsSchema ? Hp(t.argsSchema) : void 0
+		})) })), this.server.setRequestHandler(jl, async (e, t) => {
 			let n = this._registeredPrompts[e.params.name];
 			if (!n) throw new q(K.InvalidParams, `Prompt ${e.params.name} not found`);
 			if (!n.enabled) throw new q(K.InvalidParams, `Prompt ${e.params.name} disabled`);
 			if (n.argsSchema) {
-				let r = await fo(mo(n.argsSchema), e.params.arguments);
+				let r = await po(ho(n.argsSchema), e.params.arguments);
 				if (!r.success) {
-					let t = go("error" in r ? r.error : "Unknown error");
+					let t = _o("error" in r ? r.error : "Unknown error");
 					throw new q(K.InvalidParams, `Invalid arguments for prompt ${e.params.name}: ${t}`);
 				}
 				let i = r.data, a = n.callback;
@@ -14529,25 +14529,25 @@ var Np = class {
 		let a = {
 			title: t,
 			description: n,
-			argsSchema: r === void 0 ? void 0 : lo(r),
+			argsSchema: r === void 0 ? void 0 : uo(r),
 			callback: i,
 			enabled: !0,
 			disable: () => a.update({ enabled: !1 }),
 			enable: () => a.update({ enabled: !0 }),
 			remove: () => a.update({ name: null }),
 			update: (t) => {
-				t.name !== void 0 && t.name !== e && (delete this._registeredPrompts[e], t.name && (this._registeredPrompts[t.name] = a)), t.title !== void 0 && (a.title = t.title), t.description !== void 0 && (a.description = t.description), t.argsSchema !== void 0 && (a.argsSchema = lo(t.argsSchema)), t.callback !== void 0 && (a.callback = t.callback), t.enabled !== void 0 && (a.enabled = t.enabled), this.sendPromptListChanged();
+				t.name !== void 0 && t.name !== e && (delete this._registeredPrompts[e], t.name && (this._registeredPrompts[t.name] = a)), t.title !== void 0 && (a.title = t.title), t.description !== void 0 && (a.description = t.description), t.argsSchema !== void 0 && (a.argsSchema = uo(t.argsSchema)), t.callback !== void 0 && (a.callback = t.callback), t.enabled !== void 0 && (a.enabled = t.enabled), this.sendPromptListChanged();
 			}
 		};
-		return this._registeredPrompts[e] = a, r && Object.values(r).some((e) => Ep(e instanceof Ht ? e._def?.innerType : e)) && this.setCompletionRequestHandler(), a;
+		return this._registeredPrompts[e] = a, r && Object.values(r).some((e) => Op(e instanceof Ut ? e._def?.innerType : e)) && this.setCompletionRequestHandler(), a;
 	}
 	_createRegisteredTool(e, t, n, r, i, a, o, s, c) {
-		Mp(e);
+		Pp(e);
 		let l = {
 			title: t,
 			description: n,
-			inputSchema: zp(r),
-			outputSchema: zp(i),
+			inputSchema: Vp(r),
+			outputSchema: Vp(i),
 			annotations: a,
 			execution: o,
 			_meta: s,
@@ -14557,7 +14557,7 @@ var Np = class {
 			enable: () => l.update({ enabled: !0 }),
 			remove: () => l.update({ name: null }),
 			update: (t) => {
-				t.name !== void 0 && t.name !== e && (typeof t.name == "string" && Mp(t.name), delete this._registeredTools[e], t.name && (this._registeredTools[t.name] = l)), t.title !== void 0 && (l.title = t.title), t.description !== void 0 && (l.description = t.description), t.paramsSchema !== void 0 && (l.inputSchema = lo(t.paramsSchema)), t.outputSchema !== void 0 && (l.outputSchema = lo(t.outputSchema)), t.callback !== void 0 && (l.handler = t.callback), t.annotations !== void 0 && (l.annotations = t.annotations), t._meta !== void 0 && (l._meta = t._meta), t.enabled !== void 0 && (l.enabled = t.enabled), this.sendToolListChanged();
+				t.name !== void 0 && t.name !== e && (typeof t.name == "string" && Pp(t.name), delete this._registeredTools[e], t.name && (this._registeredTools[t.name] = l)), t.title !== void 0 && (l.title = t.title), t.description !== void 0 && (l.description = t.description), t.paramsSchema !== void 0 && (l.inputSchema = uo(t.paramsSchema)), t.outputSchema !== void 0 && (l.outputSchema = uo(t.outputSchema)), t.callback !== void 0 && (l.handler = t.callback), t.annotations !== void 0 && (l.annotations = t.annotations), t._meta !== void 0 && (l._meta = t._meta), t.enabled !== void 0 && (l.enabled = t.enabled), this.sendToolListChanged();
 			}
 		};
 		return this._registeredTools[e] = l, this.setToolRequestHandlers(), this.sendToolListChanged(), l;
@@ -14567,7 +14567,7 @@ var Np = class {
 		let n, r, i, a;
 		if (typeof t[0] == "string" && (n = t.shift()), t.length > 1) {
 			let n = t[0];
-			if (Rp(n)) r = t.shift(), t.length > 1 && typeof t[0] == "object" && t[0] !== null && !Rp(t[0]) && (a = t.shift());
+			if (Bp(n)) r = t.shift(), t.length > 1 && typeof t[0] == "object" && t[0] !== null && !Bp(t[0]) && (a = t.shift());
 			else if (typeof n == "object" && n) {
 				if (Object.values(n).some((e) => typeof e == "object" && !!e)) throw Error(`Tool ${e} expected a Zod schema or ToolAnnotations, but received an unrecognized object`);
 				a = t.shift();
@@ -14610,52 +14610,52 @@ var Np = class {
 	sendPromptListChanged() {
 		this.isConnected() && this.server.sendPromptListChanged();
 	}
-}, Fp = {
+}, Lp = {
 	type: "object",
 	properties: {}
 };
-function Ip(e) {
+function Rp(e) {
 	return typeof e == "object" && !!e && "parse" in e && typeof e.parse == "function" && "safeParse" in e && typeof e.safeParse == "function";
 }
-function Lp(e) {
-	return "_def" in e || "_zod" in e || Ip(e);
-}
-function Rp(e) {
-	return typeof e != "object" || !e || Lp(e) ? !1 : Object.keys(e).length === 0 || Object.values(e).some(Ip);
-}
 function zp(e) {
+	return "_def" in e || "_zod" in e || Rp(e);
+}
+function Bp(e) {
+	return typeof e != "object" || !e || zp(e) ? !1 : Object.keys(e).length === 0 || Object.values(e).some(Rp);
+}
+function Vp(e) {
 	if (e) {
-		if (Rp(e)) return lo(e);
-		if (!Lp(e)) throw Error("inputSchema must be a Zod schema or raw shape, received an unrecognized object");
+		if (Bp(e)) return uo(e);
+		if (!zp(e)) throw Error("inputSchema must be a Zod schema or raw shape, received an unrecognized object");
 		return e;
 	}
 }
-function Bp(e) {
-	let t = po(e);
+function Hp(e) {
+	let t = mo(e);
 	return t ? Object.entries(t).map(([e, t]) => ({
 		name: e,
-		description: _o(t),
-		required: !vo(t)
+		description: vo(t),
+		required: !yo(t)
 	})) : [];
 }
-function Vp(e) {
-	let t = po(e)?.method;
+function Up(e) {
+	let t = mo(e)?.method;
 	if (!t) throw Error("Schema is missing a method literal");
-	let n = yo(t);
+	let n = bo(t);
 	if (typeof n == "string") return n;
 	throw Error("Schema method literal must be a string");
 }
-function Hp(e) {
+function Wp(e) {
 	return { completion: {
 		values: e.slice(0, 100),
 		total: e.length,
 		hasMore: e.length > 100
 	} };
 }
-var Up = { completion: {
+var Gp = { completion: {
 	values: [],
 	hasMore: !1
-} }, Wp = /* @__PURE__ */ a(((e, t) => {
+} }, Kp = /* @__PURE__ */ a(((e, t) => {
 	t.exports = o, t.exports.format = s, t.exports.parse = c;
 	var n = /\B(?=(\d{3})+(?!\d))/g, r = /(?:\.0*|(\.[^0]+)0+)$/, i = {
 		b: 1,
@@ -14683,7 +14683,7 @@ var Up = { completion: {
 		var t = a.exec(e), n, r = "b";
 		return t ? (n = parseFloat(t[1]), r = t[4].toLowerCase()) : (n = parseInt(e, 10), r = "b"), isNaN(n) ? null : Math.floor(i[r] * n);
 	}
-})), Gp = /* @__PURE__ */ a(((e, n) => {
+})), qp = /* @__PURE__ */ a(((e, n) => {
 	var r = t("path").relative;
 	n.exports = l;
 	var i = process.cwd();
@@ -14841,7 +14841,7 @@ var Up = { completion: {
 			}
 		}), r;
 	}
-})), Kp = /* @__PURE__ */ a(((e, t) => {
+})), Jp = /* @__PURE__ */ a(((e, t) => {
 	t.exports = Object.setPrototypeOf || ({ __proto__: [] } instanceof Array ? n : r);
 	function n(e, t) {
 		return e.__proto__ = t, e;
@@ -14850,8 +14850,8 @@ var Up = { completion: {
 		for (var n in t) Object.prototype.hasOwnProperty.call(e, n) || (e[n] = t[n]);
 		return e;
 	}
-})), qp = /* @__PURE__ */ i({ default: () => Jp }), Jp, Yp = n((() => {
-	Jp = {
+})), Yp = /* @__PURE__ */ i({ default: () => Xp }), Xp, Zp = n((() => {
+	Xp = {
 		100: "Continue",
 		101: "Switching Protocols",
 		102: "Processing",
@@ -14916,8 +14916,8 @@ var Up = { completion: {
 		510: "Not Extended",
 		511: "Network Authentication Required"
 	};
-})), Xp = /* @__PURE__ */ a(((t, n) => {
-	var r = (Yp(), e(qp).default);
+})), Qp = /* @__PURE__ */ a(((t, n) => {
+	var r = (Zp(), e(Yp).default);
 	n.exports = c, c.message = r, c.code = i(r), c.codes = a(r), c.redirect = {
 		300: !0,
 		301: !0,
@@ -14962,7 +14962,7 @@ var Up = { completion: {
 		var t = parseInt(e, 10);
 		return isNaN(t) ? o(e) : s(t);
 	}
-})), Zp = /* @__PURE__ */ a(((e, t) => {
+})), $p = /* @__PURE__ */ a(((e, t) => {
 	t.exports = typeof Object.create == "function" ? function(e, t) {
 		t && (e.super_ = t, e.prototype = Object.create(t.prototype, { constructor: {
 			value: e,
@@ -14977,7 +14977,7 @@ var Up = { completion: {
 			n.prototype = t.prototype, e.prototype = new n(), e.prototype.constructor = e;
 		}
 	};
-})), Qp = /* @__PURE__ */ a(((e, n) => {
+})), em = /* @__PURE__ */ a(((e, n) => {
 	try {
 		var r = t("util");
 		/* istanbul ignore next */
@@ -14985,17 +14985,17 @@ var Up = { completion: {
 		n.exports = r.inherits;
 	} catch {
 		/* istanbul ignore next */
-		n.exports = Zp();
+		n.exports = $p();
 	}
-})), $p = /* @__PURE__ */ a(((e, t) => {
+})), tm = /* @__PURE__ */ a(((e, t) => {
 	t.exports = n;
 	function n(e) {
 		return e.split(" ").map(function(e) {
 			return e.slice(0, 1).toUpperCase() + e.slice(1);
 		}).join("").replace(/[^ _0-9a-z]/gi, "");
 	}
-})), em = /* @__PURE__ */ a(((e, t) => {
-	var n = Gp()("http-errors"), r = Kp(), i = Xp(), a = Qp(), o = $p();
+})), nm = /* @__PURE__ */ a(((e, t) => {
+	var n = qp()("http-errors"), r = Jp(), i = Qp(), a = em(), o = tm();
 	t.exports = c, t.exports.HttpError = l(), t.exports.isHttpError = d(t.exports.HttpError), m(t.exports, i.codes, t.exports.HttpError);
 	function s(e) {
 		return Number(String(e).charAt(0) + "00");
@@ -15080,7 +15080,7 @@ var Up = { completion: {
 	function h(e) {
 		return e.slice(-5) === "Error" ? e : e + "Error";
 	}
-})), tm = /* @__PURE__ */ a(((e, n) => {
+})), rm = /* @__PURE__ */ a(((e, n) => {
 	var r = t("buffer"), i = r.Buffer, a = {}, o;
 	for (o in r) r.hasOwnProperty(o) && o !== "SlowBuffer" && o !== "Buffer" && (a[o] = r[o]);
 	var s = a.Buffer = {};
@@ -15098,7 +15098,7 @@ var Up = { completion: {
 		a.kStringMaxLength = process.binding("buffer").kStringMaxLength;
 	} catch {}
 	a.constants || (a.constants = { MAX_LENGTH: a.kMaxLength }, a.kStringMaxLength && (a.constants.MAX_STRING_LENGTH = a.kStringMaxLength)), n.exports = a;
-})), nm = /* @__PURE__ */ a(((e) => {
+})), im = /* @__PURE__ */ a(((e) => {
 	e.PrependBOM = t;
 	function t(e, t) {
 		this.encoder = e, this.addBOM = !0;
@@ -15117,14 +15117,14 @@ var Up = { completion: {
 	}, n.prototype.end = function() {
 		return this.decoder.end();
 	};
-})), rm = /* @__PURE__ */ a(((e, t) => {
+})), am = /* @__PURE__ */ a(((e, t) => {
 	var n = Object.hasOwn === void 0 ? Function.call.bind(Object.prototype.hasOwnProperty) : Object.hasOwn;
 	function r(e, t) {
 		for (var r in t) n(t, r) && (e[r] = t[r]);
 	}
 	t.exports = r;
-})), im = /* @__PURE__ */ a(((e, n) => {
-	var r = tm().Buffer;
+})), om = /* @__PURE__ */ a(((e, n) => {
+	var r = rm().Buffer;
 	n.exports = {
 		utf8: {
 			type: "_internal",
@@ -15210,8 +15210,8 @@ var Up = { completion: {
 			return this.highSurrogate = "", r.from(e, this.enc);
 		}
 	};
-})), am = /* @__PURE__ */ a(((e) => {
-	var t = tm().Buffer;
+})), sm = /* @__PURE__ */ a(((e) => {
+	var t = rm().Buffer;
 	e._utf32 = n;
 	function n(e, t) {
 		this.iconv = t, this.bomAware = !0, this.isLE = e.isLE;
@@ -15317,8 +15317,8 @@ var Up = { completion: {
 		}
 		return s - a > o - i ? "utf-32be" : s - a < o - i ? "utf-32le" : t || "utf-32le";
 	}
-})), om = /* @__PURE__ */ a(((e) => {
-	var t = tm().Buffer;
+})), cm = /* @__PURE__ */ a(((e) => {
+	var t = rm().Buffer;
 	e.utf16be = n;
 	function n() {}
 	n.prototype.encoder = r, n.prototype.decoder = i, n.prototype.bomAware = !0;
@@ -15386,8 +15386,8 @@ var Up = { completion: {
 		}
 		return a > i ? "utf-16be" : a < i ? "utf-16le" : t || "utf-16le";
 	}
-})), sm = /* @__PURE__ */ a(((e) => {
-	var t = tm().Buffer;
+})), lm = /* @__PURE__ */ a(((e) => {
+	var t = rm().Buffer;
 	e.utf7 = n, e.unicode11utf7 = "utf7";
 	function n(e, t) {
 		this.iconv = t;
@@ -15468,8 +15468,8 @@ var Up = { completion: {
 		var e = "";
 		return this.inBase64 && this.base64Accum.length > 0 && (e = this.iconv.decode(t.from(this.base64Accum, "base64"), "utf16-be")), this.inBase64 = !1, this.base64Accum = "", e;
 	};
-})), cm = /* @__PURE__ */ a(((e) => {
-	var t = tm().Buffer;
+})), um = /* @__PURE__ */ a(((e) => {
+	var t = rm().Buffer;
 	e._sbcs = n;
 	function n(e, n) {
 		if (!e) throw Error("SBCS codec is called without the data.");
@@ -15497,7 +15497,7 @@ var Up = { completion: {
 		for (var n = this.decodeBuf, r = t.alloc(e.length * 2), i = 0, a = 0, o = 0; o < e.length; o++) i = e[o] * 2, a = o * 2, r[a] = n[i], r[a + 1] = n[i + 1];
 		return r.toString("ucs2");
 	}, i.prototype.end = function() {};
-})), lm = /* @__PURE__ */ a(((e, t) => {
+})), dm = /* @__PURE__ */ a(((e, t) => {
 	t.exports = {
 		10029: "maccenteuro",
 		maccenteuro: {
@@ -15644,7 +15644,7 @@ var Up = { completion: {
 		mac: "macintosh",
 		csmacintosh: "macintosh"
 	};
-})), um = /* @__PURE__ */ a(((e, t) => {
+})), fm = /* @__PURE__ */ a(((e, t) => {
 	t.exports = {
 		437: "cp437",
 		737: "cp737",
@@ -16093,8 +16093,8 @@ var Up = { completion: {
 			chars: "���������������������������������กขฃคฅฆงจฉชซฌญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรฤลฦวศษสหฬอฮฯะัาำิีึืฺุู����฿เแโใไๅๆ็่้๊๋์ํ๎๏๐๑๒๓๔๕๖๗๘๙๚๛����"
 		}
 	};
-})), dm = /* @__PURE__ */ a(((e) => {
-	var t = tm().Buffer;
+})), pm = /* @__PURE__ */ a(((e) => {
+	var t = rm().Buffer;
 	e._dbcs = l;
 	for (var n = -1, r = -2, i = -10, a = -1e3, o = Array(256), s = -1, c = 0; c < 256; c++) o[c] = n;
 	function l(e, t) {
@@ -16292,14 +16292,14 @@ var Up = { completion: {
 		}
 		return n;
 	}
-})), fm = /* @__PURE__ */ i({ default: () => pm }), pm, mm = n((() => {
-	pm = /*#__PURE__*/ JSON.parse("[[\"0\",\"\\u0000\",128],[\"a1\",\"｡\",62],[\"8140\",\"　、。，．・：；？！゛゜´｀¨＾￣＿ヽヾゝゞ〃仝々〆〇ー―‐／＼～∥｜…‥‘’“”（）〔〕［］｛｝〈\",9,\"＋－±×\"],[\"8180\",\"÷＝≠＜＞≦≧∞∴♂♀°′″℃￥＄￠￡％＃＆＊＠§☆★○●◎◇◆□■△▲▽▼※〒→←↑↓〓\"],[\"81b8\",\"∈∋⊆⊇⊂⊃∪∩\"],[\"81c8\",\"∧∨￢⇒⇔∀∃\"],[\"81da\",\"∠⊥⌒∂∇≡≒≪≫√∽∝∵∫∬\"],[\"81f0\",\"Å‰♯♭♪†‡¶\"],[\"81fc\",\"◯\"],[\"824f\",\"０\",9],[\"8260\",\"Ａ\",25],[\"8281\",\"ａ\",25],[\"829f\",\"ぁ\",82],[\"8340\",\"ァ\",62],[\"8380\",\"ム\",22],[\"839f\",\"Α\",16,\"Σ\",6],[\"83bf\",\"α\",16,\"σ\",6],[\"8440\",\"А\",5,\"ЁЖ\",25],[\"8470\",\"а\",5,\"ёж\",7],[\"8480\",\"о\",17],[\"849f\",\"─│┌┐┘└├┬┤┴┼━┃┏┓┛┗┣┳┫┻╋┠┯┨┷┿┝┰┥┸╂\"],[\"8740\",\"①\",19,\"Ⅰ\",9],[\"875f\",\"㍉㌔㌢㍍㌘㌧㌃㌶㍑㍗㌍㌦㌣㌫㍊㌻㎜㎝㎞㎎㎏㏄㎡\"],[\"877e\",\"㍻\"],[\"8780\",\"〝〟№㏍℡㊤\",4,\"㈱㈲㈹㍾㍽㍼≒≡∫∮∑√⊥∠∟⊿∵∩∪\"],[\"889f\",\"亜唖娃阿哀愛挨姶逢葵茜穐悪握渥旭葦芦鯵梓圧斡扱宛姐虻飴絢綾鮎或粟袷安庵按暗案闇鞍杏以伊位依偉囲夷委威尉惟意慰易椅為畏異移維緯胃萎衣謂違遺医井亥域育郁磯一壱溢逸稲茨芋鰯允印咽員因姻引飲淫胤蔭\"],[\"8940\",\"院陰隠韻吋右宇烏羽迂雨卯鵜窺丑碓臼渦嘘唄欝蔚鰻姥厩浦瓜閏噂云運雲荏餌叡営嬰影映曳栄永泳洩瑛盈穎頴英衛詠鋭液疫益駅悦謁越閲榎厭円\"],[\"8980\",\"園堰奄宴延怨掩援沿演炎焔煙燕猿縁艶苑薗遠鉛鴛塩於汚甥凹央奥往応押旺横欧殴王翁襖鴬鴎黄岡沖荻億屋憶臆桶牡乙俺卸恩温穏音下化仮何伽価佳加可嘉夏嫁家寡科暇果架歌河火珂禍禾稼箇花苛茄荷華菓蝦課嘩貨迦過霞蚊俄峨我牙画臥芽蛾賀雅餓駕介会解回塊壊廻快怪悔恢懐戒拐改\"],[\"8a40\",\"魁晦械海灰界皆絵芥蟹開階貝凱劾外咳害崖慨概涯碍蓋街該鎧骸浬馨蛙垣柿蛎鈎劃嚇各廓拡撹格核殻獲確穫覚角赫較郭閣隔革学岳楽額顎掛笠樫\"],[\"8a80\",\"橿梶鰍潟割喝恰括活渇滑葛褐轄且鰹叶椛樺鞄株兜竃蒲釜鎌噛鴨栢茅萱粥刈苅瓦乾侃冠寒刊勘勧巻喚堪姦完官寛干幹患感慣憾換敢柑桓棺款歓汗漢澗潅環甘監看竿管簡緩缶翰肝艦莞観諌貫還鑑間閑関陥韓館舘丸含岸巌玩癌眼岩翫贋雁頑顔願企伎危喜器基奇嬉寄岐希幾忌揮机旗既期棋棄\"],[\"8b40\",\"機帰毅気汽畿祈季稀紀徽規記貴起軌輝飢騎鬼亀偽儀妓宜戯技擬欺犠疑祇義蟻誼議掬菊鞠吉吃喫桔橘詰砧杵黍却客脚虐逆丘久仇休及吸宮弓急救\"],[\"8b80\",\"朽求汲泣灸球究窮笈級糾給旧牛去居巨拒拠挙渠虚許距鋸漁禦魚亨享京供侠僑兇競共凶協匡卿叫喬境峡強彊怯恐恭挟教橋況狂狭矯胸脅興蕎郷鏡響饗驚仰凝尭暁業局曲極玉桐粁僅勤均巾錦斤欣欽琴禁禽筋緊芹菌衿襟謹近金吟銀九倶句区狗玖矩苦躯駆駈駒具愚虞喰空偶寓遇隅串櫛釧屑屈\"],[\"8c40\",\"掘窟沓靴轡窪熊隈粂栗繰桑鍬勲君薫訓群軍郡卦袈祁係傾刑兄啓圭珪型契形径恵慶慧憩掲携敬景桂渓畦稽系経継繋罫茎荊蛍計詣警軽頚鶏芸迎鯨\"],[\"8c80\",\"劇戟撃激隙桁傑欠決潔穴結血訣月件倹倦健兼券剣喧圏堅嫌建憲懸拳捲検権牽犬献研硯絹県肩見謙賢軒遣鍵険顕験鹸元原厳幻弦減源玄現絃舷言諺限乎個古呼固姑孤己庫弧戸故枯湖狐糊袴股胡菰虎誇跨鈷雇顧鼓五互伍午呉吾娯後御悟梧檎瑚碁語誤護醐乞鯉交佼侯候倖光公功効勾厚口向\"],[\"8d40\",\"后喉坑垢好孔孝宏工巧巷幸広庚康弘恒慌抗拘控攻昂晃更杭校梗構江洪浩港溝甲皇硬稿糠紅紘絞綱耕考肯肱腔膏航荒行衡講貢購郊酵鉱砿鋼閤降\"],[\"8d80\",\"項香高鴻剛劫号合壕拷濠豪轟麹克刻告国穀酷鵠黒獄漉腰甑忽惚骨狛込此頃今困坤墾婚恨懇昏昆根梱混痕紺艮魂些佐叉唆嵯左差査沙瑳砂詐鎖裟坐座挫債催再最哉塞妻宰彩才採栽歳済災采犀砕砦祭斎細菜裁載際剤在材罪財冴坂阪堺榊肴咲崎埼碕鷺作削咋搾昨朔柵窄策索錯桜鮭笹匙冊刷\"],[\"8e40\",\"察拶撮擦札殺薩雑皐鯖捌錆鮫皿晒三傘参山惨撒散桟燦珊産算纂蚕讃賛酸餐斬暫残仕仔伺使刺司史嗣四士始姉姿子屍市師志思指支孜斯施旨枝止\"],[\"8e80\",\"死氏獅祉私糸紙紫肢脂至視詞詩試誌諮資賜雌飼歯事似侍児字寺慈持時次滋治爾璽痔磁示而耳自蒔辞汐鹿式識鴫竺軸宍雫七叱執失嫉室悉湿漆疾質実蔀篠偲柴芝屡蕊縞舎写射捨赦斜煮社紗者謝車遮蛇邪借勺尺杓灼爵酌釈錫若寂弱惹主取守手朱殊狩珠種腫趣酒首儒受呪寿授樹綬需囚収周\"],[\"8f40\",\"宗就州修愁拾洲秀秋終繍習臭舟蒐衆襲讐蹴輯週酋酬集醜什住充十従戎柔汁渋獣縦重銃叔夙宿淑祝縮粛塾熟出術述俊峻春瞬竣舜駿准循旬楯殉淳\"],[\"8f80\",\"準潤盾純巡遵醇順処初所暑曙渚庶緒署書薯藷諸助叙女序徐恕鋤除傷償勝匠升召哨商唱嘗奨妾娼宵将小少尚庄床廠彰承抄招掌捷昇昌昭晶松梢樟樵沼消渉湘焼焦照症省硝礁祥称章笑粧紹肖菖蒋蕉衝裳訟証詔詳象賞醤鉦鍾鐘障鞘上丈丞乗冗剰城場壌嬢常情擾条杖浄状畳穣蒸譲醸錠嘱埴飾\"],[\"9040\",\"拭植殖燭織職色触食蝕辱尻伸信侵唇娠寝審心慎振新晋森榛浸深申疹真神秦紳臣芯薪親診身辛進針震人仁刃塵壬尋甚尽腎訊迅陣靭笥諏須酢図厨\"],[\"9080\",\"逗吹垂帥推水炊睡粋翠衰遂酔錐錘随瑞髄崇嵩数枢趨雛据杉椙菅頗雀裾澄摺寸世瀬畝是凄制勢姓征性成政整星晴棲栖正清牲生盛精聖声製西誠誓請逝醒青静斉税脆隻席惜戚斥昔析石積籍績脊責赤跡蹟碩切拙接摂折設窃節説雪絶舌蝉仙先千占宣専尖川戦扇撰栓栴泉浅洗染潜煎煽旋穿箭線\"],[\"9140\",\"繊羨腺舛船薦詮賎践選遷銭銑閃鮮前善漸然全禅繕膳糎噌塑岨措曾曽楚狙疏疎礎祖租粗素組蘇訴阻遡鼠僧創双叢倉喪壮奏爽宋層匝惣想捜掃挿掻\"],[\"9180\",\"操早曹巣槍槽漕燥争痩相窓糟総綜聡草荘葬蒼藻装走送遭鎗霜騒像増憎臓蔵贈造促側則即息捉束測足速俗属賊族続卒袖其揃存孫尊損村遜他多太汰詑唾堕妥惰打柁舵楕陀駄騨体堆対耐岱帯待怠態戴替泰滞胎腿苔袋貸退逮隊黛鯛代台大第醍題鷹滝瀧卓啄宅托択拓沢濯琢託鐸濁諾茸凧蛸只\"],[\"9240\",\"叩但達辰奪脱巽竪辿棚谷狸鱈樽誰丹単嘆坦担探旦歎淡湛炭短端箪綻耽胆蛋誕鍛団壇弾断暖檀段男談値知地弛恥智池痴稚置致蜘遅馳築畜竹筑蓄\"],[\"9280\",\"逐秩窒茶嫡着中仲宙忠抽昼柱注虫衷註酎鋳駐樗瀦猪苧著貯丁兆凋喋寵帖帳庁弔張彫徴懲挑暢朝潮牒町眺聴脹腸蝶調諜超跳銚長頂鳥勅捗直朕沈珍賃鎮陳津墜椎槌追鎚痛通塚栂掴槻佃漬柘辻蔦綴鍔椿潰坪壷嬬紬爪吊釣鶴亭低停偵剃貞呈堤定帝底庭廷弟悌抵挺提梯汀碇禎程締艇訂諦蹄逓\"],[\"9340\",\"邸鄭釘鼎泥摘擢敵滴的笛適鏑溺哲徹撤轍迭鉄典填天展店添纏甜貼転顛点伝殿澱田電兎吐堵塗妬屠徒斗杜渡登菟賭途都鍍砥砺努度土奴怒倒党冬\"],[\"9380\",\"凍刀唐塔塘套宕島嶋悼投搭東桃梼棟盗淘湯涛灯燈当痘祷等答筒糖統到董蕩藤討謄豆踏逃透鐙陶頭騰闘働動同堂導憧撞洞瞳童胴萄道銅峠鴇匿得徳涜特督禿篤毒独読栃橡凸突椴届鳶苫寅酉瀞噸屯惇敦沌豚遁頓呑曇鈍奈那内乍凪薙謎灘捺鍋楢馴縄畷南楠軟難汝二尼弐迩匂賑肉虹廿日乳入\"],[\"9440\",\"如尿韮任妊忍認濡禰祢寧葱猫熱年念捻撚燃粘乃廼之埜嚢悩濃納能脳膿農覗蚤巴把播覇杷波派琶破婆罵芭馬俳廃拝排敗杯盃牌背肺輩配倍培媒梅\"],[\"9480\",\"楳煤狽買売賠陪這蝿秤矧萩伯剥博拍柏泊白箔粕舶薄迫曝漠爆縛莫駁麦函箱硲箸肇筈櫨幡肌畑畠八鉢溌発醗髪伐罰抜筏閥鳩噺塙蛤隼伴判半反叛帆搬斑板氾汎版犯班畔繁般藩販範釆煩頒飯挽晩番盤磐蕃蛮匪卑否妃庇彼悲扉批披斐比泌疲皮碑秘緋罷肥被誹費避非飛樋簸備尾微枇毘琵眉美\"],[\"9540\",\"鼻柊稗匹疋髭彦膝菱肘弼必畢筆逼桧姫媛紐百謬俵彪標氷漂瓢票表評豹廟描病秒苗錨鋲蒜蛭鰭品彬斌浜瀕貧賓頻敏瓶不付埠夫婦富冨布府怖扶敷\"],[\"9580\",\"斧普浮父符腐膚芙譜負賦赴阜附侮撫武舞葡蕪部封楓風葺蕗伏副復幅服福腹複覆淵弗払沸仏物鮒分吻噴墳憤扮焚奮粉糞紛雰文聞丙併兵塀幣平弊柄並蔽閉陛米頁僻壁癖碧別瞥蔑箆偏変片篇編辺返遍便勉娩弁鞭保舗鋪圃捕歩甫補輔穂募墓慕戊暮母簿菩倣俸包呆報奉宝峰峯崩庖抱捧放方朋\"],[\"9640\",\"法泡烹砲縫胞芳萌蓬蜂褒訪豊邦鋒飽鳳鵬乏亡傍剖坊妨帽忘忙房暴望某棒冒紡肪膨謀貌貿鉾防吠頬北僕卜墨撲朴牧睦穆釦勃没殆堀幌奔本翻凡盆\"],[\"9680\",\"摩磨魔麻埋妹昧枚毎哩槙幕膜枕鮪柾鱒桝亦俣又抹末沫迄侭繭麿万慢満漫蔓味未魅巳箕岬密蜜湊蓑稔脈妙粍民眠務夢無牟矛霧鵡椋婿娘冥名命明盟迷銘鳴姪牝滅免棉綿緬面麺摸模茂妄孟毛猛盲網耗蒙儲木黙目杢勿餅尤戻籾貰問悶紋門匁也冶夜爺耶野弥矢厄役約薬訳躍靖柳薮鑓愉愈油癒\"],[\"9740\",\"諭輸唯佑優勇友宥幽悠憂揖有柚湧涌猶猷由祐裕誘遊邑郵雄融夕予余与誉輿預傭幼妖容庸揚揺擁曜楊様洋溶熔用窯羊耀葉蓉要謡踊遥陽養慾抑欲\"],[\"9780\",\"沃浴翌翼淀羅螺裸来莱頼雷洛絡落酪乱卵嵐欄濫藍蘭覧利吏履李梨理璃痢裏裡里離陸律率立葎掠略劉流溜琉留硫粒隆竜龍侶慮旅虜了亮僚両凌寮料梁涼猟療瞭稜糧良諒遼量陵領力緑倫厘林淋燐琳臨輪隣鱗麟瑠塁涙累類令伶例冷励嶺怜玲礼苓鈴隷零霊麗齢暦歴列劣烈裂廉恋憐漣煉簾練聯\"],[\"9840\",\"蓮連錬呂魯櫓炉賂路露労婁廊弄朗楼榔浪漏牢狼篭老聾蝋郎六麓禄肋録論倭和話歪賄脇惑枠鷲亙亘鰐詫藁蕨椀湾碗腕\"],[\"989f\",\"弌丐丕个丱丶丼丿乂乖乘亂亅豫亊舒弍于亞亟亠亢亰亳亶从仍仄仆仂仗仞仭仟价伉佚估佛佝佗佇佶侈侏侘佻佩佰侑佯來侖儘俔俟俎俘俛俑俚俐俤俥倚倨倔倪倥倅伜俶倡倩倬俾俯們倆偃假會偕偐偈做偖偬偸傀傚傅傴傲\"],[\"9940\",\"僉僊傳僂僖僞僥僭僣僮價僵儉儁儂儖儕儔儚儡儺儷儼儻儿兀兒兌兔兢竸兩兪兮冀冂囘册冉冏冑冓冕冖冤冦冢冩冪冫决冱冲冰况冽凅凉凛几處凩凭\"],[\"9980\",\"凰凵凾刄刋刔刎刧刪刮刳刹剏剄剋剌剞剔剪剴剩剳剿剽劍劔劒剱劈劑辨辧劬劭劼劵勁勍勗勞勣勦飭勠勳勵勸勹匆匈甸匍匐匏匕匚匣匯匱匳匸區卆卅丗卉卍凖卞卩卮夘卻卷厂厖厠厦厥厮厰厶參簒雙叟曼燮叮叨叭叺吁吽呀听吭吼吮吶吩吝呎咏呵咎呟呱呷呰咒呻咀呶咄咐咆哇咢咸咥咬哄哈咨\"],[\"9a40\",\"咫哂咤咾咼哘哥哦唏唔哽哮哭哺哢唹啀啣啌售啜啅啖啗唸唳啝喙喀咯喊喟啻啾喘喞單啼喃喩喇喨嗚嗅嗟嗄嗜嗤嗔嘔嗷嘖嗾嗽嘛嗹噎噐營嘴嘶嘲嘸\"],[\"9a80\",\"噫噤嘯噬噪嚆嚀嚊嚠嚔嚏嚥嚮嚶嚴囂嚼囁囃囀囈囎囑囓囗囮囹圀囿圄圉圈國圍圓團圖嗇圜圦圷圸坎圻址坏坩埀垈坡坿垉垓垠垳垤垪垰埃埆埔埒埓堊埖埣堋堙堝塲堡塢塋塰毀塒堽塹墅墹墟墫墺壞墻墸墮壅壓壑壗壙壘壥壜壤壟壯壺壹壻壼壽夂夊夐夛梦夥夬夭夲夸夾竒奕奐奎奚奘奢奠奧奬奩\"],[\"9b40\",\"奸妁妝佞侫妣妲姆姨姜妍姙姚娥娟娑娜娉娚婀婬婉娵娶婢婪媚媼媾嫋嫂媽嫣嫗嫦嫩嫖嫺嫻嬌嬋嬖嬲嫐嬪嬶嬾孃孅孀孑孕孚孛孥孩孰孳孵學斈孺宀\"],[\"9b80\",\"它宦宸寃寇寉寔寐寤實寢寞寥寫寰寶寳尅將專對尓尠尢尨尸尹屁屆屎屓屐屏孱屬屮乢屶屹岌岑岔妛岫岻岶岼岷峅岾峇峙峩峽峺峭嶌峪崋崕崗嵜崟崛崑崔崢崚崙崘嵌嵒嵎嵋嵬嵳嵶嶇嶄嶂嶢嶝嶬嶮嶽嶐嶷嶼巉巍巓巒巖巛巫已巵帋帚帙帑帛帶帷幄幃幀幎幗幔幟幢幤幇幵并幺麼广庠廁廂廈廐廏\"],[\"9c40\",\"廖廣廝廚廛廢廡廨廩廬廱廳廰廴廸廾弃弉彝彜弋弑弖弩弭弸彁彈彌彎弯彑彖彗彙彡彭彳彷徃徂彿徊很徑徇從徙徘徠徨徭徼忖忻忤忸忱忝悳忿怡恠\"],[\"9c80\",\"怙怐怩怎怱怛怕怫怦怏怺恚恁恪恷恟恊恆恍恣恃恤恂恬恫恙悁悍惧悃悚悄悛悖悗悒悧悋惡悸惠惓悴忰悽惆悵惘慍愕愆惶惷愀惴惺愃愡惻惱愍愎慇愾愨愧慊愿愼愬愴愽慂慄慳慷慘慙慚慫慴慯慥慱慟慝慓慵憙憖憇憬憔憚憊憑憫憮懌懊應懷懈懃懆憺懋罹懍懦懣懶懺懴懿懽懼懾戀戈戉戍戌戔戛\"],[\"9d40\",\"戞戡截戮戰戲戳扁扎扞扣扛扠扨扼抂抉找抒抓抖拔抃抔拗拑抻拏拿拆擔拈拜拌拊拂拇抛拉挌拮拱挧挂挈拯拵捐挾捍搜捏掖掎掀掫捶掣掏掉掟掵捫\"],[\"9d80\",\"捩掾揩揀揆揣揉插揶揄搖搴搆搓搦搶攝搗搨搏摧摯摶摎攪撕撓撥撩撈撼據擒擅擇撻擘擂擱擧舉擠擡抬擣擯攬擶擴擲擺攀擽攘攜攅攤攣攫攴攵攷收攸畋效敖敕敍敘敞敝敲數斂斃變斛斟斫斷旃旆旁旄旌旒旛旙无旡旱杲昊昃旻杳昵昶昴昜晏晄晉晁晞晝晤晧晨晟晢晰暃暈暎暉暄暘暝曁暹曉暾暼\"],[\"9e40\",\"曄暸曖曚曠昿曦曩曰曵曷朏朖朞朦朧霸朮朿朶杁朸朷杆杞杠杙杣杤枉杰枩杼杪枌枋枦枡枅枷柯枴柬枳柩枸柤柞柝柢柮枹柎柆柧檜栞框栩桀桍栲桎\"],[\"9e80\",\"梳栫桙档桷桿梟梏梭梔條梛梃檮梹桴梵梠梺椏梍桾椁棊椈棘椢椦棡椌棍棔棧棕椶椒椄棗棣椥棹棠棯椨椪椚椣椡棆楹楷楜楸楫楔楾楮椹楴椽楙椰楡楞楝榁楪榲榮槐榿槁槓榾槎寨槊槝榻槃榧樮榑榠榜榕榴槞槨樂樛槿權槹槲槧樅榱樞槭樔槫樊樒櫁樣樓橄樌橲樶橸橇橢橙橦橈樸樢檐檍檠檄檢檣\"],[\"9f40\",\"檗蘗檻櫃櫂檸檳檬櫞櫑櫟檪櫚櫪櫻欅蘖櫺欒欖鬱欟欸欷盜欹飮歇歃歉歐歙歔歛歟歡歸歹歿殀殄殃殍殘殕殞殤殪殫殯殲殱殳殷殼毆毋毓毟毬毫毳毯\"],[\"9f80\",\"麾氈氓气氛氤氣汞汕汢汪沂沍沚沁沛汾汨汳沒沐泄泱泓沽泗泅泝沮沱沾沺泛泯泙泪洟衍洶洫洽洸洙洵洳洒洌浣涓浤浚浹浙涎涕濤涅淹渕渊涵淇淦涸淆淬淞淌淨淒淅淺淙淤淕淪淮渭湮渮渙湲湟渾渣湫渫湶湍渟湃渺湎渤滿渝游溂溪溘滉溷滓溽溯滄溲滔滕溏溥滂溟潁漑灌滬滸滾漿滲漱滯漲滌\"],[\"e040\",\"漾漓滷澆潺潸澁澀潯潛濳潭澂潼潘澎澑濂潦澳澣澡澤澹濆澪濟濕濬濔濘濱濮濛瀉瀋濺瀑瀁瀏濾瀛瀚潴瀝瀘瀟瀰瀾瀲灑灣炙炒炯烱炬炸炳炮烟烋烝\"],[\"e080\",\"烙焉烽焜焙煥煕熈煦煢煌煖煬熏燻熄熕熨熬燗熹熾燒燉燔燎燠燬燧燵燼燹燿爍爐爛爨爭爬爰爲爻爼爿牀牆牋牘牴牾犂犁犇犒犖犢犧犹犲狃狆狄狎狒狢狠狡狹狷倏猗猊猜猖猝猴猯猩猥猾獎獏默獗獪獨獰獸獵獻獺珈玳珎玻珀珥珮珞璢琅瑯琥珸琲琺瑕琿瑟瑙瑁瑜瑩瑰瑣瑪瑶瑾璋璞璧瓊瓏瓔珱\"],[\"e140\",\"瓠瓣瓧瓩瓮瓲瓰瓱瓸瓷甄甃甅甌甎甍甕甓甞甦甬甼畄畍畊畉畛畆畚畩畤畧畫畭畸當疆疇畴疊疉疂疔疚疝疥疣痂疳痃疵疽疸疼疱痍痊痒痙痣痞痾痿\"],[\"e180\",\"痼瘁痰痺痲痳瘋瘍瘉瘟瘧瘠瘡瘢瘤瘴瘰瘻癇癈癆癜癘癡癢癨癩癪癧癬癰癲癶癸發皀皃皈皋皎皖皓皙皚皰皴皸皹皺盂盍盖盒盞盡盥盧盪蘯盻眈眇眄眩眤眞眥眦眛眷眸睇睚睨睫睛睥睿睾睹瞎瞋瞑瞠瞞瞰瞶瞹瞿瞼瞽瞻矇矍矗矚矜矣矮矼砌砒礦砠礪硅碎硴碆硼碚碌碣碵碪碯磑磆磋磔碾碼磅磊磬\"],[\"e240\",\"磧磚磽磴礇礒礑礙礬礫祀祠祗祟祚祕祓祺祿禊禝禧齋禪禮禳禹禺秉秕秧秬秡秣稈稍稘稙稠稟禀稱稻稾稷穃穗穉穡穢穩龝穰穹穽窈窗窕窘窖窩竈窰\"],[\"e280\",\"窶竅竄窿邃竇竊竍竏竕竓站竚竝竡竢竦竭竰笂笏笊笆笳笘笙笞笵笨笶筐筺笄筍笋筌筅筵筥筴筧筰筱筬筮箝箘箟箍箜箚箋箒箏筝箙篋篁篌篏箴篆篝篩簑簔篦篥籠簀簇簓篳篷簗簍篶簣簧簪簟簷簫簽籌籃籔籏籀籐籘籟籤籖籥籬籵粃粐粤粭粢粫粡粨粳粲粱粮粹粽糀糅糂糘糒糜糢鬻糯糲糴糶糺紆\"],[\"e340\",\"紂紜紕紊絅絋紮紲紿紵絆絳絖絎絲絨絮絏絣經綉絛綏絽綛綺綮綣綵緇綽綫總綢綯緜綸綟綰緘緝緤緞緻緲緡縅縊縣縡縒縱縟縉縋縢繆繦縻縵縹繃縷\"],[\"e380\",\"縲縺繧繝繖繞繙繚繹繪繩繼繻纃緕繽辮繿纈纉續纒纐纓纔纖纎纛纜缸缺罅罌罍罎罐网罕罔罘罟罠罨罩罧罸羂羆羃羈羇羌羔羞羝羚羣羯羲羹羮羶羸譱翅翆翊翕翔翡翦翩翳翹飜耆耄耋耒耘耙耜耡耨耿耻聊聆聒聘聚聟聢聨聳聲聰聶聹聽聿肄肆肅肛肓肚肭冐肬胛胥胙胝胄胚胖脉胯胱脛脩脣脯腋\"],[\"e440\",\"隋腆脾腓腑胼腱腮腥腦腴膃膈膊膀膂膠膕膤膣腟膓膩膰膵膾膸膽臀臂膺臉臍臑臙臘臈臚臟臠臧臺臻臾舁舂舅與舊舍舐舖舩舫舸舳艀艙艘艝艚艟艤\"],[\"e480\",\"艢艨艪艫舮艱艷艸艾芍芒芫芟芻芬苡苣苟苒苴苳苺莓范苻苹苞茆苜茉苙茵茴茖茲茱荀茹荐荅茯茫茗茘莅莚莪莟莢莖茣莎莇莊荼莵荳荵莠莉莨菴萓菫菎菽萃菘萋菁菷萇菠菲萍萢萠莽萸蔆菻葭萪萼蕚蒄葷葫蒭葮蒂葩葆萬葯葹萵蓊葢蒹蒿蒟蓙蓍蒻蓚蓐蓁蓆蓖蒡蔡蓿蓴蔗蔘蔬蔟蔕蔔蓼蕀蕣蕘蕈\"],[\"e540\",\"蕁蘂蕋蕕薀薤薈薑薊薨蕭薔薛藪薇薜蕷蕾薐藉薺藏薹藐藕藝藥藜藹蘊蘓蘋藾藺蘆蘢蘚蘰蘿虍乕虔號虧虱蚓蚣蚩蚪蚋蚌蚶蚯蛄蛆蚰蛉蠣蚫蛔蛞蛩蛬\"],[\"e580\",\"蛟蛛蛯蜒蜆蜈蜀蜃蛻蜑蜉蜍蛹蜊蜴蜿蜷蜻蜥蜩蜚蝠蝟蝸蝌蝎蝴蝗蝨蝮蝙蝓蝣蝪蠅螢螟螂螯蟋螽蟀蟐雖螫蟄螳蟇蟆螻蟯蟲蟠蠏蠍蟾蟶蟷蠎蟒蠑蠖蠕蠢蠡蠱蠶蠹蠧蠻衄衂衒衙衞衢衫袁衾袞衵衽袵衲袂袗袒袮袙袢袍袤袰袿袱裃裄裔裘裙裝裹褂裼裴裨裲褄褌褊褓襃褞褥褪褫襁襄褻褶褸襌褝襠襞\"],[\"e640\",\"襦襤襭襪襯襴襷襾覃覈覊覓覘覡覩覦覬覯覲覺覽覿觀觚觜觝觧觴觸訃訖訐訌訛訝訥訶詁詛詒詆詈詼詭詬詢誅誂誄誨誡誑誥誦誚誣諄諍諂諚諫諳諧\"],[\"e680\",\"諤諱謔諠諢諷諞諛謌謇謚諡謖謐謗謠謳鞫謦謫謾謨譁譌譏譎證譖譛譚譫譟譬譯譴譽讀讌讎讒讓讖讙讚谺豁谿豈豌豎豐豕豢豬豸豺貂貉貅貊貍貎貔豼貘戝貭貪貽貲貳貮貶賈賁賤賣賚賽賺賻贄贅贊贇贏贍贐齎贓賍贔贖赧赭赱赳趁趙跂趾趺跏跚跖跌跛跋跪跫跟跣跼踈踉跿踝踞踐踟蹂踵踰踴蹊\"],[\"e740\",\"蹇蹉蹌蹐蹈蹙蹤蹠踪蹣蹕蹶蹲蹼躁躇躅躄躋躊躓躑躔躙躪躡躬躰軆躱躾軅軈軋軛軣軼軻軫軾輊輅輕輒輙輓輜輟輛輌輦輳輻輹轅轂輾轌轉轆轎轗轜\"],[\"e780\",\"轢轣轤辜辟辣辭辯辷迚迥迢迪迯邇迴逅迹迺逑逕逡逍逞逖逋逧逶逵逹迸遏遐遑遒逎遉逾遖遘遞遨遯遶隨遲邂遽邁邀邊邉邏邨邯邱邵郢郤扈郛鄂鄒鄙鄲鄰酊酖酘酣酥酩酳酲醋醉醂醢醫醯醪醵醴醺釀釁釉釋釐釖釟釡釛釼釵釶鈞釿鈔鈬鈕鈑鉞鉗鉅鉉鉤鉈銕鈿鉋鉐銜銖銓銛鉚鋏銹銷鋩錏鋺鍄錮\"],[\"e840\",\"錙錢錚錣錺錵錻鍜鍠鍼鍮鍖鎰鎬鎭鎔鎹鏖鏗鏨鏥鏘鏃鏝鏐鏈鏤鐚鐔鐓鐃鐇鐐鐶鐫鐵鐡鐺鑁鑒鑄鑛鑠鑢鑞鑪鈩鑰鑵鑷鑽鑚鑼鑾钁鑿閂閇閊閔閖閘閙\"],[\"e880\",\"閠閨閧閭閼閻閹閾闊濶闃闍闌闕闔闖關闡闥闢阡阨阮阯陂陌陏陋陷陜陞陝陟陦陲陬隍隘隕隗險隧隱隲隰隴隶隸隹雎雋雉雍襍雜霍雕雹霄霆霈霓霎霑霏霖霙霤霪霰霹霽霾靄靆靈靂靉靜靠靤靦靨勒靫靱靹鞅靼鞁靺鞆鞋鞏鞐鞜鞨鞦鞣鞳鞴韃韆韈韋韜韭齏韲竟韶韵頏頌頸頤頡頷頽顆顏顋顫顯顰\"],[\"e940\",\"顱顴顳颪颯颱颶飄飃飆飩飫餃餉餒餔餘餡餝餞餤餠餬餮餽餾饂饉饅饐饋饑饒饌饕馗馘馥馭馮馼駟駛駝駘駑駭駮駱駲駻駸騁騏騅駢騙騫騷驅驂驀驃\"],[\"e980\",\"騾驕驍驛驗驟驢驥驤驩驫驪骭骰骼髀髏髑髓體髞髟髢髣髦髯髫髮髴髱髷髻鬆鬘鬚鬟鬢鬣鬥鬧鬨鬩鬪鬮鬯鬲魄魃魏魍魎魑魘魴鮓鮃鮑鮖鮗鮟鮠鮨鮴鯀鯊鮹鯆鯏鯑鯒鯣鯢鯤鯔鯡鰺鯲鯱鯰鰕鰔鰉鰓鰌鰆鰈鰒鰊鰄鰮鰛鰥鰤鰡鰰鱇鰲鱆鰾鱚鱠鱧鱶鱸鳧鳬鳰鴉鴈鳫鴃鴆鴪鴦鶯鴣鴟鵄鴕鴒鵁鴿鴾鵆鵈\"],[\"ea40\",\"鵝鵞鵤鵑鵐鵙鵲鶉鶇鶫鵯鵺鶚鶤鶩鶲鷄鷁鶻鶸鶺鷆鷏鷂鷙鷓鷸鷦鷭鷯鷽鸚鸛鸞鹵鹹鹽麁麈麋麌麒麕麑麝麥麩麸麪麭靡黌黎黏黐黔黜點黝黠黥黨黯\"],[\"ea80\",\"黴黶黷黹黻黼黽鼇鼈皷鼕鼡鼬鼾齊齒齔齣齟齠齡齦齧齬齪齷齲齶龕龜龠堯槇遙瑤凜熙\"],[\"ed40\",\"纊褜鍈銈蓜俉炻昱棈鋹曻彅丨仡仼伀伃伹佖侒侊侚侔俍偀倢俿倞偆偰偂傔僴僘兊兤冝冾凬刕劜劦勀勛匀匇匤卲厓厲叝﨎咜咊咩哿喆坙坥垬埈埇﨏\"],[\"ed80\",\"塚增墲夋奓奛奝奣妤妺孖寀甯寘寬尞岦岺峵崧嵓﨑嵂嵭嶸嶹巐弡弴彧德忞恝悅悊惞惕愠惲愑愷愰憘戓抦揵摠撝擎敎昀昕昻昉昮昞昤晥晗晙晴晳暙暠暲暿曺朎朗杦枻桒柀栁桄棏﨓楨﨔榘槢樰橫橆橳橾櫢櫤毖氿汜沆汯泚洄涇浯涖涬淏淸淲淼渹湜渧渼溿澈澵濵瀅瀇瀨炅炫焏焄煜煆煇凞燁燾犱\"],[\"ee40\",\"犾猤猪獷玽珉珖珣珒琇珵琦琪琩琮瑢璉璟甁畯皂皜皞皛皦益睆劯砡硎硤硺礰礼神祥禔福禛竑竧靖竫箞精絈絜綷綠緖繒罇羡羽茁荢荿菇菶葈蒴蕓蕙\"],[\"ee80\",\"蕫﨟薰蘒﨡蠇裵訒訷詹誧誾諟諸諶譓譿賰賴贒赶﨣軏﨤逸遧郞都鄕鄧釚釗釞釭釮釤釥鈆鈐鈊鈺鉀鈼鉎鉙鉑鈹鉧銧鉷鉸鋧鋗鋙鋐﨧鋕鋠鋓錥錡鋻﨨錞鋿錝錂鍰鍗鎤鏆鏞鏸鐱鑅鑈閒隆﨩隝隯霳霻靃靍靏靑靕顗顥飯飼餧館馞驎髙髜魵魲鮏鮱鮻鰀鵰鵫鶴鸙黑\"],[\"eeef\",\"ⅰ\",9,\"￢￤＇＂\"],[\"f040\",\"\",62],[\"f080\",\"\",124],[\"f140\",\"\",62],[\"f180\",\"\",124],[\"f240\",\"\",62],[\"f280\",\"\",124],[\"f340\",\"\",62],[\"f380\",\"\",124],[\"f440\",\"\",62],[\"f480\",\"\",124],[\"f540\",\"\",62],[\"f580\",\"\",124],[\"f640\",\"\",62],[\"f680\",\"\",124],[\"f740\",\"\",62],[\"f780\",\"\",124],[\"f840\",\"\",62],[\"f880\",\"\",124],[\"f940\",\"\"],[\"fa40\",\"ⅰ\",9,\"Ⅰ\",9,\"￢￤＇＂㈱№℡∵纊褜鍈銈蓜俉炻昱棈鋹曻彅丨仡仼伀伃伹佖侒侊侚侔俍偀倢俿倞偆偰偂傔僴僘兊\"],[\"fa80\",\"兤冝冾凬刕劜劦勀勛匀匇匤卲厓厲叝﨎咜咊咩哿喆坙坥垬埈埇﨏塚增墲夋奓奛奝奣妤妺孖寀甯寘寬尞岦岺峵崧嵓﨑嵂嵭嶸嶹巐弡弴彧德忞恝悅悊惞惕愠惲愑愷愰憘戓抦揵摠撝擎敎昀昕昻昉昮昞昤晥晗晙晴晳暙暠暲暿曺朎朗杦枻桒柀栁桄棏﨓楨﨔榘槢樰橫橆橳橾櫢櫤毖氿汜沆汯泚洄涇浯\"],[\"fb40\",\"涖涬淏淸淲淼渹湜渧渼溿澈澵濵瀅瀇瀨炅炫焏焄煜煆煇凞燁燾犱犾猤猪獷玽珉珖珣珒琇珵琦琪琩琮瑢璉璟甁畯皂皜皞皛皦益睆劯砡硎硤硺礰礼神\"],[\"fb80\",\"祥禔福禛竑竧靖竫箞精絈絜綷綠緖繒罇羡羽茁荢荿菇菶葈蒴蕓蕙蕫﨟薰蘒﨡蠇裵訒訷詹誧誾諟諸諶譓譿賰賴贒赶﨣軏﨤逸遧郞都鄕鄧釚釗釞釭釮釤釥鈆鈐鈊鈺鉀鈼鉎鉙鉑鈹鉧銧鉷鉸鋧鋗鋙鋐﨧鋕鋠鋓錥錡鋻﨨錞鋿錝錂鍰鍗鎤鏆鏞鏸鐱鑅鑈閒隆﨩隝隯霳霻靃靍靏靑靕顗顥飯飼餧館馞驎髙\"],[\"fc40\",\"髜魵魲鮏鮱鮻鰀鵰鵫鶴鸙黑\"]]");
-})), hm = /* @__PURE__ */ i({ default: () => gm }), gm, _m = n((() => {
-	gm = /*#__PURE__*/ JSON.parse("[[\"0\",\"\\u0000\",127],[\"8ea1\",\"｡\",62],[\"a1a1\",\"　、。，．・：；？！゛゜´｀¨＾￣＿ヽヾゝゞ〃仝々〆〇ー―‐／＼～∥｜…‥‘’“”（）〔〕［］｛｝〈\",9,\"＋－±×÷＝≠＜＞≦≧∞∴♂♀°′″℃￥＄￠￡％＃＆＊＠§☆★○●◎◇\"],[\"a2a1\",\"◆□■△▲▽▼※〒→←↑↓〓\"],[\"a2ba\",\"∈∋⊆⊇⊂⊃∪∩\"],[\"a2ca\",\"∧∨￢⇒⇔∀∃\"],[\"a2dc\",\"∠⊥⌒∂∇≡≒≪≫√∽∝∵∫∬\"],[\"a2f2\",\"Å‰♯♭♪†‡¶\"],[\"a2fe\",\"◯\"],[\"a3b0\",\"０\",9],[\"a3c1\",\"Ａ\",25],[\"a3e1\",\"ａ\",25],[\"a4a1\",\"ぁ\",82],[\"a5a1\",\"ァ\",85],[\"a6a1\",\"Α\",16,\"Σ\",6],[\"a6c1\",\"α\",16,\"σ\",6],[\"a7a1\",\"А\",5,\"ЁЖ\",25],[\"a7d1\",\"а\",5,\"ёж\",25],[\"a8a1\",\"─│┌┐┘└├┬┤┴┼━┃┏┓┛┗┣┳┫┻╋┠┯┨┷┿┝┰┥┸╂\"],[\"ada1\",\"①\",19,\"Ⅰ\",9],[\"adc0\",\"㍉㌔㌢㍍㌘㌧㌃㌶㍑㍗㌍㌦㌣㌫㍊㌻㎜㎝㎞㎎㎏㏄㎡\"],[\"addf\",\"㍻〝〟№㏍℡㊤\",4,\"㈱㈲㈹㍾㍽㍼≒≡∫∮∑√⊥∠∟⊿∵∩∪\"],[\"b0a1\",\"亜唖娃阿哀愛挨姶逢葵茜穐悪握渥旭葦芦鯵梓圧斡扱宛姐虻飴絢綾鮎或粟袷安庵按暗案闇鞍杏以伊位依偉囲夷委威尉惟意慰易椅為畏異移維緯胃萎衣謂違遺医井亥域育郁磯一壱溢逸稲茨芋鰯允印咽員因姻引飲淫胤蔭\"],[\"b1a1\",\"院陰隠韻吋右宇烏羽迂雨卯鵜窺丑碓臼渦嘘唄欝蔚鰻姥厩浦瓜閏噂云運雲荏餌叡営嬰影映曳栄永泳洩瑛盈穎頴英衛詠鋭液疫益駅悦謁越閲榎厭円園堰奄宴延怨掩援沿演炎焔煙燕猿縁艶苑薗遠鉛鴛塩於汚甥凹央奥往応\"],[\"b2a1\",\"押旺横欧殴王翁襖鴬鴎黄岡沖荻億屋憶臆桶牡乙俺卸恩温穏音下化仮何伽価佳加可嘉夏嫁家寡科暇果架歌河火珂禍禾稼箇花苛茄荷華菓蝦課嘩貨迦過霞蚊俄峨我牙画臥芽蛾賀雅餓駕介会解回塊壊廻快怪悔恢懐戒拐改\"],[\"b3a1\",\"魁晦械海灰界皆絵芥蟹開階貝凱劾外咳害崖慨概涯碍蓋街該鎧骸浬馨蛙垣柿蛎鈎劃嚇各廓拡撹格核殻獲確穫覚角赫較郭閣隔革学岳楽額顎掛笠樫橿梶鰍潟割喝恰括活渇滑葛褐轄且鰹叶椛樺鞄株兜竃蒲釜鎌噛鴨栢茅萱\"],[\"b4a1\",\"粥刈苅瓦乾侃冠寒刊勘勧巻喚堪姦完官寛干幹患感慣憾換敢柑桓棺款歓汗漢澗潅環甘監看竿管簡緩缶翰肝艦莞観諌貫還鑑間閑関陥韓館舘丸含岸巌玩癌眼岩翫贋雁頑顔願企伎危喜器基奇嬉寄岐希幾忌揮机旗既期棋棄\"],[\"b5a1\",\"機帰毅気汽畿祈季稀紀徽規記貴起軌輝飢騎鬼亀偽儀妓宜戯技擬欺犠疑祇義蟻誼議掬菊鞠吉吃喫桔橘詰砧杵黍却客脚虐逆丘久仇休及吸宮弓急救朽求汲泣灸球究窮笈級糾給旧牛去居巨拒拠挙渠虚許距鋸漁禦魚亨享京\"],[\"b6a1\",\"供侠僑兇競共凶協匡卿叫喬境峡強彊怯恐恭挟教橋況狂狭矯胸脅興蕎郷鏡響饗驚仰凝尭暁業局曲極玉桐粁僅勤均巾錦斤欣欽琴禁禽筋緊芹菌衿襟謹近金吟銀九倶句区狗玖矩苦躯駆駈駒具愚虞喰空偶寓遇隅串櫛釧屑屈\"],[\"b7a1\",\"掘窟沓靴轡窪熊隈粂栗繰桑鍬勲君薫訓群軍郡卦袈祁係傾刑兄啓圭珪型契形径恵慶慧憩掲携敬景桂渓畦稽系経継繋罫茎荊蛍計詣警軽頚鶏芸迎鯨劇戟撃激隙桁傑欠決潔穴結血訣月件倹倦健兼券剣喧圏堅嫌建憲懸拳捲\"],[\"b8a1\",\"検権牽犬献研硯絹県肩見謙賢軒遣鍵険顕験鹸元原厳幻弦減源玄現絃舷言諺限乎個古呼固姑孤己庫弧戸故枯湖狐糊袴股胡菰虎誇跨鈷雇顧鼓五互伍午呉吾娯後御悟梧檎瑚碁語誤護醐乞鯉交佼侯候倖光公功効勾厚口向\"],[\"b9a1\",\"后喉坑垢好孔孝宏工巧巷幸広庚康弘恒慌抗拘控攻昂晃更杭校梗構江洪浩港溝甲皇硬稿糠紅紘絞綱耕考肯肱腔膏航荒行衡講貢購郊酵鉱砿鋼閤降項香高鴻剛劫号合壕拷濠豪轟麹克刻告国穀酷鵠黒獄漉腰甑忽惚骨狛込\"],[\"baa1\",\"此頃今困坤墾婚恨懇昏昆根梱混痕紺艮魂些佐叉唆嵯左差査沙瑳砂詐鎖裟坐座挫債催再最哉塞妻宰彩才採栽歳済災采犀砕砦祭斎細菜裁載際剤在材罪財冴坂阪堺榊肴咲崎埼碕鷺作削咋搾昨朔柵窄策索錯桜鮭笹匙冊刷\"],[\"bba1\",\"察拶撮擦札殺薩雑皐鯖捌錆鮫皿晒三傘参山惨撒散桟燦珊産算纂蚕讃賛酸餐斬暫残仕仔伺使刺司史嗣四士始姉姿子屍市師志思指支孜斯施旨枝止死氏獅祉私糸紙紫肢脂至視詞詩試誌諮資賜雌飼歯事似侍児字寺慈持時\"],[\"bca1\",\"次滋治爾璽痔磁示而耳自蒔辞汐鹿式識鴫竺軸宍雫七叱執失嫉室悉湿漆疾質実蔀篠偲柴芝屡蕊縞舎写射捨赦斜煮社紗者謝車遮蛇邪借勺尺杓灼爵酌釈錫若寂弱惹主取守手朱殊狩珠種腫趣酒首儒受呪寿授樹綬需囚収周\"],[\"bda1\",\"宗就州修愁拾洲秀秋終繍習臭舟蒐衆襲讐蹴輯週酋酬集醜什住充十従戎柔汁渋獣縦重銃叔夙宿淑祝縮粛塾熟出術述俊峻春瞬竣舜駿准循旬楯殉淳準潤盾純巡遵醇順処初所暑曙渚庶緒署書薯藷諸助叙女序徐恕鋤除傷償\"],[\"bea1\",\"勝匠升召哨商唱嘗奨妾娼宵将小少尚庄床廠彰承抄招掌捷昇昌昭晶松梢樟樵沼消渉湘焼焦照症省硝礁祥称章笑粧紹肖菖蒋蕉衝裳訟証詔詳象賞醤鉦鍾鐘障鞘上丈丞乗冗剰城場壌嬢常情擾条杖浄状畳穣蒸譲醸錠嘱埴飾\"],[\"bfa1\",\"拭植殖燭織職色触食蝕辱尻伸信侵唇娠寝審心慎振新晋森榛浸深申疹真神秦紳臣芯薪親診身辛進針震人仁刃塵壬尋甚尽腎訊迅陣靭笥諏須酢図厨逗吹垂帥推水炊睡粋翠衰遂酔錐錘随瑞髄崇嵩数枢趨雛据杉椙菅頗雀裾\"],[\"c0a1\",\"澄摺寸世瀬畝是凄制勢姓征性成政整星晴棲栖正清牲生盛精聖声製西誠誓請逝醒青静斉税脆隻席惜戚斥昔析石積籍績脊責赤跡蹟碩切拙接摂折設窃節説雪絶舌蝉仙先千占宣専尖川戦扇撰栓栴泉浅洗染潜煎煽旋穿箭線\"],[\"c1a1\",\"繊羨腺舛船薦詮賎践選遷銭銑閃鮮前善漸然全禅繕膳糎噌塑岨措曾曽楚狙疏疎礎祖租粗素組蘇訴阻遡鼠僧創双叢倉喪壮奏爽宋層匝惣想捜掃挿掻操早曹巣槍槽漕燥争痩相窓糟総綜聡草荘葬蒼藻装走送遭鎗霜騒像増憎\"],[\"c2a1\",\"臓蔵贈造促側則即息捉束測足速俗属賊族続卒袖其揃存孫尊損村遜他多太汰詑唾堕妥惰打柁舵楕陀駄騨体堆対耐岱帯待怠態戴替泰滞胎腿苔袋貸退逮隊黛鯛代台大第醍題鷹滝瀧卓啄宅托択拓沢濯琢託鐸濁諾茸凧蛸只\"],[\"c3a1\",\"叩但達辰奪脱巽竪辿棚谷狸鱈樽誰丹単嘆坦担探旦歎淡湛炭短端箪綻耽胆蛋誕鍛団壇弾断暖檀段男談値知地弛恥智池痴稚置致蜘遅馳築畜竹筑蓄逐秩窒茶嫡着中仲宙忠抽昼柱注虫衷註酎鋳駐樗瀦猪苧著貯丁兆凋喋寵\"],[\"c4a1\",\"帖帳庁弔張彫徴懲挑暢朝潮牒町眺聴脹腸蝶調諜超跳銚長頂鳥勅捗直朕沈珍賃鎮陳津墜椎槌追鎚痛通塚栂掴槻佃漬柘辻蔦綴鍔椿潰坪壷嬬紬爪吊釣鶴亭低停偵剃貞呈堤定帝底庭廷弟悌抵挺提梯汀碇禎程締艇訂諦蹄逓\"],[\"c5a1\",\"邸鄭釘鼎泥摘擢敵滴的笛適鏑溺哲徹撤轍迭鉄典填天展店添纏甜貼転顛点伝殿澱田電兎吐堵塗妬屠徒斗杜渡登菟賭途都鍍砥砺努度土奴怒倒党冬凍刀唐塔塘套宕島嶋悼投搭東桃梼棟盗淘湯涛灯燈当痘祷等答筒糖統到\"],[\"c6a1\",\"董蕩藤討謄豆踏逃透鐙陶頭騰闘働動同堂導憧撞洞瞳童胴萄道銅峠鴇匿得徳涜特督禿篤毒独読栃橡凸突椴届鳶苫寅酉瀞噸屯惇敦沌豚遁頓呑曇鈍奈那内乍凪薙謎灘捺鍋楢馴縄畷南楠軟難汝二尼弐迩匂賑肉虹廿日乳入\"],[\"c7a1\",\"如尿韮任妊忍認濡禰祢寧葱猫熱年念捻撚燃粘乃廼之埜嚢悩濃納能脳膿農覗蚤巴把播覇杷波派琶破婆罵芭馬俳廃拝排敗杯盃牌背肺輩配倍培媒梅楳煤狽買売賠陪這蝿秤矧萩伯剥博拍柏泊白箔粕舶薄迫曝漠爆縛莫駁麦\"],[\"c8a1\",\"函箱硲箸肇筈櫨幡肌畑畠八鉢溌発醗髪伐罰抜筏閥鳩噺塙蛤隼伴判半反叛帆搬斑板氾汎版犯班畔繁般藩販範釆煩頒飯挽晩番盤磐蕃蛮匪卑否妃庇彼悲扉批披斐比泌疲皮碑秘緋罷肥被誹費避非飛樋簸備尾微枇毘琵眉美\"],[\"c9a1\",\"鼻柊稗匹疋髭彦膝菱肘弼必畢筆逼桧姫媛紐百謬俵彪標氷漂瓢票表評豹廟描病秒苗錨鋲蒜蛭鰭品彬斌浜瀕貧賓頻敏瓶不付埠夫婦富冨布府怖扶敷斧普浮父符腐膚芙譜負賦赴阜附侮撫武舞葡蕪部封楓風葺蕗伏副復幅服\"],[\"caa1\",\"福腹複覆淵弗払沸仏物鮒分吻噴墳憤扮焚奮粉糞紛雰文聞丙併兵塀幣平弊柄並蔽閉陛米頁僻壁癖碧別瞥蔑箆偏変片篇編辺返遍便勉娩弁鞭保舗鋪圃捕歩甫補輔穂募墓慕戊暮母簿菩倣俸包呆報奉宝峰峯崩庖抱捧放方朋\"],[\"cba1\",\"法泡烹砲縫胞芳萌蓬蜂褒訪豊邦鋒飽鳳鵬乏亡傍剖坊妨帽忘忙房暴望某棒冒紡肪膨謀貌貿鉾防吠頬北僕卜墨撲朴牧睦穆釦勃没殆堀幌奔本翻凡盆摩磨魔麻埋妹昧枚毎哩槙幕膜枕鮪柾鱒桝亦俣又抹末沫迄侭繭麿万慢満\"],[\"cca1\",\"漫蔓味未魅巳箕岬密蜜湊蓑稔脈妙粍民眠務夢無牟矛霧鵡椋婿娘冥名命明盟迷銘鳴姪牝滅免棉綿緬面麺摸模茂妄孟毛猛盲網耗蒙儲木黙目杢勿餅尤戻籾貰問悶紋門匁也冶夜爺耶野弥矢厄役約薬訳躍靖柳薮鑓愉愈油癒\"],[\"cda1\",\"諭輸唯佑優勇友宥幽悠憂揖有柚湧涌猶猷由祐裕誘遊邑郵雄融夕予余与誉輿預傭幼妖容庸揚揺擁曜楊様洋溶熔用窯羊耀葉蓉要謡踊遥陽養慾抑欲沃浴翌翼淀羅螺裸来莱頼雷洛絡落酪乱卵嵐欄濫藍蘭覧利吏履李梨理璃\"],[\"cea1\",\"痢裏裡里離陸律率立葎掠略劉流溜琉留硫粒隆竜龍侶慮旅虜了亮僚両凌寮料梁涼猟療瞭稜糧良諒遼量陵領力緑倫厘林淋燐琳臨輪隣鱗麟瑠塁涙累類令伶例冷励嶺怜玲礼苓鈴隷零霊麗齢暦歴列劣烈裂廉恋憐漣煉簾練聯\"],[\"cfa1\",\"蓮連錬呂魯櫓炉賂路露労婁廊弄朗楼榔浪漏牢狼篭老聾蝋郎六麓禄肋録論倭和話歪賄脇惑枠鷲亙亘鰐詫藁蕨椀湾碗腕\"],[\"d0a1\",\"弌丐丕个丱丶丼丿乂乖乘亂亅豫亊舒弍于亞亟亠亢亰亳亶从仍仄仆仂仗仞仭仟价伉佚估佛佝佗佇佶侈侏侘佻佩佰侑佯來侖儘俔俟俎俘俛俑俚俐俤俥倚倨倔倪倥倅伜俶倡倩倬俾俯們倆偃假會偕偐偈做偖偬偸傀傚傅傴傲\"],[\"d1a1\",\"僉僊傳僂僖僞僥僭僣僮價僵儉儁儂儖儕儔儚儡儺儷儼儻儿兀兒兌兔兢竸兩兪兮冀冂囘册冉冏冑冓冕冖冤冦冢冩冪冫决冱冲冰况冽凅凉凛几處凩凭凰凵凾刄刋刔刎刧刪刮刳刹剏剄剋剌剞剔剪剴剩剳剿剽劍劔劒剱劈劑辨\"],[\"d2a1\",\"辧劬劭劼劵勁勍勗勞勣勦飭勠勳勵勸勹匆匈甸匍匐匏匕匚匣匯匱匳匸區卆卅丗卉卍凖卞卩卮夘卻卷厂厖厠厦厥厮厰厶參簒雙叟曼燮叮叨叭叺吁吽呀听吭吼吮吶吩吝呎咏呵咎呟呱呷呰咒呻咀呶咄咐咆哇咢咸咥咬哄哈咨\"],[\"d3a1\",\"咫哂咤咾咼哘哥哦唏唔哽哮哭哺哢唹啀啣啌售啜啅啖啗唸唳啝喙喀咯喊喟啻啾喘喞單啼喃喩喇喨嗚嗅嗟嗄嗜嗤嗔嘔嗷嘖嗾嗽嘛嗹噎噐營嘴嘶嘲嘸噫噤嘯噬噪嚆嚀嚊嚠嚔嚏嚥嚮嚶嚴囂嚼囁囃囀囈囎囑囓囗囮囹圀囿圄圉\"],[\"d4a1\",\"圈國圍圓團圖嗇圜圦圷圸坎圻址坏坩埀垈坡坿垉垓垠垳垤垪垰埃埆埔埒埓堊埖埣堋堙堝塲堡塢塋塰毀塒堽塹墅墹墟墫墺壞墻墸墮壅壓壑壗壙壘壥壜壤壟壯壺壹壻壼壽夂夊夐夛梦夥夬夭夲夸夾竒奕奐奎奚奘奢奠奧奬奩\"],[\"d5a1\",\"奸妁妝佞侫妣妲姆姨姜妍姙姚娥娟娑娜娉娚婀婬婉娵娶婢婪媚媼媾嫋嫂媽嫣嫗嫦嫩嫖嫺嫻嬌嬋嬖嬲嫐嬪嬶嬾孃孅孀孑孕孚孛孥孩孰孳孵學斈孺宀它宦宸寃寇寉寔寐寤實寢寞寥寫寰寶寳尅將專對尓尠尢尨尸尹屁屆屎屓\"],[\"d6a1\",\"屐屏孱屬屮乢屶屹岌岑岔妛岫岻岶岼岷峅岾峇峙峩峽峺峭嶌峪崋崕崗嵜崟崛崑崔崢崚崙崘嵌嵒嵎嵋嵬嵳嵶嶇嶄嶂嶢嶝嶬嶮嶽嶐嶷嶼巉巍巓巒巖巛巫已巵帋帚帙帑帛帶帷幄幃幀幎幗幔幟幢幤幇幵并幺麼广庠廁廂廈廐廏\"],[\"d7a1\",\"廖廣廝廚廛廢廡廨廩廬廱廳廰廴廸廾弃弉彝彜弋弑弖弩弭弸彁彈彌彎弯彑彖彗彙彡彭彳彷徃徂彿徊很徑徇從徙徘徠徨徭徼忖忻忤忸忱忝悳忿怡恠怙怐怩怎怱怛怕怫怦怏怺恚恁恪恷恟恊恆恍恣恃恤恂恬恫恙悁悍惧悃悚\"],[\"d8a1\",\"悄悛悖悗悒悧悋惡悸惠惓悴忰悽惆悵惘慍愕愆惶惷愀惴惺愃愡惻惱愍愎慇愾愨愧慊愿愼愬愴愽慂慄慳慷慘慙慚慫慴慯慥慱慟慝慓慵憙憖憇憬憔憚憊憑憫憮懌懊應懷懈懃懆憺懋罹懍懦懣懶懺懴懿懽懼懾戀戈戉戍戌戔戛\"],[\"d9a1\",\"戞戡截戮戰戲戳扁扎扞扣扛扠扨扼抂抉找抒抓抖拔抃抔拗拑抻拏拿拆擔拈拜拌拊拂拇抛拉挌拮拱挧挂挈拯拵捐挾捍搜捏掖掎掀掫捶掣掏掉掟掵捫捩掾揩揀揆揣揉插揶揄搖搴搆搓搦搶攝搗搨搏摧摯摶摎攪撕撓撥撩撈撼\"],[\"daa1\",\"據擒擅擇撻擘擂擱擧舉擠擡抬擣擯攬擶擴擲擺攀擽攘攜攅攤攣攫攴攵攷收攸畋效敖敕敍敘敞敝敲數斂斃變斛斟斫斷旃旆旁旄旌旒旛旙无旡旱杲昊昃旻杳昵昶昴昜晏晄晉晁晞晝晤晧晨晟晢晰暃暈暎暉暄暘暝曁暹曉暾暼\"],[\"dba1\",\"曄暸曖曚曠昿曦曩曰曵曷朏朖朞朦朧霸朮朿朶杁朸朷杆杞杠杙杣杤枉杰枩杼杪枌枋枦枡枅枷柯枴柬枳柩枸柤柞柝柢柮枹柎柆柧檜栞框栩桀桍栲桎梳栫桙档桷桿梟梏梭梔條梛梃檮梹桴梵梠梺椏梍桾椁棊椈棘椢椦棡椌棍\"],[\"dca1\",\"棔棧棕椶椒椄棗棣椥棹棠棯椨椪椚椣椡棆楹楷楜楸楫楔楾楮椹楴椽楙椰楡楞楝榁楪榲榮槐榿槁槓榾槎寨槊槝榻槃榧樮榑榠榜榕榴槞槨樂樛槿權槹槲槧樅榱樞槭樔槫樊樒櫁樣樓橄樌橲樶橸橇橢橙橦橈樸樢檐檍檠檄檢檣\"],[\"dda1\",\"檗蘗檻櫃櫂檸檳檬櫞櫑櫟檪櫚櫪櫻欅蘖櫺欒欖鬱欟欸欷盜欹飮歇歃歉歐歙歔歛歟歡歸歹歿殀殄殃殍殘殕殞殤殪殫殯殲殱殳殷殼毆毋毓毟毬毫毳毯麾氈氓气氛氤氣汞汕汢汪沂沍沚沁沛汾汨汳沒沐泄泱泓沽泗泅泝沮沱沾\"],[\"dea1\",\"沺泛泯泙泪洟衍洶洫洽洸洙洵洳洒洌浣涓浤浚浹浙涎涕濤涅淹渕渊涵淇淦涸淆淬淞淌淨淒淅淺淙淤淕淪淮渭湮渮渙湲湟渾渣湫渫湶湍渟湃渺湎渤滿渝游溂溪溘滉溷滓溽溯滄溲滔滕溏溥滂溟潁漑灌滬滸滾漿滲漱滯漲滌\"],[\"dfa1\",\"漾漓滷澆潺潸澁澀潯潛濳潭澂潼潘澎澑濂潦澳澣澡澤澹濆澪濟濕濬濔濘濱濮濛瀉瀋濺瀑瀁瀏濾瀛瀚潴瀝瀘瀟瀰瀾瀲灑灣炙炒炯烱炬炸炳炮烟烋烝烙焉烽焜焙煥煕熈煦煢煌煖煬熏燻熄熕熨熬燗熹熾燒燉燔燎燠燬燧燵燼\"],[\"e0a1\",\"燹燿爍爐爛爨爭爬爰爲爻爼爿牀牆牋牘牴牾犂犁犇犒犖犢犧犹犲狃狆狄狎狒狢狠狡狹狷倏猗猊猜猖猝猴猯猩猥猾獎獏默獗獪獨獰獸獵獻獺珈玳珎玻珀珥珮珞璢琅瑯琥珸琲琺瑕琿瑟瑙瑁瑜瑩瑰瑣瑪瑶瑾璋璞璧瓊瓏瓔珱\"],[\"e1a1\",\"瓠瓣瓧瓩瓮瓲瓰瓱瓸瓷甄甃甅甌甎甍甕甓甞甦甬甼畄畍畊畉畛畆畚畩畤畧畫畭畸當疆疇畴疊疉疂疔疚疝疥疣痂疳痃疵疽疸疼疱痍痊痒痙痣痞痾痿痼瘁痰痺痲痳瘋瘍瘉瘟瘧瘠瘡瘢瘤瘴瘰瘻癇癈癆癜癘癡癢癨癩癪癧癬癰\"],[\"e2a1\",\"癲癶癸發皀皃皈皋皎皖皓皙皚皰皴皸皹皺盂盍盖盒盞盡盥盧盪蘯盻眈眇眄眩眤眞眥眦眛眷眸睇睚睨睫睛睥睿睾睹瞎瞋瞑瞠瞞瞰瞶瞹瞿瞼瞽瞻矇矍矗矚矜矣矮矼砌砒礦砠礪硅碎硴碆硼碚碌碣碵碪碯磑磆磋磔碾碼磅磊磬\"],[\"e3a1\",\"磧磚磽磴礇礒礑礙礬礫祀祠祗祟祚祕祓祺祿禊禝禧齋禪禮禳禹禺秉秕秧秬秡秣稈稍稘稙稠稟禀稱稻稾稷穃穗穉穡穢穩龝穰穹穽窈窗窕窘窖窩竈窰窶竅竄窿邃竇竊竍竏竕竓站竚竝竡竢竦竭竰笂笏笊笆笳笘笙笞笵笨笶筐\"],[\"e4a1\",\"筺笄筍笋筌筅筵筥筴筧筰筱筬筮箝箘箟箍箜箚箋箒箏筝箙篋篁篌篏箴篆篝篩簑簔篦篥籠簀簇簓篳篷簗簍篶簣簧簪簟簷簫簽籌籃籔籏籀籐籘籟籤籖籥籬籵粃粐粤粭粢粫粡粨粳粲粱粮粹粽糀糅糂糘糒糜糢鬻糯糲糴糶糺紆\"],[\"e5a1\",\"紂紜紕紊絅絋紮紲紿紵絆絳絖絎絲絨絮絏絣經綉絛綏絽綛綺綮綣綵緇綽綫總綢綯緜綸綟綰緘緝緤緞緻緲緡縅縊縣縡縒縱縟縉縋縢繆繦縻縵縹繃縷縲縺繧繝繖繞繙繚繹繪繩繼繻纃緕繽辮繿纈纉續纒纐纓纔纖纎纛纜缸缺\"],[\"e6a1\",\"罅罌罍罎罐网罕罔罘罟罠罨罩罧罸羂羆羃羈羇羌羔羞羝羚羣羯羲羹羮羶羸譱翅翆翊翕翔翡翦翩翳翹飜耆耄耋耒耘耙耜耡耨耿耻聊聆聒聘聚聟聢聨聳聲聰聶聹聽聿肄肆肅肛肓肚肭冐肬胛胥胙胝胄胚胖脉胯胱脛脩脣脯腋\"],[\"e7a1\",\"隋腆脾腓腑胼腱腮腥腦腴膃膈膊膀膂膠膕膤膣腟膓膩膰膵膾膸膽臀臂膺臉臍臑臙臘臈臚臟臠臧臺臻臾舁舂舅與舊舍舐舖舩舫舸舳艀艙艘艝艚艟艤艢艨艪艫舮艱艷艸艾芍芒芫芟芻芬苡苣苟苒苴苳苺莓范苻苹苞茆苜茉苙\"],[\"e8a1\",\"茵茴茖茲茱荀茹荐荅茯茫茗茘莅莚莪莟莢莖茣莎莇莊荼莵荳荵莠莉莨菴萓菫菎菽萃菘萋菁菷萇菠菲萍萢萠莽萸蔆菻葭萪萼蕚蒄葷葫蒭葮蒂葩葆萬葯葹萵蓊葢蒹蒿蒟蓙蓍蒻蓚蓐蓁蓆蓖蒡蔡蓿蓴蔗蔘蔬蔟蔕蔔蓼蕀蕣蕘蕈\"],[\"e9a1\",\"蕁蘂蕋蕕薀薤薈薑薊薨蕭薔薛藪薇薜蕷蕾薐藉薺藏薹藐藕藝藥藜藹蘊蘓蘋藾藺蘆蘢蘚蘰蘿虍乕虔號虧虱蚓蚣蚩蚪蚋蚌蚶蚯蛄蛆蚰蛉蠣蚫蛔蛞蛩蛬蛟蛛蛯蜒蜆蜈蜀蜃蛻蜑蜉蜍蛹蜊蜴蜿蜷蜻蜥蜩蜚蝠蝟蝸蝌蝎蝴蝗蝨蝮蝙\"],[\"eaa1\",\"蝓蝣蝪蠅螢螟螂螯蟋螽蟀蟐雖螫蟄螳蟇蟆螻蟯蟲蟠蠏蠍蟾蟶蟷蠎蟒蠑蠖蠕蠢蠡蠱蠶蠹蠧蠻衄衂衒衙衞衢衫袁衾袞衵衽袵衲袂袗袒袮袙袢袍袤袰袿袱裃裄裔裘裙裝裹褂裼裴裨裲褄褌褊褓襃褞褥褪褫襁襄褻褶褸襌褝襠襞\"],[\"eba1\",\"襦襤襭襪襯襴襷襾覃覈覊覓覘覡覩覦覬覯覲覺覽覿觀觚觜觝觧觴觸訃訖訐訌訛訝訥訶詁詛詒詆詈詼詭詬詢誅誂誄誨誡誑誥誦誚誣諄諍諂諚諫諳諧諤諱謔諠諢諷諞諛謌謇謚諡謖謐謗謠謳鞫謦謫謾謨譁譌譏譎證譖譛譚譫\"],[\"eca1\",\"譟譬譯譴譽讀讌讎讒讓讖讙讚谺豁谿豈豌豎豐豕豢豬豸豺貂貉貅貊貍貎貔豼貘戝貭貪貽貲貳貮貶賈賁賤賣賚賽賺賻贄贅贊贇贏贍贐齎贓賍贔贖赧赭赱赳趁趙跂趾趺跏跚跖跌跛跋跪跫跟跣跼踈踉跿踝踞踐踟蹂踵踰踴蹊\"],[\"eda1\",\"蹇蹉蹌蹐蹈蹙蹤蹠踪蹣蹕蹶蹲蹼躁躇躅躄躋躊躓躑躔躙躪躡躬躰軆躱躾軅軈軋軛軣軼軻軫軾輊輅輕輒輙輓輜輟輛輌輦輳輻輹轅轂輾轌轉轆轎轗轜轢轣轤辜辟辣辭辯辷迚迥迢迪迯邇迴逅迹迺逑逕逡逍逞逖逋逧逶逵逹迸\"],[\"eea1\",\"遏遐遑遒逎遉逾遖遘遞遨遯遶隨遲邂遽邁邀邊邉邏邨邯邱邵郢郤扈郛鄂鄒鄙鄲鄰酊酖酘酣酥酩酳酲醋醉醂醢醫醯醪醵醴醺釀釁釉釋釐釖釟釡釛釼釵釶鈞釿鈔鈬鈕鈑鉞鉗鉅鉉鉤鉈銕鈿鉋鉐銜銖銓銛鉚鋏銹銷鋩錏鋺鍄錮\"],[\"efa1\",\"錙錢錚錣錺錵錻鍜鍠鍼鍮鍖鎰鎬鎭鎔鎹鏖鏗鏨鏥鏘鏃鏝鏐鏈鏤鐚鐔鐓鐃鐇鐐鐶鐫鐵鐡鐺鑁鑒鑄鑛鑠鑢鑞鑪鈩鑰鑵鑷鑽鑚鑼鑾钁鑿閂閇閊閔閖閘閙閠閨閧閭閼閻閹閾闊濶闃闍闌闕闔闖關闡闥闢阡阨阮阯陂陌陏陋陷陜陞\"],[\"f0a1\",\"陝陟陦陲陬隍隘隕隗險隧隱隲隰隴隶隸隹雎雋雉雍襍雜霍雕雹霄霆霈霓霎霑霏霖霙霤霪霰霹霽霾靄靆靈靂靉靜靠靤靦靨勒靫靱靹鞅靼鞁靺鞆鞋鞏鞐鞜鞨鞦鞣鞳鞴韃韆韈韋韜韭齏韲竟韶韵頏頌頸頤頡頷頽顆顏顋顫顯顰\"],[\"f1a1\",\"顱顴顳颪颯颱颶飄飃飆飩飫餃餉餒餔餘餡餝餞餤餠餬餮餽餾饂饉饅饐饋饑饒饌饕馗馘馥馭馮馼駟駛駝駘駑駭駮駱駲駻駸騁騏騅駢騙騫騷驅驂驀驃騾驕驍驛驗驟驢驥驤驩驫驪骭骰骼髀髏髑髓體髞髟髢髣髦髯髫髮髴髱髷\"],[\"f2a1\",\"髻鬆鬘鬚鬟鬢鬣鬥鬧鬨鬩鬪鬮鬯鬲魄魃魏魍魎魑魘魴鮓鮃鮑鮖鮗鮟鮠鮨鮴鯀鯊鮹鯆鯏鯑鯒鯣鯢鯤鯔鯡鰺鯲鯱鯰鰕鰔鰉鰓鰌鰆鰈鰒鰊鰄鰮鰛鰥鰤鰡鰰鱇鰲鱆鰾鱚鱠鱧鱶鱸鳧鳬鳰鴉鴈鳫鴃鴆鴪鴦鶯鴣鴟鵄鴕鴒鵁鴿鴾鵆鵈\"],[\"f3a1\",\"鵝鵞鵤鵑鵐鵙鵲鶉鶇鶫鵯鵺鶚鶤鶩鶲鷄鷁鶻鶸鶺鷆鷏鷂鷙鷓鷸鷦鷭鷯鷽鸚鸛鸞鹵鹹鹽麁麈麋麌麒麕麑麝麥麩麸麪麭靡黌黎黏黐黔黜點黝黠黥黨黯黴黶黷黹黻黼黽鼇鼈皷鼕鼡鼬鼾齊齒齔齣齟齠齡齦齧齬齪齷齲齶龕龜龠\"],[\"f4a1\",\"堯槇遙瑤凜熙\"],[\"f9a1\",\"纊褜鍈銈蓜俉炻昱棈鋹曻彅丨仡仼伀伃伹佖侒侊侚侔俍偀倢俿倞偆偰偂傔僴僘兊兤冝冾凬刕劜劦勀勛匀匇匤卲厓厲叝﨎咜咊咩哿喆坙坥垬埈埇﨏塚增墲夋奓奛奝奣妤妺孖寀甯寘寬尞岦岺峵崧嵓﨑嵂嵭嶸嶹巐弡弴彧德\"],[\"faa1\",\"忞恝悅悊惞惕愠惲愑愷愰憘戓抦揵摠撝擎敎昀昕昻昉昮昞昤晥晗晙晴晳暙暠暲暿曺朎朗杦枻桒柀栁桄棏﨓楨﨔榘槢樰橫橆橳橾櫢櫤毖氿汜沆汯泚洄涇浯涖涬淏淸淲淼渹湜渧渼溿澈澵濵瀅瀇瀨炅炫焏焄煜煆煇凞燁燾犱\"],[\"fba1\",\"犾猤猪獷玽珉珖珣珒琇珵琦琪琩琮瑢璉璟甁畯皂皜皞皛皦益睆劯砡硎硤硺礰礼神祥禔福禛竑竧靖竫箞精絈絜綷綠緖繒罇羡羽茁荢荿菇菶葈蒴蕓蕙蕫﨟薰蘒﨡蠇裵訒訷詹誧誾諟諸諶譓譿賰賴贒赶﨣軏﨤逸遧郞都鄕鄧釚\"],[\"fca1\",\"釗釞釭釮釤釥鈆鈐鈊鈺鉀鈼鉎鉙鉑鈹鉧銧鉷鉸鋧鋗鋙鋐﨧鋕鋠鋓錥錡鋻﨨錞鋿錝錂鍰鍗鎤鏆鏞鏸鐱鑅鑈閒隆﨩隝隯霳霻靃靍靏靑靕顗顥飯飼餧館馞驎髙髜魵魲鮏鮱鮻鰀鵰鵫鶴鸙黑\"],[\"fcf1\",\"ⅰ\",9,\"￢￤＇＂\"],[\"8fa2af\",\"˘ˇ¸˙˝¯˛˚～΄΅\"],[\"8fa2c2\",\"¡¦¿\"],[\"8fa2eb\",\"ºª©®™¤№\"],[\"8fa6e1\",\"ΆΈΉΊΪ\"],[\"8fa6e7\",\"Ό\"],[\"8fa6e9\",\"ΎΫ\"],[\"8fa6ec\",\"Ώ\"],[\"8fa6f1\",\"άέήίϊΐόςύϋΰώ\"],[\"8fa7c2\",\"Ђ\",10,\"ЎЏ\"],[\"8fa7f2\",\"ђ\",10,\"ўџ\"],[\"8fa9a1\",\"ÆĐ\"],[\"8fa9a4\",\"Ħ\"],[\"8fa9a6\",\"Ĳ\"],[\"8fa9a8\",\"ŁĿ\"],[\"8fa9ab\",\"ŊØŒ\"],[\"8fa9af\",\"ŦÞ\"],[\"8fa9c1\",\"æđðħıĳĸłŀŉŋøœßŧþ\"],[\"8faaa1\",\"ÁÀÄÂĂǍĀĄÅÃĆĈČÇĊĎÉÈËÊĚĖĒĘ\"],[\"8faaba\",\"ĜĞĢĠĤÍÌÏÎǏİĪĮĨĴĶĹĽĻŃŇŅÑÓÒÖÔǑŐŌÕŔŘŖŚŜŠŞŤŢÚÙÜÛŬǓŰŪŲŮŨǗǛǙǕŴÝŸŶŹŽŻ\"],[\"8faba1\",\"áàäâăǎāąåãćĉčçċďéèëêěėēęǵĝğ\"],[\"8fabbd\",\"ġĥíìïîǐ\"],[\"8fabc5\",\"īįĩĵķĺľļńňņñóòöôǒőōõŕřŗśŝšşťţúùüûŭǔűūųůũǘǜǚǖŵýÿŷźžż\"],[\"8fb0a1\",\"丂丄丅丌丒丟丣两丨丫丮丯丰丵乀乁乄乇乑乚乜乣乨乩乴乵乹乿亍亖亗亝亯亹仃仐仚仛仠仡仢仨仯仱仳仵份仾仿伀伂伃伈伋伌伒伕伖众伙伮伱你伳伵伷伹伻伾佀佂佈佉佋佌佒佔佖佘佟佣佪佬佮佱佷佸佹佺佽佾侁侂侄\"],[\"8fb1a1\",\"侅侉侊侌侎侐侒侓侔侗侙侚侞侟侲侷侹侻侼侽侾俀俁俅俆俈俉俋俌俍俏俒俜俠俢俰俲俼俽俿倀倁倄倇倊倌倎倐倓倗倘倛倜倝倞倢倧倮倰倲倳倵偀偁偂偅偆偊偌偎偑偒偓偗偙偟偠偢偣偦偧偪偭偰偱倻傁傃傄傆傊傎傏傐\"],[\"8fb2a1\",\"傒傓傔傖傛傜傞\",4,\"傪傯傰傹傺傽僀僃僄僇僌僎僐僓僔僘僜僝僟僢僤僦僨僩僯僱僶僺僾儃儆儇儈儋儌儍儎僲儐儗儙儛儜儝儞儣儧儨儬儭儯儱儳儴儵儸儹兂兊兏兓兕兗兘兟兤兦兾冃冄冋冎冘冝冡冣冭冸冺冼冾冿凂\"],[\"8fb3a1\",\"凈减凑凒凓凕凘凞凢凥凮凲凳凴凷刁刂刅划刓刕刖刘刢刨刱刲刵刼剅剉剕剗剘剚剜剟剠剡剦剮剷剸剹劀劂劅劊劌劓劕劖劗劘劚劜劤劥劦劧劯劰劶劷劸劺劻劽勀勄勆勈勌勏勑勔勖勛勜勡勥勨勩勪勬勰勱勴勶勷匀匃匊匋\"],[\"8fb4a1\",\"匌匑匓匘匛匜匞匟匥匧匨匩匫匬匭匰匲匵匼匽匾卂卌卋卙卛卡卣卥卬卭卲卹卾厃厇厈厎厓厔厙厝厡厤厪厫厯厲厴厵厷厸厺厽叀叅叏叒叓叕叚叝叞叠另叧叵吂吓吚吡吧吨吪启吱吴吵呃呄呇呍呏呞呢呤呦呧呩呫呭呮呴呿\"],[\"8fb5a1\",\"咁咃咅咈咉咍咑咕咖咜咟咡咦咧咩咪咭咮咱咷咹咺咻咿哆哊响哎哠哪哬哯哶哼哾哿唀唁唅唈唉唌唍唎唕唪唫唲唵唶唻唼唽啁啇啉啊啍啐啑啘啚啛啞啠啡啤啦啿喁喂喆喈喎喏喑喒喓喔喗喣喤喭喲喿嗁嗃嗆嗉嗋嗌嗎嗑嗒\"],[\"8fb6a1\",\"嗓嗗嗘嗛嗞嗢嗩嗶嗿嘅嘈嘊嘍\",5,\"嘙嘬嘰嘳嘵嘷嘹嘻嘼嘽嘿噀噁噃噄噆噉噋噍噏噔噞噠噡噢噣噦噩噭噯噱噲噵嚄嚅嚈嚋嚌嚕嚙嚚嚝嚞嚟嚦嚧嚨嚩嚫嚬嚭嚱嚳嚷嚾囅囉囊囋囏囐囌囍囙囜囝囟囡囤\",4,\"囱囫园\"],[\"8fb7a1\",\"囶囷圁圂圇圊圌圑圕圚圛圝圠圢圣圤圥圩圪圬圮圯圳圴圽圾圿坅坆坌坍坒坢坥坧坨坫坭\",4,\"坳坴坵坷坹坺坻坼坾垁垃垌垔垗垙垚垜垝垞垟垡垕垧垨垩垬垸垽埇埈埌埏埕埝埞埤埦埧埩埭埰埵埶埸埽埾埿堃堄堈堉埡\"],[\"8fb8a1\",\"堌堍堛堞堟堠堦堧堭堲堹堿塉塌塍塏塐塕塟塡塤塧塨塸塼塿墀墁墇墈墉墊墌墍墏墐墔墖墝墠墡墢墦墩墱墲壄墼壂壈壍壎壐壒壔壖壚壝壡壢壩壳夅夆夋夌夒夓夔虁夝夡夣夤夨夯夰夳夵夶夿奃奆奒奓奙奛奝奞奟奡奣奫奭\"],[\"8fb9a1\",\"奯奲奵奶她奻奼妋妌妎妒妕妗妟妤妧妭妮妯妰妳妷妺妼姁姃姄姈姊姍姒姝姞姟姣姤姧姮姯姱姲姴姷娀娄娌娍娎娒娓娞娣娤娧娨娪娭娰婄婅婇婈婌婐婕婞婣婥婧婭婷婺婻婾媋媐媓媖媙媜媞媟媠媢媧媬媱媲媳媵媸媺媻媿\"],[\"8fbaa1\",\"嫄嫆嫈嫏嫚嫜嫠嫥嫪嫮嫵嫶嫽嬀嬁嬈嬗嬴嬙嬛嬝嬡嬥嬭嬸孁孋孌孒孖孞孨孮孯孼孽孾孿宁宄宆宊宎宐宑宓宔宖宨宩宬宭宯宱宲宷宺宼寀寁寍寏寖\",4,\"寠寯寱寴寽尌尗尞尟尣尦尩尫尬尮尰尲尵尶屙屚屜屢屣屧屨屩\"],[\"8fbba1\",\"屭屰屴屵屺屻屼屽岇岈岊岏岒岝岟岠岢岣岦岪岲岴岵岺峉峋峒峝峗峮峱峲峴崁崆崍崒崫崣崤崦崧崱崴崹崽崿嵂嵃嵆嵈嵕嵑嵙嵊嵟嵠嵡嵢嵤嵪嵭嵰嵹嵺嵾嵿嶁嶃嶈嶊嶒嶓嶔嶕嶙嶛嶟嶠嶧嶫嶰嶴嶸嶹巃巇巋巐巎巘巙巠巤\"],[\"8fbca1\",\"巩巸巹帀帇帍帒帔帕帘帟帠帮帨帲帵帾幋幐幉幑幖幘幛幜幞幨幪\",4,\"幰庀庋庎庢庤庥庨庪庬庱庳庽庾庿廆廌廋廎廑廒廔廕廜廞廥廫异弆弇弈弎弙弜弝弡弢弣弤弨弫弬弮弰弴弶弻弽弿彀彄彅彇彍彐彔彘彛彠彣彤彧\"],[\"8fbda1\",\"彯彲彴彵彸彺彽彾徉徍徏徖徜徝徢徧徫徤徬徯徰徱徸忄忇忈忉忋忐\",4,\"忞忡忢忨忩忪忬忭忮忯忲忳忶忺忼怇怊怍怓怔怗怘怚怟怤怭怳怵恀恇恈恉恌恑恔恖恗恝恡恧恱恾恿悂悆悈悊悎悑悓悕悘悝悞悢悤悥您悰悱悷\"],[\"8fbea1\",\"悻悾惂惄惈惉惊惋惎惏惔惕惙惛惝惞惢惥惲惵惸惼惽愂愇愊愌愐\",4,\"愖愗愙愜愞愢愪愫愰愱愵愶愷愹慁慅慆慉慞慠慬慲慸慻慼慿憀憁憃憄憋憍憒憓憗憘憜憝憟憠憥憨憪憭憸憹憼懀懁懂懎懏懕懜懝懞懟懡懢懧懩懥\"],[\"8fbfa1\",\"懬懭懯戁戃戄戇戓戕戜戠戢戣戧戩戫戹戽扂扃扄扆扌扐扑扒扔扖扚扜扤扭扯扳扺扽抍抎抏抐抦抨抳抶抷抺抾抿拄拎拕拖拚拪拲拴拼拽挃挄挊挋挍挐挓挖挘挩挪挭挵挶挹挼捁捂捃捄捆捊捋捎捒捓捔捘捛捥捦捬捭捱捴捵\"],[\"8fc0a1\",\"捸捼捽捿掂掄掇掊掐掔掕掙掚掞掤掦掭掮掯掽揁揅揈揎揑揓揔揕揜揠揥揪揬揲揳揵揸揹搉搊搐搒搔搘搞搠搢搤搥搩搪搯搰搵搽搿摋摏摑摒摓摔摚摛摜摝摟摠摡摣摭摳摴摻摽撅撇撏撐撑撘撙撛撝撟撡撣撦撨撬撳撽撾撿\"],[\"8fc1a1\",\"擄擉擊擋擌擎擐擑擕擗擤擥擩擪擭擰擵擷擻擿攁攄攈攉攊攏攓攔攖攙攛攞攟攢攦攩攮攱攺攼攽敃敇敉敐敒敔敟敠敧敫敺敽斁斅斊斒斕斘斝斠斣斦斮斲斳斴斿旂旈旉旎旐旔旖旘旟旰旲旴旵旹旾旿昀昄昈昉昍昑昒昕昖昝\"],[\"8fc2a1\",\"昞昡昢昣昤昦昩昪昫昬昮昰昱昳昹昷晀晅晆晊晌晑晎晗晘晙晛晜晠晡曻晪晫晬晾晳晵晿晷晸晹晻暀晼暋暌暍暐暒暙暚暛暜暟暠暤暭暱暲暵暻暿曀曂曃曈曌曎曏曔曛曟曨曫曬曮曺朅朇朎朓朙朜朠朢朳朾杅杇杈杌杔杕杝\"],[\"8fc3a1\",\"杦杬杮杴杶杻极构枎枏枑枓枖枘枙枛枰枱枲枵枻枼枽柹柀柂柃柅柈柉柒柗柙柜柡柦柰柲柶柷桒栔栙栝栟栨栧栬栭栯栰栱栳栻栿桄桅桊桌桕桗桘桛桫桮\",4,\"桵桹桺桻桼梂梄梆梈梖梘梚梜梡梣梥梩梪梮梲梻棅棈棌棏\"],[\"8fc4a1\",\"棐棑棓棖棙棜棝棥棨棪棫棬棭棰棱棵棶棻棼棽椆椉椊椐椑椓椖椗椱椳椵椸椻楂楅楉楎楗楛楣楤楥楦楨楩楬楰楱楲楺楻楿榀榍榒榖榘榡榥榦榨榫榭榯榷榸榺榼槅槈槑槖槗槢槥槮槯槱槳槵槾樀樁樃樏樑樕樚樝樠樤樨樰樲\"],[\"8fc5a1\",\"樴樷樻樾樿橅橆橉橊橎橐橑橒橕橖橛橤橧橪橱橳橾檁檃檆檇檉檋檑檛檝檞檟檥檫檯檰檱檴檽檾檿櫆櫉櫈櫌櫐櫔櫕櫖櫜櫝櫤櫧櫬櫰櫱櫲櫼櫽欂欃欆欇欉欏欐欑欗欛欞欤欨欫欬欯欵欶欻欿歆歊歍歒歖歘歝歠歧歫歮歰歵歽\"],[\"8fc6a1\",\"歾殂殅殗殛殟殠殢殣殨殩殬殭殮殰殸殹殽殾毃毄毉毌毖毚毡毣毦毧毮毱毷毹毿氂氄氅氉氍氎氐氒氙氟氦氧氨氬氮氳氵氶氺氻氿汊汋汍汏汒汔汙汛汜汫汭汯汴汶汸汹汻沅沆沇沉沔沕沗沘沜沟沰沲沴泂泆泍泏泐泑泒泔泖\"],[\"8fc7a1\",\"泚泜泠泧泩泫泬泮泲泴洄洇洊洎洏洑洓洚洦洧洨汧洮洯洱洹洼洿浗浞浟浡浥浧浯浰浼涂涇涑涒涔涖涗涘涪涬涴涷涹涽涿淄淈淊淎淏淖淛淝淟淠淢淥淩淯淰淴淶淼渀渄渞渢渧渲渶渹渻渼湄湅湈湉湋湏湑湒湓湔湗湜湝湞\"],[\"8fc8a1\",\"湢湣湨湳湻湽溍溓溙溠溧溭溮溱溳溻溿滀滁滃滇滈滊滍滎滏滫滭滮滹滻滽漄漈漊漌漍漖漘漚漛漦漩漪漯漰漳漶漻漼漭潏潑潒潓潗潙潚潝潞潡潢潨潬潽潾澃澇澈澋澌澍澐澒澓澔澖澚澟澠澥澦澧澨澮澯澰澵澶澼濅濇濈濊\"],[\"8fc9a1\",\"濚濞濨濩濰濵濹濼濽瀀瀅瀆瀇瀍瀗瀠瀣瀯瀴瀷瀹瀼灃灄灈灉灊灋灔灕灝灞灎灤灥灬灮灵灶灾炁炅炆炔\",4,\"炛炤炫炰炱炴炷烊烑烓烔烕烖烘烜烤烺焃\",4,\"焋焌焏焞焠焫焭焯焰焱焸煁煅煆煇煊煋煐煒煗煚煜煞煠\"],[\"8fcaa1\",\"煨煹熀熅熇熌熒熚熛熠熢熯熰熲熳熺熿燀燁燄燋燌燓燖燙燚燜燸燾爀爇爈爉爓爗爚爝爟爤爫爯爴爸爹牁牂牃牅牎牏牐牓牕牖牚牜牞牠牣牨牫牮牯牱牷牸牻牼牿犄犉犍犎犓犛犨犭犮犱犴犾狁狇狉狌狕狖狘狟狥狳狴狺狻\"],[\"8fcba1\",\"狾猂猄猅猇猋猍猒猓猘猙猞猢猤猧猨猬猱猲猵猺猻猽獃獍獐獒獖獘獝獞獟獠獦獧獩獫獬獮獯獱獷獹獼玀玁玃玅玆玎玐玓玕玗玘玜玞玟玠玢玥玦玪玫玭玵玷玹玼玽玿珅珆珉珋珌珏珒珓珖珙珝珡珣珦珧珩珴珵珷珹珺珻珽\"],[\"8fcca1\",\"珿琀琁琄琇琊琑琚琛琤琦琨\",9,\"琹瑀瑃瑄瑆瑇瑋瑍瑑瑒瑗瑝瑢瑦瑧瑨瑫瑭瑮瑱瑲璀璁璅璆璇璉璏璐璑璒璘璙璚璜璟璠璡璣璦璨璩璪璫璮璯璱璲璵璹璻璿瓈瓉瓌瓐瓓瓘瓚瓛瓞瓟瓤瓨瓪瓫瓯瓴瓺瓻瓼瓿甆\"],[\"8fcda1\",\"甒甖甗甠甡甤甧甩甪甯甶甹甽甾甿畀畃畇畈畎畐畒畗畞畟畡畯畱畹\",5,\"疁疅疐疒疓疕疙疜疢疤疴疺疿痀痁痄痆痌痎痏痗痜痟痠痡痤痧痬痮痯痱痹瘀瘂瘃瘄瘇瘈瘊瘌瘏瘒瘓瘕瘖瘙瘛瘜瘝瘞瘣瘥瘦瘩瘭瘲瘳瘵瘸瘹\"],[\"8fcea1\",\"瘺瘼癊癀癁癃癄癅癉癋癕癙癟癤癥癭癮癯癱癴皁皅皌皍皕皛皜皝皟皠皢\",6,\"皪皭皽盁盅盉盋盌盎盔盙盠盦盨盬盰盱盶盹盼眀眆眊眎眒眔眕眗眙眚眜眢眨眭眮眯眴眵眶眹眽眾睂睅睆睊睍睎睏睒睖睗睜睞睟睠睢\"],[\"8fcfa1\",\"睤睧睪睬睰睲睳睴睺睽瞀瞄瞌瞍瞔瞕瞖瞚瞟瞢瞧瞪瞮瞯瞱瞵瞾矃矉矑矒矕矙矞矟矠矤矦矪矬矰矱矴矸矻砅砆砉砍砎砑砝砡砢砣砭砮砰砵砷硃硄硇硈硌硎硒硜硞硠硡硣硤硨硪确硺硾碊碏碔碘碡碝碞碟碤碨碬碭碰碱碲碳\"],[\"8fd0a1\",\"碻碽碿磇磈磉磌磎磒磓磕磖磤磛磟磠磡磦磪磲磳礀磶磷磺磻磿礆礌礐礚礜礞礟礠礥礧礩礭礱礴礵礻礽礿祄祅祆祊祋祏祑祔祘祛祜祧祩祫祲祹祻祼祾禋禌禑禓禔禕禖禘禛禜禡禨禩禫禯禱禴禸离秂秄秇秈秊秏秔秖秚秝秞\"],[\"8fd1a1\",\"秠秢秥秪秫秭秱秸秼稂稃稇稉稊稌稑稕稛稞稡稧稫稭稯稰稴稵稸稹稺穄穅穇穈穌穕穖穙穜穝穟穠穥穧穪穭穵穸穾窀窂窅窆窊窋窐窑窔窞窠窣窬窳窵窹窻窼竆竉竌竎竑竛竨竩竫竬竱竴竻竽竾笇笔笟笣笧笩笪笫笭笮笯笰\"],[\"8fd2a1\",\"笱笴笽笿筀筁筇筎筕筠筤筦筩筪筭筯筲筳筷箄箉箎箐箑箖箛箞箠箥箬箯箰箲箵箶箺箻箼箽篂篅篈篊篔篖篗篙篚篛篨篪篲篴篵篸篹篺篼篾簁簂簃簄簆簉簋簌簎簏簙簛簠簥簦簨簬簱簳簴簶簹簺籆籊籕籑籒籓籙\",5],[\"8fd3a1\",\"籡籣籧籩籭籮籰籲籹籼籽粆粇粏粔粞粠粦粰粶粷粺粻粼粿糄糇糈糉糍糏糓糔糕糗糙糚糝糦糩糫糵紃紇紈紉紏紑紒紓紖紝紞紣紦紪紭紱紼紽紾絀絁絇絈絍絑絓絗絙絚絜絝絥絧絪絰絸絺絻絿綁綂綃綅綆綈綋綌綍綑綖綗綝\"],[\"8fd4a1\",\"綞綦綧綪綳綶綷綹緂\",4,\"緌緍緎緗緙縀緢緥緦緪緫緭緱緵緶緹緺縈縐縑縕縗縜縝縠縧縨縬縭縯縳縶縿繄繅繇繎繐繒繘繟繡繢繥繫繮繯繳繸繾纁纆纇纊纍纑纕纘纚纝纞缼缻缽缾缿罃罄罇罏罒罓罛罜罝罡罣罤罥罦罭\"],[\"8fd5a1\",\"罱罽罾罿羀羋羍羏羐羑羖羗羜羡羢羦羪羭羴羼羿翀翃翈翎翏翛翟翣翥翨翬翮翯翲翺翽翾翿耇耈耊耍耎耏耑耓耔耖耝耞耟耠耤耦耬耮耰耴耵耷耹耺耼耾聀聄聠聤聦聭聱聵肁肈肎肜肞肦肧肫肸肹胈胍胏胒胔胕胗胘胠胭胮\"],[\"8fd6a1\",\"胰胲胳胶胹胺胾脃脋脖脗脘脜脞脠脤脧脬脰脵脺脼腅腇腊腌腒腗腠腡腧腨腩腭腯腷膁膐膄膅膆膋膎膖膘膛膞膢膮膲膴膻臋臃臅臊臎臏臕臗臛臝臞臡臤臫臬臰臱臲臵臶臸臹臽臿舀舃舏舓舔舙舚舝舡舢舨舲舴舺艃艄艅艆\"],[\"8fd7a1\",\"艋艎艏艑艖艜艠艣艧艭艴艻艽艿芀芁芃芄芇芉芊芎芑芔芖芘芚芛芠芡芣芤芧芨芩芪芮芰芲芴芷芺芼芾芿苆苐苕苚苠苢苤苨苪苭苯苶苷苽苾茀茁茇茈茊茋荔茛茝茞茟茡茢茬茭茮茰茳茷茺茼茽荂荃荄荇荍荎荑荕荖荗荰荸\"],[\"8fd8a1\",\"荽荿莀莂莄莆莍莒莔莕莘莙莛莜莝莦莧莩莬莾莿菀菇菉菏菐菑菔菝荓菨菪菶菸菹菼萁萆萊萏萑萕萙莭萯萹葅葇葈葊葍葏葑葒葖葘葙葚葜葠葤葥葧葪葰葳葴葶葸葼葽蒁蒅蒒蒓蒕蒞蒦蒨蒩蒪蒯蒱蒴蒺蒽蒾蓀蓂蓇蓈蓌蓏蓓\"],[\"8fd9a1\",\"蓜蓧蓪蓯蓰蓱蓲蓷蔲蓺蓻蓽蔂蔃蔇蔌蔎蔐蔜蔞蔢蔣蔤蔥蔧蔪蔫蔯蔳蔴蔶蔿蕆蕏\",4,\"蕖蕙蕜\",6,\"蕤蕫蕯蕹蕺蕻蕽蕿薁薅薆薉薋薌薏薓薘薝薟薠薢薥薧薴薶薷薸薼薽薾薿藂藇藊藋藎薭藘藚藟藠藦藨藭藳藶藼\"],[\"8fdaa1\",\"藿蘀蘄蘅蘍蘎蘐蘑蘒蘘蘙蘛蘞蘡蘧蘩蘶蘸蘺蘼蘽虀虂虆虒虓虖虗虘虙虝虠\",4,\"虩虬虯虵虶虷虺蚍蚑蚖蚘蚚蚜蚡蚦蚧蚨蚭蚱蚳蚴蚵蚷蚸蚹蚿蛀蛁蛃蛅蛑蛒蛕蛗蛚蛜蛠蛣蛥蛧蚈蛺蛼蛽蜄蜅蜇蜋蜎蜏蜐蜓蜔蜙蜞蜟蜡蜣\"],[\"8fdba1\",\"蜨蜮蜯蜱蜲蜹蜺蜼蜽蜾蝀蝃蝅蝍蝘蝝蝡蝤蝥蝯蝱蝲蝻螃\",6,\"螋螌螐螓螕螗螘螙螞螠螣螧螬螭螮螱螵螾螿蟁蟈蟉蟊蟎蟕蟖蟙蟚蟜蟟蟢蟣蟤蟪蟫蟭蟱蟳蟸蟺蟿蠁蠃蠆蠉蠊蠋蠐蠙蠒蠓蠔蠘蠚蠛蠜蠞蠟蠨蠭蠮蠰蠲蠵\"],[\"8fdca1\",\"蠺蠼衁衃衅衈衉衊衋衎衑衕衖衘衚衜衟衠衤衩衱衹衻袀袘袚袛袜袟袠袨袪袺袽袾裀裊\",4,\"裑裒裓裛裞裧裯裰裱裵裷褁褆褍褎褏褕褖褘褙褚褜褠褦褧褨褰褱褲褵褹褺褾襀襂襅襆襉襏襒襗襚襛襜襡襢襣襫襮襰襳襵襺\"],[\"8fdda1\",\"襻襼襽覉覍覐覔覕覛覜覟覠覥覰覴覵覶覷覼觔\",4,\"觥觩觫觭觱觳觶觹觽觿訄訅訇訏訑訒訔訕訞訠訢訤訦訫訬訯訵訷訽訾詀詃詅詇詉詍詎詓詖詗詘詜詝詡詥詧詵詶詷詹詺詻詾詿誀誃誆誋誏誐誒誖誗誙誟誧誩誮誯誳\"],[\"8fdea1\",\"誶誷誻誾諃諆諈諉諊諑諓諔諕諗諝諟諬諰諴諵諶諼諿謅謆謋謑謜謞謟謊謭謰謷謼譂\",4,\"譈譒譓譔譙譍譞譣譭譶譸譹譼譾讁讄讅讋讍讏讔讕讜讞讟谸谹谽谾豅豇豉豋豏豑豓豔豗豘豛豝豙豣豤豦豨豩豭豳豵豶豻豾貆\"],[\"8fdfa1\",\"貇貋貐貒貓貙貛貜貤貹貺賅賆賉賋賏賖賕賙賝賡賨賬賯賰賲賵賷賸賾賿贁贃贉贒贗贛赥赩赬赮赿趂趄趈趍趐趑趕趞趟趠趦趫趬趯趲趵趷趹趻跀跅跆跇跈跊跎跑跔跕跗跙跤跥跧跬跰趼跱跲跴跽踁踄踅踆踋踑踔踖踠踡踢\"],[\"8fe0a1\",\"踣踦踧踱踳踶踷踸踹踽蹀蹁蹋蹍蹎蹏蹔蹛蹜蹝蹞蹡蹢蹩蹬蹭蹯蹰蹱蹹蹺蹻躂躃躉躐躒躕躚躛躝躞躢躧躩躭躮躳躵躺躻軀軁軃軄軇軏軑軔軜軨軮軰軱軷軹軺軭輀輂輇輈輏輐輖輗輘輞輠輡輣輥輧輨輬輭輮輴輵輶輷輺轀轁\"],[\"8fe1a1\",\"轃轇轏轑\",4,\"轘轝轞轥辝辠辡辤辥辦辵辶辸达迀迁迆迊迋迍运迒迓迕迠迣迤迨迮迱迵迶迻迾适逄逈逌逘逛逨逩逯逪逬逭逳逴逷逿遃遄遌遛遝遢遦遧遬遰遴遹邅邈邋邌邎邐邕邗邘邙邛邠邡邢邥邰邲邳邴邶邽郌邾郃\"],[\"8fe2a1\",\"郄郅郇郈郕郗郘郙郜郝郟郥郒郶郫郯郰郴郾郿鄀鄄鄅鄆鄈鄍鄐鄔鄖鄗鄘鄚鄜鄞鄠鄥鄢鄣鄧鄩鄮鄯鄱鄴鄶鄷鄹鄺鄼鄽酃酇酈酏酓酗酙酚酛酡酤酧酭酴酹酺酻醁醃醅醆醊醎醑醓醔醕醘醞醡醦醨醬醭醮醰醱醲醳醶醻醼醽醿\"],[\"8fe3a1\",\"釂釃釅釓釔釗釙釚釞釤釥釩釪釬\",5,\"釷釹釻釽鈀鈁鈄鈅鈆鈇鈉鈊鈌鈐鈒鈓鈖鈘鈜鈝鈣鈤鈥鈦鈨鈮鈯鈰鈳鈵鈶鈸鈹鈺鈼鈾鉀鉂鉃鉆鉇鉊鉍鉎鉏鉑鉘鉙鉜鉝鉠鉡鉥鉧鉨鉩鉮鉯鉰鉵\",4,\"鉻鉼鉽鉿銈銉銊銍銎銒銗\"],[\"8fe4a1\",\"銙銟銠銤銥銧銨銫銯銲銶銸銺銻銼銽銿\",4,\"鋅鋆鋇鋈鋋鋌鋍鋎鋐鋓鋕鋗鋘鋙鋜鋝鋟鋠鋡鋣鋥鋧鋨鋬鋮鋰鋹鋻鋿錀錂錈錍錑錔錕錜錝錞錟錡錤錥錧錩錪錳錴錶錷鍇鍈鍉鍐鍑鍒鍕鍗鍘鍚鍞鍤鍥鍧鍩鍪鍭鍯鍰鍱鍳鍴鍶\"],[\"8fe5a1\",\"鍺鍽鍿鎀鎁鎂鎈鎊鎋鎍鎏鎒鎕鎘鎛鎞鎡鎣鎤鎦鎨鎫鎴鎵鎶鎺鎩鏁鏄鏅鏆鏇鏉\",4,\"鏓鏙鏜鏞鏟鏢鏦鏧鏹鏷鏸鏺鏻鏽鐁鐂鐄鐈鐉鐍鐎鐏鐕鐖鐗鐟鐮鐯鐱鐲鐳鐴鐻鐿鐽鑃鑅鑈鑊鑌鑕鑙鑜鑟鑡鑣鑨鑫鑭鑮鑯鑱鑲钄钃镸镹\"],[\"8fe6a1\",\"镾閄閈閌閍閎閝閞閟閡閦閩閫閬閴閶閺閽閿闆闈闉闋闐闑闒闓闙闚闝闞闟闠闤闦阝阞阢阤阥阦阬阱阳阷阸阹阺阼阽陁陒陔陖陗陘陡陮陴陻陼陾陿隁隂隃隄隉隑隖隚隝隟隤隥隦隩隮隯隳隺雊雒嶲雘雚雝雞雟雩雯雱雺霂\"],[\"8fe7a1\",\"霃霅霉霚霛霝霡霢霣霨霱霳靁靃靊靎靏靕靗靘靚靛靣靧靪靮靳靶靷靸靻靽靿鞀鞉鞕鞖鞗鞙鞚鞞鞟鞢鞬鞮鞱鞲鞵鞶鞸鞹鞺鞼鞾鞿韁韄韅韇韉韊韌韍韎韐韑韔韗韘韙韝韞韠韛韡韤韯韱韴韷韸韺頇頊頙頍頎頔頖頜頞頠頣頦\"],[\"8fe8a1\",\"頫頮頯頰頲頳頵頥頾顄顇顊顑顒顓顖顗顙顚顢顣顥顦顪顬颫颭颮颰颴颷颸颺颻颿飂飅飈飌飡飣飥飦飧飪飳飶餂餇餈餑餕餖餗餚餛餜餟餢餦餧餫餱\",4,\"餹餺餻餼饀饁饆饇饈饍饎饔饘饙饛饜饞饟饠馛馝馟馦馰馱馲馵\"],[\"8fe9a1\",\"馹馺馽馿駃駉駓駔駙駚駜駞駧駪駫駬駰駴駵駹駽駾騂騃騄騋騌騐騑騖騞騠騢騣騤騧騭騮騳騵騶騸驇驁驄驊驋驌驎驑驔驖驝骪骬骮骯骲骴骵骶骹骻骾骿髁髃髆髈髎髐髒髕髖髗髛髜髠髤髥髧髩髬髲髳髵髹髺髽髿\",4],[\"8feaa1\",\"鬄鬅鬈鬉鬋鬌鬍鬎鬐鬒鬖鬙鬛鬜鬠鬦鬫鬭鬳鬴鬵鬷鬹鬺鬽魈魋魌魕魖魗魛魞魡魣魥魦魨魪\",4,\"魳魵魷魸魹魿鮀鮄鮅鮆鮇鮉鮊鮋鮍鮏鮐鮔鮚鮝鮞鮦鮧鮩鮬鮰鮱鮲鮷鮸鮻鮼鮾鮿鯁鯇鯈鯎鯐鯗鯘鯝鯟鯥鯧鯪鯫鯯鯳鯷鯸\"],[\"8feba1\",\"鯹鯺鯽鯿鰀鰂鰋鰏鰑鰖鰘鰙鰚鰜鰞鰢鰣鰦\",4,\"鰱鰵鰶鰷鰽鱁鱃鱄鱅鱉鱊鱎鱏鱐鱓鱔鱖鱘鱛鱝鱞鱟鱣鱩鱪鱜鱫鱨鱮鱰鱲鱵鱷鱻鳦鳲鳷鳹鴋鴂鴑鴗鴘鴜鴝鴞鴯鴰鴲鴳鴴鴺鴼鵅鴽鵂鵃鵇鵊鵓鵔鵟鵣鵢鵥鵩鵪鵫鵰鵶鵷鵻\"],[\"8feca1\",\"鵼鵾鶃鶄鶆鶊鶍鶎鶒鶓鶕鶖鶗鶘鶡鶪鶬鶮鶱鶵鶹鶼鶿鷃鷇鷉鷊鷔鷕鷖鷗鷚鷞鷟鷠鷥鷧鷩鷫鷮鷰鷳鷴鷾鸊鸂鸇鸎鸐鸑鸒鸕鸖鸙鸜鸝鹺鹻鹼麀麂麃麄麅麇麎麏麖麘麛麞麤麨麬麮麯麰麳麴麵黆黈黋黕黟黤黧黬黭黮黰黱黲黵\"],[\"8feda1\",\"黸黿鼂鼃鼉鼏鼐鼑鼒鼔鼖鼗鼙鼚鼛鼟鼢鼦鼪鼫鼯鼱鼲鼴鼷鼹鼺鼼鼽鼿齁齃\",4,\"齓齕齖齗齘齚齝齞齨齩齭\",4,\"齳齵齺齽龏龐龑龒龔龖龗龞龡龢龣龥\"]]");
-})), vm = /* @__PURE__ */ i({ default: () => ym }), ym, bm = n((() => {
-	ym = /*#__PURE__*/ JSON.parse("[[\"0\",\"\\u0000\",127,\"€\"],[\"8140\",\"丂丄丅丆丏丒丗丟丠両丣並丩丮丯丱丳丵丷丼乀乁乂乄乆乊乑乕乗乚乛乢乣乤乥乧乨乪\",5,\"乲乴\",9,\"乿\",6,\"亇亊\"],[\"8180\",\"亐亖亗亙亜亝亞亣亪亯亰亱亴亶亷亸亹亼亽亾仈仌仏仐仒仚仛仜仠仢仦仧仩仭仮仯仱仴仸仹仺仼仾伀伂\",6,\"伋伌伒\",4,\"伜伝伡伣伨伩伬伭伮伱伳伵伷伹伻伾\",4,\"佄佅佇\",5,\"佒佔佖佡佢佦佨佪佫佭佮佱佲併佷佸佹佺佽侀侁侂侅來侇侊侌侎侐侒侓侕侖侘侙侚侜侞侟価侢\"],[\"8240\",\"侤侫侭侰\",4,\"侶\",8,\"俀俁係俆俇俈俉俋俌俍俒\",4,\"俙俛俠俢俤俥俧俫俬俰俲俴俵俶俷俹俻俼俽俿\",11],[\"8280\",\"個倎倐們倓倕倖倗倛倝倞倠倢倣値倧倫倯\",10,\"倻倽倿偀偁偂偄偅偆偉偊偋偍偐\",4,\"偖偗偘偙偛偝\",7,\"偦\",5,\"偭\",8,\"偸偹偺偼偽傁傂傃傄傆傇傉傊傋傌傎\",20,\"傤傦傪傫傭\",4,\"傳\",6,\"傼\"],[\"8340\",\"傽\",17,\"僐\",5,\"僗僘僙僛\",10,\"僨僩僪僫僯僰僱僲僴僶\",4,\"僼\",9,\"儈\"],[\"8380\",\"儉儊儌\",5,\"儓\",13,\"儢\",28,\"兂兇兊兌兎兏児兒兓兗兘兙兛兝\",4,\"兣兤兦內兩兪兯兲兺兾兿冃冄円冇冊冋冎冏冐冑冓冔冘冚冝冞冟冡冣冦\",4,\"冭冮冴冸冹冺冾冿凁凂凃凅凈凊凍凎凐凒\",5],[\"8440\",\"凘凙凚凜凞凟凢凣凥\",5,\"凬凮凱凲凴凷凾刄刅刉刋刌刏刐刓刔刕刜刞刟刡刢刣別刦刧刪刬刯刱刲刴刵刼刾剄\",5,\"剋剎剏剒剓剕剗剘\"],[\"8480\",\"剙剚剛剝剟剠剢剣剤剦剨剫剬剭剮剰剱剳\",9,\"剾劀劃\",4,\"劉\",6,\"劑劒劔\",6,\"劜劤劥劦劧劮劯劰労\",9,\"勀勁勂勄勅勆勈勊勌勍勎勏勑勓勔動勗務\",5,\"勠勡勢勣勥\",10,\"勱\",7,\"勻勼勽匁匂匃匄匇匉匊匋匌匎\"],[\"8540\",\"匑匒匓匔匘匛匜匞匟匢匤匥匧匨匩匫匬匭匯\",9,\"匼匽區卂卄卆卋卌卍卐協単卙卛卝卥卨卪卬卭卲卶卹卻卼卽卾厀厁厃厇厈厊厎厏\"],[\"8580\",\"厐\",4,\"厖厗厙厛厜厞厠厡厤厧厪厫厬厭厯\",6,\"厷厸厹厺厼厽厾叀參\",4,\"収叏叐叒叓叕叚叜叝叞叡叢叧叴叺叾叿吀吂吅吇吋吔吘吙吚吜吢吤吥吪吰吳吶吷吺吽吿呁呂呄呅呇呉呌呍呎呏呑呚呝\",4,\"呣呥呧呩\",7,\"呴呹呺呾呿咁咃咅咇咈咉咊咍咑咓咗咘咜咞咟咠咡\"],[\"8640\",\"咢咥咮咰咲咵咶咷咹咺咼咾哃哅哊哋哖哘哛哠\",4,\"哫哬哯哰哱哴\",5,\"哻哾唀唂唃唄唅唈唊\",4,\"唒唓唕\",5,\"唜唝唞唟唡唥唦\"],[\"8680\",\"唨唩唫唭唲唴唵唶唸唹唺唻唽啀啂啅啇啈啋\",4,\"啑啒啓啔啗\",4,\"啝啞啟啠啢啣啨啩啫啯\",5,\"啹啺啽啿喅喆喌喍喎喐喒喓喕喖喗喚喛喞喠\",6,\"喨\",8,\"喲喴営喸喺喼喿\",4,\"嗆嗇嗈嗊嗋嗎嗏嗐嗕嗗\",4,\"嗞嗠嗢嗧嗩嗭嗮嗰嗱嗴嗶嗸\",4,\"嗿嘂嘃嘄嘅\"],[\"8740\",\"嘆嘇嘊嘋嘍嘐\",7,\"嘙嘚嘜嘝嘠嘡嘢嘥嘦嘨嘩嘪嘫嘮嘯嘰嘳嘵嘷嘸嘺嘼嘽嘾噀\",11,\"噏\",4,\"噕噖噚噛噝\",4],[\"8780\",\"噣噥噦噧噭噮噯噰噲噳噴噵噷噸噹噺噽\",7,\"嚇\",6,\"嚐嚑嚒嚔\",14,\"嚤\",10,\"嚰\",6,\"嚸嚹嚺嚻嚽\",12,\"囋\",8,\"囕囖囘囙囜団囥\",5,\"囬囮囯囲図囶囷囸囻囼圀圁圂圅圇國\",6],[\"8840\",\"園\",9,\"圝圞圠圡圢圤圥圦圧圫圱圲圴\",4,\"圼圽圿坁坃坄坅坆坈坉坋坒\",4,\"坘坙坢坣坥坧坬坮坰坱坲坴坵坸坹坺坽坾坿垀\"],[\"8880\",\"垁垇垈垉垊垍\",4,\"垔\",6,\"垜垝垞垟垥垨垪垬垯垰垱垳垵垶垷垹\",8,\"埄\",6,\"埌埍埐埑埓埖埗埛埜埞埡埢埣埥\",7,\"埮埰埱埲埳埵埶執埻埼埾埿堁堃堄堅堈堉堊堌堎堏堐堒堓堔堖堗堘堚堛堜堝堟堢堣堥\",4,\"堫\",4,\"報堲堳場堶\",7],[\"8940\",\"堾\",5,\"塅\",6,\"塎塏塐塒塓塕塖塗塙\",4,\"塟\",5,\"塦\",4,\"塭\",16,\"塿墂墄墆墇墈墊墋墌\"],[\"8980\",\"墍\",4,\"墔\",4,\"墛墜墝墠\",7,\"墪\",17,\"墽墾墿壀壂壃壄壆\",10,\"壒壓壔壖\",13,\"壥\",5,\"壭壯壱売壴壵壷壸壺\",7,\"夃夅夆夈\",4,\"夎夐夑夒夓夗夘夛夝夞夠夡夢夣夦夨夬夰夲夳夵夶夻\"],[\"8a40\",\"夽夾夿奀奃奅奆奊奌奍奐奒奓奙奛\",4,\"奡奣奤奦\",12,\"奵奷奺奻奼奾奿妀妅妉妋妌妎妏妐妑妔妕妘妚妛妜妝妟妠妡妢妦\"],[\"8a80\",\"妧妬妭妰妱妳\",5,\"妺妼妽妿\",6,\"姇姈姉姌姍姎姏姕姖姙姛姞\",4,\"姤姦姧姩姪姫姭\",11,\"姺姼姽姾娀娂娊娋娍娎娏娐娒娔娕娖娗娙娚娛娝娞娡娢娤娦娧娨娪\",6,\"娳娵娷\",4,\"娽娾娿婁\",4,\"婇婈婋\",9,\"婖婗婘婙婛\",5],[\"8b40\",\"婡婣婤婥婦婨婩婫\",8,\"婸婹婻婼婽婾媀\",17,\"媓\",6,\"媜\",13,\"媫媬\"],[\"8b80\",\"媭\",4,\"媴媶媷媹\",4,\"媿嫀嫃\",5,\"嫊嫋嫍\",4,\"嫓嫕嫗嫙嫚嫛嫝嫞嫟嫢嫤嫥嫧嫨嫪嫬\",4,\"嫲\",22,\"嬊\",11,\"嬘\",25,\"嬳嬵嬶嬸\",7,\"孁\",6],[\"8c40\",\"孈\",7,\"孒孖孞孠孡孧孨孫孭孮孯孲孴孶孷學孹孻孼孾孿宂宆宊宍宎宐宑宒宔宖実宧宨宩宬宭宮宯宱宲宷宺宻宼寀寁寃寈寉寊寋寍寎寏\"],[\"8c80\",\"寑寔\",8,\"寠寢寣實寧審\",4,\"寯寱\",6,\"寽対尀専尃尅將專尋尌對導尐尒尓尗尙尛尞尟尠尡尣尦尨尩尪尫尭尮尯尰尲尳尵尶尷屃屄屆屇屌屍屒屓屔屖屗屘屚屛屜屝屟屢層屧\",6,\"屰屲\",6,\"屻屼屽屾岀岃\",4,\"岉岊岋岎岏岒岓岕岝\",4,\"岤\",4],[\"8d40\",\"岪岮岯岰岲岴岶岹岺岻岼岾峀峂峃峅\",5,\"峌\",5,\"峓\",5,\"峚\",6,\"峢峣峧峩峫峬峮峯峱\",9,\"峼\",4],[\"8d80\",\"崁崄崅崈\",5,\"崏\",4,\"崕崗崘崙崚崜崝崟\",4,\"崥崨崪崫崬崯\",4,\"崵\",7,\"崿\",7,\"嵈嵉嵍\",10,\"嵙嵚嵜嵞\",10,\"嵪嵭嵮嵰嵱嵲嵳嵵\",12,\"嶃\",21,\"嶚嶛嶜嶞嶟嶠\"],[\"8e40\",\"嶡\",21,\"嶸\",12,\"巆\",6,\"巎\",12,\"巜巟巠巣巤巪巬巭\"],[\"8e80\",\"巰巵巶巸\",4,\"巿帀帄帇帉帊帋帍帎帒帓帗帞\",7,\"帨\",4,\"帯帰帲\",4,\"帹帺帾帿幀幁幃幆\",5,\"幍\",6,\"幖\",4,\"幜幝幟幠幣\",14,\"幵幷幹幾庁庂広庅庈庉庌庍庎庒庘庛庝庡庢庣庤庨\",4,\"庮\",4,\"庴庺庻庼庽庿\",6],[\"8f40\",\"廆廇廈廋\",5,\"廔廕廗廘廙廚廜\",11,\"廩廫\",8,\"廵廸廹廻廼廽弅弆弇弉弌弍弎弐弒弔弖弙弚弜弝弞弡弢弣弤\"],[\"8f80\",\"弨弫弬弮弰弲\",6,\"弻弽弾弿彁\",14,\"彑彔彙彚彛彜彞彟彠彣彥彧彨彫彮彯彲彴彵彶彸彺彽彾彿徃徆徍徎徏徑従徔徖徚徛徝從徟徠徢\",5,\"復徫徬徯\",5,\"徶徸徹徺徻徾\",4,\"忇忈忊忋忎忓忔忕忚忛応忞忟忢忣忥忦忨忩忬忯忰忲忳忴忶忷忹忺忼怇\"],[\"9040\",\"怈怉怋怌怐怑怓怗怘怚怞怟怢怣怤怬怭怮怰\",4,\"怶\",4,\"怽怾恀恄\",6,\"恌恎恏恑恓恔恖恗恘恛恜恞恟恠恡恥恦恮恱恲恴恵恷恾悀\"],[\"9080\",\"悁悂悅悆悇悈悊悋悎悏悐悑悓悕悗悘悙悜悞悡悢悤悥悧悩悪悮悰悳悵悶悷悹悺悽\",7,\"惇惈惉惌\",4,\"惒惓惔惖惗惙惛惞惡\",4,\"惪惱惲惵惷惸惻\",4,\"愂愃愄愅愇愊愋愌愐\",4,\"愖愗愘愙愛愜愝愞愡愢愥愨愩愪愬\",18,\"慀\",6],[\"9140\",\"慇慉態慍慏慐慒慓慔慖\",6,\"慞慟慠慡慣慤慥慦慩\",6,\"慱慲慳慴慶慸\",18,\"憌憍憏\",4,\"憕\"],[\"9180\",\"憖\",6,\"憞\",8,\"憪憫憭\",9,\"憸\",5,\"憿懀懁懃\",4,\"應懌\",4,\"懓懕\",16,\"懧\",13,\"懶\",8,\"戀\",5,\"戇戉戓戔戙戜戝戞戠戣戦戧戨戩戫戭戯戰戱戲戵戶戸\",4,\"扂扄扅扆扊\"],[\"9240\",\"扏扐払扖扗扙扚扜\",6,\"扤扥扨扱扲扴扵扷扸扺扻扽抁抂抃抅抆抇抈抋\",5,\"抔抙抜抝択抣抦抧抩抪抭抮抯抰抲抳抴抶抷抸抺抾拀拁\"],[\"9280\",\"拃拋拏拑拕拝拞拠拡拤拪拫拰拲拵拸拹拺拻挀挃挄挅挆挊挋挌挍挏挐挒挓挔挕挗挘挙挜挦挧挩挬挭挮挰挱挳\",5,\"挻挼挾挿捀捁捄捇捈捊捑捒捓捔捖\",7,\"捠捤捥捦捨捪捫捬捯捰捲捳捴捵捸捹捼捽捾捿掁掃掄掅掆掋掍掑掓掔掕掗掙\",6,\"採掤掦掫掯掱掲掵掶掹掻掽掿揀\"],[\"9340\",\"揁揂揃揅揇揈揊揋揌揑揓揔揕揗\",6,\"揟揢揤\",4,\"揫揬揮揯揰揱揳揵揷揹揺揻揼揾搃搄搆\",4,\"損搎搑搒搕\",5,\"搝搟搢搣搤\"],[\"9380\",\"搥搧搨搩搫搮\",5,\"搵\",4,\"搻搼搾摀摂摃摉摋\",6,\"摓摕摖摗摙\",4,\"摟\",7,\"摨摪摫摬摮\",9,\"摻\",6,\"撃撆撈\",8,\"撓撔撗撘撚撛撜撝撟\",4,\"撥撦撧撨撪撫撯撱撲撳撴撶撹撻撽撾撿擁擃擄擆\",6,\"擏擑擓擔擕擖擙據\"],[\"9440\",\"擛擜擝擟擠擡擣擥擧\",24,\"攁\",7,\"攊\",7,\"攓\",4,\"攙\",8],[\"9480\",\"攢攣攤攦\",4,\"攬攭攰攱攲攳攷攺攼攽敀\",4,\"敆敇敊敋敍敎敐敒敓敔敗敘敚敜敟敠敡敤敥敧敨敩敪敭敮敯敱敳敵敶數\",14,\"斈斉斊斍斎斏斒斔斕斖斘斚斝斞斠斢斣斦斨斪斬斮斱\",7,\"斺斻斾斿旀旂旇旈旉旊旍旐旑旓旔旕旘\",7,\"旡旣旤旪旫\"],[\"9540\",\"旲旳旴旵旸旹旻\",4,\"昁昄昅昇昈昉昋昍昐昑昒昖昗昘昚昛昜昞昡昢昣昤昦昩昪昫昬昮昰昲昳昷\",4,\"昽昿晀時晄\",6,\"晍晎晐晑晘\"],[\"9580\",\"晙晛晜晝晞晠晢晣晥晧晩\",4,\"晱晲晳晵晸晹晻晼晽晿暀暁暃暅暆暈暉暊暋暍暎暏暐暒暓暔暕暘\",4,\"暞\",8,\"暩\",4,\"暯\",4,\"暵暶暷暸暺暻暼暽暿\",25,\"曚曞\",7,\"曧曨曪\",5,\"曱曵曶書曺曻曽朁朂會\"],[\"9640\",\"朄朅朆朇朌朎朏朑朒朓朖朘朙朚朜朞朠\",5,\"朧朩朮朰朲朳朶朷朸朹朻朼朾朿杁杄杅杇杊杋杍杒杔杕杗\",4,\"杝杢杣杤杦杧杫杬杮東杴杶\"],[\"9680\",\"杸杹杺杻杽枀枂枃枅枆枈枊枌枍枎枏枑枒枓枔枖枙枛枟枠枡枤枦枩枬枮枱枲枴枹\",7,\"柂柅\",9,\"柕柖柗柛柟柡柣柤柦柧柨柪柫柭柮柲柵\",7,\"柾栁栂栃栄栆栍栐栒栔栕栘\",4,\"栞栟栠栢\",6,\"栫\",6,\"栴栵栶栺栻栿桇桋桍桏桒桖\",5],[\"9740\",\"桜桝桞桟桪桬\",7,\"桵桸\",8,\"梂梄梇\",7,\"梐梑梒梔梕梖梘\",9,\"梣梤梥梩梪梫梬梮梱梲梴梶梷梸\"],[\"9780\",\"梹\",6,\"棁棃\",5,\"棊棌棎棏棐棑棓棔棖棗棙棛\",4,\"棡棢棤\",9,\"棯棲棳棴棶棷棸棻棽棾棿椀椂椃椄椆\",4,\"椌椏椑椓\",11,\"椡椢椣椥\",7,\"椮椯椱椲椳椵椶椷椸椺椻椼椾楀楁楃\",16,\"楕楖楘楙楛楜楟\"],[\"9840\",\"楡楢楤楥楧楨楩楪楬業楯楰楲\",4,\"楺楻楽楾楿榁榃榅榊榋榌榎\",5,\"榖榗榙榚榝\",9,\"榩榪榬榮榯榰榲榳榵榶榸榹榺榼榽\"],[\"9880\",\"榾榿槀槂\",7,\"構槍槏槑槒槓槕\",5,\"槜槝槞槡\",11,\"槮槯槰槱槳\",9,\"槾樀\",9,\"樋\",11,\"標\",5,\"樠樢\",5,\"権樫樬樭樮樰樲樳樴樶\",6,\"樿\",4,\"橅橆橈\",7,\"橑\",6,\"橚\"],[\"9940\",\"橜\",4,\"橢橣橤橦\",10,\"橲\",6,\"橺橻橽橾橿檁檂檃檅\",8,\"檏檒\",4,\"檘\",7,\"檡\",5],[\"9980\",\"檧檨檪檭\",114,\"欥欦欨\",6],[\"9a40\",\"欯欰欱欳欴欵欶欸欻欼欽欿歀歁歂歄歅歈歊歋歍\",11,\"歚\",7,\"歨歩歫\",13,\"歺歽歾歿殀殅殈\"],[\"9a80\",\"殌殎殏殐殑殔殕殗殘殙殜\",4,\"殢\",7,\"殫\",7,\"殶殸\",6,\"毀毃毄毆\",4,\"毌毎毐毑毘毚毜\",4,\"毢\",7,\"毬毭毮毰毱毲毴毶毷毸毺毻毼毾\",6,\"氈\",4,\"氎氒気氜氝氞氠氣氥氫氬氭氱氳氶氷氹氺氻氼氾氿汃汄汅汈汋\",4,\"汑汒汓汖汘\"],[\"9b40\",\"汙汚汢汣汥汦汧汫\",4,\"汱汳汵汷汸決汻汼汿沀沄沇沊沋沍沎沑沒沕沖沗沘沚沜沝沞沠沢沨沬沯沰沴沵沶沷沺泀況泂泃泆泇泈泋泍泎泏泑泒泘\"],[\"9b80\",\"泙泚泜泝泟泤泦泧泩泬泭泲泴泹泿洀洂洃洅洆洈洉洊洍洏洐洑洓洔洕洖洘洜洝洟\",5,\"洦洨洩洬洭洯洰洴洶洷洸洺洿浀浂浄浉浌浐浕浖浗浘浛浝浟浡浢浤浥浧浨浫浬浭浰浱浲浳浵浶浹浺浻浽\",4,\"涃涄涆涇涊涋涍涏涐涒涖\",4,\"涜涢涥涬涭涰涱涳涴涶涷涹\",5,\"淁淂淃淈淉淊\"],[\"9c40\",\"淍淎淏淐淒淓淔淕淗淚淛淜淟淢淣淥淧淨淩淪淭淯淰淲淴淵淶淸淺淽\",7,\"渆渇済渉渋渏渒渓渕渘渙減渜渞渟渢渦渧渨渪測渮渰渱渳渵\"],[\"9c80\",\"渶渷渹渻\",7,\"湅\",7,\"湏湐湑湒湕湗湙湚湜湝湞湠\",10,\"湬湭湯\",14,\"満溁溂溄溇溈溊\",4,\"溑\",6,\"溙溚溛溝溞溠溡溣溤溦溨溩溫溬溭溮溰溳溵溸溹溼溾溿滀滃滄滅滆滈滉滊滌滍滎滐滒滖滘滙滛滜滝滣滧滪\",5],[\"9d40\",\"滰滱滲滳滵滶滷滸滺\",7,\"漃漄漅漇漈漊\",4,\"漐漑漒漖\",9,\"漡漢漣漥漦漧漨漬漮漰漲漴漵漷\",6,\"漿潀潁潂\"],[\"9d80\",\"潃潄潅潈潉潊潌潎\",9,\"潙潚潛潝潟潠潡潣潤潥潧\",5,\"潯潰潱潳潵潶潷潹潻潽\",6,\"澅澆澇澊澋澏\",12,\"澝澞澟澠澢\",4,\"澨\",10,\"澴澵澷澸澺\",5,\"濁濃\",5,\"濊\",6,\"濓\",10,\"濟濢濣濤濥\"],[\"9e40\",\"濦\",7,\"濰\",32,\"瀒\",7,\"瀜\",6,\"瀤\",6],[\"9e80\",\"瀫\",9,\"瀶瀷瀸瀺\",17,\"灍灎灐\",13,\"灟\",11,\"灮灱灲灳灴灷灹灺灻災炁炂炃炄炆炇炈炋炌炍炏炐炑炓炗炘炚炛炞\",12,\"炰炲炴炵炶為炾炿烄烅烆烇烉烋\",12,\"烚\"],[\"9f40\",\"烜烝烞烠烡烢烣烥烪烮烰\",6,\"烸烺烻烼烾\",10,\"焋\",4,\"焑焒焔焗焛\",10,\"焧\",7,\"焲焳焴\"],[\"9f80\",\"焵焷\",13,\"煆煇煈煉煋煍煏\",12,\"煝煟\",4,\"煥煩\",4,\"煯煰煱煴煵煶煷煹煻煼煾\",5,\"熅\",4,\"熋熌熍熎熐熑熒熓熕熖熗熚\",4,\"熡\",6,\"熩熪熫熭\",5,\"熴熶熷熸熺\",8,\"燄\",9,\"燏\",4],[\"a040\",\"燖\",9,\"燡燢燣燤燦燨\",5,\"燯\",9,\"燺\",11,\"爇\",19],[\"a080\",\"爛爜爞\",9,\"爩爫爭爮爯爲爳爴爺爼爾牀\",6,\"牉牊牋牎牏牐牑牓牔牕牗牘牚牜牞牠牣牤牥牨牪牫牬牭牰牱牳牴牶牷牸牻牼牽犂犃犅\",4,\"犌犎犐犑犓\",11,\"犠\",11,\"犮犱犲犳犵犺\",6,\"狅狆狇狉狊狋狌狏狑狓狔狕狖狘狚狛\"],[\"a1a1\",\"　、。·ˉˇ¨〃々—～‖…‘’“”〔〕〈\",7,\"〖〗【】±×÷∶∧∨∑∏∪∩∈∷√⊥∥∠⌒⊙∫∮≡≌≈∽∝≠≮≯≤≥∞∵∴♂♀°′″℃＄¤￠￡‰§№☆★○●◎◇◆□■△▲※→←↑↓〓\"],[\"a2a1\",\"ⅰ\",9],[\"a2b1\",\"⒈\",19,\"⑴\",19,\"①\",9],[\"a2e5\",\"㈠\",9],[\"a2f1\",\"Ⅰ\",11],[\"a3a1\",\"！＂＃￥％\",88,\"￣\"],[\"a4a1\",\"ぁ\",82],[\"a5a1\",\"ァ\",85],[\"a6a1\",\"Α\",16,\"Σ\",6],[\"a6c1\",\"α\",16,\"σ\",6],[\"a6e0\",\"︵︶︹︺︿﹀︽︾﹁﹂﹃﹄\"],[\"a6ee\",\"︻︼︷︸︱\"],[\"a6f4\",\"︳︴\"],[\"a7a1\",\"А\",5,\"ЁЖ\",25],[\"a7d1\",\"а\",5,\"ёж\",25],[\"a840\",\"ˊˋ˙–―‥‵℅℉↖↗↘↙∕∟∣≒≦≧⊿═\",35,\"▁\",6],[\"a880\",\"█\",7,\"▓▔▕▼▽◢◣◤◥☉⊕〒〝〞\"],[\"a8a1\",\"āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜüêɑ\"],[\"a8bd\",\"ńň\"],[\"a8c0\",\"ɡ\"],[\"a8c5\",\"ㄅ\",36],[\"a940\",\"〡\",8,\"㊣㎎㎏㎜㎝㎞㎡㏄㏎㏑㏒㏕︰￢￤\"],[\"a959\",\"℡㈱\"],[\"a95c\",\"‐\"],[\"a960\",\"ー゛゜ヽヾ〆ゝゞ﹉\",9,\"﹔﹕﹖﹗﹙\",8],[\"a980\",\"﹢\",4,\"﹨﹩﹪﹫\"],[\"a996\",\"〇\"],[\"a9a4\",\"─\",75],[\"aa40\",\"狜狝狟狢\",5,\"狪狫狵狶狹狽狾狿猀猂猄\",5,\"猋猌猍猏猐猑猒猔猘猙猚猟猠猣猤猦猧猨猭猯猰猲猳猵猶猺猻猼猽獀\",8],[\"aa80\",\"獉獊獋獌獎獏獑獓獔獕獖獘\",7,\"獡\",10,\"獮獰獱\"],[\"ab40\",\"獲\",11,\"獿\",4,\"玅玆玈玊玌玍玏玐玒玓玔玕玗玘玙玚玜玝玞玠玡玣\",5,\"玪玬玭玱玴玵玶玸玹玼玽玾玿珁珃\",4],[\"ab80\",\"珋珌珎珒\",6,\"珚珛珜珝珟珡珢珣珤珦珨珪珫珬珮珯珰珱珳\",4],[\"ac40\",\"珸\",10,\"琄琇琈琋琌琍琎琑\",8,\"琜\",5,\"琣琤琧琩琫琭琯琱琲琷\",4,\"琽琾琿瑀瑂\",11],[\"ac80\",\"瑎\",6,\"瑖瑘瑝瑠\",12,\"瑮瑯瑱\",4,\"瑸瑹瑺\"],[\"ad40\",\"瑻瑼瑽瑿璂璄璅璆璈璉璊璌璍璏璑\",10,\"璝璟\",7,\"璪\",15,\"璻\",12],[\"ad80\",\"瓈\",9,\"瓓\",8,\"瓝瓟瓡瓥瓧\",6,\"瓰瓱瓲\"],[\"ae40\",\"瓳瓵瓸\",6,\"甀甁甂甃甅\",7,\"甎甐甒甔甕甖甗甛甝甞甠\",4,\"甦甧甪甮甴甶甹甼甽甿畁畂畃畄畆畇畉畊畍畐畑畒畓畕畖畗畘\"],[\"ae80\",\"畝\",7,\"畧畨畩畫\",6,\"畳畵當畷畺\",4,\"疀疁疂疄疅疇\"],[\"af40\",\"疈疉疊疌疍疎疐疓疕疘疛疜疞疢疦\",4,\"疭疶疷疺疻疿痀痁痆痋痌痎痏痐痑痓痗痙痚痜痝痟痠痡痥痩痬痭痮痯痲痳痵痶痷痸痺痻痽痾瘂瘄瘆瘇\"],[\"af80\",\"瘈瘉瘋瘍瘎瘏瘑瘒瘓瘔瘖瘚瘜瘝瘞瘡瘣瘧瘨瘬瘮瘯瘱瘲瘶瘷瘹瘺瘻瘽癁療癄\"],[\"b040\",\"癅\",6,\"癎\",5,\"癕癗\",4,\"癝癟癠癡癢癤\",6,\"癬癭癮癰\",7,\"癹発發癿皀皁皃皅皉皊皌皍皏皐皒皔皕皗皘皚皛\"],[\"b080\",\"皜\",7,\"皥\",8,\"皯皰皳皵\",9,\"盀盁盃啊阿埃挨哎唉哀皑癌蔼矮艾碍爱隘鞍氨安俺按暗岸胺案肮昂盎凹敖熬翱袄傲奥懊澳芭捌扒叭吧笆八疤巴拔跋靶把耙坝霸罢爸白柏百摆佰败拜稗斑班搬扳般颁板版扮拌伴瓣半办绊邦帮梆榜膀绑棒磅蚌镑傍谤苞胞包褒剥\"],[\"b140\",\"盄盇盉盋盌盓盕盙盚盜盝盞盠\",4,\"盦\",7,\"盰盳盵盶盷盺盻盽盿眀眂眃眅眆眊県眎\",10,\"眛眜眝眞眡眣眤眥眧眪眫\"],[\"b180\",\"眬眮眰\",4,\"眹眻眽眾眿睂睄睅睆睈\",7,\"睒\",7,\"睜薄雹保堡饱宝抱报暴豹鲍爆杯碑悲卑北辈背贝钡倍狈备惫焙被奔苯本笨崩绷甭泵蹦迸逼鼻比鄙笔彼碧蓖蔽毕毙毖币庇痹闭敝弊必辟壁臂避陛鞭边编贬扁便变卞辨辩辫遍标彪膘表鳖憋别瘪彬斌濒滨宾摈兵冰柄丙秉饼炳\"],[\"b240\",\"睝睞睟睠睤睧睩睪睭\",11,\"睺睻睼瞁瞂瞃瞆\",5,\"瞏瞐瞓\",11,\"瞡瞣瞤瞦瞨瞫瞭瞮瞯瞱瞲瞴瞶\",4],[\"b280\",\"瞼瞾矀\",12,\"矎\",8,\"矘矙矚矝\",4,\"矤病并玻菠播拨钵波博勃搏铂箔伯帛舶脖膊渤泊驳捕卜哺补埠不布步簿部怖擦猜裁材才财睬踩采彩菜蔡餐参蚕残惭惨灿苍舱仓沧藏操糙槽曹草厕策侧册测层蹭插叉茬茶查碴搽察岔差诧拆柴豺搀掺蝉馋谗缠铲产阐颤昌猖\"],[\"b340\",\"矦矨矪矯矰矱矲矴矵矷矹矺矻矼砃\",5,\"砊砋砎砏砐砓砕砙砛砞砠砡砢砤砨砪砫砮砯砱砲砳砵砶砽砿硁硂硃硄硆硈硉硊硋硍硏硑硓硔硘硙硚\"],[\"b380\",\"硛硜硞\",11,\"硯\",7,\"硸硹硺硻硽\",6,\"场尝常长偿肠厂敞畅唱倡超抄钞朝嘲潮巢吵炒车扯撤掣彻澈郴臣辰尘晨忱沉陈趁衬撑称城橙成呈乘程惩澄诚承逞骋秤吃痴持匙池迟弛驰耻齿侈尺赤翅斥炽充冲虫崇宠抽酬畴踌稠愁筹仇绸瞅丑臭初出橱厨躇锄雏滁除楚\"],[\"b440\",\"碄碅碆碈碊碋碏碐碒碔碕碖碙碝碞碠碢碤碦碨\",7,\"碵碶碷碸確碻碼碽碿磀磂磃磄磆磇磈磌磍磎磏磑磒磓磖磗磘磚\",9],[\"b480\",\"磤磥磦磧磩磪磫磭\",4,\"磳磵磶磸磹磻\",5,\"礂礃礄礆\",6,\"础储矗搐触处揣川穿椽传船喘串疮窗幢床闯创吹炊捶锤垂春椿醇唇淳纯蠢戳绰疵茨磁雌辞慈瓷词此刺赐次聪葱囱匆从丛凑粗醋簇促蹿篡窜摧崔催脆瘁粹淬翠村存寸磋撮搓措挫错搭达答瘩打大呆歹傣戴带殆代贷袋待逮\"],[\"b540\",\"礍\",5,\"礔\",9,\"礟\",4,\"礥\",14,\"礵\",4,\"礽礿祂祃祄祅祇祊\",8,\"祔祕祘祙祡祣\"],[\"b580\",\"祤祦祩祪祫祬祮祰\",6,\"祹祻\",4,\"禂禃禆禇禈禉禋禌禍禎禐禑禒怠耽担丹单郸掸胆旦氮但惮淡诞弹蛋当挡党荡档刀捣蹈倒岛祷导到稻悼道盗德得的蹬灯登等瞪凳邓堤低滴迪敌笛狄涤翟嫡抵底地蒂第帝弟递缔颠掂滇碘点典靛垫电佃甸店惦奠淀殿碉叼雕凋刁掉吊钓调跌爹碟蝶迭谍叠\"],[\"b640\",\"禓\",6,\"禛\",11,\"禨\",10,\"禴\",4,\"禼禿秂秄秅秇秈秊秌秎秏秐秓秔秖秗秙\",5,\"秠秡秢秥秨秪\"],[\"b680\",\"秬秮秱\",6,\"秹秺秼秾秿稁稄稅稇稈稉稊稌稏\",4,\"稕稖稘稙稛稜丁盯叮钉顶鼎锭定订丢东冬董懂动栋侗恫冻洞兜抖斗陡豆逗痘都督毒犊独读堵睹赌杜镀肚度渡妒端短锻段断缎堆兑队对墩吨蹲敦顿囤钝盾遁掇哆多夺垛躲朵跺舵剁惰堕蛾峨鹅俄额讹娥恶厄扼遏鄂饿恩而儿耳尔饵洱二\"],[\"b740\",\"稝稟稡稢稤\",14,\"稴稵稶稸稺稾穀\",5,\"穇\",9,\"穒\",4,\"穘\",16],[\"b780\",\"穩\",6,\"穱穲穳穵穻穼穽穾窂窅窇窉窊窋窌窎窏窐窓窔窙窚窛窞窡窢贰发罚筏伐乏阀法珐藩帆番翻樊矾钒繁凡烦反返范贩犯饭泛坊芳方肪房防妨仿访纺放菲非啡飞肥匪诽吠肺废沸费芬酚吩氛分纷坟焚汾粉奋份忿愤粪丰封枫蜂峰锋风疯烽逢冯缝讽奉凤佛否夫敷肤孵扶拂辐幅氟符伏俘服\"],[\"b840\",\"窣窤窧窩窪窫窮\",4,\"窴\",10,\"竀\",10,\"竌\",9,\"竗竘竚竛竜竝竡竢竤竧\",5,\"竮竰竱竲竳\"],[\"b880\",\"竴\",4,\"竻竼竾笀笁笂笅笇笉笌笍笎笐笒笓笖笗笘笚笜笝笟笡笢笣笧笩笭浮涪福袱弗甫抚辅俯釜斧脯腑府腐赴副覆赋复傅付阜父腹负富讣附妇缚咐噶嘎该改概钙盖溉干甘杆柑竿肝赶感秆敢赣冈刚钢缸肛纲岗港杠篙皋高膏羔糕搞镐稿告哥歌搁戈鸽胳疙割革葛格蛤阁隔铬个各给根跟耕更庚羹\"],[\"b940\",\"笯笰笲笴笵笶笷笹笻笽笿\",5,\"筆筈筊筍筎筓筕筗筙筜筞筟筡筣\",10,\"筯筰筳筴筶筸筺筼筽筿箁箂箃箄箆\",6,\"箎箏\"],[\"b980\",\"箑箒箓箖箘箙箚箛箞箟箠箣箤箥箮箯箰箲箳箵箶箷箹\",7,\"篂篃範埂耿梗工攻功恭龚供躬公宫弓巩汞拱贡共钩勾沟苟狗垢构购够辜菇咕箍估沽孤姑鼓古蛊骨谷股故顾固雇刮瓜剐寡挂褂乖拐怪棺关官冠观管馆罐惯灌贯光广逛瑰规圭硅归龟闺轨鬼诡癸桂柜跪贵刽辊滚棍锅郭国果裹过哈\"],[\"ba40\",\"篅篈築篊篋篍篎篏篐篒篔\",4,\"篛篜篞篟篠篢篣篤篧篨篩篫篬篭篯篰篲\",4,\"篸篹篺篻篽篿\",7,\"簈簉簊簍簎簐\",5,\"簗簘簙\"],[\"ba80\",\"簚\",4,\"簠\",5,\"簨簩簫\",12,\"簹\",5,\"籂骸孩海氦亥害骇酣憨邯韩含涵寒函喊罕翰撼捍旱憾悍焊汗汉夯杭航壕嚎豪毫郝好耗号浩呵喝荷菏核禾和何合盒貉阂河涸赫褐鹤贺嘿黑痕很狠恨哼亨横衡恒轰哄烘虹鸿洪宏弘红喉侯猴吼厚候后呼乎忽瑚壶葫胡蝴狐糊湖\"],[\"bb40\",\"籃\",9,\"籎\",36,\"籵\",5,\"籾\",9],[\"bb80\",\"粈粊\",6,\"粓粔粖粙粚粛粠粡粣粦粧粨粩粫粬粭粯粰粴\",4,\"粺粻弧虎唬护互沪户花哗华猾滑画划化话槐徊怀淮坏欢环桓还缓换患唤痪豢焕涣宦幻荒慌黄磺蝗簧皇凰惶煌晃幌恍谎灰挥辉徽恢蛔回毁悔慧卉惠晦贿秽会烩汇讳诲绘荤昏婚魂浑混豁活伙火获或惑霍货祸击圾基机畸稽积箕\"],[\"bc40\",\"粿糀糂糃糄糆糉糋糎\",6,\"糘糚糛糝糞糡\",6,\"糩\",5,\"糰\",7,\"糹糺糼\",13,\"紋\",5],[\"bc80\",\"紑\",14,\"紡紣紤紥紦紨紩紪紬紭紮細\",6,\"肌饥迹激讥鸡姬绩缉吉极棘辑籍集及急疾汲即嫉级挤几脊己蓟技冀季伎祭剂悸济寄寂计记既忌际妓继纪嘉枷夹佳家加荚颊贾甲钾假稼价架驾嫁歼监坚尖笺间煎兼肩艰奸缄茧检柬碱硷拣捡简俭剪减荐槛鉴践贱见键箭件\"],[\"bd40\",\"紷\",54,\"絯\",7],[\"bd80\",\"絸\",32,\"健舰剑饯渐溅涧建僵姜将浆江疆蒋桨奖讲匠酱降蕉椒礁焦胶交郊浇骄娇嚼搅铰矫侥脚狡角饺缴绞剿教酵轿较叫窖揭接皆秸街阶截劫节桔杰捷睫竭洁结解姐戒藉芥界借介疥诫届巾筋斤金今津襟紧锦仅谨进靳晋禁近烬浸\"],[\"be40\",\"継\",12,\"綧\",6,\"綯\",42],[\"be80\",\"線\",32,\"尽劲荆兢茎睛晶鲸京惊精粳经井警景颈静境敬镜径痉靖竟竞净炯窘揪究纠玖韭久灸九酒厩救旧臼舅咎就疚鞠拘狙疽居驹菊局咀矩举沮聚拒据巨具距踞锯俱句惧炬剧捐鹃娟倦眷卷绢撅攫抉掘倔爵觉决诀绝均菌钧军君峻\"],[\"bf40\",\"緻\",62],[\"bf80\",\"縺縼\",4,\"繂\",4,\"繈\",21,\"俊竣浚郡骏喀咖卡咯开揩楷凯慨刊堪勘坎砍看康慷糠扛抗亢炕考拷烤靠坷苛柯棵磕颗科壳咳可渴克刻客课肯啃垦恳坑吭空恐孔控抠口扣寇枯哭窟苦酷库裤夸垮挎跨胯块筷侩快宽款匡筐狂框矿眶旷况亏盔岿窥葵奎魁傀\"],[\"c040\",\"繞\",35,\"纃\",23,\"纜纝纞\"],[\"c080\",\"纮纴纻纼绖绤绬绹缊缐缞缷缹缻\",6,\"罃罆\",9,\"罒罓馈愧溃坤昆捆困括扩廓阔垃拉喇蜡腊辣啦莱来赖蓝婪栏拦篮阑兰澜谰揽览懒缆烂滥琅榔狼廊郎朗浪捞劳牢老佬姥酪烙涝勒乐雷镭蕾磊累儡垒擂肋类泪棱楞冷厘梨犁黎篱狸离漓理李里鲤礼莉荔吏栗丽厉励砾历利傈例俐\"],[\"c140\",\"罖罙罛罜罝罞罠罣\",4,\"罫罬罭罯罰罳罵罶罷罸罺罻罼罽罿羀羂\",7,\"羋羍羏\",4,\"羕\",4,\"羛羜羠羢羣羥羦羨\",6,\"羱\"],[\"c180\",\"羳\",4,\"羺羻羾翀翂翃翄翆翇翈翉翋翍翏\",4,\"翖翗翙\",5,\"翢翣痢立粒沥隶力璃哩俩联莲连镰廉怜涟帘敛脸链恋炼练粮凉梁粱良两辆量晾亮谅撩聊僚疗燎寥辽潦了撂镣廖料列裂烈劣猎琳林磷霖临邻鳞淋凛赁吝拎玲菱零龄铃伶羚凌灵陵岭领另令溜琉榴硫馏留刘瘤流柳六龙聋咙笼窿\"],[\"c240\",\"翤翧翨翪翫翬翭翯翲翴\",6,\"翽翾翿耂耇耈耉耊耎耏耑耓耚耛耝耞耟耡耣耤耫\",5,\"耲耴耹耺耼耾聀聁聄聅聇聈聉聎聏聐聑聓聕聖聗\"],[\"c280\",\"聙聛\",13,\"聫\",5,\"聲\",11,\"隆垄拢陇楼娄搂篓漏陋芦卢颅庐炉掳卤虏鲁麓碌露路赂鹿潞禄录陆戮驴吕铝侣旅履屡缕虑氯律率滤绿峦挛孪滦卵乱掠略抡轮伦仑沦纶论萝螺罗逻锣箩骡裸落洛骆络妈麻玛码蚂马骂嘛吗埋买麦卖迈脉瞒馒蛮满蔓曼慢漫\"],[\"c340\",\"聾肁肂肅肈肊肍\",5,\"肔肕肗肙肞肣肦肧肨肬肰肳肵肶肸肹肻胅胇\",4,\"胏\",6,\"胘胟胠胢胣胦胮胵胷胹胻胾胿脀脁脃脄脅脇脈脋\"],[\"c380\",\"脌脕脗脙脛脜脝脟\",12,\"脭脮脰脳脴脵脷脹\",4,\"脿谩芒茫盲氓忙莽猫茅锚毛矛铆卯茂冒帽貌贸么玫枚梅酶霉煤没眉媒镁每美昧寐妹媚门闷们萌蒙檬盟锰猛梦孟眯醚靡糜迷谜弥米秘觅泌蜜密幂棉眠绵冕免勉娩缅面苗描瞄藐秒渺庙妙蔑灭民抿皿敏悯闽明螟鸣铭名命谬摸\"],[\"c440\",\"腀\",5,\"腇腉腍腎腏腒腖腗腘腛\",4,\"腡腢腣腤腦腨腪腫腬腯腲腳腵腶腷腸膁膃\",4,\"膉膋膌膍膎膐膒\",5,\"膙膚膞\",4,\"膤膥\"],[\"c480\",\"膧膩膫\",7,\"膴\",5,\"膼膽膾膿臄臅臇臈臉臋臍\",6,\"摹蘑模膜磨摩魔抹末莫墨默沫漠寞陌谋牟某拇牡亩姆母墓暮幕募慕木目睦牧穆拿哪呐钠那娜纳氖乃奶耐奈南男难囊挠脑恼闹淖呢馁内嫩能妮霓倪泥尼拟你匿腻逆溺蔫拈年碾撵捻念娘酿鸟尿捏聂孽啮镊镍涅您柠狞凝宁\"],[\"c540\",\"臔\",14,\"臤臥臦臨臩臫臮\",4,\"臵\",5,\"臽臿舃與\",4,\"舎舏舑舓舕\",5,\"舝舠舤舥舦舧舩舮舲舺舼舽舿\"],[\"c580\",\"艀艁艂艃艅艆艈艊艌艍艎艐\",7,\"艙艛艜艝艞艠\",7,\"艩拧泞牛扭钮纽脓浓农弄奴努怒女暖虐疟挪懦糯诺哦欧鸥殴藕呕偶沤啪趴爬帕怕琶拍排牌徘湃派攀潘盘磐盼畔判叛乓庞旁耪胖抛咆刨炮袍跑泡呸胚培裴赔陪配佩沛喷盆砰抨烹澎彭蓬棚硼篷膨朋鹏捧碰坯砒霹批披劈琵毗\"],[\"c640\",\"艪艫艬艭艱艵艶艷艸艻艼芀芁芃芅芆芇芉芌芐芓芔芕芖芚芛芞芠芢芣芧芲芵芶芺芻芼芿苀苂苃苅苆苉苐苖苙苚苝苢苧苨苩苪苬苭苮苰苲苳苵苶苸\"],[\"c680\",\"苺苼\",4,\"茊茋茍茐茒茓茖茘茙茝\",9,\"茩茪茮茰茲茷茻茽啤脾疲皮匹痞僻屁譬篇偏片骗飘漂瓢票撇瞥拼频贫品聘乒坪苹萍平凭瓶评屏坡泼颇婆破魄迫粕剖扑铺仆莆葡菩蒲埔朴圃普浦谱曝瀑期欺栖戚妻七凄漆柒沏其棋奇歧畦崎脐齐旗祈祁骑起岂乞企启契砌器气迄弃汽泣讫掐\"],[\"c740\",\"茾茿荁荂荄荅荈荊\",4,\"荓荕\",4,\"荝荢荰\",6,\"荹荺荾\",6,\"莇莈莊莋莌莍莏莐莑莔莕莖莗莙莚莝莟莡\",6,\"莬莭莮\"],[\"c780\",\"莯莵莻莾莿菂菃菄菆菈菉菋菍菎菐菑菒菓菕菗菙菚菛菞菢菣菤菦菧菨菫菬菭恰洽牵扦钎铅千迁签仟谦乾黔钱钳前潜遣浅谴堑嵌欠歉枪呛腔羌墙蔷强抢橇锹敲悄桥瞧乔侨巧鞘撬翘峭俏窍切茄且怯窃钦侵亲秦琴勤芹擒禽寝沁青轻氢倾卿清擎晴氰情顷请庆琼穷秋丘邱球求囚酋泅趋区蛆曲躯屈驱渠\"],[\"c840\",\"菮華菳\",4,\"菺菻菼菾菿萀萂萅萇萈萉萊萐萒\",5,\"萙萚萛萞\",5,\"萩\",7,\"萲\",5,\"萹萺萻萾\",7,\"葇葈葉\"],[\"c880\",\"葊\",6,\"葒\",4,\"葘葝葞葟葠葢葤\",4,\"葪葮葯葰葲葴葷葹葻葼取娶龋趣去圈颧权醛泉全痊拳犬券劝缺炔瘸却鹊榷确雀裙群然燃冉染瓤壤攘嚷让饶扰绕惹热壬仁人忍韧任认刃妊纫扔仍日戎茸蓉荣融熔溶容绒冗揉柔肉茹蠕儒孺如辱乳汝入褥软阮蕊瑞锐闰润若弱撒洒萨腮鳃塞赛三叁\"],[\"c940\",\"葽\",4,\"蒃蒄蒅蒆蒊蒍蒏\",7,\"蒘蒚蒛蒝蒞蒟蒠蒢\",12,\"蒰蒱蒳蒵蒶蒷蒻蒼蒾蓀蓂蓃蓅蓆蓇蓈蓋蓌蓎蓏蓒蓔蓕蓗\"],[\"c980\",\"蓘\",4,\"蓞蓡蓢蓤蓧\",4,\"蓭蓮蓯蓱\",10,\"蓽蓾蔀蔁蔂伞散桑嗓丧搔骚扫嫂瑟色涩森僧莎砂杀刹沙纱傻啥煞筛晒珊苫杉山删煽衫闪陕擅赡膳善汕扇缮墒伤商赏晌上尚裳梢捎稍烧芍勺韶少哨邵绍奢赊蛇舌舍赦摄射慑涉社设砷申呻伸身深娠绅神沈审婶甚肾慎渗声生甥牲升绳\"],[\"ca40\",\"蔃\",8,\"蔍蔎蔏蔐蔒蔔蔕蔖蔘蔙蔛蔜蔝蔞蔠蔢\",8,\"蔭\",9,\"蔾\",4,\"蕄蕅蕆蕇蕋\",10],[\"ca80\",\"蕗蕘蕚蕛蕜蕝蕟\",4,\"蕥蕦蕧蕩\",8,\"蕳蕵蕶蕷蕸蕼蕽蕿薀薁省盛剩胜圣师失狮施湿诗尸虱十石拾时什食蚀实识史矢使屎驶始式示士世柿事拭誓逝势是嗜噬适仕侍释饰氏市恃室视试收手首守寿授售受瘦兽蔬枢梳殊抒输叔舒淑疏书赎孰熟薯暑曙署蜀黍鼠属术述树束戍竖墅庶数漱\"],[\"cb40\",\"薂薃薆薈\",6,\"薐\",10,\"薝\",6,\"薥薦薧薩薫薬薭薱\",5,\"薸薺\",6,\"藂\",6,\"藊\",4,\"藑藒\"],[\"cb80\",\"藔藖\",5,\"藝\",6,\"藥藦藧藨藪\",14,\"恕刷耍摔衰甩帅栓拴霜双爽谁水睡税吮瞬顺舜说硕朔烁斯撕嘶思私司丝死肆寺嗣四伺似饲巳松耸怂颂送宋讼诵搜艘擞嗽苏酥俗素速粟僳塑溯宿诉肃酸蒜算虽隋随绥髓碎岁穗遂隧祟孙损笋蓑梭唆缩琐索锁所塌他它她塔\"],[\"cc40\",\"藹藺藼藽藾蘀\",4,\"蘆\",10,\"蘒蘓蘔蘕蘗\",15,\"蘨蘪\",13,\"蘹蘺蘻蘽蘾蘿虀\"],[\"cc80\",\"虁\",11,\"虒虓處\",4,\"虛虜虝號虠虡虣\",7,\"獭挞蹋踏胎苔抬台泰酞太态汰坍摊贪瘫滩坛檀痰潭谭谈坦毯袒碳探叹炭汤塘搪堂棠膛唐糖倘躺淌趟烫掏涛滔绦萄桃逃淘陶讨套特藤腾疼誊梯剔踢锑提题蹄啼体替嚏惕涕剃屉天添填田甜恬舔腆挑条迢眺跳贴铁帖厅听烃\"],[\"cd40\",\"虭虯虰虲\",6,\"蚃\",6,\"蚎\",4,\"蚔蚖\",5,\"蚞\",4,\"蚥蚦蚫蚭蚮蚲蚳蚷蚸蚹蚻\",4,\"蛁蛂蛃蛅蛈蛌蛍蛒蛓蛕蛖蛗蛚蛜\"],[\"cd80\",\"蛝蛠蛡蛢蛣蛥蛦蛧蛨蛪蛫蛬蛯蛵蛶蛷蛺蛻蛼蛽蛿蜁蜄蜅蜆蜋蜌蜎蜏蜐蜑蜔蜖汀廷停亭庭挺艇通桐酮瞳同铜彤童桶捅筒统痛偷投头透凸秃突图徒途涂屠土吐兔湍团推颓腿蜕褪退吞屯臀拖托脱鸵陀驮驼椭妥拓唾挖哇蛙洼娃瓦袜歪外豌弯湾玩顽丸烷完碗挽晚皖惋宛婉万腕汪王亡枉网往旺望忘妄威\"],[\"ce40\",\"蜙蜛蜝蜟蜠蜤蜦蜧蜨蜪蜫蜬蜭蜯蜰蜲蜳蜵蜶蜸蜹蜺蜼蜽蝀\",6,\"蝊蝋蝍蝏蝐蝑蝒蝔蝕蝖蝘蝚\",5,\"蝡蝢蝦\",7,\"蝯蝱蝲蝳蝵\"],[\"ce80\",\"蝷蝸蝹蝺蝿螀螁螄螆螇螉螊螌螎\",4,\"螔螕螖螘\",6,\"螠\",4,\"巍微危韦违桅围唯惟为潍维苇萎委伟伪尾纬未蔚味畏胃喂魏位渭谓尉慰卫瘟温蚊文闻纹吻稳紊问嗡翁瓮挝蜗涡窝我斡卧握沃巫呜钨乌污诬屋无芜梧吾吴毋武五捂午舞伍侮坞戊雾晤物勿务悟误昔熙析西硒矽晰嘻吸锡牺\"],[\"cf40\",\"螥螦螧螩螪螮螰螱螲螴螶螷螸螹螻螼螾螿蟁\",4,\"蟇蟈蟉蟌\",4,\"蟔\",6,\"蟜蟝蟞蟟蟡蟢蟣蟤蟦蟧蟨蟩蟫蟬蟭蟯\",9],[\"cf80\",\"蟺蟻蟼蟽蟿蠀蠁蠂蠄\",5,\"蠋\",7,\"蠔蠗蠘蠙蠚蠜\",4,\"蠣稀息希悉膝夕惜熄烯溪汐犀檄袭席习媳喜铣洗系隙戏细瞎虾匣霞辖暇峡侠狭下厦夏吓掀锨先仙鲜纤咸贤衔舷闲涎弦嫌显险现献县腺馅羡宪陷限线相厢镶香箱襄湘乡翔祥详想响享项巷橡像向象萧硝霄削哮嚣销消宵淆晓\"],[\"d040\",\"蠤\",13,\"蠳\",5,\"蠺蠻蠽蠾蠿衁衂衃衆\",5,\"衎\",5,\"衕衖衘衚\",6,\"衦衧衪衭衯衱衳衴衵衶衸衹衺\"],[\"d080\",\"衻衼袀袃袆袇袉袊袌袎袏袐袑袓袔袕袗\",4,\"袝\",4,\"袣袥\",5,\"小孝校肖啸笑效楔些歇蝎鞋协挟携邪斜胁谐写械卸蟹懈泄泻谢屑薪芯锌欣辛新忻心信衅星腥猩惺兴刑型形邢行醒幸杏性姓兄凶胸匈汹雄熊休修羞朽嗅锈秀袖绣墟戌需虚嘘须徐许蓄酗叙旭序畜恤絮婿绪续轩喧宣悬旋玄\"],[\"d140\",\"袬袮袯袰袲\",4,\"袸袹袺袻袽袾袿裀裃裄裇裈裊裋裌裍裏裐裑裓裖裗裚\",4,\"裠裡裦裧裩\",6,\"裲裵裶裷裺裻製裿褀褁褃\",5],[\"d180\",\"褉褋\",4,\"褑褔\",4,\"褜\",4,\"褢褣褤褦褧褨褩褬褭褮褯褱褲褳褵褷选癣眩绚靴薛学穴雪血勋熏循旬询寻驯巡殉汛训讯逊迅压押鸦鸭呀丫芽牙蚜崖衙涯雅哑亚讶焉咽阉烟淹盐严研蜒岩延言颜阎炎沿奄掩眼衍演艳堰燕厌砚雁唁彦焰宴谚验殃央鸯秧杨扬佯疡羊洋阳氧仰痒养样漾邀腰妖瑶\"],[\"d240\",\"褸\",8,\"襂襃襅\",24,\"襠\",5,\"襧\",19,\"襼\"],[\"d280\",\"襽襾覀覂覄覅覇\",26,\"摇尧遥窑谣姚咬舀药要耀椰噎耶爷野冶也页掖业叶曳腋夜液一壹医揖铱依伊衣颐夷遗移仪胰疑沂宜姨彝椅蚁倚已乙矣以艺抑易邑屹亿役臆逸肄疫亦裔意毅忆义益溢诣议谊译异翼翌绎茵荫因殷音阴姻吟银淫寅饮尹引隐\"],[\"d340\",\"覢\",30,\"觃觍觓觔觕觗觘觙觛觝觟觠觡觢觤觧觨觩觪觬觭觮觰觱觲觴\",6],[\"d380\",\"觻\",4,\"訁\",5,\"計\",21,\"印英樱婴鹰应缨莹萤营荧蝇迎赢盈影颖硬映哟拥佣臃痈庸雍踊蛹咏泳涌永恿勇用幽优悠忧尤由邮铀犹油游酉有友右佑釉诱又幼迂淤于盂榆虞愚舆余俞逾鱼愉渝渔隅予娱雨与屿禹宇语羽玉域芋郁吁遇喻峪御愈欲狱育誉\"],[\"d440\",\"訞\",31,\"訿\",8,\"詉\",21],[\"d480\",\"詟\",25,\"詺\",6,\"浴寓裕预豫驭鸳渊冤元垣袁原援辕园员圆猿源缘远苑愿怨院曰约越跃钥岳粤月悦阅耘云郧匀陨允运蕴酝晕韵孕匝砸杂栽哉灾宰载再在咱攒暂赞赃脏葬遭糟凿藻枣早澡蚤躁噪造皂灶燥责择则泽贼怎增憎曾赠扎喳渣札轧\"],[\"d540\",\"誁\",7,\"誋\",7,\"誔\",46],[\"d580\",\"諃\",32,\"铡闸眨栅榨咋乍炸诈摘斋宅窄债寨瞻毡詹粘沾盏斩辗崭展蘸栈占战站湛绽樟章彰漳张掌涨杖丈帐账仗胀瘴障招昭找沼赵照罩兆肇召遮折哲蛰辙者锗蔗这浙珍斟真甄砧臻贞针侦枕疹诊震振镇阵蒸挣睁征狰争怔整拯正政\"],[\"d640\",\"諤\",34,\"謈\",27],[\"d680\",\"謤謥謧\",30,\"帧症郑证芝枝支吱蜘知肢脂汁之织职直植殖执值侄址指止趾只旨纸志挚掷至致置帜峙制智秩稚质炙痔滞治窒中盅忠钟衷终种肿重仲众舟周州洲诌粥轴肘帚咒皱宙昼骤珠株蛛朱猪诸诛逐竹烛煮拄瞩嘱主著柱助蛀贮铸筑\"],[\"d740\",\"譆\",31,\"譧\",4,\"譭\",25],[\"d780\",\"讇\",24,\"讬讱讻诇诐诪谉谞住注祝驻抓爪拽专砖转撰赚篆桩庄装妆撞壮状椎锥追赘坠缀谆准捉拙卓桌琢茁酌啄着灼浊兹咨资姿滋淄孜紫仔籽滓子自渍字鬃棕踪宗综总纵邹走奏揍租足卒族祖诅阻组钻纂嘴醉最罪尊遵昨左佐柞做作坐座\"],[\"d840\",\"谸\",8,\"豂豃豄豅豈豊豋豍\",7,\"豖豗豘豙豛\",5,\"豣\",6,\"豬\",6,\"豴豵豶豷豻\",6,\"貃貄貆貇\"],[\"d880\",\"貈貋貍\",6,\"貕貖貗貙\",20,\"亍丌兀丐廿卅丕亘丞鬲孬噩丨禺丿匕乇夭爻卮氐囟胤馗毓睾鼗丶亟鼐乜乩亓芈孛啬嘏仄厍厝厣厥厮靥赝匚叵匦匮匾赜卦卣刂刈刎刭刳刿剀剌剞剡剜蒯剽劂劁劐劓冂罔亻仃仉仂仨仡仫仞伛仳伢佤仵伥伧伉伫佞佧攸佚佝\"],[\"d940\",\"貮\",62],[\"d980\",\"賭\",32,\"佟佗伲伽佶佴侑侉侃侏佾佻侪佼侬侔俦俨俪俅俚俣俜俑俟俸倩偌俳倬倏倮倭俾倜倌倥倨偾偃偕偈偎偬偻傥傧傩傺僖儆僭僬僦僮儇儋仝氽佘佥俎龠汆籴兮巽黉馘冁夔勹匍訇匐凫夙兕亠兖亳衮袤亵脔裒禀嬴蠃羸冫冱冽冼\"],[\"da40\",\"贎\",14,\"贠赑赒赗赟赥赨赩赪赬赮赯赱赲赸\",8,\"趂趃趆趇趈趉趌\",4,\"趒趓趕\",9,\"趠趡\"],[\"da80\",\"趢趤\",12,\"趲趶趷趹趻趽跀跁跂跅跇跈跉跊跍跐跒跓跔凇冖冢冥讠讦讧讪讴讵讷诂诃诋诏诎诒诓诔诖诘诙诜诟诠诤诨诩诮诰诳诶诹诼诿谀谂谄谇谌谏谑谒谔谕谖谙谛谘谝谟谠谡谥谧谪谫谮谯谲谳谵谶卩卺阝阢阡阱阪阽阼陂陉陔陟陧陬陲陴隈隍隗隰邗邛邝邙邬邡邴邳邶邺\"],[\"db40\",\"跕跘跙跜跠跡跢跥跦跧跩跭跮跰跱跲跴跶跼跾\",6,\"踆踇踈踋踍踎踐踑踒踓踕\",7,\"踠踡踤\",4,\"踫踭踰踲踳踴踶踷踸踻踼踾\"],[\"db80\",\"踿蹃蹅蹆蹌\",4,\"蹓\",5,\"蹚\",11,\"蹧蹨蹪蹫蹮蹱邸邰郏郅邾郐郄郇郓郦郢郜郗郛郫郯郾鄄鄢鄞鄣鄱鄯鄹酃酆刍奂劢劬劭劾哿勐勖勰叟燮矍廴凵凼鬯厶弁畚巯坌垩垡塾墼壅壑圩圬圪圳圹圮圯坜圻坂坩垅坫垆坼坻坨坭坶坳垭垤垌垲埏垧垴垓垠埕埘埚埙埒垸埴埯埸埤埝\"],[\"dc40\",\"蹳蹵蹷\",4,\"蹽蹾躀躂躃躄躆躈\",6,\"躑躒躓躕\",6,\"躝躟\",11,\"躭躮躰躱躳\",6,\"躻\",7],[\"dc80\",\"軃\",10,\"軏\",21,\"堋堍埽埭堀堞堙塄堠塥塬墁墉墚墀馨鼙懿艹艽艿芏芊芨芄芎芑芗芙芫芸芾芰苈苊苣芘芷芮苋苌苁芩芴芡芪芟苄苎芤苡茉苷苤茏茇苜苴苒苘茌苻苓茑茚茆茔茕苠苕茜荑荛荜茈莒茼茴茱莛荞茯荏荇荃荟荀茗荠茭茺茳荦荥\"],[\"dd40\",\"軥\",62],[\"dd80\",\"輤\",32,\"荨茛荩荬荪荭荮莰荸莳莴莠莪莓莜莅荼莶莩荽莸荻莘莞莨莺莼菁萁菥菘堇萘萋菝菽菖萜萸萑萆菔菟萏萃菸菹菪菅菀萦菰菡葜葑葚葙葳蒇蒈葺蒉葸萼葆葩葶蒌蒎萱葭蓁蓍蓐蓦蒽蓓蓊蒿蒺蓠蒡蒹蒴蒗蓥蓣蔌甍蔸蓰蔹蔟蔺\"],[\"de40\",\"轅\",32,\"轪辀辌辒辝辠辡辢辤辥辦辧辪辬辭辮辯農辳辴辵辷辸辺辻込辿迀迃迆\"],[\"de80\",\"迉\",4,\"迏迒迖迗迚迠迡迣迧迬迯迱迲迴迵迶迺迻迼迾迿逇逈逌逎逓逕逘蕖蔻蓿蓼蕙蕈蕨蕤蕞蕺瞢蕃蕲蕻薤薨薇薏蕹薮薜薅薹薷薰藓藁藜藿蘧蘅蘩蘖蘼廾弈夼奁耷奕奚奘匏尢尥尬尴扌扪抟抻拊拚拗拮挢拶挹捋捃掭揶捱捺掎掴捭掬掊捩掮掼揲揸揠揿揄揞揎摒揆掾摅摁搋搛搠搌搦搡摞撄摭撖\"],[\"df40\",\"這逜連逤逥逧\",5,\"逰\",4,\"逷逹逺逽逿遀遃遅遆遈\",4,\"過達違遖遙遚遜\",5,\"遤遦遧適遪遫遬遯\",4,\"遶\",6,\"遾邁\"],[\"df80\",\"還邅邆邇邉邊邌\",4,\"邒邔邖邘邚邜邞邟邠邤邥邧邨邩邫邭邲邷邼邽邿郀摺撷撸撙撺擀擐擗擤擢攉攥攮弋忒甙弑卟叱叽叩叨叻吒吖吆呋呒呓呔呖呃吡呗呙吣吲咂咔呷呱呤咚咛咄呶呦咝哐咭哂咴哒咧咦哓哔呲咣哕咻咿哌哙哚哜咩咪咤哝哏哞唛哧唠哽唔哳唢唣唏唑唧唪啧喏喵啉啭啁啕唿啐唼\"],[\"e040\",\"郂郃郆郈郉郋郌郍郒郔郕郖郘郙郚郞郟郠郣郤郥郩郪郬郮郰郱郲郳郵郶郷郹郺郻郼郿鄀鄁鄃鄅\",19,\"鄚鄛鄜\"],[\"e080\",\"鄝鄟鄠鄡鄤\",10,\"鄰鄲\",6,\"鄺\",8,\"酄唷啖啵啶啷唳唰啜喋嗒喃喱喹喈喁喟啾嗖喑啻嗟喽喾喔喙嗪嗷嗉嘟嗑嗫嗬嗔嗦嗝嗄嗯嗥嗲嗳嗌嗍嗨嗵嗤辔嘞嘈嘌嘁嘤嘣嗾嘀嘧嘭噘嘹噗嘬噍噢噙噜噌噔嚆噤噱噫噻噼嚅嚓嚯囔囗囝囡囵囫囹囿圄圊圉圜帏帙帔帑帱帻帼\"],[\"e140\",\"酅酇酈酑酓酔酕酖酘酙酛酜酟酠酦酧酨酫酭酳酺酻酼醀\",4,\"醆醈醊醎醏醓\",6,\"醜\",5,\"醤\",5,\"醫醬醰醱醲醳醶醷醸醹醻\"],[\"e180\",\"醼\",10,\"釈釋釐釒\",9,\"針\",8,\"帷幄幔幛幞幡岌屺岍岐岖岈岘岙岑岚岜岵岢岽岬岫岱岣峁岷峄峒峤峋峥崂崃崧崦崮崤崞崆崛嵘崾崴崽嵬嵛嵯嵝嵫嵋嵊嵩嵴嶂嶙嶝豳嶷巅彳彷徂徇徉後徕徙徜徨徭徵徼衢彡犭犰犴犷犸狃狁狎狍狒狨狯狩狲狴狷猁狳猃狺\"],[\"e240\",\"釦\",62],[\"e280\",\"鈥\",32,\"狻猗猓猡猊猞猝猕猢猹猥猬猸猱獐獍獗獠獬獯獾舛夥飧夤夂饣饧\",5,\"饴饷饽馀馄馇馊馍馐馑馓馔馕庀庑庋庖庥庠庹庵庾庳赓廒廑廛廨廪膺忄忉忖忏怃忮怄忡忤忾怅怆忪忭忸怙怵怦怛怏怍怩怫怊怿怡恸恹恻恺恂\"],[\"e340\",\"鉆\",45,\"鉵\",16],[\"e380\",\"銆\",7,\"銏\",24,\"恪恽悖悚悭悝悃悒悌悛惬悻悱惝惘惆惚悴愠愦愕愣惴愀愎愫慊慵憬憔憧憷懔懵忝隳闩闫闱闳闵闶闼闾阃阄阆阈阊阋阌阍阏阒阕阖阗阙阚丬爿戕氵汔汜汊沣沅沐沔沌汨汩汴汶沆沩泐泔沭泷泸泱泗沲泠泖泺泫泮沱泓泯泾\"],[\"e440\",\"銨\",5,\"銯\",24,\"鋉\",31],[\"e480\",\"鋩\",32,\"洹洧洌浃浈洇洄洙洎洫浍洮洵洚浏浒浔洳涑浯涞涠浞涓涔浜浠浼浣渚淇淅淞渎涿淠渑淦淝淙渖涫渌涮渫湮湎湫溲湟溆湓湔渲渥湄滟溱溘滠漭滢溥溧溽溻溷滗溴滏溏滂溟潢潆潇漤漕滹漯漶潋潴漪漉漩澉澍澌潸潲潼潺濑\"],[\"e540\",\"錊\",51,\"錿\",10],[\"e580\",\"鍊\",31,\"鍫濉澧澹澶濂濡濮濞濠濯瀚瀣瀛瀹瀵灏灞宀宄宕宓宥宸甯骞搴寤寮褰寰蹇謇辶迓迕迥迮迤迩迦迳迨逅逄逋逦逑逍逖逡逵逶逭逯遄遑遒遐遨遘遢遛暹遴遽邂邈邃邋彐彗彖彘尻咫屐屙孱屣屦羼弪弩弭艴弼鬻屮妁妃妍妩妪妣\"],[\"e640\",\"鍬\",34,\"鎐\",27],[\"e680\",\"鎬\",29,\"鏋鏌鏍妗姊妫妞妤姒妲妯姗妾娅娆姝娈姣姘姹娌娉娲娴娑娣娓婀婧婊婕娼婢婵胬媪媛婷婺媾嫫媲嫒嫔媸嫠嫣嫱嫖嫦嫘嫜嬉嬗嬖嬲嬷孀尕尜孚孥孳孑孓孢驵驷驸驺驿驽骀骁骅骈骊骐骒骓骖骘骛骜骝骟骠骢骣骥骧纟纡纣纥纨纩\"],[\"e740\",\"鏎\",7,\"鏗\",54],[\"e780\",\"鐎\",32,\"纭纰纾绀绁绂绉绋绌绐绔绗绛绠绡绨绫绮绯绱绲缍绶绺绻绾缁缂缃缇缈缋缌缏缑缒缗缙缜缛缟缡\",6,\"缪缫缬缭缯\",4,\"缵幺畿巛甾邕玎玑玮玢玟珏珂珑玷玳珀珉珈珥珙顼琊珩珧珞玺珲琏琪瑛琦琥琨琰琮琬\"],[\"e840\",\"鐯\",14,\"鐿\",43,\"鑬鑭鑮鑯\"],[\"e880\",\"鑰\",20,\"钑钖钘铇铏铓铔铚铦铻锜锠琛琚瑁瑜瑗瑕瑙瑷瑭瑾璜璎璀璁璇璋璞璨璩璐璧瓒璺韪韫韬杌杓杞杈杩枥枇杪杳枘枧杵枨枞枭枋杷杼柰栉柘栊柩枰栌柙枵柚枳柝栀柃枸柢栎柁柽栲栳桠桡桎桢桄桤梃栝桕桦桁桧桀栾桊桉栩梵梏桴桷梓桫棂楮棼椟椠棹\"],[\"e940\",\"锧锳锽镃镈镋镕镚镠镮镴镵長\",7,\"門\",42],[\"e980\",\"閫\",32,\"椤棰椋椁楗棣椐楱椹楠楂楝榄楫榀榘楸椴槌榇榈槎榉楦楣楹榛榧榻榫榭槔榱槁槊槟榕槠榍槿樯槭樗樘橥槲橄樾檠橐橛樵檎橹樽樨橘橼檑檐檩檗檫猷獒殁殂殇殄殒殓殍殚殛殡殪轫轭轱轲轳轵轶轸轷轹轺轼轾辁辂辄辇辋\"],[\"ea40\",\"闌\",27,\"闬闿阇阓阘阛阞阠阣\",6,\"阫阬阭阯阰阷阸阹阺阾陁陃陊陎陏陑陒陓陖陗\"],[\"ea80\",\"陘陙陚陜陝陞陠陣陥陦陫陭\",4,\"陳陸\",12,\"隇隉隊辍辎辏辘辚軎戋戗戛戟戢戡戥戤戬臧瓯瓴瓿甏甑甓攴旮旯旰昊昙杲昃昕昀炅曷昝昴昱昶昵耆晟晔晁晏晖晡晗晷暄暌暧暝暾曛曜曦曩贲贳贶贻贽赀赅赆赈赉赇赍赕赙觇觊觋觌觎觏觐觑牮犟牝牦牯牾牿犄犋犍犏犒挈挲掰\"],[\"eb40\",\"隌階隑隒隓隕隖隚際隝\",9,\"隨\",7,\"隱隲隴隵隷隸隺隻隿雂雃雈雊雋雐雑雓雔雖\",9,\"雡\",6,\"雫\"],[\"eb80\",\"雬雭雮雰雱雲雴雵雸雺電雼雽雿霂霃霅霊霋霌霐霑霒霔霕霗\",4,\"霝霟霠搿擘耄毪毳毽毵毹氅氇氆氍氕氘氙氚氡氩氤氪氲攵敕敫牍牒牖爰虢刖肟肜肓肼朊肽肱肫肭肴肷胧胨胩胪胛胂胄胙胍胗朐胝胫胱胴胭脍脎胲胼朕脒豚脶脞脬脘脲腈腌腓腴腙腚腱腠腩腼腽腭腧塍媵膈膂膑滕膣膪臌朦臊膻\"],[\"ec40\",\"霡\",8,\"霫霬霮霯霱霳\",4,\"霺霻霼霽霿\",18,\"靔靕靗靘靚靜靝靟靣靤靦靧靨靪\",7],[\"ec80\",\"靲靵靷\",4,\"靽\",7,\"鞆\",4,\"鞌鞎鞏鞐鞓鞕鞖鞗鞙\",4,\"臁膦欤欷欹歃歆歙飑飒飓飕飙飚殳彀毂觳斐齑斓於旆旄旃旌旎旒旖炀炜炖炝炻烀炷炫炱烨烊焐焓焖焯焱煳煜煨煅煲煊煸煺熘熳熵熨熠燠燔燧燹爝爨灬焘煦熹戾戽扃扈扉礻祀祆祉祛祜祓祚祢祗祠祯祧祺禅禊禚禧禳忑忐\"],[\"ed40\",\"鞞鞟鞡鞢鞤\",6,\"鞬鞮鞰鞱鞳鞵\",46],[\"ed80\",\"韤韥韨韮\",4,\"韴韷\",23,\"怼恝恚恧恁恙恣悫愆愍慝憩憝懋懑戆肀聿沓泶淼矶矸砀砉砗砘砑斫砭砜砝砹砺砻砟砼砥砬砣砩硎硭硖硗砦硐硇硌硪碛碓碚碇碜碡碣碲碹碥磔磙磉磬磲礅磴礓礤礞礴龛黹黻黼盱眄眍盹眇眈眚眢眙眭眦眵眸睐睑睇睃睚睨\"],[\"ee40\",\"頏\",62],[\"ee80\",\"顎\",32,\"睢睥睿瞍睽瞀瞌瞑瞟瞠瞰瞵瞽町畀畎畋畈畛畲畹疃罘罡罟詈罨罴罱罹羁罾盍盥蠲钅钆钇钋钊钌钍钏钐钔钗钕钚钛钜钣钤钫钪钭钬钯钰钲钴钶\",4,\"钼钽钿铄铈\",6,\"铐铑铒铕铖铗铙铘铛铞铟铠铢铤铥铧铨铪\"],[\"ef40\",\"顯\",5,\"颋颎颒颕颙颣風\",37,\"飏飐飔飖飗飛飜飝飠\",4],[\"ef80\",\"飥飦飩\",30,\"铩铫铮铯铳铴铵铷铹铼铽铿锃锂锆锇锉锊锍锎锏锒\",4,\"锘锛锝锞锟锢锪锫锩锬锱锲锴锶锷锸锼锾锿镂锵镄镅镆镉镌镎镏镒镓镔镖镗镘镙镛镞镟镝镡镢镤\",8,\"镯镱镲镳锺矧矬雉秕秭秣秫稆嵇稃稂稞稔\"],[\"f040\",\"餈\",4,\"餎餏餑\",28,\"餯\",26],[\"f080\",\"饊\",9,\"饖\",12,\"饤饦饳饸饹饻饾馂馃馉稹稷穑黏馥穰皈皎皓皙皤瓞瓠甬鸠鸢鸨\",4,\"鸲鸱鸶鸸鸷鸹鸺鸾鹁鹂鹄鹆鹇鹈鹉鹋鹌鹎鹑鹕鹗鹚鹛鹜鹞鹣鹦\",6,\"鹱鹭鹳疒疔疖疠疝疬疣疳疴疸痄疱疰痃痂痖痍痣痨痦痤痫痧瘃痱痼痿瘐瘀瘅瘌瘗瘊瘥瘘瘕瘙\"],[\"f140\",\"馌馎馚\",10,\"馦馧馩\",47],[\"f180\",\"駙\",32,\"瘛瘼瘢瘠癀瘭瘰瘿瘵癃瘾瘳癍癞癔癜癖癫癯翊竦穸穹窀窆窈窕窦窠窬窨窭窳衤衩衲衽衿袂袢裆袷袼裉裢裎裣裥裱褚裼裨裾裰褡褙褓褛褊褴褫褶襁襦襻疋胥皲皴矜耒耔耖耜耠耢耥耦耧耩耨耱耋耵聃聆聍聒聩聱覃顸颀颃\"],[\"f240\",\"駺\",62],[\"f280\",\"騹\",32,\"颉颌颍颏颔颚颛颞颟颡颢颥颦虍虔虬虮虿虺虼虻蚨蚍蚋蚬蚝蚧蚣蚪蚓蚩蚶蛄蚵蛎蚰蚺蚱蚯蛉蛏蚴蛩蛱蛲蛭蛳蛐蜓蛞蛴蛟蛘蛑蜃蜇蛸蜈蜊蜍蜉蜣蜻蜞蜥蜮蜚蜾蝈蜴蜱蜩蜷蜿螂蜢蝽蝾蝻蝠蝰蝌蝮螋蝓蝣蝼蝤蝙蝥螓螯螨蟒\"],[\"f340\",\"驚\",17,\"驲骃骉骍骎骔骕骙骦骩\",6,\"骲骳骴骵骹骻骽骾骿髃髄髆\",4,\"髍髎髏髐髒體髕髖髗髙髚髛髜\"],[\"f380\",\"髝髞髠髢髣髤髥髧髨髩髪髬髮髰\",8,\"髺髼\",6,\"鬄鬅鬆蟆螈螅螭螗螃螫蟥螬螵螳蟋蟓螽蟑蟀蟊蟛蟪蟠蟮蠖蠓蟾蠊蠛蠡蠹蠼缶罂罄罅舐竺竽笈笃笄笕笊笫笏筇笸笪笙笮笱笠笥笤笳笾笞筘筚筅筵筌筝筠筮筻筢筲筱箐箦箧箸箬箝箨箅箪箜箢箫箴篑篁篌篝篚篥篦篪簌篾篼簏簖簋\"],[\"f440\",\"鬇鬉\",5,\"鬐鬑鬒鬔\",10,\"鬠鬡鬢鬤\",10,\"鬰鬱鬳\",7,\"鬽鬾鬿魀魆魊魋魌魎魐魒魓魕\",5],[\"f480\",\"魛\",32,\"簟簪簦簸籁籀臾舁舂舄臬衄舡舢舣舭舯舨舫舸舻舳舴舾艄艉艋艏艚艟艨衾袅袈裘裟襞羝羟羧羯羰羲籼敉粑粝粜粞粢粲粼粽糁糇糌糍糈糅糗糨艮暨羿翎翕翥翡翦翩翮翳糸絷綦綮繇纛麸麴赳趄趔趑趱赧赭豇豉酊酐酎酏酤\"],[\"f540\",\"魼\",62],[\"f580\",\"鮻\",32,\"酢酡酰酩酯酽酾酲酴酹醌醅醐醍醑醢醣醪醭醮醯醵醴醺豕鹾趸跫踅蹙蹩趵趿趼趺跄跖跗跚跞跎跏跛跆跬跷跸跣跹跻跤踉跽踔踝踟踬踮踣踯踺蹀踹踵踽踱蹉蹁蹂蹑蹒蹊蹰蹶蹼蹯蹴躅躏躔躐躜躞豸貂貊貅貘貔斛觖觞觚觜\"],[\"f640\",\"鯜\",62],[\"f680\",\"鰛\",32,\"觥觫觯訾謦靓雩雳雯霆霁霈霏霎霪霭霰霾龀龃龅\",5,\"龌黾鼋鼍隹隼隽雎雒瞿雠銎銮鋈錾鍪鏊鎏鐾鑫鱿鲂鲅鲆鲇鲈稣鲋鲎鲐鲑鲒鲔鲕鲚鲛鲞\",5,\"鲥\",4,\"鲫鲭鲮鲰\",7,\"鲺鲻鲼鲽鳄鳅鳆鳇鳊鳋\"],[\"f740\",\"鰼\",62],[\"f780\",\"鱻鱽鱾鲀鲃鲄鲉鲊鲌鲏鲓鲖鲗鲘鲙鲝鲪鲬鲯鲹鲾\",4,\"鳈鳉鳑鳒鳚鳛鳠鳡鳌\",4,\"鳓鳔鳕鳗鳘鳙鳜鳝鳟鳢靼鞅鞑鞒鞔鞯鞫鞣鞲鞴骱骰骷鹘骶骺骼髁髀髅髂髋髌髑魅魃魇魉魈魍魑飨餍餮饕饔髟髡髦髯髫髻髭髹鬈鬏鬓鬟鬣麽麾縻麂麇麈麋麒鏖麝麟黛黜黝黠黟黢黩黧黥黪黯鼢鼬鼯鼹鼷鼽鼾齄\"],[\"f840\",\"鳣\",62],[\"f880\",\"鴢\",32],[\"f940\",\"鵃\",62],[\"f980\",\"鶂\",32],[\"fa40\",\"鶣\",62],[\"fa80\",\"鷢\",32],[\"fb40\",\"鸃\",27,\"鸤鸧鸮鸰鸴鸻鸼鹀鹍鹐鹒鹓鹔鹖鹙鹝鹟鹠鹡鹢鹥鹮鹯鹲鹴\",9,\"麀\"],[\"fb80\",\"麁麃麄麅麆麉麊麌\",5,\"麔\",8,\"麞麠\",5,\"麧麨麩麪\"],[\"fc40\",\"麫\",8,\"麵麶麷麹麺麼麿\",4,\"黅黆黇黈黊黋黌黐黒黓黕黖黗黙黚點黡黣黤黦黨黫黬黭黮黰\",8,\"黺黽黿\",6],[\"fc80\",\"鼆\",4,\"鼌鼏鼑鼒鼔鼕鼖鼘鼚\",5,\"鼡鼣\",8,\"鼭鼮鼰鼱\"],[\"fd40\",\"鼲\",4,\"鼸鼺鼼鼿\",4,\"齅\",10,\"齒\",38],[\"fd80\",\"齹\",5,\"龁龂龍\",11,\"龜龝龞龡\",4,\"郎凉秊裏隣\"],[\"fe40\",\"兀嗀﨎﨏﨑﨓﨔礼﨟蘒﨡﨣﨤﨧﨨﨩\"]]");
-})), xm = /* @__PURE__ */ i({ default: () => Sm }), Sm, Cm = n((() => {
-	Sm = [
+})), mm = /* @__PURE__ */ i({ default: () => hm }), hm, gm = n((() => {
+	hm = /*#__PURE__*/ JSON.parse("[[\"0\",\"\\u0000\",128],[\"a1\",\"｡\",62],[\"8140\",\"　、。，．・：；？！゛゜´｀¨＾￣＿ヽヾゝゞ〃仝々〆〇ー―‐／＼～∥｜…‥‘’“”（）〔〕［］｛｝〈\",9,\"＋－±×\"],[\"8180\",\"÷＝≠＜＞≦≧∞∴♂♀°′″℃￥＄￠￡％＃＆＊＠§☆★○●◎◇◆□■△▲▽▼※〒→←↑↓〓\"],[\"81b8\",\"∈∋⊆⊇⊂⊃∪∩\"],[\"81c8\",\"∧∨￢⇒⇔∀∃\"],[\"81da\",\"∠⊥⌒∂∇≡≒≪≫√∽∝∵∫∬\"],[\"81f0\",\"Å‰♯♭♪†‡¶\"],[\"81fc\",\"◯\"],[\"824f\",\"０\",9],[\"8260\",\"Ａ\",25],[\"8281\",\"ａ\",25],[\"829f\",\"ぁ\",82],[\"8340\",\"ァ\",62],[\"8380\",\"ム\",22],[\"839f\",\"Α\",16,\"Σ\",6],[\"83bf\",\"α\",16,\"σ\",6],[\"8440\",\"А\",5,\"ЁЖ\",25],[\"8470\",\"а\",5,\"ёж\",7],[\"8480\",\"о\",17],[\"849f\",\"─│┌┐┘└├┬┤┴┼━┃┏┓┛┗┣┳┫┻╋┠┯┨┷┿┝┰┥┸╂\"],[\"8740\",\"①\",19,\"Ⅰ\",9],[\"875f\",\"㍉㌔㌢㍍㌘㌧㌃㌶㍑㍗㌍㌦㌣㌫㍊㌻㎜㎝㎞㎎㎏㏄㎡\"],[\"877e\",\"㍻\"],[\"8780\",\"〝〟№㏍℡㊤\",4,\"㈱㈲㈹㍾㍽㍼≒≡∫∮∑√⊥∠∟⊿∵∩∪\"],[\"889f\",\"亜唖娃阿哀愛挨姶逢葵茜穐悪握渥旭葦芦鯵梓圧斡扱宛姐虻飴絢綾鮎或粟袷安庵按暗案闇鞍杏以伊位依偉囲夷委威尉惟意慰易椅為畏異移維緯胃萎衣謂違遺医井亥域育郁磯一壱溢逸稲茨芋鰯允印咽員因姻引飲淫胤蔭\"],[\"8940\",\"院陰隠韻吋右宇烏羽迂雨卯鵜窺丑碓臼渦嘘唄欝蔚鰻姥厩浦瓜閏噂云運雲荏餌叡営嬰影映曳栄永泳洩瑛盈穎頴英衛詠鋭液疫益駅悦謁越閲榎厭円\"],[\"8980\",\"園堰奄宴延怨掩援沿演炎焔煙燕猿縁艶苑薗遠鉛鴛塩於汚甥凹央奥往応押旺横欧殴王翁襖鴬鴎黄岡沖荻億屋憶臆桶牡乙俺卸恩温穏音下化仮何伽価佳加可嘉夏嫁家寡科暇果架歌河火珂禍禾稼箇花苛茄荷華菓蝦課嘩貨迦過霞蚊俄峨我牙画臥芽蛾賀雅餓駕介会解回塊壊廻快怪悔恢懐戒拐改\"],[\"8a40\",\"魁晦械海灰界皆絵芥蟹開階貝凱劾外咳害崖慨概涯碍蓋街該鎧骸浬馨蛙垣柿蛎鈎劃嚇各廓拡撹格核殻獲確穫覚角赫較郭閣隔革学岳楽額顎掛笠樫\"],[\"8a80\",\"橿梶鰍潟割喝恰括活渇滑葛褐轄且鰹叶椛樺鞄株兜竃蒲釜鎌噛鴨栢茅萱粥刈苅瓦乾侃冠寒刊勘勧巻喚堪姦完官寛干幹患感慣憾換敢柑桓棺款歓汗漢澗潅環甘監看竿管簡緩缶翰肝艦莞観諌貫還鑑間閑関陥韓館舘丸含岸巌玩癌眼岩翫贋雁頑顔願企伎危喜器基奇嬉寄岐希幾忌揮机旗既期棋棄\"],[\"8b40\",\"機帰毅気汽畿祈季稀紀徽規記貴起軌輝飢騎鬼亀偽儀妓宜戯技擬欺犠疑祇義蟻誼議掬菊鞠吉吃喫桔橘詰砧杵黍却客脚虐逆丘久仇休及吸宮弓急救\"],[\"8b80\",\"朽求汲泣灸球究窮笈級糾給旧牛去居巨拒拠挙渠虚許距鋸漁禦魚亨享京供侠僑兇競共凶協匡卿叫喬境峡強彊怯恐恭挟教橋況狂狭矯胸脅興蕎郷鏡響饗驚仰凝尭暁業局曲極玉桐粁僅勤均巾錦斤欣欽琴禁禽筋緊芹菌衿襟謹近金吟銀九倶句区狗玖矩苦躯駆駈駒具愚虞喰空偶寓遇隅串櫛釧屑屈\"],[\"8c40\",\"掘窟沓靴轡窪熊隈粂栗繰桑鍬勲君薫訓群軍郡卦袈祁係傾刑兄啓圭珪型契形径恵慶慧憩掲携敬景桂渓畦稽系経継繋罫茎荊蛍計詣警軽頚鶏芸迎鯨\"],[\"8c80\",\"劇戟撃激隙桁傑欠決潔穴結血訣月件倹倦健兼券剣喧圏堅嫌建憲懸拳捲検権牽犬献研硯絹県肩見謙賢軒遣鍵険顕験鹸元原厳幻弦減源玄現絃舷言諺限乎個古呼固姑孤己庫弧戸故枯湖狐糊袴股胡菰虎誇跨鈷雇顧鼓五互伍午呉吾娯後御悟梧檎瑚碁語誤護醐乞鯉交佼侯候倖光公功効勾厚口向\"],[\"8d40\",\"后喉坑垢好孔孝宏工巧巷幸広庚康弘恒慌抗拘控攻昂晃更杭校梗構江洪浩港溝甲皇硬稿糠紅紘絞綱耕考肯肱腔膏航荒行衡講貢購郊酵鉱砿鋼閤降\"],[\"8d80\",\"項香高鴻剛劫号合壕拷濠豪轟麹克刻告国穀酷鵠黒獄漉腰甑忽惚骨狛込此頃今困坤墾婚恨懇昏昆根梱混痕紺艮魂些佐叉唆嵯左差査沙瑳砂詐鎖裟坐座挫債催再最哉塞妻宰彩才採栽歳済災采犀砕砦祭斎細菜裁載際剤在材罪財冴坂阪堺榊肴咲崎埼碕鷺作削咋搾昨朔柵窄策索錯桜鮭笹匙冊刷\"],[\"8e40\",\"察拶撮擦札殺薩雑皐鯖捌錆鮫皿晒三傘参山惨撒散桟燦珊産算纂蚕讃賛酸餐斬暫残仕仔伺使刺司史嗣四士始姉姿子屍市師志思指支孜斯施旨枝止\"],[\"8e80\",\"死氏獅祉私糸紙紫肢脂至視詞詩試誌諮資賜雌飼歯事似侍児字寺慈持時次滋治爾璽痔磁示而耳自蒔辞汐鹿式識鴫竺軸宍雫七叱執失嫉室悉湿漆疾質実蔀篠偲柴芝屡蕊縞舎写射捨赦斜煮社紗者謝車遮蛇邪借勺尺杓灼爵酌釈錫若寂弱惹主取守手朱殊狩珠種腫趣酒首儒受呪寿授樹綬需囚収周\"],[\"8f40\",\"宗就州修愁拾洲秀秋終繍習臭舟蒐衆襲讐蹴輯週酋酬集醜什住充十従戎柔汁渋獣縦重銃叔夙宿淑祝縮粛塾熟出術述俊峻春瞬竣舜駿准循旬楯殉淳\"],[\"8f80\",\"準潤盾純巡遵醇順処初所暑曙渚庶緒署書薯藷諸助叙女序徐恕鋤除傷償勝匠升召哨商唱嘗奨妾娼宵将小少尚庄床廠彰承抄招掌捷昇昌昭晶松梢樟樵沼消渉湘焼焦照症省硝礁祥称章笑粧紹肖菖蒋蕉衝裳訟証詔詳象賞醤鉦鍾鐘障鞘上丈丞乗冗剰城場壌嬢常情擾条杖浄状畳穣蒸譲醸錠嘱埴飾\"],[\"9040\",\"拭植殖燭織職色触食蝕辱尻伸信侵唇娠寝審心慎振新晋森榛浸深申疹真神秦紳臣芯薪親診身辛進針震人仁刃塵壬尋甚尽腎訊迅陣靭笥諏須酢図厨\"],[\"9080\",\"逗吹垂帥推水炊睡粋翠衰遂酔錐錘随瑞髄崇嵩数枢趨雛据杉椙菅頗雀裾澄摺寸世瀬畝是凄制勢姓征性成政整星晴棲栖正清牲生盛精聖声製西誠誓請逝醒青静斉税脆隻席惜戚斥昔析石積籍績脊責赤跡蹟碩切拙接摂折設窃節説雪絶舌蝉仙先千占宣専尖川戦扇撰栓栴泉浅洗染潜煎煽旋穿箭線\"],[\"9140\",\"繊羨腺舛船薦詮賎践選遷銭銑閃鮮前善漸然全禅繕膳糎噌塑岨措曾曽楚狙疏疎礎祖租粗素組蘇訴阻遡鼠僧創双叢倉喪壮奏爽宋層匝惣想捜掃挿掻\"],[\"9180\",\"操早曹巣槍槽漕燥争痩相窓糟総綜聡草荘葬蒼藻装走送遭鎗霜騒像増憎臓蔵贈造促側則即息捉束測足速俗属賊族続卒袖其揃存孫尊損村遜他多太汰詑唾堕妥惰打柁舵楕陀駄騨体堆対耐岱帯待怠態戴替泰滞胎腿苔袋貸退逮隊黛鯛代台大第醍題鷹滝瀧卓啄宅托択拓沢濯琢託鐸濁諾茸凧蛸只\"],[\"9240\",\"叩但達辰奪脱巽竪辿棚谷狸鱈樽誰丹単嘆坦担探旦歎淡湛炭短端箪綻耽胆蛋誕鍛団壇弾断暖檀段男談値知地弛恥智池痴稚置致蜘遅馳築畜竹筑蓄\"],[\"9280\",\"逐秩窒茶嫡着中仲宙忠抽昼柱注虫衷註酎鋳駐樗瀦猪苧著貯丁兆凋喋寵帖帳庁弔張彫徴懲挑暢朝潮牒町眺聴脹腸蝶調諜超跳銚長頂鳥勅捗直朕沈珍賃鎮陳津墜椎槌追鎚痛通塚栂掴槻佃漬柘辻蔦綴鍔椿潰坪壷嬬紬爪吊釣鶴亭低停偵剃貞呈堤定帝底庭廷弟悌抵挺提梯汀碇禎程締艇訂諦蹄逓\"],[\"9340\",\"邸鄭釘鼎泥摘擢敵滴的笛適鏑溺哲徹撤轍迭鉄典填天展店添纏甜貼転顛点伝殿澱田電兎吐堵塗妬屠徒斗杜渡登菟賭途都鍍砥砺努度土奴怒倒党冬\"],[\"9380\",\"凍刀唐塔塘套宕島嶋悼投搭東桃梼棟盗淘湯涛灯燈当痘祷等答筒糖統到董蕩藤討謄豆踏逃透鐙陶頭騰闘働動同堂導憧撞洞瞳童胴萄道銅峠鴇匿得徳涜特督禿篤毒独読栃橡凸突椴届鳶苫寅酉瀞噸屯惇敦沌豚遁頓呑曇鈍奈那内乍凪薙謎灘捺鍋楢馴縄畷南楠軟難汝二尼弐迩匂賑肉虹廿日乳入\"],[\"9440\",\"如尿韮任妊忍認濡禰祢寧葱猫熱年念捻撚燃粘乃廼之埜嚢悩濃納能脳膿農覗蚤巴把播覇杷波派琶破婆罵芭馬俳廃拝排敗杯盃牌背肺輩配倍培媒梅\"],[\"9480\",\"楳煤狽買売賠陪這蝿秤矧萩伯剥博拍柏泊白箔粕舶薄迫曝漠爆縛莫駁麦函箱硲箸肇筈櫨幡肌畑畠八鉢溌発醗髪伐罰抜筏閥鳩噺塙蛤隼伴判半反叛帆搬斑板氾汎版犯班畔繁般藩販範釆煩頒飯挽晩番盤磐蕃蛮匪卑否妃庇彼悲扉批披斐比泌疲皮碑秘緋罷肥被誹費避非飛樋簸備尾微枇毘琵眉美\"],[\"9540\",\"鼻柊稗匹疋髭彦膝菱肘弼必畢筆逼桧姫媛紐百謬俵彪標氷漂瓢票表評豹廟描病秒苗錨鋲蒜蛭鰭品彬斌浜瀕貧賓頻敏瓶不付埠夫婦富冨布府怖扶敷\"],[\"9580\",\"斧普浮父符腐膚芙譜負賦赴阜附侮撫武舞葡蕪部封楓風葺蕗伏副復幅服福腹複覆淵弗払沸仏物鮒分吻噴墳憤扮焚奮粉糞紛雰文聞丙併兵塀幣平弊柄並蔽閉陛米頁僻壁癖碧別瞥蔑箆偏変片篇編辺返遍便勉娩弁鞭保舗鋪圃捕歩甫補輔穂募墓慕戊暮母簿菩倣俸包呆報奉宝峰峯崩庖抱捧放方朋\"],[\"9640\",\"法泡烹砲縫胞芳萌蓬蜂褒訪豊邦鋒飽鳳鵬乏亡傍剖坊妨帽忘忙房暴望某棒冒紡肪膨謀貌貿鉾防吠頬北僕卜墨撲朴牧睦穆釦勃没殆堀幌奔本翻凡盆\"],[\"9680\",\"摩磨魔麻埋妹昧枚毎哩槙幕膜枕鮪柾鱒桝亦俣又抹末沫迄侭繭麿万慢満漫蔓味未魅巳箕岬密蜜湊蓑稔脈妙粍民眠務夢無牟矛霧鵡椋婿娘冥名命明盟迷銘鳴姪牝滅免棉綿緬面麺摸模茂妄孟毛猛盲網耗蒙儲木黙目杢勿餅尤戻籾貰問悶紋門匁也冶夜爺耶野弥矢厄役約薬訳躍靖柳薮鑓愉愈油癒\"],[\"9740\",\"諭輸唯佑優勇友宥幽悠憂揖有柚湧涌猶猷由祐裕誘遊邑郵雄融夕予余与誉輿預傭幼妖容庸揚揺擁曜楊様洋溶熔用窯羊耀葉蓉要謡踊遥陽養慾抑欲\"],[\"9780\",\"沃浴翌翼淀羅螺裸来莱頼雷洛絡落酪乱卵嵐欄濫藍蘭覧利吏履李梨理璃痢裏裡里離陸律率立葎掠略劉流溜琉留硫粒隆竜龍侶慮旅虜了亮僚両凌寮料梁涼猟療瞭稜糧良諒遼量陵領力緑倫厘林淋燐琳臨輪隣鱗麟瑠塁涙累類令伶例冷励嶺怜玲礼苓鈴隷零霊麗齢暦歴列劣烈裂廉恋憐漣煉簾練聯\"],[\"9840\",\"蓮連錬呂魯櫓炉賂路露労婁廊弄朗楼榔浪漏牢狼篭老聾蝋郎六麓禄肋録論倭和話歪賄脇惑枠鷲亙亘鰐詫藁蕨椀湾碗腕\"],[\"989f\",\"弌丐丕个丱丶丼丿乂乖乘亂亅豫亊舒弍于亞亟亠亢亰亳亶从仍仄仆仂仗仞仭仟价伉佚估佛佝佗佇佶侈侏侘佻佩佰侑佯來侖儘俔俟俎俘俛俑俚俐俤俥倚倨倔倪倥倅伜俶倡倩倬俾俯們倆偃假會偕偐偈做偖偬偸傀傚傅傴傲\"],[\"9940\",\"僉僊傳僂僖僞僥僭僣僮價僵儉儁儂儖儕儔儚儡儺儷儼儻儿兀兒兌兔兢竸兩兪兮冀冂囘册冉冏冑冓冕冖冤冦冢冩冪冫决冱冲冰况冽凅凉凛几處凩凭\"],[\"9980\",\"凰凵凾刄刋刔刎刧刪刮刳刹剏剄剋剌剞剔剪剴剩剳剿剽劍劔劒剱劈劑辨辧劬劭劼劵勁勍勗勞勣勦飭勠勳勵勸勹匆匈甸匍匐匏匕匚匣匯匱匳匸區卆卅丗卉卍凖卞卩卮夘卻卷厂厖厠厦厥厮厰厶參簒雙叟曼燮叮叨叭叺吁吽呀听吭吼吮吶吩吝呎咏呵咎呟呱呷呰咒呻咀呶咄咐咆哇咢咸咥咬哄哈咨\"],[\"9a40\",\"咫哂咤咾咼哘哥哦唏唔哽哮哭哺哢唹啀啣啌售啜啅啖啗唸唳啝喙喀咯喊喟啻啾喘喞單啼喃喩喇喨嗚嗅嗟嗄嗜嗤嗔嘔嗷嘖嗾嗽嘛嗹噎噐營嘴嘶嘲嘸\"],[\"9a80\",\"噫噤嘯噬噪嚆嚀嚊嚠嚔嚏嚥嚮嚶嚴囂嚼囁囃囀囈囎囑囓囗囮囹圀囿圄圉圈國圍圓團圖嗇圜圦圷圸坎圻址坏坩埀垈坡坿垉垓垠垳垤垪垰埃埆埔埒埓堊埖埣堋堙堝塲堡塢塋塰毀塒堽塹墅墹墟墫墺壞墻墸墮壅壓壑壗壙壘壥壜壤壟壯壺壹壻壼壽夂夊夐夛梦夥夬夭夲夸夾竒奕奐奎奚奘奢奠奧奬奩\"],[\"9b40\",\"奸妁妝佞侫妣妲姆姨姜妍姙姚娥娟娑娜娉娚婀婬婉娵娶婢婪媚媼媾嫋嫂媽嫣嫗嫦嫩嫖嫺嫻嬌嬋嬖嬲嫐嬪嬶嬾孃孅孀孑孕孚孛孥孩孰孳孵學斈孺宀\"],[\"9b80\",\"它宦宸寃寇寉寔寐寤實寢寞寥寫寰寶寳尅將專對尓尠尢尨尸尹屁屆屎屓屐屏孱屬屮乢屶屹岌岑岔妛岫岻岶岼岷峅岾峇峙峩峽峺峭嶌峪崋崕崗嵜崟崛崑崔崢崚崙崘嵌嵒嵎嵋嵬嵳嵶嶇嶄嶂嶢嶝嶬嶮嶽嶐嶷嶼巉巍巓巒巖巛巫已巵帋帚帙帑帛帶帷幄幃幀幎幗幔幟幢幤幇幵并幺麼广庠廁廂廈廐廏\"],[\"9c40\",\"廖廣廝廚廛廢廡廨廩廬廱廳廰廴廸廾弃弉彝彜弋弑弖弩弭弸彁彈彌彎弯彑彖彗彙彡彭彳彷徃徂彿徊很徑徇從徙徘徠徨徭徼忖忻忤忸忱忝悳忿怡恠\"],[\"9c80\",\"怙怐怩怎怱怛怕怫怦怏怺恚恁恪恷恟恊恆恍恣恃恤恂恬恫恙悁悍惧悃悚悄悛悖悗悒悧悋惡悸惠惓悴忰悽惆悵惘慍愕愆惶惷愀惴惺愃愡惻惱愍愎慇愾愨愧慊愿愼愬愴愽慂慄慳慷慘慙慚慫慴慯慥慱慟慝慓慵憙憖憇憬憔憚憊憑憫憮懌懊應懷懈懃懆憺懋罹懍懦懣懶懺懴懿懽懼懾戀戈戉戍戌戔戛\"],[\"9d40\",\"戞戡截戮戰戲戳扁扎扞扣扛扠扨扼抂抉找抒抓抖拔抃抔拗拑抻拏拿拆擔拈拜拌拊拂拇抛拉挌拮拱挧挂挈拯拵捐挾捍搜捏掖掎掀掫捶掣掏掉掟掵捫\"],[\"9d80\",\"捩掾揩揀揆揣揉插揶揄搖搴搆搓搦搶攝搗搨搏摧摯摶摎攪撕撓撥撩撈撼據擒擅擇撻擘擂擱擧舉擠擡抬擣擯攬擶擴擲擺攀擽攘攜攅攤攣攫攴攵攷收攸畋效敖敕敍敘敞敝敲數斂斃變斛斟斫斷旃旆旁旄旌旒旛旙无旡旱杲昊昃旻杳昵昶昴昜晏晄晉晁晞晝晤晧晨晟晢晰暃暈暎暉暄暘暝曁暹曉暾暼\"],[\"9e40\",\"曄暸曖曚曠昿曦曩曰曵曷朏朖朞朦朧霸朮朿朶杁朸朷杆杞杠杙杣杤枉杰枩杼杪枌枋枦枡枅枷柯枴柬枳柩枸柤柞柝柢柮枹柎柆柧檜栞框栩桀桍栲桎\"],[\"9e80\",\"梳栫桙档桷桿梟梏梭梔條梛梃檮梹桴梵梠梺椏梍桾椁棊椈棘椢椦棡椌棍棔棧棕椶椒椄棗棣椥棹棠棯椨椪椚椣椡棆楹楷楜楸楫楔楾楮椹楴椽楙椰楡楞楝榁楪榲榮槐榿槁槓榾槎寨槊槝榻槃榧樮榑榠榜榕榴槞槨樂樛槿權槹槲槧樅榱樞槭樔槫樊樒櫁樣樓橄樌橲樶橸橇橢橙橦橈樸樢檐檍檠檄檢檣\"],[\"9f40\",\"檗蘗檻櫃櫂檸檳檬櫞櫑櫟檪櫚櫪櫻欅蘖櫺欒欖鬱欟欸欷盜欹飮歇歃歉歐歙歔歛歟歡歸歹歿殀殄殃殍殘殕殞殤殪殫殯殲殱殳殷殼毆毋毓毟毬毫毳毯\"],[\"9f80\",\"麾氈氓气氛氤氣汞汕汢汪沂沍沚沁沛汾汨汳沒沐泄泱泓沽泗泅泝沮沱沾沺泛泯泙泪洟衍洶洫洽洸洙洵洳洒洌浣涓浤浚浹浙涎涕濤涅淹渕渊涵淇淦涸淆淬淞淌淨淒淅淺淙淤淕淪淮渭湮渮渙湲湟渾渣湫渫湶湍渟湃渺湎渤滿渝游溂溪溘滉溷滓溽溯滄溲滔滕溏溥滂溟潁漑灌滬滸滾漿滲漱滯漲滌\"],[\"e040\",\"漾漓滷澆潺潸澁澀潯潛濳潭澂潼潘澎澑濂潦澳澣澡澤澹濆澪濟濕濬濔濘濱濮濛瀉瀋濺瀑瀁瀏濾瀛瀚潴瀝瀘瀟瀰瀾瀲灑灣炙炒炯烱炬炸炳炮烟烋烝\"],[\"e080\",\"烙焉烽焜焙煥煕熈煦煢煌煖煬熏燻熄熕熨熬燗熹熾燒燉燔燎燠燬燧燵燼燹燿爍爐爛爨爭爬爰爲爻爼爿牀牆牋牘牴牾犂犁犇犒犖犢犧犹犲狃狆狄狎狒狢狠狡狹狷倏猗猊猜猖猝猴猯猩猥猾獎獏默獗獪獨獰獸獵獻獺珈玳珎玻珀珥珮珞璢琅瑯琥珸琲琺瑕琿瑟瑙瑁瑜瑩瑰瑣瑪瑶瑾璋璞璧瓊瓏瓔珱\"],[\"e140\",\"瓠瓣瓧瓩瓮瓲瓰瓱瓸瓷甄甃甅甌甎甍甕甓甞甦甬甼畄畍畊畉畛畆畚畩畤畧畫畭畸當疆疇畴疊疉疂疔疚疝疥疣痂疳痃疵疽疸疼疱痍痊痒痙痣痞痾痿\"],[\"e180\",\"痼瘁痰痺痲痳瘋瘍瘉瘟瘧瘠瘡瘢瘤瘴瘰瘻癇癈癆癜癘癡癢癨癩癪癧癬癰癲癶癸發皀皃皈皋皎皖皓皙皚皰皴皸皹皺盂盍盖盒盞盡盥盧盪蘯盻眈眇眄眩眤眞眥眦眛眷眸睇睚睨睫睛睥睿睾睹瞎瞋瞑瞠瞞瞰瞶瞹瞿瞼瞽瞻矇矍矗矚矜矣矮矼砌砒礦砠礪硅碎硴碆硼碚碌碣碵碪碯磑磆磋磔碾碼磅磊磬\"],[\"e240\",\"磧磚磽磴礇礒礑礙礬礫祀祠祗祟祚祕祓祺祿禊禝禧齋禪禮禳禹禺秉秕秧秬秡秣稈稍稘稙稠稟禀稱稻稾稷穃穗穉穡穢穩龝穰穹穽窈窗窕窘窖窩竈窰\"],[\"e280\",\"窶竅竄窿邃竇竊竍竏竕竓站竚竝竡竢竦竭竰笂笏笊笆笳笘笙笞笵笨笶筐筺笄筍笋筌筅筵筥筴筧筰筱筬筮箝箘箟箍箜箚箋箒箏筝箙篋篁篌篏箴篆篝篩簑簔篦篥籠簀簇簓篳篷簗簍篶簣簧簪簟簷簫簽籌籃籔籏籀籐籘籟籤籖籥籬籵粃粐粤粭粢粫粡粨粳粲粱粮粹粽糀糅糂糘糒糜糢鬻糯糲糴糶糺紆\"],[\"e340\",\"紂紜紕紊絅絋紮紲紿紵絆絳絖絎絲絨絮絏絣經綉絛綏絽綛綺綮綣綵緇綽綫總綢綯緜綸綟綰緘緝緤緞緻緲緡縅縊縣縡縒縱縟縉縋縢繆繦縻縵縹繃縷\"],[\"e380\",\"縲縺繧繝繖繞繙繚繹繪繩繼繻纃緕繽辮繿纈纉續纒纐纓纔纖纎纛纜缸缺罅罌罍罎罐网罕罔罘罟罠罨罩罧罸羂羆羃羈羇羌羔羞羝羚羣羯羲羹羮羶羸譱翅翆翊翕翔翡翦翩翳翹飜耆耄耋耒耘耙耜耡耨耿耻聊聆聒聘聚聟聢聨聳聲聰聶聹聽聿肄肆肅肛肓肚肭冐肬胛胥胙胝胄胚胖脉胯胱脛脩脣脯腋\"],[\"e440\",\"隋腆脾腓腑胼腱腮腥腦腴膃膈膊膀膂膠膕膤膣腟膓膩膰膵膾膸膽臀臂膺臉臍臑臙臘臈臚臟臠臧臺臻臾舁舂舅與舊舍舐舖舩舫舸舳艀艙艘艝艚艟艤\"],[\"e480\",\"艢艨艪艫舮艱艷艸艾芍芒芫芟芻芬苡苣苟苒苴苳苺莓范苻苹苞茆苜茉苙茵茴茖茲茱荀茹荐荅茯茫茗茘莅莚莪莟莢莖茣莎莇莊荼莵荳荵莠莉莨菴萓菫菎菽萃菘萋菁菷萇菠菲萍萢萠莽萸蔆菻葭萪萼蕚蒄葷葫蒭葮蒂葩葆萬葯葹萵蓊葢蒹蒿蒟蓙蓍蒻蓚蓐蓁蓆蓖蒡蔡蓿蓴蔗蔘蔬蔟蔕蔔蓼蕀蕣蕘蕈\"],[\"e540\",\"蕁蘂蕋蕕薀薤薈薑薊薨蕭薔薛藪薇薜蕷蕾薐藉薺藏薹藐藕藝藥藜藹蘊蘓蘋藾藺蘆蘢蘚蘰蘿虍乕虔號虧虱蚓蚣蚩蚪蚋蚌蚶蚯蛄蛆蚰蛉蠣蚫蛔蛞蛩蛬\"],[\"e580\",\"蛟蛛蛯蜒蜆蜈蜀蜃蛻蜑蜉蜍蛹蜊蜴蜿蜷蜻蜥蜩蜚蝠蝟蝸蝌蝎蝴蝗蝨蝮蝙蝓蝣蝪蠅螢螟螂螯蟋螽蟀蟐雖螫蟄螳蟇蟆螻蟯蟲蟠蠏蠍蟾蟶蟷蠎蟒蠑蠖蠕蠢蠡蠱蠶蠹蠧蠻衄衂衒衙衞衢衫袁衾袞衵衽袵衲袂袗袒袮袙袢袍袤袰袿袱裃裄裔裘裙裝裹褂裼裴裨裲褄褌褊褓襃褞褥褪褫襁襄褻褶褸襌褝襠襞\"],[\"e640\",\"襦襤襭襪襯襴襷襾覃覈覊覓覘覡覩覦覬覯覲覺覽覿觀觚觜觝觧觴觸訃訖訐訌訛訝訥訶詁詛詒詆詈詼詭詬詢誅誂誄誨誡誑誥誦誚誣諄諍諂諚諫諳諧\"],[\"e680\",\"諤諱謔諠諢諷諞諛謌謇謚諡謖謐謗謠謳鞫謦謫謾謨譁譌譏譎證譖譛譚譫譟譬譯譴譽讀讌讎讒讓讖讙讚谺豁谿豈豌豎豐豕豢豬豸豺貂貉貅貊貍貎貔豼貘戝貭貪貽貲貳貮貶賈賁賤賣賚賽賺賻贄贅贊贇贏贍贐齎贓賍贔贖赧赭赱赳趁趙跂趾趺跏跚跖跌跛跋跪跫跟跣跼踈踉跿踝踞踐踟蹂踵踰踴蹊\"],[\"e740\",\"蹇蹉蹌蹐蹈蹙蹤蹠踪蹣蹕蹶蹲蹼躁躇躅躄躋躊躓躑躔躙躪躡躬躰軆躱躾軅軈軋軛軣軼軻軫軾輊輅輕輒輙輓輜輟輛輌輦輳輻輹轅轂輾轌轉轆轎轗轜\"],[\"e780\",\"轢轣轤辜辟辣辭辯辷迚迥迢迪迯邇迴逅迹迺逑逕逡逍逞逖逋逧逶逵逹迸遏遐遑遒逎遉逾遖遘遞遨遯遶隨遲邂遽邁邀邊邉邏邨邯邱邵郢郤扈郛鄂鄒鄙鄲鄰酊酖酘酣酥酩酳酲醋醉醂醢醫醯醪醵醴醺釀釁釉釋釐釖釟釡釛釼釵釶鈞釿鈔鈬鈕鈑鉞鉗鉅鉉鉤鉈銕鈿鉋鉐銜銖銓銛鉚鋏銹銷鋩錏鋺鍄錮\"],[\"e840\",\"錙錢錚錣錺錵錻鍜鍠鍼鍮鍖鎰鎬鎭鎔鎹鏖鏗鏨鏥鏘鏃鏝鏐鏈鏤鐚鐔鐓鐃鐇鐐鐶鐫鐵鐡鐺鑁鑒鑄鑛鑠鑢鑞鑪鈩鑰鑵鑷鑽鑚鑼鑾钁鑿閂閇閊閔閖閘閙\"],[\"e880\",\"閠閨閧閭閼閻閹閾闊濶闃闍闌闕闔闖關闡闥闢阡阨阮阯陂陌陏陋陷陜陞陝陟陦陲陬隍隘隕隗險隧隱隲隰隴隶隸隹雎雋雉雍襍雜霍雕雹霄霆霈霓霎霑霏霖霙霤霪霰霹霽霾靄靆靈靂靉靜靠靤靦靨勒靫靱靹鞅靼鞁靺鞆鞋鞏鞐鞜鞨鞦鞣鞳鞴韃韆韈韋韜韭齏韲竟韶韵頏頌頸頤頡頷頽顆顏顋顫顯顰\"],[\"e940\",\"顱顴顳颪颯颱颶飄飃飆飩飫餃餉餒餔餘餡餝餞餤餠餬餮餽餾饂饉饅饐饋饑饒饌饕馗馘馥馭馮馼駟駛駝駘駑駭駮駱駲駻駸騁騏騅駢騙騫騷驅驂驀驃\"],[\"e980\",\"騾驕驍驛驗驟驢驥驤驩驫驪骭骰骼髀髏髑髓體髞髟髢髣髦髯髫髮髴髱髷髻鬆鬘鬚鬟鬢鬣鬥鬧鬨鬩鬪鬮鬯鬲魄魃魏魍魎魑魘魴鮓鮃鮑鮖鮗鮟鮠鮨鮴鯀鯊鮹鯆鯏鯑鯒鯣鯢鯤鯔鯡鰺鯲鯱鯰鰕鰔鰉鰓鰌鰆鰈鰒鰊鰄鰮鰛鰥鰤鰡鰰鱇鰲鱆鰾鱚鱠鱧鱶鱸鳧鳬鳰鴉鴈鳫鴃鴆鴪鴦鶯鴣鴟鵄鴕鴒鵁鴿鴾鵆鵈\"],[\"ea40\",\"鵝鵞鵤鵑鵐鵙鵲鶉鶇鶫鵯鵺鶚鶤鶩鶲鷄鷁鶻鶸鶺鷆鷏鷂鷙鷓鷸鷦鷭鷯鷽鸚鸛鸞鹵鹹鹽麁麈麋麌麒麕麑麝麥麩麸麪麭靡黌黎黏黐黔黜點黝黠黥黨黯\"],[\"ea80\",\"黴黶黷黹黻黼黽鼇鼈皷鼕鼡鼬鼾齊齒齔齣齟齠齡齦齧齬齪齷齲齶龕龜龠堯槇遙瑤凜熙\"],[\"ed40\",\"纊褜鍈銈蓜俉炻昱棈鋹曻彅丨仡仼伀伃伹佖侒侊侚侔俍偀倢俿倞偆偰偂傔僴僘兊兤冝冾凬刕劜劦勀勛匀匇匤卲厓厲叝﨎咜咊咩哿喆坙坥垬埈埇﨏\"],[\"ed80\",\"塚增墲夋奓奛奝奣妤妺孖寀甯寘寬尞岦岺峵崧嵓﨑嵂嵭嶸嶹巐弡弴彧德忞恝悅悊惞惕愠惲愑愷愰憘戓抦揵摠撝擎敎昀昕昻昉昮昞昤晥晗晙晴晳暙暠暲暿曺朎朗杦枻桒柀栁桄棏﨓楨﨔榘槢樰橫橆橳橾櫢櫤毖氿汜沆汯泚洄涇浯涖涬淏淸淲淼渹湜渧渼溿澈澵濵瀅瀇瀨炅炫焏焄煜煆煇凞燁燾犱\"],[\"ee40\",\"犾猤猪獷玽珉珖珣珒琇珵琦琪琩琮瑢璉璟甁畯皂皜皞皛皦益睆劯砡硎硤硺礰礼神祥禔福禛竑竧靖竫箞精絈絜綷綠緖繒罇羡羽茁荢荿菇菶葈蒴蕓蕙\"],[\"ee80\",\"蕫﨟薰蘒﨡蠇裵訒訷詹誧誾諟諸諶譓譿賰賴贒赶﨣軏﨤逸遧郞都鄕鄧釚釗釞釭釮釤釥鈆鈐鈊鈺鉀鈼鉎鉙鉑鈹鉧銧鉷鉸鋧鋗鋙鋐﨧鋕鋠鋓錥錡鋻﨨錞鋿錝錂鍰鍗鎤鏆鏞鏸鐱鑅鑈閒隆﨩隝隯霳霻靃靍靏靑靕顗顥飯飼餧館馞驎髙髜魵魲鮏鮱鮻鰀鵰鵫鶴鸙黑\"],[\"eeef\",\"ⅰ\",9,\"￢￤＇＂\"],[\"f040\",\"\",62],[\"f080\",\"\",124],[\"f140\",\"\",62],[\"f180\",\"\",124],[\"f240\",\"\",62],[\"f280\",\"\",124],[\"f340\",\"\",62],[\"f380\",\"\",124],[\"f440\",\"\",62],[\"f480\",\"\",124],[\"f540\",\"\",62],[\"f580\",\"\",124],[\"f640\",\"\",62],[\"f680\",\"\",124],[\"f740\",\"\",62],[\"f780\",\"\",124],[\"f840\",\"\",62],[\"f880\",\"\",124],[\"f940\",\"\"],[\"fa40\",\"ⅰ\",9,\"Ⅰ\",9,\"￢￤＇＂㈱№℡∵纊褜鍈銈蓜俉炻昱棈鋹曻彅丨仡仼伀伃伹佖侒侊侚侔俍偀倢俿倞偆偰偂傔僴僘兊\"],[\"fa80\",\"兤冝冾凬刕劜劦勀勛匀匇匤卲厓厲叝﨎咜咊咩哿喆坙坥垬埈埇﨏塚增墲夋奓奛奝奣妤妺孖寀甯寘寬尞岦岺峵崧嵓﨑嵂嵭嶸嶹巐弡弴彧德忞恝悅悊惞惕愠惲愑愷愰憘戓抦揵摠撝擎敎昀昕昻昉昮昞昤晥晗晙晴晳暙暠暲暿曺朎朗杦枻桒柀栁桄棏﨓楨﨔榘槢樰橫橆橳橾櫢櫤毖氿汜沆汯泚洄涇浯\"],[\"fb40\",\"涖涬淏淸淲淼渹湜渧渼溿澈澵濵瀅瀇瀨炅炫焏焄煜煆煇凞燁燾犱犾猤猪獷玽珉珖珣珒琇珵琦琪琩琮瑢璉璟甁畯皂皜皞皛皦益睆劯砡硎硤硺礰礼神\"],[\"fb80\",\"祥禔福禛竑竧靖竫箞精絈絜綷綠緖繒罇羡羽茁荢荿菇菶葈蒴蕓蕙蕫﨟薰蘒﨡蠇裵訒訷詹誧誾諟諸諶譓譿賰賴贒赶﨣軏﨤逸遧郞都鄕鄧釚釗釞釭釮釤釥鈆鈐鈊鈺鉀鈼鉎鉙鉑鈹鉧銧鉷鉸鋧鋗鋙鋐﨧鋕鋠鋓錥錡鋻﨨錞鋿錝錂鍰鍗鎤鏆鏞鏸鐱鑅鑈閒隆﨩隝隯霳霻靃靍靏靑靕顗顥飯飼餧館馞驎髙\"],[\"fc40\",\"髜魵魲鮏鮱鮻鰀鵰鵫鶴鸙黑\"]]");
+})), _m = /* @__PURE__ */ i({ default: () => vm }), vm, ym = n((() => {
+	vm = /*#__PURE__*/ JSON.parse("[[\"0\",\"\\u0000\",127],[\"8ea1\",\"｡\",62],[\"a1a1\",\"　、。，．・：；？！゛゜´｀¨＾￣＿ヽヾゝゞ〃仝々〆〇ー―‐／＼～∥｜…‥‘’“”（）〔〕［］｛｝〈\",9,\"＋－±×÷＝≠＜＞≦≧∞∴♂♀°′″℃￥＄￠￡％＃＆＊＠§☆★○●◎◇\"],[\"a2a1\",\"◆□■△▲▽▼※〒→←↑↓〓\"],[\"a2ba\",\"∈∋⊆⊇⊂⊃∪∩\"],[\"a2ca\",\"∧∨￢⇒⇔∀∃\"],[\"a2dc\",\"∠⊥⌒∂∇≡≒≪≫√∽∝∵∫∬\"],[\"a2f2\",\"Å‰♯♭♪†‡¶\"],[\"a2fe\",\"◯\"],[\"a3b0\",\"０\",9],[\"a3c1\",\"Ａ\",25],[\"a3e1\",\"ａ\",25],[\"a4a1\",\"ぁ\",82],[\"a5a1\",\"ァ\",85],[\"a6a1\",\"Α\",16,\"Σ\",6],[\"a6c1\",\"α\",16,\"σ\",6],[\"a7a1\",\"А\",5,\"ЁЖ\",25],[\"a7d1\",\"а\",5,\"ёж\",25],[\"a8a1\",\"─│┌┐┘└├┬┤┴┼━┃┏┓┛┗┣┳┫┻╋┠┯┨┷┿┝┰┥┸╂\"],[\"ada1\",\"①\",19,\"Ⅰ\",9],[\"adc0\",\"㍉㌔㌢㍍㌘㌧㌃㌶㍑㍗㌍㌦㌣㌫㍊㌻㎜㎝㎞㎎㎏㏄㎡\"],[\"addf\",\"㍻〝〟№㏍℡㊤\",4,\"㈱㈲㈹㍾㍽㍼≒≡∫∮∑√⊥∠∟⊿∵∩∪\"],[\"b0a1\",\"亜唖娃阿哀愛挨姶逢葵茜穐悪握渥旭葦芦鯵梓圧斡扱宛姐虻飴絢綾鮎或粟袷安庵按暗案闇鞍杏以伊位依偉囲夷委威尉惟意慰易椅為畏異移維緯胃萎衣謂違遺医井亥域育郁磯一壱溢逸稲茨芋鰯允印咽員因姻引飲淫胤蔭\"],[\"b1a1\",\"院陰隠韻吋右宇烏羽迂雨卯鵜窺丑碓臼渦嘘唄欝蔚鰻姥厩浦瓜閏噂云運雲荏餌叡営嬰影映曳栄永泳洩瑛盈穎頴英衛詠鋭液疫益駅悦謁越閲榎厭円園堰奄宴延怨掩援沿演炎焔煙燕猿縁艶苑薗遠鉛鴛塩於汚甥凹央奥往応\"],[\"b2a1\",\"押旺横欧殴王翁襖鴬鴎黄岡沖荻億屋憶臆桶牡乙俺卸恩温穏音下化仮何伽価佳加可嘉夏嫁家寡科暇果架歌河火珂禍禾稼箇花苛茄荷華菓蝦課嘩貨迦過霞蚊俄峨我牙画臥芽蛾賀雅餓駕介会解回塊壊廻快怪悔恢懐戒拐改\"],[\"b3a1\",\"魁晦械海灰界皆絵芥蟹開階貝凱劾外咳害崖慨概涯碍蓋街該鎧骸浬馨蛙垣柿蛎鈎劃嚇各廓拡撹格核殻獲確穫覚角赫較郭閣隔革学岳楽額顎掛笠樫橿梶鰍潟割喝恰括活渇滑葛褐轄且鰹叶椛樺鞄株兜竃蒲釜鎌噛鴨栢茅萱\"],[\"b4a1\",\"粥刈苅瓦乾侃冠寒刊勘勧巻喚堪姦完官寛干幹患感慣憾換敢柑桓棺款歓汗漢澗潅環甘監看竿管簡緩缶翰肝艦莞観諌貫還鑑間閑関陥韓館舘丸含岸巌玩癌眼岩翫贋雁頑顔願企伎危喜器基奇嬉寄岐希幾忌揮机旗既期棋棄\"],[\"b5a1\",\"機帰毅気汽畿祈季稀紀徽規記貴起軌輝飢騎鬼亀偽儀妓宜戯技擬欺犠疑祇義蟻誼議掬菊鞠吉吃喫桔橘詰砧杵黍却客脚虐逆丘久仇休及吸宮弓急救朽求汲泣灸球究窮笈級糾給旧牛去居巨拒拠挙渠虚許距鋸漁禦魚亨享京\"],[\"b6a1\",\"供侠僑兇競共凶協匡卿叫喬境峡強彊怯恐恭挟教橋況狂狭矯胸脅興蕎郷鏡響饗驚仰凝尭暁業局曲極玉桐粁僅勤均巾錦斤欣欽琴禁禽筋緊芹菌衿襟謹近金吟銀九倶句区狗玖矩苦躯駆駈駒具愚虞喰空偶寓遇隅串櫛釧屑屈\"],[\"b7a1\",\"掘窟沓靴轡窪熊隈粂栗繰桑鍬勲君薫訓群軍郡卦袈祁係傾刑兄啓圭珪型契形径恵慶慧憩掲携敬景桂渓畦稽系経継繋罫茎荊蛍計詣警軽頚鶏芸迎鯨劇戟撃激隙桁傑欠決潔穴結血訣月件倹倦健兼券剣喧圏堅嫌建憲懸拳捲\"],[\"b8a1\",\"検権牽犬献研硯絹県肩見謙賢軒遣鍵険顕験鹸元原厳幻弦減源玄現絃舷言諺限乎個古呼固姑孤己庫弧戸故枯湖狐糊袴股胡菰虎誇跨鈷雇顧鼓五互伍午呉吾娯後御悟梧檎瑚碁語誤護醐乞鯉交佼侯候倖光公功効勾厚口向\"],[\"b9a1\",\"后喉坑垢好孔孝宏工巧巷幸広庚康弘恒慌抗拘控攻昂晃更杭校梗構江洪浩港溝甲皇硬稿糠紅紘絞綱耕考肯肱腔膏航荒行衡講貢購郊酵鉱砿鋼閤降項香高鴻剛劫号合壕拷濠豪轟麹克刻告国穀酷鵠黒獄漉腰甑忽惚骨狛込\"],[\"baa1\",\"此頃今困坤墾婚恨懇昏昆根梱混痕紺艮魂些佐叉唆嵯左差査沙瑳砂詐鎖裟坐座挫債催再最哉塞妻宰彩才採栽歳済災采犀砕砦祭斎細菜裁載際剤在材罪財冴坂阪堺榊肴咲崎埼碕鷺作削咋搾昨朔柵窄策索錯桜鮭笹匙冊刷\"],[\"bba1\",\"察拶撮擦札殺薩雑皐鯖捌錆鮫皿晒三傘参山惨撒散桟燦珊産算纂蚕讃賛酸餐斬暫残仕仔伺使刺司史嗣四士始姉姿子屍市師志思指支孜斯施旨枝止死氏獅祉私糸紙紫肢脂至視詞詩試誌諮資賜雌飼歯事似侍児字寺慈持時\"],[\"bca1\",\"次滋治爾璽痔磁示而耳自蒔辞汐鹿式識鴫竺軸宍雫七叱執失嫉室悉湿漆疾質実蔀篠偲柴芝屡蕊縞舎写射捨赦斜煮社紗者謝車遮蛇邪借勺尺杓灼爵酌釈錫若寂弱惹主取守手朱殊狩珠種腫趣酒首儒受呪寿授樹綬需囚収周\"],[\"bda1\",\"宗就州修愁拾洲秀秋終繍習臭舟蒐衆襲讐蹴輯週酋酬集醜什住充十従戎柔汁渋獣縦重銃叔夙宿淑祝縮粛塾熟出術述俊峻春瞬竣舜駿准循旬楯殉淳準潤盾純巡遵醇順処初所暑曙渚庶緒署書薯藷諸助叙女序徐恕鋤除傷償\"],[\"bea1\",\"勝匠升召哨商唱嘗奨妾娼宵将小少尚庄床廠彰承抄招掌捷昇昌昭晶松梢樟樵沼消渉湘焼焦照症省硝礁祥称章笑粧紹肖菖蒋蕉衝裳訟証詔詳象賞醤鉦鍾鐘障鞘上丈丞乗冗剰城場壌嬢常情擾条杖浄状畳穣蒸譲醸錠嘱埴飾\"],[\"bfa1\",\"拭植殖燭織職色触食蝕辱尻伸信侵唇娠寝審心慎振新晋森榛浸深申疹真神秦紳臣芯薪親診身辛進針震人仁刃塵壬尋甚尽腎訊迅陣靭笥諏須酢図厨逗吹垂帥推水炊睡粋翠衰遂酔錐錘随瑞髄崇嵩数枢趨雛据杉椙菅頗雀裾\"],[\"c0a1\",\"澄摺寸世瀬畝是凄制勢姓征性成政整星晴棲栖正清牲生盛精聖声製西誠誓請逝醒青静斉税脆隻席惜戚斥昔析石積籍績脊責赤跡蹟碩切拙接摂折設窃節説雪絶舌蝉仙先千占宣専尖川戦扇撰栓栴泉浅洗染潜煎煽旋穿箭線\"],[\"c1a1\",\"繊羨腺舛船薦詮賎践選遷銭銑閃鮮前善漸然全禅繕膳糎噌塑岨措曾曽楚狙疏疎礎祖租粗素組蘇訴阻遡鼠僧創双叢倉喪壮奏爽宋層匝惣想捜掃挿掻操早曹巣槍槽漕燥争痩相窓糟総綜聡草荘葬蒼藻装走送遭鎗霜騒像増憎\"],[\"c2a1\",\"臓蔵贈造促側則即息捉束測足速俗属賊族続卒袖其揃存孫尊損村遜他多太汰詑唾堕妥惰打柁舵楕陀駄騨体堆対耐岱帯待怠態戴替泰滞胎腿苔袋貸退逮隊黛鯛代台大第醍題鷹滝瀧卓啄宅托択拓沢濯琢託鐸濁諾茸凧蛸只\"],[\"c3a1\",\"叩但達辰奪脱巽竪辿棚谷狸鱈樽誰丹単嘆坦担探旦歎淡湛炭短端箪綻耽胆蛋誕鍛団壇弾断暖檀段男談値知地弛恥智池痴稚置致蜘遅馳築畜竹筑蓄逐秩窒茶嫡着中仲宙忠抽昼柱注虫衷註酎鋳駐樗瀦猪苧著貯丁兆凋喋寵\"],[\"c4a1\",\"帖帳庁弔張彫徴懲挑暢朝潮牒町眺聴脹腸蝶調諜超跳銚長頂鳥勅捗直朕沈珍賃鎮陳津墜椎槌追鎚痛通塚栂掴槻佃漬柘辻蔦綴鍔椿潰坪壷嬬紬爪吊釣鶴亭低停偵剃貞呈堤定帝底庭廷弟悌抵挺提梯汀碇禎程締艇訂諦蹄逓\"],[\"c5a1\",\"邸鄭釘鼎泥摘擢敵滴的笛適鏑溺哲徹撤轍迭鉄典填天展店添纏甜貼転顛点伝殿澱田電兎吐堵塗妬屠徒斗杜渡登菟賭途都鍍砥砺努度土奴怒倒党冬凍刀唐塔塘套宕島嶋悼投搭東桃梼棟盗淘湯涛灯燈当痘祷等答筒糖統到\"],[\"c6a1\",\"董蕩藤討謄豆踏逃透鐙陶頭騰闘働動同堂導憧撞洞瞳童胴萄道銅峠鴇匿得徳涜特督禿篤毒独読栃橡凸突椴届鳶苫寅酉瀞噸屯惇敦沌豚遁頓呑曇鈍奈那内乍凪薙謎灘捺鍋楢馴縄畷南楠軟難汝二尼弐迩匂賑肉虹廿日乳入\"],[\"c7a1\",\"如尿韮任妊忍認濡禰祢寧葱猫熱年念捻撚燃粘乃廼之埜嚢悩濃納能脳膿農覗蚤巴把播覇杷波派琶破婆罵芭馬俳廃拝排敗杯盃牌背肺輩配倍培媒梅楳煤狽買売賠陪這蝿秤矧萩伯剥博拍柏泊白箔粕舶薄迫曝漠爆縛莫駁麦\"],[\"c8a1\",\"函箱硲箸肇筈櫨幡肌畑畠八鉢溌発醗髪伐罰抜筏閥鳩噺塙蛤隼伴判半反叛帆搬斑板氾汎版犯班畔繁般藩販範釆煩頒飯挽晩番盤磐蕃蛮匪卑否妃庇彼悲扉批披斐比泌疲皮碑秘緋罷肥被誹費避非飛樋簸備尾微枇毘琵眉美\"],[\"c9a1\",\"鼻柊稗匹疋髭彦膝菱肘弼必畢筆逼桧姫媛紐百謬俵彪標氷漂瓢票表評豹廟描病秒苗錨鋲蒜蛭鰭品彬斌浜瀕貧賓頻敏瓶不付埠夫婦富冨布府怖扶敷斧普浮父符腐膚芙譜負賦赴阜附侮撫武舞葡蕪部封楓風葺蕗伏副復幅服\"],[\"caa1\",\"福腹複覆淵弗払沸仏物鮒分吻噴墳憤扮焚奮粉糞紛雰文聞丙併兵塀幣平弊柄並蔽閉陛米頁僻壁癖碧別瞥蔑箆偏変片篇編辺返遍便勉娩弁鞭保舗鋪圃捕歩甫補輔穂募墓慕戊暮母簿菩倣俸包呆報奉宝峰峯崩庖抱捧放方朋\"],[\"cba1\",\"法泡烹砲縫胞芳萌蓬蜂褒訪豊邦鋒飽鳳鵬乏亡傍剖坊妨帽忘忙房暴望某棒冒紡肪膨謀貌貿鉾防吠頬北僕卜墨撲朴牧睦穆釦勃没殆堀幌奔本翻凡盆摩磨魔麻埋妹昧枚毎哩槙幕膜枕鮪柾鱒桝亦俣又抹末沫迄侭繭麿万慢満\"],[\"cca1\",\"漫蔓味未魅巳箕岬密蜜湊蓑稔脈妙粍民眠務夢無牟矛霧鵡椋婿娘冥名命明盟迷銘鳴姪牝滅免棉綿緬面麺摸模茂妄孟毛猛盲網耗蒙儲木黙目杢勿餅尤戻籾貰問悶紋門匁也冶夜爺耶野弥矢厄役約薬訳躍靖柳薮鑓愉愈油癒\"],[\"cda1\",\"諭輸唯佑優勇友宥幽悠憂揖有柚湧涌猶猷由祐裕誘遊邑郵雄融夕予余与誉輿預傭幼妖容庸揚揺擁曜楊様洋溶熔用窯羊耀葉蓉要謡踊遥陽養慾抑欲沃浴翌翼淀羅螺裸来莱頼雷洛絡落酪乱卵嵐欄濫藍蘭覧利吏履李梨理璃\"],[\"cea1\",\"痢裏裡里離陸律率立葎掠略劉流溜琉留硫粒隆竜龍侶慮旅虜了亮僚両凌寮料梁涼猟療瞭稜糧良諒遼量陵領力緑倫厘林淋燐琳臨輪隣鱗麟瑠塁涙累類令伶例冷励嶺怜玲礼苓鈴隷零霊麗齢暦歴列劣烈裂廉恋憐漣煉簾練聯\"],[\"cfa1\",\"蓮連錬呂魯櫓炉賂路露労婁廊弄朗楼榔浪漏牢狼篭老聾蝋郎六麓禄肋録論倭和話歪賄脇惑枠鷲亙亘鰐詫藁蕨椀湾碗腕\"],[\"d0a1\",\"弌丐丕个丱丶丼丿乂乖乘亂亅豫亊舒弍于亞亟亠亢亰亳亶从仍仄仆仂仗仞仭仟价伉佚估佛佝佗佇佶侈侏侘佻佩佰侑佯來侖儘俔俟俎俘俛俑俚俐俤俥倚倨倔倪倥倅伜俶倡倩倬俾俯們倆偃假會偕偐偈做偖偬偸傀傚傅傴傲\"],[\"d1a1\",\"僉僊傳僂僖僞僥僭僣僮價僵儉儁儂儖儕儔儚儡儺儷儼儻儿兀兒兌兔兢竸兩兪兮冀冂囘册冉冏冑冓冕冖冤冦冢冩冪冫决冱冲冰况冽凅凉凛几處凩凭凰凵凾刄刋刔刎刧刪刮刳刹剏剄剋剌剞剔剪剴剩剳剿剽劍劔劒剱劈劑辨\"],[\"d2a1\",\"辧劬劭劼劵勁勍勗勞勣勦飭勠勳勵勸勹匆匈甸匍匐匏匕匚匣匯匱匳匸區卆卅丗卉卍凖卞卩卮夘卻卷厂厖厠厦厥厮厰厶參簒雙叟曼燮叮叨叭叺吁吽呀听吭吼吮吶吩吝呎咏呵咎呟呱呷呰咒呻咀呶咄咐咆哇咢咸咥咬哄哈咨\"],[\"d3a1\",\"咫哂咤咾咼哘哥哦唏唔哽哮哭哺哢唹啀啣啌售啜啅啖啗唸唳啝喙喀咯喊喟啻啾喘喞單啼喃喩喇喨嗚嗅嗟嗄嗜嗤嗔嘔嗷嘖嗾嗽嘛嗹噎噐營嘴嘶嘲嘸噫噤嘯噬噪嚆嚀嚊嚠嚔嚏嚥嚮嚶嚴囂嚼囁囃囀囈囎囑囓囗囮囹圀囿圄圉\"],[\"d4a1\",\"圈國圍圓團圖嗇圜圦圷圸坎圻址坏坩埀垈坡坿垉垓垠垳垤垪垰埃埆埔埒埓堊埖埣堋堙堝塲堡塢塋塰毀塒堽塹墅墹墟墫墺壞墻墸墮壅壓壑壗壙壘壥壜壤壟壯壺壹壻壼壽夂夊夐夛梦夥夬夭夲夸夾竒奕奐奎奚奘奢奠奧奬奩\"],[\"d5a1\",\"奸妁妝佞侫妣妲姆姨姜妍姙姚娥娟娑娜娉娚婀婬婉娵娶婢婪媚媼媾嫋嫂媽嫣嫗嫦嫩嫖嫺嫻嬌嬋嬖嬲嫐嬪嬶嬾孃孅孀孑孕孚孛孥孩孰孳孵學斈孺宀它宦宸寃寇寉寔寐寤實寢寞寥寫寰寶寳尅將專對尓尠尢尨尸尹屁屆屎屓\"],[\"d6a1\",\"屐屏孱屬屮乢屶屹岌岑岔妛岫岻岶岼岷峅岾峇峙峩峽峺峭嶌峪崋崕崗嵜崟崛崑崔崢崚崙崘嵌嵒嵎嵋嵬嵳嵶嶇嶄嶂嶢嶝嶬嶮嶽嶐嶷嶼巉巍巓巒巖巛巫已巵帋帚帙帑帛帶帷幄幃幀幎幗幔幟幢幤幇幵并幺麼广庠廁廂廈廐廏\"],[\"d7a1\",\"廖廣廝廚廛廢廡廨廩廬廱廳廰廴廸廾弃弉彝彜弋弑弖弩弭弸彁彈彌彎弯彑彖彗彙彡彭彳彷徃徂彿徊很徑徇從徙徘徠徨徭徼忖忻忤忸忱忝悳忿怡恠怙怐怩怎怱怛怕怫怦怏怺恚恁恪恷恟恊恆恍恣恃恤恂恬恫恙悁悍惧悃悚\"],[\"d8a1\",\"悄悛悖悗悒悧悋惡悸惠惓悴忰悽惆悵惘慍愕愆惶惷愀惴惺愃愡惻惱愍愎慇愾愨愧慊愿愼愬愴愽慂慄慳慷慘慙慚慫慴慯慥慱慟慝慓慵憙憖憇憬憔憚憊憑憫憮懌懊應懷懈懃懆憺懋罹懍懦懣懶懺懴懿懽懼懾戀戈戉戍戌戔戛\"],[\"d9a1\",\"戞戡截戮戰戲戳扁扎扞扣扛扠扨扼抂抉找抒抓抖拔抃抔拗拑抻拏拿拆擔拈拜拌拊拂拇抛拉挌拮拱挧挂挈拯拵捐挾捍搜捏掖掎掀掫捶掣掏掉掟掵捫捩掾揩揀揆揣揉插揶揄搖搴搆搓搦搶攝搗搨搏摧摯摶摎攪撕撓撥撩撈撼\"],[\"daa1\",\"據擒擅擇撻擘擂擱擧舉擠擡抬擣擯攬擶擴擲擺攀擽攘攜攅攤攣攫攴攵攷收攸畋效敖敕敍敘敞敝敲數斂斃變斛斟斫斷旃旆旁旄旌旒旛旙无旡旱杲昊昃旻杳昵昶昴昜晏晄晉晁晞晝晤晧晨晟晢晰暃暈暎暉暄暘暝曁暹曉暾暼\"],[\"dba1\",\"曄暸曖曚曠昿曦曩曰曵曷朏朖朞朦朧霸朮朿朶杁朸朷杆杞杠杙杣杤枉杰枩杼杪枌枋枦枡枅枷柯枴柬枳柩枸柤柞柝柢柮枹柎柆柧檜栞框栩桀桍栲桎梳栫桙档桷桿梟梏梭梔條梛梃檮梹桴梵梠梺椏梍桾椁棊椈棘椢椦棡椌棍\"],[\"dca1\",\"棔棧棕椶椒椄棗棣椥棹棠棯椨椪椚椣椡棆楹楷楜楸楫楔楾楮椹楴椽楙椰楡楞楝榁楪榲榮槐榿槁槓榾槎寨槊槝榻槃榧樮榑榠榜榕榴槞槨樂樛槿權槹槲槧樅榱樞槭樔槫樊樒櫁樣樓橄樌橲樶橸橇橢橙橦橈樸樢檐檍檠檄檢檣\"],[\"dda1\",\"檗蘗檻櫃櫂檸檳檬櫞櫑櫟檪櫚櫪櫻欅蘖櫺欒欖鬱欟欸欷盜欹飮歇歃歉歐歙歔歛歟歡歸歹歿殀殄殃殍殘殕殞殤殪殫殯殲殱殳殷殼毆毋毓毟毬毫毳毯麾氈氓气氛氤氣汞汕汢汪沂沍沚沁沛汾汨汳沒沐泄泱泓沽泗泅泝沮沱沾\"],[\"dea1\",\"沺泛泯泙泪洟衍洶洫洽洸洙洵洳洒洌浣涓浤浚浹浙涎涕濤涅淹渕渊涵淇淦涸淆淬淞淌淨淒淅淺淙淤淕淪淮渭湮渮渙湲湟渾渣湫渫湶湍渟湃渺湎渤滿渝游溂溪溘滉溷滓溽溯滄溲滔滕溏溥滂溟潁漑灌滬滸滾漿滲漱滯漲滌\"],[\"dfa1\",\"漾漓滷澆潺潸澁澀潯潛濳潭澂潼潘澎澑濂潦澳澣澡澤澹濆澪濟濕濬濔濘濱濮濛瀉瀋濺瀑瀁瀏濾瀛瀚潴瀝瀘瀟瀰瀾瀲灑灣炙炒炯烱炬炸炳炮烟烋烝烙焉烽焜焙煥煕熈煦煢煌煖煬熏燻熄熕熨熬燗熹熾燒燉燔燎燠燬燧燵燼\"],[\"e0a1\",\"燹燿爍爐爛爨爭爬爰爲爻爼爿牀牆牋牘牴牾犂犁犇犒犖犢犧犹犲狃狆狄狎狒狢狠狡狹狷倏猗猊猜猖猝猴猯猩猥猾獎獏默獗獪獨獰獸獵獻獺珈玳珎玻珀珥珮珞璢琅瑯琥珸琲琺瑕琿瑟瑙瑁瑜瑩瑰瑣瑪瑶瑾璋璞璧瓊瓏瓔珱\"],[\"e1a1\",\"瓠瓣瓧瓩瓮瓲瓰瓱瓸瓷甄甃甅甌甎甍甕甓甞甦甬甼畄畍畊畉畛畆畚畩畤畧畫畭畸當疆疇畴疊疉疂疔疚疝疥疣痂疳痃疵疽疸疼疱痍痊痒痙痣痞痾痿痼瘁痰痺痲痳瘋瘍瘉瘟瘧瘠瘡瘢瘤瘴瘰瘻癇癈癆癜癘癡癢癨癩癪癧癬癰\"],[\"e2a1\",\"癲癶癸發皀皃皈皋皎皖皓皙皚皰皴皸皹皺盂盍盖盒盞盡盥盧盪蘯盻眈眇眄眩眤眞眥眦眛眷眸睇睚睨睫睛睥睿睾睹瞎瞋瞑瞠瞞瞰瞶瞹瞿瞼瞽瞻矇矍矗矚矜矣矮矼砌砒礦砠礪硅碎硴碆硼碚碌碣碵碪碯磑磆磋磔碾碼磅磊磬\"],[\"e3a1\",\"磧磚磽磴礇礒礑礙礬礫祀祠祗祟祚祕祓祺祿禊禝禧齋禪禮禳禹禺秉秕秧秬秡秣稈稍稘稙稠稟禀稱稻稾稷穃穗穉穡穢穩龝穰穹穽窈窗窕窘窖窩竈窰窶竅竄窿邃竇竊竍竏竕竓站竚竝竡竢竦竭竰笂笏笊笆笳笘笙笞笵笨笶筐\"],[\"e4a1\",\"筺笄筍笋筌筅筵筥筴筧筰筱筬筮箝箘箟箍箜箚箋箒箏筝箙篋篁篌篏箴篆篝篩簑簔篦篥籠簀簇簓篳篷簗簍篶簣簧簪簟簷簫簽籌籃籔籏籀籐籘籟籤籖籥籬籵粃粐粤粭粢粫粡粨粳粲粱粮粹粽糀糅糂糘糒糜糢鬻糯糲糴糶糺紆\"],[\"e5a1\",\"紂紜紕紊絅絋紮紲紿紵絆絳絖絎絲絨絮絏絣經綉絛綏絽綛綺綮綣綵緇綽綫總綢綯緜綸綟綰緘緝緤緞緻緲緡縅縊縣縡縒縱縟縉縋縢繆繦縻縵縹繃縷縲縺繧繝繖繞繙繚繹繪繩繼繻纃緕繽辮繿纈纉續纒纐纓纔纖纎纛纜缸缺\"],[\"e6a1\",\"罅罌罍罎罐网罕罔罘罟罠罨罩罧罸羂羆羃羈羇羌羔羞羝羚羣羯羲羹羮羶羸譱翅翆翊翕翔翡翦翩翳翹飜耆耄耋耒耘耙耜耡耨耿耻聊聆聒聘聚聟聢聨聳聲聰聶聹聽聿肄肆肅肛肓肚肭冐肬胛胥胙胝胄胚胖脉胯胱脛脩脣脯腋\"],[\"e7a1\",\"隋腆脾腓腑胼腱腮腥腦腴膃膈膊膀膂膠膕膤膣腟膓膩膰膵膾膸膽臀臂膺臉臍臑臙臘臈臚臟臠臧臺臻臾舁舂舅與舊舍舐舖舩舫舸舳艀艙艘艝艚艟艤艢艨艪艫舮艱艷艸艾芍芒芫芟芻芬苡苣苟苒苴苳苺莓范苻苹苞茆苜茉苙\"],[\"e8a1\",\"茵茴茖茲茱荀茹荐荅茯茫茗茘莅莚莪莟莢莖茣莎莇莊荼莵荳荵莠莉莨菴萓菫菎菽萃菘萋菁菷萇菠菲萍萢萠莽萸蔆菻葭萪萼蕚蒄葷葫蒭葮蒂葩葆萬葯葹萵蓊葢蒹蒿蒟蓙蓍蒻蓚蓐蓁蓆蓖蒡蔡蓿蓴蔗蔘蔬蔟蔕蔔蓼蕀蕣蕘蕈\"],[\"e9a1\",\"蕁蘂蕋蕕薀薤薈薑薊薨蕭薔薛藪薇薜蕷蕾薐藉薺藏薹藐藕藝藥藜藹蘊蘓蘋藾藺蘆蘢蘚蘰蘿虍乕虔號虧虱蚓蚣蚩蚪蚋蚌蚶蚯蛄蛆蚰蛉蠣蚫蛔蛞蛩蛬蛟蛛蛯蜒蜆蜈蜀蜃蛻蜑蜉蜍蛹蜊蜴蜿蜷蜻蜥蜩蜚蝠蝟蝸蝌蝎蝴蝗蝨蝮蝙\"],[\"eaa1\",\"蝓蝣蝪蠅螢螟螂螯蟋螽蟀蟐雖螫蟄螳蟇蟆螻蟯蟲蟠蠏蠍蟾蟶蟷蠎蟒蠑蠖蠕蠢蠡蠱蠶蠹蠧蠻衄衂衒衙衞衢衫袁衾袞衵衽袵衲袂袗袒袮袙袢袍袤袰袿袱裃裄裔裘裙裝裹褂裼裴裨裲褄褌褊褓襃褞褥褪褫襁襄褻褶褸襌褝襠襞\"],[\"eba1\",\"襦襤襭襪襯襴襷襾覃覈覊覓覘覡覩覦覬覯覲覺覽覿觀觚觜觝觧觴觸訃訖訐訌訛訝訥訶詁詛詒詆詈詼詭詬詢誅誂誄誨誡誑誥誦誚誣諄諍諂諚諫諳諧諤諱謔諠諢諷諞諛謌謇謚諡謖謐謗謠謳鞫謦謫謾謨譁譌譏譎證譖譛譚譫\"],[\"eca1\",\"譟譬譯譴譽讀讌讎讒讓讖讙讚谺豁谿豈豌豎豐豕豢豬豸豺貂貉貅貊貍貎貔豼貘戝貭貪貽貲貳貮貶賈賁賤賣賚賽賺賻贄贅贊贇贏贍贐齎贓賍贔贖赧赭赱赳趁趙跂趾趺跏跚跖跌跛跋跪跫跟跣跼踈踉跿踝踞踐踟蹂踵踰踴蹊\"],[\"eda1\",\"蹇蹉蹌蹐蹈蹙蹤蹠踪蹣蹕蹶蹲蹼躁躇躅躄躋躊躓躑躔躙躪躡躬躰軆躱躾軅軈軋軛軣軼軻軫軾輊輅輕輒輙輓輜輟輛輌輦輳輻輹轅轂輾轌轉轆轎轗轜轢轣轤辜辟辣辭辯辷迚迥迢迪迯邇迴逅迹迺逑逕逡逍逞逖逋逧逶逵逹迸\"],[\"eea1\",\"遏遐遑遒逎遉逾遖遘遞遨遯遶隨遲邂遽邁邀邊邉邏邨邯邱邵郢郤扈郛鄂鄒鄙鄲鄰酊酖酘酣酥酩酳酲醋醉醂醢醫醯醪醵醴醺釀釁釉釋釐釖釟釡釛釼釵釶鈞釿鈔鈬鈕鈑鉞鉗鉅鉉鉤鉈銕鈿鉋鉐銜銖銓銛鉚鋏銹銷鋩錏鋺鍄錮\"],[\"efa1\",\"錙錢錚錣錺錵錻鍜鍠鍼鍮鍖鎰鎬鎭鎔鎹鏖鏗鏨鏥鏘鏃鏝鏐鏈鏤鐚鐔鐓鐃鐇鐐鐶鐫鐵鐡鐺鑁鑒鑄鑛鑠鑢鑞鑪鈩鑰鑵鑷鑽鑚鑼鑾钁鑿閂閇閊閔閖閘閙閠閨閧閭閼閻閹閾闊濶闃闍闌闕闔闖關闡闥闢阡阨阮阯陂陌陏陋陷陜陞\"],[\"f0a1\",\"陝陟陦陲陬隍隘隕隗險隧隱隲隰隴隶隸隹雎雋雉雍襍雜霍雕雹霄霆霈霓霎霑霏霖霙霤霪霰霹霽霾靄靆靈靂靉靜靠靤靦靨勒靫靱靹鞅靼鞁靺鞆鞋鞏鞐鞜鞨鞦鞣鞳鞴韃韆韈韋韜韭齏韲竟韶韵頏頌頸頤頡頷頽顆顏顋顫顯顰\"],[\"f1a1\",\"顱顴顳颪颯颱颶飄飃飆飩飫餃餉餒餔餘餡餝餞餤餠餬餮餽餾饂饉饅饐饋饑饒饌饕馗馘馥馭馮馼駟駛駝駘駑駭駮駱駲駻駸騁騏騅駢騙騫騷驅驂驀驃騾驕驍驛驗驟驢驥驤驩驫驪骭骰骼髀髏髑髓體髞髟髢髣髦髯髫髮髴髱髷\"],[\"f2a1\",\"髻鬆鬘鬚鬟鬢鬣鬥鬧鬨鬩鬪鬮鬯鬲魄魃魏魍魎魑魘魴鮓鮃鮑鮖鮗鮟鮠鮨鮴鯀鯊鮹鯆鯏鯑鯒鯣鯢鯤鯔鯡鰺鯲鯱鯰鰕鰔鰉鰓鰌鰆鰈鰒鰊鰄鰮鰛鰥鰤鰡鰰鱇鰲鱆鰾鱚鱠鱧鱶鱸鳧鳬鳰鴉鴈鳫鴃鴆鴪鴦鶯鴣鴟鵄鴕鴒鵁鴿鴾鵆鵈\"],[\"f3a1\",\"鵝鵞鵤鵑鵐鵙鵲鶉鶇鶫鵯鵺鶚鶤鶩鶲鷄鷁鶻鶸鶺鷆鷏鷂鷙鷓鷸鷦鷭鷯鷽鸚鸛鸞鹵鹹鹽麁麈麋麌麒麕麑麝麥麩麸麪麭靡黌黎黏黐黔黜點黝黠黥黨黯黴黶黷黹黻黼黽鼇鼈皷鼕鼡鼬鼾齊齒齔齣齟齠齡齦齧齬齪齷齲齶龕龜龠\"],[\"f4a1\",\"堯槇遙瑤凜熙\"],[\"f9a1\",\"纊褜鍈銈蓜俉炻昱棈鋹曻彅丨仡仼伀伃伹佖侒侊侚侔俍偀倢俿倞偆偰偂傔僴僘兊兤冝冾凬刕劜劦勀勛匀匇匤卲厓厲叝﨎咜咊咩哿喆坙坥垬埈埇﨏塚增墲夋奓奛奝奣妤妺孖寀甯寘寬尞岦岺峵崧嵓﨑嵂嵭嶸嶹巐弡弴彧德\"],[\"faa1\",\"忞恝悅悊惞惕愠惲愑愷愰憘戓抦揵摠撝擎敎昀昕昻昉昮昞昤晥晗晙晴晳暙暠暲暿曺朎朗杦枻桒柀栁桄棏﨓楨﨔榘槢樰橫橆橳橾櫢櫤毖氿汜沆汯泚洄涇浯涖涬淏淸淲淼渹湜渧渼溿澈澵濵瀅瀇瀨炅炫焏焄煜煆煇凞燁燾犱\"],[\"fba1\",\"犾猤猪獷玽珉珖珣珒琇珵琦琪琩琮瑢璉璟甁畯皂皜皞皛皦益睆劯砡硎硤硺礰礼神祥禔福禛竑竧靖竫箞精絈絜綷綠緖繒罇羡羽茁荢荿菇菶葈蒴蕓蕙蕫﨟薰蘒﨡蠇裵訒訷詹誧誾諟諸諶譓譿賰賴贒赶﨣軏﨤逸遧郞都鄕鄧釚\"],[\"fca1\",\"釗釞釭釮釤釥鈆鈐鈊鈺鉀鈼鉎鉙鉑鈹鉧銧鉷鉸鋧鋗鋙鋐﨧鋕鋠鋓錥錡鋻﨨錞鋿錝錂鍰鍗鎤鏆鏞鏸鐱鑅鑈閒隆﨩隝隯霳霻靃靍靏靑靕顗顥飯飼餧館馞驎髙髜魵魲鮏鮱鮻鰀鵰鵫鶴鸙黑\"],[\"fcf1\",\"ⅰ\",9,\"￢￤＇＂\"],[\"8fa2af\",\"˘ˇ¸˙˝¯˛˚～΄΅\"],[\"8fa2c2\",\"¡¦¿\"],[\"8fa2eb\",\"ºª©®™¤№\"],[\"8fa6e1\",\"ΆΈΉΊΪ\"],[\"8fa6e7\",\"Ό\"],[\"8fa6e9\",\"ΎΫ\"],[\"8fa6ec\",\"Ώ\"],[\"8fa6f1\",\"άέήίϊΐόςύϋΰώ\"],[\"8fa7c2\",\"Ђ\",10,\"ЎЏ\"],[\"8fa7f2\",\"ђ\",10,\"ўџ\"],[\"8fa9a1\",\"ÆĐ\"],[\"8fa9a4\",\"Ħ\"],[\"8fa9a6\",\"Ĳ\"],[\"8fa9a8\",\"ŁĿ\"],[\"8fa9ab\",\"ŊØŒ\"],[\"8fa9af\",\"ŦÞ\"],[\"8fa9c1\",\"æđðħıĳĸłŀŉŋøœßŧþ\"],[\"8faaa1\",\"ÁÀÄÂĂǍĀĄÅÃĆĈČÇĊĎÉÈËÊĚĖĒĘ\"],[\"8faaba\",\"ĜĞĢĠĤÍÌÏÎǏİĪĮĨĴĶĹĽĻŃŇŅÑÓÒÖÔǑŐŌÕŔŘŖŚŜŠŞŤŢÚÙÜÛŬǓŰŪŲŮŨǗǛǙǕŴÝŸŶŹŽŻ\"],[\"8faba1\",\"áàäâăǎāąåãćĉčçċďéèëêěėēęǵĝğ\"],[\"8fabbd\",\"ġĥíìïîǐ\"],[\"8fabc5\",\"īįĩĵķĺľļńňņñóòöôǒőōõŕřŗśŝšşťţúùüûŭǔűūųůũǘǜǚǖŵýÿŷźžż\"],[\"8fb0a1\",\"丂丄丅丌丒丟丣两丨丫丮丯丰丵乀乁乄乇乑乚乜乣乨乩乴乵乹乿亍亖亗亝亯亹仃仐仚仛仠仡仢仨仯仱仳仵份仾仿伀伂伃伈伋伌伒伕伖众伙伮伱你伳伵伷伹伻伾佀佂佈佉佋佌佒佔佖佘佟佣佪佬佮佱佷佸佹佺佽佾侁侂侄\"],[\"8fb1a1\",\"侅侉侊侌侎侐侒侓侔侗侙侚侞侟侲侷侹侻侼侽侾俀俁俅俆俈俉俋俌俍俏俒俜俠俢俰俲俼俽俿倀倁倄倇倊倌倎倐倓倗倘倛倜倝倞倢倧倮倰倲倳倵偀偁偂偅偆偊偌偎偑偒偓偗偙偟偠偢偣偦偧偪偭偰偱倻傁傃傄傆傊傎傏傐\"],[\"8fb2a1\",\"傒傓傔傖傛傜傞\",4,\"傪傯傰傹傺傽僀僃僄僇僌僎僐僓僔僘僜僝僟僢僤僦僨僩僯僱僶僺僾儃儆儇儈儋儌儍儎僲儐儗儙儛儜儝儞儣儧儨儬儭儯儱儳儴儵儸儹兂兊兏兓兕兗兘兟兤兦兾冃冄冋冎冘冝冡冣冭冸冺冼冾冿凂\"],[\"8fb3a1\",\"凈减凑凒凓凕凘凞凢凥凮凲凳凴凷刁刂刅划刓刕刖刘刢刨刱刲刵刼剅剉剕剗剘剚剜剟剠剡剦剮剷剸剹劀劂劅劊劌劓劕劖劗劘劚劜劤劥劦劧劯劰劶劷劸劺劻劽勀勄勆勈勌勏勑勔勖勛勜勡勥勨勩勪勬勰勱勴勶勷匀匃匊匋\"],[\"8fb4a1\",\"匌匑匓匘匛匜匞匟匥匧匨匩匫匬匭匰匲匵匼匽匾卂卌卋卙卛卡卣卥卬卭卲卹卾厃厇厈厎厓厔厙厝厡厤厪厫厯厲厴厵厷厸厺厽叀叅叏叒叓叕叚叝叞叠另叧叵吂吓吚吡吧吨吪启吱吴吵呃呄呇呍呏呞呢呤呦呧呩呫呭呮呴呿\"],[\"8fb5a1\",\"咁咃咅咈咉咍咑咕咖咜咟咡咦咧咩咪咭咮咱咷咹咺咻咿哆哊响哎哠哪哬哯哶哼哾哿唀唁唅唈唉唌唍唎唕唪唫唲唵唶唻唼唽啁啇啉啊啍啐啑啘啚啛啞啠啡啤啦啿喁喂喆喈喎喏喑喒喓喔喗喣喤喭喲喿嗁嗃嗆嗉嗋嗌嗎嗑嗒\"],[\"8fb6a1\",\"嗓嗗嗘嗛嗞嗢嗩嗶嗿嘅嘈嘊嘍\",5,\"嘙嘬嘰嘳嘵嘷嘹嘻嘼嘽嘿噀噁噃噄噆噉噋噍噏噔噞噠噡噢噣噦噩噭噯噱噲噵嚄嚅嚈嚋嚌嚕嚙嚚嚝嚞嚟嚦嚧嚨嚩嚫嚬嚭嚱嚳嚷嚾囅囉囊囋囏囐囌囍囙囜囝囟囡囤\",4,\"囱囫园\"],[\"8fb7a1\",\"囶囷圁圂圇圊圌圑圕圚圛圝圠圢圣圤圥圩圪圬圮圯圳圴圽圾圿坅坆坌坍坒坢坥坧坨坫坭\",4,\"坳坴坵坷坹坺坻坼坾垁垃垌垔垗垙垚垜垝垞垟垡垕垧垨垩垬垸垽埇埈埌埏埕埝埞埤埦埧埩埭埰埵埶埸埽埾埿堃堄堈堉埡\"],[\"8fb8a1\",\"堌堍堛堞堟堠堦堧堭堲堹堿塉塌塍塏塐塕塟塡塤塧塨塸塼塿墀墁墇墈墉墊墌墍墏墐墔墖墝墠墡墢墦墩墱墲壄墼壂壈壍壎壐壒壔壖壚壝壡壢壩壳夅夆夋夌夒夓夔虁夝夡夣夤夨夯夰夳夵夶夿奃奆奒奓奙奛奝奞奟奡奣奫奭\"],[\"8fb9a1\",\"奯奲奵奶她奻奼妋妌妎妒妕妗妟妤妧妭妮妯妰妳妷妺妼姁姃姄姈姊姍姒姝姞姟姣姤姧姮姯姱姲姴姷娀娄娌娍娎娒娓娞娣娤娧娨娪娭娰婄婅婇婈婌婐婕婞婣婥婧婭婷婺婻婾媋媐媓媖媙媜媞媟媠媢媧媬媱媲媳媵媸媺媻媿\"],[\"8fbaa1\",\"嫄嫆嫈嫏嫚嫜嫠嫥嫪嫮嫵嫶嫽嬀嬁嬈嬗嬴嬙嬛嬝嬡嬥嬭嬸孁孋孌孒孖孞孨孮孯孼孽孾孿宁宄宆宊宎宐宑宓宔宖宨宩宬宭宯宱宲宷宺宼寀寁寍寏寖\",4,\"寠寯寱寴寽尌尗尞尟尣尦尩尫尬尮尰尲尵尶屙屚屜屢屣屧屨屩\"],[\"8fbba1\",\"屭屰屴屵屺屻屼屽岇岈岊岏岒岝岟岠岢岣岦岪岲岴岵岺峉峋峒峝峗峮峱峲峴崁崆崍崒崫崣崤崦崧崱崴崹崽崿嵂嵃嵆嵈嵕嵑嵙嵊嵟嵠嵡嵢嵤嵪嵭嵰嵹嵺嵾嵿嶁嶃嶈嶊嶒嶓嶔嶕嶙嶛嶟嶠嶧嶫嶰嶴嶸嶹巃巇巋巐巎巘巙巠巤\"],[\"8fbca1\",\"巩巸巹帀帇帍帒帔帕帘帟帠帮帨帲帵帾幋幐幉幑幖幘幛幜幞幨幪\",4,\"幰庀庋庎庢庤庥庨庪庬庱庳庽庾庿廆廌廋廎廑廒廔廕廜廞廥廫异弆弇弈弎弙弜弝弡弢弣弤弨弫弬弮弰弴弶弻弽弿彀彄彅彇彍彐彔彘彛彠彣彤彧\"],[\"8fbda1\",\"彯彲彴彵彸彺彽彾徉徍徏徖徜徝徢徧徫徤徬徯徰徱徸忄忇忈忉忋忐\",4,\"忞忡忢忨忩忪忬忭忮忯忲忳忶忺忼怇怊怍怓怔怗怘怚怟怤怭怳怵恀恇恈恉恌恑恔恖恗恝恡恧恱恾恿悂悆悈悊悎悑悓悕悘悝悞悢悤悥您悰悱悷\"],[\"8fbea1\",\"悻悾惂惄惈惉惊惋惎惏惔惕惙惛惝惞惢惥惲惵惸惼惽愂愇愊愌愐\",4,\"愖愗愙愜愞愢愪愫愰愱愵愶愷愹慁慅慆慉慞慠慬慲慸慻慼慿憀憁憃憄憋憍憒憓憗憘憜憝憟憠憥憨憪憭憸憹憼懀懁懂懎懏懕懜懝懞懟懡懢懧懩懥\"],[\"8fbfa1\",\"懬懭懯戁戃戄戇戓戕戜戠戢戣戧戩戫戹戽扂扃扄扆扌扐扑扒扔扖扚扜扤扭扯扳扺扽抍抎抏抐抦抨抳抶抷抺抾抿拄拎拕拖拚拪拲拴拼拽挃挄挊挋挍挐挓挖挘挩挪挭挵挶挹挼捁捂捃捄捆捊捋捎捒捓捔捘捛捥捦捬捭捱捴捵\"],[\"8fc0a1\",\"捸捼捽捿掂掄掇掊掐掔掕掙掚掞掤掦掭掮掯掽揁揅揈揎揑揓揔揕揜揠揥揪揬揲揳揵揸揹搉搊搐搒搔搘搞搠搢搤搥搩搪搯搰搵搽搿摋摏摑摒摓摔摚摛摜摝摟摠摡摣摭摳摴摻摽撅撇撏撐撑撘撙撛撝撟撡撣撦撨撬撳撽撾撿\"],[\"8fc1a1\",\"擄擉擊擋擌擎擐擑擕擗擤擥擩擪擭擰擵擷擻擿攁攄攈攉攊攏攓攔攖攙攛攞攟攢攦攩攮攱攺攼攽敃敇敉敐敒敔敟敠敧敫敺敽斁斅斊斒斕斘斝斠斣斦斮斲斳斴斿旂旈旉旎旐旔旖旘旟旰旲旴旵旹旾旿昀昄昈昉昍昑昒昕昖昝\"],[\"8fc2a1\",\"昞昡昢昣昤昦昩昪昫昬昮昰昱昳昹昷晀晅晆晊晌晑晎晗晘晙晛晜晠晡曻晪晫晬晾晳晵晿晷晸晹晻暀晼暋暌暍暐暒暙暚暛暜暟暠暤暭暱暲暵暻暿曀曂曃曈曌曎曏曔曛曟曨曫曬曮曺朅朇朎朓朙朜朠朢朳朾杅杇杈杌杔杕杝\"],[\"8fc3a1\",\"杦杬杮杴杶杻极构枎枏枑枓枖枘枙枛枰枱枲枵枻枼枽柹柀柂柃柅柈柉柒柗柙柜柡柦柰柲柶柷桒栔栙栝栟栨栧栬栭栯栰栱栳栻栿桄桅桊桌桕桗桘桛桫桮\",4,\"桵桹桺桻桼梂梄梆梈梖梘梚梜梡梣梥梩梪梮梲梻棅棈棌棏\"],[\"8fc4a1\",\"棐棑棓棖棙棜棝棥棨棪棫棬棭棰棱棵棶棻棼棽椆椉椊椐椑椓椖椗椱椳椵椸椻楂楅楉楎楗楛楣楤楥楦楨楩楬楰楱楲楺楻楿榀榍榒榖榘榡榥榦榨榫榭榯榷榸榺榼槅槈槑槖槗槢槥槮槯槱槳槵槾樀樁樃樏樑樕樚樝樠樤樨樰樲\"],[\"8fc5a1\",\"樴樷樻樾樿橅橆橉橊橎橐橑橒橕橖橛橤橧橪橱橳橾檁檃檆檇檉檋檑檛檝檞檟檥檫檯檰檱檴檽檾檿櫆櫉櫈櫌櫐櫔櫕櫖櫜櫝櫤櫧櫬櫰櫱櫲櫼櫽欂欃欆欇欉欏欐欑欗欛欞欤欨欫欬欯欵欶欻欿歆歊歍歒歖歘歝歠歧歫歮歰歵歽\"],[\"8fc6a1\",\"歾殂殅殗殛殟殠殢殣殨殩殬殭殮殰殸殹殽殾毃毄毉毌毖毚毡毣毦毧毮毱毷毹毿氂氄氅氉氍氎氐氒氙氟氦氧氨氬氮氳氵氶氺氻氿汊汋汍汏汒汔汙汛汜汫汭汯汴汶汸汹汻沅沆沇沉沔沕沗沘沜沟沰沲沴泂泆泍泏泐泑泒泔泖\"],[\"8fc7a1\",\"泚泜泠泧泩泫泬泮泲泴洄洇洊洎洏洑洓洚洦洧洨汧洮洯洱洹洼洿浗浞浟浡浥浧浯浰浼涂涇涑涒涔涖涗涘涪涬涴涷涹涽涿淄淈淊淎淏淖淛淝淟淠淢淥淩淯淰淴淶淼渀渄渞渢渧渲渶渹渻渼湄湅湈湉湋湏湑湒湓湔湗湜湝湞\"],[\"8fc8a1\",\"湢湣湨湳湻湽溍溓溙溠溧溭溮溱溳溻溿滀滁滃滇滈滊滍滎滏滫滭滮滹滻滽漄漈漊漌漍漖漘漚漛漦漩漪漯漰漳漶漻漼漭潏潑潒潓潗潙潚潝潞潡潢潨潬潽潾澃澇澈澋澌澍澐澒澓澔澖澚澟澠澥澦澧澨澮澯澰澵澶澼濅濇濈濊\"],[\"8fc9a1\",\"濚濞濨濩濰濵濹濼濽瀀瀅瀆瀇瀍瀗瀠瀣瀯瀴瀷瀹瀼灃灄灈灉灊灋灔灕灝灞灎灤灥灬灮灵灶灾炁炅炆炔\",4,\"炛炤炫炰炱炴炷烊烑烓烔烕烖烘烜烤烺焃\",4,\"焋焌焏焞焠焫焭焯焰焱焸煁煅煆煇煊煋煐煒煗煚煜煞煠\"],[\"8fcaa1\",\"煨煹熀熅熇熌熒熚熛熠熢熯熰熲熳熺熿燀燁燄燋燌燓燖燙燚燜燸燾爀爇爈爉爓爗爚爝爟爤爫爯爴爸爹牁牂牃牅牎牏牐牓牕牖牚牜牞牠牣牨牫牮牯牱牷牸牻牼牿犄犉犍犎犓犛犨犭犮犱犴犾狁狇狉狌狕狖狘狟狥狳狴狺狻\"],[\"8fcba1\",\"狾猂猄猅猇猋猍猒猓猘猙猞猢猤猧猨猬猱猲猵猺猻猽獃獍獐獒獖獘獝獞獟獠獦獧獩獫獬獮獯獱獷獹獼玀玁玃玅玆玎玐玓玕玗玘玜玞玟玠玢玥玦玪玫玭玵玷玹玼玽玿珅珆珉珋珌珏珒珓珖珙珝珡珣珦珧珩珴珵珷珹珺珻珽\"],[\"8fcca1\",\"珿琀琁琄琇琊琑琚琛琤琦琨\",9,\"琹瑀瑃瑄瑆瑇瑋瑍瑑瑒瑗瑝瑢瑦瑧瑨瑫瑭瑮瑱瑲璀璁璅璆璇璉璏璐璑璒璘璙璚璜璟璠璡璣璦璨璩璪璫璮璯璱璲璵璹璻璿瓈瓉瓌瓐瓓瓘瓚瓛瓞瓟瓤瓨瓪瓫瓯瓴瓺瓻瓼瓿甆\"],[\"8fcda1\",\"甒甖甗甠甡甤甧甩甪甯甶甹甽甾甿畀畃畇畈畎畐畒畗畞畟畡畯畱畹\",5,\"疁疅疐疒疓疕疙疜疢疤疴疺疿痀痁痄痆痌痎痏痗痜痟痠痡痤痧痬痮痯痱痹瘀瘂瘃瘄瘇瘈瘊瘌瘏瘒瘓瘕瘖瘙瘛瘜瘝瘞瘣瘥瘦瘩瘭瘲瘳瘵瘸瘹\"],[\"8fcea1\",\"瘺瘼癊癀癁癃癄癅癉癋癕癙癟癤癥癭癮癯癱癴皁皅皌皍皕皛皜皝皟皠皢\",6,\"皪皭皽盁盅盉盋盌盎盔盙盠盦盨盬盰盱盶盹盼眀眆眊眎眒眔眕眗眙眚眜眢眨眭眮眯眴眵眶眹眽眾睂睅睆睊睍睎睏睒睖睗睜睞睟睠睢\"],[\"8fcfa1\",\"睤睧睪睬睰睲睳睴睺睽瞀瞄瞌瞍瞔瞕瞖瞚瞟瞢瞧瞪瞮瞯瞱瞵瞾矃矉矑矒矕矙矞矟矠矤矦矪矬矰矱矴矸矻砅砆砉砍砎砑砝砡砢砣砭砮砰砵砷硃硄硇硈硌硎硒硜硞硠硡硣硤硨硪确硺硾碊碏碔碘碡碝碞碟碤碨碬碭碰碱碲碳\"],[\"8fd0a1\",\"碻碽碿磇磈磉磌磎磒磓磕磖磤磛磟磠磡磦磪磲磳礀磶磷磺磻磿礆礌礐礚礜礞礟礠礥礧礩礭礱礴礵礻礽礿祄祅祆祊祋祏祑祔祘祛祜祧祩祫祲祹祻祼祾禋禌禑禓禔禕禖禘禛禜禡禨禩禫禯禱禴禸离秂秄秇秈秊秏秔秖秚秝秞\"],[\"8fd1a1\",\"秠秢秥秪秫秭秱秸秼稂稃稇稉稊稌稑稕稛稞稡稧稫稭稯稰稴稵稸稹稺穄穅穇穈穌穕穖穙穜穝穟穠穥穧穪穭穵穸穾窀窂窅窆窊窋窐窑窔窞窠窣窬窳窵窹窻窼竆竉竌竎竑竛竨竩竫竬竱竴竻竽竾笇笔笟笣笧笩笪笫笭笮笯笰\"],[\"8fd2a1\",\"笱笴笽笿筀筁筇筎筕筠筤筦筩筪筭筯筲筳筷箄箉箎箐箑箖箛箞箠箥箬箯箰箲箵箶箺箻箼箽篂篅篈篊篔篖篗篙篚篛篨篪篲篴篵篸篹篺篼篾簁簂簃簄簆簉簋簌簎簏簙簛簠簥簦簨簬簱簳簴簶簹簺籆籊籕籑籒籓籙\",5],[\"8fd3a1\",\"籡籣籧籩籭籮籰籲籹籼籽粆粇粏粔粞粠粦粰粶粷粺粻粼粿糄糇糈糉糍糏糓糔糕糗糙糚糝糦糩糫糵紃紇紈紉紏紑紒紓紖紝紞紣紦紪紭紱紼紽紾絀絁絇絈絍絑絓絗絙絚絜絝絥絧絪絰絸絺絻絿綁綂綃綅綆綈綋綌綍綑綖綗綝\"],[\"8fd4a1\",\"綞綦綧綪綳綶綷綹緂\",4,\"緌緍緎緗緙縀緢緥緦緪緫緭緱緵緶緹緺縈縐縑縕縗縜縝縠縧縨縬縭縯縳縶縿繄繅繇繎繐繒繘繟繡繢繥繫繮繯繳繸繾纁纆纇纊纍纑纕纘纚纝纞缼缻缽缾缿罃罄罇罏罒罓罛罜罝罡罣罤罥罦罭\"],[\"8fd5a1\",\"罱罽罾罿羀羋羍羏羐羑羖羗羜羡羢羦羪羭羴羼羿翀翃翈翎翏翛翟翣翥翨翬翮翯翲翺翽翾翿耇耈耊耍耎耏耑耓耔耖耝耞耟耠耤耦耬耮耰耴耵耷耹耺耼耾聀聄聠聤聦聭聱聵肁肈肎肜肞肦肧肫肸肹胈胍胏胒胔胕胗胘胠胭胮\"],[\"8fd6a1\",\"胰胲胳胶胹胺胾脃脋脖脗脘脜脞脠脤脧脬脰脵脺脼腅腇腊腌腒腗腠腡腧腨腩腭腯腷膁膐膄膅膆膋膎膖膘膛膞膢膮膲膴膻臋臃臅臊臎臏臕臗臛臝臞臡臤臫臬臰臱臲臵臶臸臹臽臿舀舃舏舓舔舙舚舝舡舢舨舲舴舺艃艄艅艆\"],[\"8fd7a1\",\"艋艎艏艑艖艜艠艣艧艭艴艻艽艿芀芁芃芄芇芉芊芎芑芔芖芘芚芛芠芡芣芤芧芨芩芪芮芰芲芴芷芺芼芾芿苆苐苕苚苠苢苤苨苪苭苯苶苷苽苾茀茁茇茈茊茋荔茛茝茞茟茡茢茬茭茮茰茳茷茺茼茽荂荃荄荇荍荎荑荕荖荗荰荸\"],[\"8fd8a1\",\"荽荿莀莂莄莆莍莒莔莕莘莙莛莜莝莦莧莩莬莾莿菀菇菉菏菐菑菔菝荓菨菪菶菸菹菼萁萆萊萏萑萕萙莭萯萹葅葇葈葊葍葏葑葒葖葘葙葚葜葠葤葥葧葪葰葳葴葶葸葼葽蒁蒅蒒蒓蒕蒞蒦蒨蒩蒪蒯蒱蒴蒺蒽蒾蓀蓂蓇蓈蓌蓏蓓\"],[\"8fd9a1\",\"蓜蓧蓪蓯蓰蓱蓲蓷蔲蓺蓻蓽蔂蔃蔇蔌蔎蔐蔜蔞蔢蔣蔤蔥蔧蔪蔫蔯蔳蔴蔶蔿蕆蕏\",4,\"蕖蕙蕜\",6,\"蕤蕫蕯蕹蕺蕻蕽蕿薁薅薆薉薋薌薏薓薘薝薟薠薢薥薧薴薶薷薸薼薽薾薿藂藇藊藋藎薭藘藚藟藠藦藨藭藳藶藼\"],[\"8fdaa1\",\"藿蘀蘄蘅蘍蘎蘐蘑蘒蘘蘙蘛蘞蘡蘧蘩蘶蘸蘺蘼蘽虀虂虆虒虓虖虗虘虙虝虠\",4,\"虩虬虯虵虶虷虺蚍蚑蚖蚘蚚蚜蚡蚦蚧蚨蚭蚱蚳蚴蚵蚷蚸蚹蚿蛀蛁蛃蛅蛑蛒蛕蛗蛚蛜蛠蛣蛥蛧蚈蛺蛼蛽蜄蜅蜇蜋蜎蜏蜐蜓蜔蜙蜞蜟蜡蜣\"],[\"8fdba1\",\"蜨蜮蜯蜱蜲蜹蜺蜼蜽蜾蝀蝃蝅蝍蝘蝝蝡蝤蝥蝯蝱蝲蝻螃\",6,\"螋螌螐螓螕螗螘螙螞螠螣螧螬螭螮螱螵螾螿蟁蟈蟉蟊蟎蟕蟖蟙蟚蟜蟟蟢蟣蟤蟪蟫蟭蟱蟳蟸蟺蟿蠁蠃蠆蠉蠊蠋蠐蠙蠒蠓蠔蠘蠚蠛蠜蠞蠟蠨蠭蠮蠰蠲蠵\"],[\"8fdca1\",\"蠺蠼衁衃衅衈衉衊衋衎衑衕衖衘衚衜衟衠衤衩衱衹衻袀袘袚袛袜袟袠袨袪袺袽袾裀裊\",4,\"裑裒裓裛裞裧裯裰裱裵裷褁褆褍褎褏褕褖褘褙褚褜褠褦褧褨褰褱褲褵褹褺褾襀襂襅襆襉襏襒襗襚襛襜襡襢襣襫襮襰襳襵襺\"],[\"8fdda1\",\"襻襼襽覉覍覐覔覕覛覜覟覠覥覰覴覵覶覷覼觔\",4,\"觥觩觫觭觱觳觶觹觽觿訄訅訇訏訑訒訔訕訞訠訢訤訦訫訬訯訵訷訽訾詀詃詅詇詉詍詎詓詖詗詘詜詝詡詥詧詵詶詷詹詺詻詾詿誀誃誆誋誏誐誒誖誗誙誟誧誩誮誯誳\"],[\"8fdea1\",\"誶誷誻誾諃諆諈諉諊諑諓諔諕諗諝諟諬諰諴諵諶諼諿謅謆謋謑謜謞謟謊謭謰謷謼譂\",4,\"譈譒譓譔譙譍譞譣譭譶譸譹譼譾讁讄讅讋讍讏讔讕讜讞讟谸谹谽谾豅豇豉豋豏豑豓豔豗豘豛豝豙豣豤豦豨豩豭豳豵豶豻豾貆\"],[\"8fdfa1\",\"貇貋貐貒貓貙貛貜貤貹貺賅賆賉賋賏賖賕賙賝賡賨賬賯賰賲賵賷賸賾賿贁贃贉贒贗贛赥赩赬赮赿趂趄趈趍趐趑趕趞趟趠趦趫趬趯趲趵趷趹趻跀跅跆跇跈跊跎跑跔跕跗跙跤跥跧跬跰趼跱跲跴跽踁踄踅踆踋踑踔踖踠踡踢\"],[\"8fe0a1\",\"踣踦踧踱踳踶踷踸踹踽蹀蹁蹋蹍蹎蹏蹔蹛蹜蹝蹞蹡蹢蹩蹬蹭蹯蹰蹱蹹蹺蹻躂躃躉躐躒躕躚躛躝躞躢躧躩躭躮躳躵躺躻軀軁軃軄軇軏軑軔軜軨軮軰軱軷軹軺軭輀輂輇輈輏輐輖輗輘輞輠輡輣輥輧輨輬輭輮輴輵輶輷輺轀轁\"],[\"8fe1a1\",\"轃轇轏轑\",4,\"轘轝轞轥辝辠辡辤辥辦辵辶辸达迀迁迆迊迋迍运迒迓迕迠迣迤迨迮迱迵迶迻迾适逄逈逌逘逛逨逩逯逪逬逭逳逴逷逿遃遄遌遛遝遢遦遧遬遰遴遹邅邈邋邌邎邐邕邗邘邙邛邠邡邢邥邰邲邳邴邶邽郌邾郃\"],[\"8fe2a1\",\"郄郅郇郈郕郗郘郙郜郝郟郥郒郶郫郯郰郴郾郿鄀鄄鄅鄆鄈鄍鄐鄔鄖鄗鄘鄚鄜鄞鄠鄥鄢鄣鄧鄩鄮鄯鄱鄴鄶鄷鄹鄺鄼鄽酃酇酈酏酓酗酙酚酛酡酤酧酭酴酹酺酻醁醃醅醆醊醎醑醓醔醕醘醞醡醦醨醬醭醮醰醱醲醳醶醻醼醽醿\"],[\"8fe3a1\",\"釂釃釅釓釔釗釙釚釞釤釥釩釪釬\",5,\"釷釹釻釽鈀鈁鈄鈅鈆鈇鈉鈊鈌鈐鈒鈓鈖鈘鈜鈝鈣鈤鈥鈦鈨鈮鈯鈰鈳鈵鈶鈸鈹鈺鈼鈾鉀鉂鉃鉆鉇鉊鉍鉎鉏鉑鉘鉙鉜鉝鉠鉡鉥鉧鉨鉩鉮鉯鉰鉵\",4,\"鉻鉼鉽鉿銈銉銊銍銎銒銗\"],[\"8fe4a1\",\"銙銟銠銤銥銧銨銫銯銲銶銸銺銻銼銽銿\",4,\"鋅鋆鋇鋈鋋鋌鋍鋎鋐鋓鋕鋗鋘鋙鋜鋝鋟鋠鋡鋣鋥鋧鋨鋬鋮鋰鋹鋻鋿錀錂錈錍錑錔錕錜錝錞錟錡錤錥錧錩錪錳錴錶錷鍇鍈鍉鍐鍑鍒鍕鍗鍘鍚鍞鍤鍥鍧鍩鍪鍭鍯鍰鍱鍳鍴鍶\"],[\"8fe5a1\",\"鍺鍽鍿鎀鎁鎂鎈鎊鎋鎍鎏鎒鎕鎘鎛鎞鎡鎣鎤鎦鎨鎫鎴鎵鎶鎺鎩鏁鏄鏅鏆鏇鏉\",4,\"鏓鏙鏜鏞鏟鏢鏦鏧鏹鏷鏸鏺鏻鏽鐁鐂鐄鐈鐉鐍鐎鐏鐕鐖鐗鐟鐮鐯鐱鐲鐳鐴鐻鐿鐽鑃鑅鑈鑊鑌鑕鑙鑜鑟鑡鑣鑨鑫鑭鑮鑯鑱鑲钄钃镸镹\"],[\"8fe6a1\",\"镾閄閈閌閍閎閝閞閟閡閦閩閫閬閴閶閺閽閿闆闈闉闋闐闑闒闓闙闚闝闞闟闠闤闦阝阞阢阤阥阦阬阱阳阷阸阹阺阼阽陁陒陔陖陗陘陡陮陴陻陼陾陿隁隂隃隄隉隑隖隚隝隟隤隥隦隩隮隯隳隺雊雒嶲雘雚雝雞雟雩雯雱雺霂\"],[\"8fe7a1\",\"霃霅霉霚霛霝霡霢霣霨霱霳靁靃靊靎靏靕靗靘靚靛靣靧靪靮靳靶靷靸靻靽靿鞀鞉鞕鞖鞗鞙鞚鞞鞟鞢鞬鞮鞱鞲鞵鞶鞸鞹鞺鞼鞾鞿韁韄韅韇韉韊韌韍韎韐韑韔韗韘韙韝韞韠韛韡韤韯韱韴韷韸韺頇頊頙頍頎頔頖頜頞頠頣頦\"],[\"8fe8a1\",\"頫頮頯頰頲頳頵頥頾顄顇顊顑顒顓顖顗顙顚顢顣顥顦顪顬颫颭颮颰颴颷颸颺颻颿飂飅飈飌飡飣飥飦飧飪飳飶餂餇餈餑餕餖餗餚餛餜餟餢餦餧餫餱\",4,\"餹餺餻餼饀饁饆饇饈饍饎饔饘饙饛饜饞饟饠馛馝馟馦馰馱馲馵\"],[\"8fe9a1\",\"馹馺馽馿駃駉駓駔駙駚駜駞駧駪駫駬駰駴駵駹駽駾騂騃騄騋騌騐騑騖騞騠騢騣騤騧騭騮騳騵騶騸驇驁驄驊驋驌驎驑驔驖驝骪骬骮骯骲骴骵骶骹骻骾骿髁髃髆髈髎髐髒髕髖髗髛髜髠髤髥髧髩髬髲髳髵髹髺髽髿\",4],[\"8feaa1\",\"鬄鬅鬈鬉鬋鬌鬍鬎鬐鬒鬖鬙鬛鬜鬠鬦鬫鬭鬳鬴鬵鬷鬹鬺鬽魈魋魌魕魖魗魛魞魡魣魥魦魨魪\",4,\"魳魵魷魸魹魿鮀鮄鮅鮆鮇鮉鮊鮋鮍鮏鮐鮔鮚鮝鮞鮦鮧鮩鮬鮰鮱鮲鮷鮸鮻鮼鮾鮿鯁鯇鯈鯎鯐鯗鯘鯝鯟鯥鯧鯪鯫鯯鯳鯷鯸\"],[\"8feba1\",\"鯹鯺鯽鯿鰀鰂鰋鰏鰑鰖鰘鰙鰚鰜鰞鰢鰣鰦\",4,\"鰱鰵鰶鰷鰽鱁鱃鱄鱅鱉鱊鱎鱏鱐鱓鱔鱖鱘鱛鱝鱞鱟鱣鱩鱪鱜鱫鱨鱮鱰鱲鱵鱷鱻鳦鳲鳷鳹鴋鴂鴑鴗鴘鴜鴝鴞鴯鴰鴲鴳鴴鴺鴼鵅鴽鵂鵃鵇鵊鵓鵔鵟鵣鵢鵥鵩鵪鵫鵰鵶鵷鵻\"],[\"8feca1\",\"鵼鵾鶃鶄鶆鶊鶍鶎鶒鶓鶕鶖鶗鶘鶡鶪鶬鶮鶱鶵鶹鶼鶿鷃鷇鷉鷊鷔鷕鷖鷗鷚鷞鷟鷠鷥鷧鷩鷫鷮鷰鷳鷴鷾鸊鸂鸇鸎鸐鸑鸒鸕鸖鸙鸜鸝鹺鹻鹼麀麂麃麄麅麇麎麏麖麘麛麞麤麨麬麮麯麰麳麴麵黆黈黋黕黟黤黧黬黭黮黰黱黲黵\"],[\"8feda1\",\"黸黿鼂鼃鼉鼏鼐鼑鼒鼔鼖鼗鼙鼚鼛鼟鼢鼦鼪鼫鼯鼱鼲鼴鼷鼹鼺鼼鼽鼿齁齃\",4,\"齓齕齖齗齘齚齝齞齨齩齭\",4,\"齳齵齺齽龏龐龑龒龔龖龗龞龡龢龣龥\"]]");
+})), bm = /* @__PURE__ */ i({ default: () => xm }), xm, Sm = n((() => {
+	xm = /*#__PURE__*/ JSON.parse("[[\"0\",\"\\u0000\",127,\"€\"],[\"8140\",\"丂丄丅丆丏丒丗丟丠両丣並丩丮丯丱丳丵丷丼乀乁乂乄乆乊乑乕乗乚乛乢乣乤乥乧乨乪\",5,\"乲乴\",9,\"乿\",6,\"亇亊\"],[\"8180\",\"亐亖亗亙亜亝亞亣亪亯亰亱亴亶亷亸亹亼亽亾仈仌仏仐仒仚仛仜仠仢仦仧仩仭仮仯仱仴仸仹仺仼仾伀伂\",6,\"伋伌伒\",4,\"伜伝伡伣伨伩伬伭伮伱伳伵伷伹伻伾\",4,\"佄佅佇\",5,\"佒佔佖佡佢佦佨佪佫佭佮佱佲併佷佸佹佺佽侀侁侂侅來侇侊侌侎侐侒侓侕侖侘侙侚侜侞侟価侢\"],[\"8240\",\"侤侫侭侰\",4,\"侶\",8,\"俀俁係俆俇俈俉俋俌俍俒\",4,\"俙俛俠俢俤俥俧俫俬俰俲俴俵俶俷俹俻俼俽俿\",11],[\"8280\",\"個倎倐們倓倕倖倗倛倝倞倠倢倣値倧倫倯\",10,\"倻倽倿偀偁偂偄偅偆偉偊偋偍偐\",4,\"偖偗偘偙偛偝\",7,\"偦\",5,\"偭\",8,\"偸偹偺偼偽傁傂傃傄傆傇傉傊傋傌傎\",20,\"傤傦傪傫傭\",4,\"傳\",6,\"傼\"],[\"8340\",\"傽\",17,\"僐\",5,\"僗僘僙僛\",10,\"僨僩僪僫僯僰僱僲僴僶\",4,\"僼\",9,\"儈\"],[\"8380\",\"儉儊儌\",5,\"儓\",13,\"儢\",28,\"兂兇兊兌兎兏児兒兓兗兘兙兛兝\",4,\"兣兤兦內兩兪兯兲兺兾兿冃冄円冇冊冋冎冏冐冑冓冔冘冚冝冞冟冡冣冦\",4,\"冭冮冴冸冹冺冾冿凁凂凃凅凈凊凍凎凐凒\",5],[\"8440\",\"凘凙凚凜凞凟凢凣凥\",5,\"凬凮凱凲凴凷凾刄刅刉刋刌刏刐刓刔刕刜刞刟刡刢刣別刦刧刪刬刯刱刲刴刵刼刾剄\",5,\"剋剎剏剒剓剕剗剘\"],[\"8480\",\"剙剚剛剝剟剠剢剣剤剦剨剫剬剭剮剰剱剳\",9,\"剾劀劃\",4,\"劉\",6,\"劑劒劔\",6,\"劜劤劥劦劧劮劯劰労\",9,\"勀勁勂勄勅勆勈勊勌勍勎勏勑勓勔動勗務\",5,\"勠勡勢勣勥\",10,\"勱\",7,\"勻勼勽匁匂匃匄匇匉匊匋匌匎\"],[\"8540\",\"匑匒匓匔匘匛匜匞匟匢匤匥匧匨匩匫匬匭匯\",9,\"匼匽區卂卄卆卋卌卍卐協単卙卛卝卥卨卪卬卭卲卶卹卻卼卽卾厀厁厃厇厈厊厎厏\"],[\"8580\",\"厐\",4,\"厖厗厙厛厜厞厠厡厤厧厪厫厬厭厯\",6,\"厷厸厹厺厼厽厾叀參\",4,\"収叏叐叒叓叕叚叜叝叞叡叢叧叴叺叾叿吀吂吅吇吋吔吘吙吚吜吢吤吥吪吰吳吶吷吺吽吿呁呂呄呅呇呉呌呍呎呏呑呚呝\",4,\"呣呥呧呩\",7,\"呴呹呺呾呿咁咃咅咇咈咉咊咍咑咓咗咘咜咞咟咠咡\"],[\"8640\",\"咢咥咮咰咲咵咶咷咹咺咼咾哃哅哊哋哖哘哛哠\",4,\"哫哬哯哰哱哴\",5,\"哻哾唀唂唃唄唅唈唊\",4,\"唒唓唕\",5,\"唜唝唞唟唡唥唦\"],[\"8680\",\"唨唩唫唭唲唴唵唶唸唹唺唻唽啀啂啅啇啈啋\",4,\"啑啒啓啔啗\",4,\"啝啞啟啠啢啣啨啩啫啯\",5,\"啹啺啽啿喅喆喌喍喎喐喒喓喕喖喗喚喛喞喠\",6,\"喨\",8,\"喲喴営喸喺喼喿\",4,\"嗆嗇嗈嗊嗋嗎嗏嗐嗕嗗\",4,\"嗞嗠嗢嗧嗩嗭嗮嗰嗱嗴嗶嗸\",4,\"嗿嘂嘃嘄嘅\"],[\"8740\",\"嘆嘇嘊嘋嘍嘐\",7,\"嘙嘚嘜嘝嘠嘡嘢嘥嘦嘨嘩嘪嘫嘮嘯嘰嘳嘵嘷嘸嘺嘼嘽嘾噀\",11,\"噏\",4,\"噕噖噚噛噝\",4],[\"8780\",\"噣噥噦噧噭噮噯噰噲噳噴噵噷噸噹噺噽\",7,\"嚇\",6,\"嚐嚑嚒嚔\",14,\"嚤\",10,\"嚰\",6,\"嚸嚹嚺嚻嚽\",12,\"囋\",8,\"囕囖囘囙囜団囥\",5,\"囬囮囯囲図囶囷囸囻囼圀圁圂圅圇國\",6],[\"8840\",\"園\",9,\"圝圞圠圡圢圤圥圦圧圫圱圲圴\",4,\"圼圽圿坁坃坄坅坆坈坉坋坒\",4,\"坘坙坢坣坥坧坬坮坰坱坲坴坵坸坹坺坽坾坿垀\"],[\"8880\",\"垁垇垈垉垊垍\",4,\"垔\",6,\"垜垝垞垟垥垨垪垬垯垰垱垳垵垶垷垹\",8,\"埄\",6,\"埌埍埐埑埓埖埗埛埜埞埡埢埣埥\",7,\"埮埰埱埲埳埵埶執埻埼埾埿堁堃堄堅堈堉堊堌堎堏堐堒堓堔堖堗堘堚堛堜堝堟堢堣堥\",4,\"堫\",4,\"報堲堳場堶\",7],[\"8940\",\"堾\",5,\"塅\",6,\"塎塏塐塒塓塕塖塗塙\",4,\"塟\",5,\"塦\",4,\"塭\",16,\"塿墂墄墆墇墈墊墋墌\"],[\"8980\",\"墍\",4,\"墔\",4,\"墛墜墝墠\",7,\"墪\",17,\"墽墾墿壀壂壃壄壆\",10,\"壒壓壔壖\",13,\"壥\",5,\"壭壯壱売壴壵壷壸壺\",7,\"夃夅夆夈\",4,\"夎夐夑夒夓夗夘夛夝夞夠夡夢夣夦夨夬夰夲夳夵夶夻\"],[\"8a40\",\"夽夾夿奀奃奅奆奊奌奍奐奒奓奙奛\",4,\"奡奣奤奦\",12,\"奵奷奺奻奼奾奿妀妅妉妋妌妎妏妐妑妔妕妘妚妛妜妝妟妠妡妢妦\"],[\"8a80\",\"妧妬妭妰妱妳\",5,\"妺妼妽妿\",6,\"姇姈姉姌姍姎姏姕姖姙姛姞\",4,\"姤姦姧姩姪姫姭\",11,\"姺姼姽姾娀娂娊娋娍娎娏娐娒娔娕娖娗娙娚娛娝娞娡娢娤娦娧娨娪\",6,\"娳娵娷\",4,\"娽娾娿婁\",4,\"婇婈婋\",9,\"婖婗婘婙婛\",5],[\"8b40\",\"婡婣婤婥婦婨婩婫\",8,\"婸婹婻婼婽婾媀\",17,\"媓\",6,\"媜\",13,\"媫媬\"],[\"8b80\",\"媭\",4,\"媴媶媷媹\",4,\"媿嫀嫃\",5,\"嫊嫋嫍\",4,\"嫓嫕嫗嫙嫚嫛嫝嫞嫟嫢嫤嫥嫧嫨嫪嫬\",4,\"嫲\",22,\"嬊\",11,\"嬘\",25,\"嬳嬵嬶嬸\",7,\"孁\",6],[\"8c40\",\"孈\",7,\"孒孖孞孠孡孧孨孫孭孮孯孲孴孶孷學孹孻孼孾孿宂宆宊宍宎宐宑宒宔宖実宧宨宩宬宭宮宯宱宲宷宺宻宼寀寁寃寈寉寊寋寍寎寏\"],[\"8c80\",\"寑寔\",8,\"寠寢寣實寧審\",4,\"寯寱\",6,\"寽対尀専尃尅將專尋尌對導尐尒尓尗尙尛尞尟尠尡尣尦尨尩尪尫尭尮尯尰尲尳尵尶尷屃屄屆屇屌屍屒屓屔屖屗屘屚屛屜屝屟屢層屧\",6,\"屰屲\",6,\"屻屼屽屾岀岃\",4,\"岉岊岋岎岏岒岓岕岝\",4,\"岤\",4],[\"8d40\",\"岪岮岯岰岲岴岶岹岺岻岼岾峀峂峃峅\",5,\"峌\",5,\"峓\",5,\"峚\",6,\"峢峣峧峩峫峬峮峯峱\",9,\"峼\",4],[\"8d80\",\"崁崄崅崈\",5,\"崏\",4,\"崕崗崘崙崚崜崝崟\",4,\"崥崨崪崫崬崯\",4,\"崵\",7,\"崿\",7,\"嵈嵉嵍\",10,\"嵙嵚嵜嵞\",10,\"嵪嵭嵮嵰嵱嵲嵳嵵\",12,\"嶃\",21,\"嶚嶛嶜嶞嶟嶠\"],[\"8e40\",\"嶡\",21,\"嶸\",12,\"巆\",6,\"巎\",12,\"巜巟巠巣巤巪巬巭\"],[\"8e80\",\"巰巵巶巸\",4,\"巿帀帄帇帉帊帋帍帎帒帓帗帞\",7,\"帨\",4,\"帯帰帲\",4,\"帹帺帾帿幀幁幃幆\",5,\"幍\",6,\"幖\",4,\"幜幝幟幠幣\",14,\"幵幷幹幾庁庂広庅庈庉庌庍庎庒庘庛庝庡庢庣庤庨\",4,\"庮\",4,\"庴庺庻庼庽庿\",6],[\"8f40\",\"廆廇廈廋\",5,\"廔廕廗廘廙廚廜\",11,\"廩廫\",8,\"廵廸廹廻廼廽弅弆弇弉弌弍弎弐弒弔弖弙弚弜弝弞弡弢弣弤\"],[\"8f80\",\"弨弫弬弮弰弲\",6,\"弻弽弾弿彁\",14,\"彑彔彙彚彛彜彞彟彠彣彥彧彨彫彮彯彲彴彵彶彸彺彽彾彿徃徆徍徎徏徑従徔徖徚徛徝從徟徠徢\",5,\"復徫徬徯\",5,\"徶徸徹徺徻徾\",4,\"忇忈忊忋忎忓忔忕忚忛応忞忟忢忣忥忦忨忩忬忯忰忲忳忴忶忷忹忺忼怇\"],[\"9040\",\"怈怉怋怌怐怑怓怗怘怚怞怟怢怣怤怬怭怮怰\",4,\"怶\",4,\"怽怾恀恄\",6,\"恌恎恏恑恓恔恖恗恘恛恜恞恟恠恡恥恦恮恱恲恴恵恷恾悀\"],[\"9080\",\"悁悂悅悆悇悈悊悋悎悏悐悑悓悕悗悘悙悜悞悡悢悤悥悧悩悪悮悰悳悵悶悷悹悺悽\",7,\"惇惈惉惌\",4,\"惒惓惔惖惗惙惛惞惡\",4,\"惪惱惲惵惷惸惻\",4,\"愂愃愄愅愇愊愋愌愐\",4,\"愖愗愘愙愛愜愝愞愡愢愥愨愩愪愬\",18,\"慀\",6],[\"9140\",\"慇慉態慍慏慐慒慓慔慖\",6,\"慞慟慠慡慣慤慥慦慩\",6,\"慱慲慳慴慶慸\",18,\"憌憍憏\",4,\"憕\"],[\"9180\",\"憖\",6,\"憞\",8,\"憪憫憭\",9,\"憸\",5,\"憿懀懁懃\",4,\"應懌\",4,\"懓懕\",16,\"懧\",13,\"懶\",8,\"戀\",5,\"戇戉戓戔戙戜戝戞戠戣戦戧戨戩戫戭戯戰戱戲戵戶戸\",4,\"扂扄扅扆扊\"],[\"9240\",\"扏扐払扖扗扙扚扜\",6,\"扤扥扨扱扲扴扵扷扸扺扻扽抁抂抃抅抆抇抈抋\",5,\"抔抙抜抝択抣抦抧抩抪抭抮抯抰抲抳抴抶抷抸抺抾拀拁\"],[\"9280\",\"拃拋拏拑拕拝拞拠拡拤拪拫拰拲拵拸拹拺拻挀挃挄挅挆挊挋挌挍挏挐挒挓挔挕挗挘挙挜挦挧挩挬挭挮挰挱挳\",5,\"挻挼挾挿捀捁捄捇捈捊捑捒捓捔捖\",7,\"捠捤捥捦捨捪捫捬捯捰捲捳捴捵捸捹捼捽捾捿掁掃掄掅掆掋掍掑掓掔掕掗掙\",6,\"採掤掦掫掯掱掲掵掶掹掻掽掿揀\"],[\"9340\",\"揁揂揃揅揇揈揊揋揌揑揓揔揕揗\",6,\"揟揢揤\",4,\"揫揬揮揯揰揱揳揵揷揹揺揻揼揾搃搄搆\",4,\"損搎搑搒搕\",5,\"搝搟搢搣搤\"],[\"9380\",\"搥搧搨搩搫搮\",5,\"搵\",4,\"搻搼搾摀摂摃摉摋\",6,\"摓摕摖摗摙\",4,\"摟\",7,\"摨摪摫摬摮\",9,\"摻\",6,\"撃撆撈\",8,\"撓撔撗撘撚撛撜撝撟\",4,\"撥撦撧撨撪撫撯撱撲撳撴撶撹撻撽撾撿擁擃擄擆\",6,\"擏擑擓擔擕擖擙據\"],[\"9440\",\"擛擜擝擟擠擡擣擥擧\",24,\"攁\",7,\"攊\",7,\"攓\",4,\"攙\",8],[\"9480\",\"攢攣攤攦\",4,\"攬攭攰攱攲攳攷攺攼攽敀\",4,\"敆敇敊敋敍敎敐敒敓敔敗敘敚敜敟敠敡敤敥敧敨敩敪敭敮敯敱敳敵敶數\",14,\"斈斉斊斍斎斏斒斔斕斖斘斚斝斞斠斢斣斦斨斪斬斮斱\",7,\"斺斻斾斿旀旂旇旈旉旊旍旐旑旓旔旕旘\",7,\"旡旣旤旪旫\"],[\"9540\",\"旲旳旴旵旸旹旻\",4,\"昁昄昅昇昈昉昋昍昐昑昒昖昗昘昚昛昜昞昡昢昣昤昦昩昪昫昬昮昰昲昳昷\",4,\"昽昿晀時晄\",6,\"晍晎晐晑晘\"],[\"9580\",\"晙晛晜晝晞晠晢晣晥晧晩\",4,\"晱晲晳晵晸晹晻晼晽晿暀暁暃暅暆暈暉暊暋暍暎暏暐暒暓暔暕暘\",4,\"暞\",8,\"暩\",4,\"暯\",4,\"暵暶暷暸暺暻暼暽暿\",25,\"曚曞\",7,\"曧曨曪\",5,\"曱曵曶書曺曻曽朁朂會\"],[\"9640\",\"朄朅朆朇朌朎朏朑朒朓朖朘朙朚朜朞朠\",5,\"朧朩朮朰朲朳朶朷朸朹朻朼朾朿杁杄杅杇杊杋杍杒杔杕杗\",4,\"杝杢杣杤杦杧杫杬杮東杴杶\"],[\"9680\",\"杸杹杺杻杽枀枂枃枅枆枈枊枌枍枎枏枑枒枓枔枖枙枛枟枠枡枤枦枩枬枮枱枲枴枹\",7,\"柂柅\",9,\"柕柖柗柛柟柡柣柤柦柧柨柪柫柭柮柲柵\",7,\"柾栁栂栃栄栆栍栐栒栔栕栘\",4,\"栞栟栠栢\",6,\"栫\",6,\"栴栵栶栺栻栿桇桋桍桏桒桖\",5],[\"9740\",\"桜桝桞桟桪桬\",7,\"桵桸\",8,\"梂梄梇\",7,\"梐梑梒梔梕梖梘\",9,\"梣梤梥梩梪梫梬梮梱梲梴梶梷梸\"],[\"9780\",\"梹\",6,\"棁棃\",5,\"棊棌棎棏棐棑棓棔棖棗棙棛\",4,\"棡棢棤\",9,\"棯棲棳棴棶棷棸棻棽棾棿椀椂椃椄椆\",4,\"椌椏椑椓\",11,\"椡椢椣椥\",7,\"椮椯椱椲椳椵椶椷椸椺椻椼椾楀楁楃\",16,\"楕楖楘楙楛楜楟\"],[\"9840\",\"楡楢楤楥楧楨楩楪楬業楯楰楲\",4,\"楺楻楽楾楿榁榃榅榊榋榌榎\",5,\"榖榗榙榚榝\",9,\"榩榪榬榮榯榰榲榳榵榶榸榹榺榼榽\"],[\"9880\",\"榾榿槀槂\",7,\"構槍槏槑槒槓槕\",5,\"槜槝槞槡\",11,\"槮槯槰槱槳\",9,\"槾樀\",9,\"樋\",11,\"標\",5,\"樠樢\",5,\"権樫樬樭樮樰樲樳樴樶\",6,\"樿\",4,\"橅橆橈\",7,\"橑\",6,\"橚\"],[\"9940\",\"橜\",4,\"橢橣橤橦\",10,\"橲\",6,\"橺橻橽橾橿檁檂檃檅\",8,\"檏檒\",4,\"檘\",7,\"檡\",5],[\"9980\",\"檧檨檪檭\",114,\"欥欦欨\",6],[\"9a40\",\"欯欰欱欳欴欵欶欸欻欼欽欿歀歁歂歄歅歈歊歋歍\",11,\"歚\",7,\"歨歩歫\",13,\"歺歽歾歿殀殅殈\"],[\"9a80\",\"殌殎殏殐殑殔殕殗殘殙殜\",4,\"殢\",7,\"殫\",7,\"殶殸\",6,\"毀毃毄毆\",4,\"毌毎毐毑毘毚毜\",4,\"毢\",7,\"毬毭毮毰毱毲毴毶毷毸毺毻毼毾\",6,\"氈\",4,\"氎氒気氜氝氞氠氣氥氫氬氭氱氳氶氷氹氺氻氼氾氿汃汄汅汈汋\",4,\"汑汒汓汖汘\"],[\"9b40\",\"汙汚汢汣汥汦汧汫\",4,\"汱汳汵汷汸決汻汼汿沀沄沇沊沋沍沎沑沒沕沖沗沘沚沜沝沞沠沢沨沬沯沰沴沵沶沷沺泀況泂泃泆泇泈泋泍泎泏泑泒泘\"],[\"9b80\",\"泙泚泜泝泟泤泦泧泩泬泭泲泴泹泿洀洂洃洅洆洈洉洊洍洏洐洑洓洔洕洖洘洜洝洟\",5,\"洦洨洩洬洭洯洰洴洶洷洸洺洿浀浂浄浉浌浐浕浖浗浘浛浝浟浡浢浤浥浧浨浫浬浭浰浱浲浳浵浶浹浺浻浽\",4,\"涃涄涆涇涊涋涍涏涐涒涖\",4,\"涜涢涥涬涭涰涱涳涴涶涷涹\",5,\"淁淂淃淈淉淊\"],[\"9c40\",\"淍淎淏淐淒淓淔淕淗淚淛淜淟淢淣淥淧淨淩淪淭淯淰淲淴淵淶淸淺淽\",7,\"渆渇済渉渋渏渒渓渕渘渙減渜渞渟渢渦渧渨渪測渮渰渱渳渵\"],[\"9c80\",\"渶渷渹渻\",7,\"湅\",7,\"湏湐湑湒湕湗湙湚湜湝湞湠\",10,\"湬湭湯\",14,\"満溁溂溄溇溈溊\",4,\"溑\",6,\"溙溚溛溝溞溠溡溣溤溦溨溩溫溬溭溮溰溳溵溸溹溼溾溿滀滃滄滅滆滈滉滊滌滍滎滐滒滖滘滙滛滜滝滣滧滪\",5],[\"9d40\",\"滰滱滲滳滵滶滷滸滺\",7,\"漃漄漅漇漈漊\",4,\"漐漑漒漖\",9,\"漡漢漣漥漦漧漨漬漮漰漲漴漵漷\",6,\"漿潀潁潂\"],[\"9d80\",\"潃潄潅潈潉潊潌潎\",9,\"潙潚潛潝潟潠潡潣潤潥潧\",5,\"潯潰潱潳潵潶潷潹潻潽\",6,\"澅澆澇澊澋澏\",12,\"澝澞澟澠澢\",4,\"澨\",10,\"澴澵澷澸澺\",5,\"濁濃\",5,\"濊\",6,\"濓\",10,\"濟濢濣濤濥\"],[\"9e40\",\"濦\",7,\"濰\",32,\"瀒\",7,\"瀜\",6,\"瀤\",6],[\"9e80\",\"瀫\",9,\"瀶瀷瀸瀺\",17,\"灍灎灐\",13,\"灟\",11,\"灮灱灲灳灴灷灹灺灻災炁炂炃炄炆炇炈炋炌炍炏炐炑炓炗炘炚炛炞\",12,\"炰炲炴炵炶為炾炿烄烅烆烇烉烋\",12,\"烚\"],[\"9f40\",\"烜烝烞烠烡烢烣烥烪烮烰\",6,\"烸烺烻烼烾\",10,\"焋\",4,\"焑焒焔焗焛\",10,\"焧\",7,\"焲焳焴\"],[\"9f80\",\"焵焷\",13,\"煆煇煈煉煋煍煏\",12,\"煝煟\",4,\"煥煩\",4,\"煯煰煱煴煵煶煷煹煻煼煾\",5,\"熅\",4,\"熋熌熍熎熐熑熒熓熕熖熗熚\",4,\"熡\",6,\"熩熪熫熭\",5,\"熴熶熷熸熺\",8,\"燄\",9,\"燏\",4],[\"a040\",\"燖\",9,\"燡燢燣燤燦燨\",5,\"燯\",9,\"燺\",11,\"爇\",19],[\"a080\",\"爛爜爞\",9,\"爩爫爭爮爯爲爳爴爺爼爾牀\",6,\"牉牊牋牎牏牐牑牓牔牕牗牘牚牜牞牠牣牤牥牨牪牫牬牭牰牱牳牴牶牷牸牻牼牽犂犃犅\",4,\"犌犎犐犑犓\",11,\"犠\",11,\"犮犱犲犳犵犺\",6,\"狅狆狇狉狊狋狌狏狑狓狔狕狖狘狚狛\"],[\"a1a1\",\"　、。·ˉˇ¨〃々—～‖…‘’“”〔〕〈\",7,\"〖〗【】±×÷∶∧∨∑∏∪∩∈∷√⊥∥∠⌒⊙∫∮≡≌≈∽∝≠≮≯≤≥∞∵∴♂♀°′″℃＄¤￠￡‰§№☆★○●◎◇◆□■△▲※→←↑↓〓\"],[\"a2a1\",\"ⅰ\",9],[\"a2b1\",\"⒈\",19,\"⑴\",19,\"①\",9],[\"a2e5\",\"㈠\",9],[\"a2f1\",\"Ⅰ\",11],[\"a3a1\",\"！＂＃￥％\",88,\"￣\"],[\"a4a1\",\"ぁ\",82],[\"a5a1\",\"ァ\",85],[\"a6a1\",\"Α\",16,\"Σ\",6],[\"a6c1\",\"α\",16,\"σ\",6],[\"a6e0\",\"︵︶︹︺︿﹀︽︾﹁﹂﹃﹄\"],[\"a6ee\",\"︻︼︷︸︱\"],[\"a6f4\",\"︳︴\"],[\"a7a1\",\"А\",5,\"ЁЖ\",25],[\"a7d1\",\"а\",5,\"ёж\",25],[\"a840\",\"ˊˋ˙–―‥‵℅℉↖↗↘↙∕∟∣≒≦≧⊿═\",35,\"▁\",6],[\"a880\",\"█\",7,\"▓▔▕▼▽◢◣◤◥☉⊕〒〝〞\"],[\"a8a1\",\"āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜüêɑ\"],[\"a8bd\",\"ńň\"],[\"a8c0\",\"ɡ\"],[\"a8c5\",\"ㄅ\",36],[\"a940\",\"〡\",8,\"㊣㎎㎏㎜㎝㎞㎡㏄㏎㏑㏒㏕︰￢￤\"],[\"a959\",\"℡㈱\"],[\"a95c\",\"‐\"],[\"a960\",\"ー゛゜ヽヾ〆ゝゞ﹉\",9,\"﹔﹕﹖﹗﹙\",8],[\"a980\",\"﹢\",4,\"﹨﹩﹪﹫\"],[\"a996\",\"〇\"],[\"a9a4\",\"─\",75],[\"aa40\",\"狜狝狟狢\",5,\"狪狫狵狶狹狽狾狿猀猂猄\",5,\"猋猌猍猏猐猑猒猔猘猙猚猟猠猣猤猦猧猨猭猯猰猲猳猵猶猺猻猼猽獀\",8],[\"aa80\",\"獉獊獋獌獎獏獑獓獔獕獖獘\",7,\"獡\",10,\"獮獰獱\"],[\"ab40\",\"獲\",11,\"獿\",4,\"玅玆玈玊玌玍玏玐玒玓玔玕玗玘玙玚玜玝玞玠玡玣\",5,\"玪玬玭玱玴玵玶玸玹玼玽玾玿珁珃\",4],[\"ab80\",\"珋珌珎珒\",6,\"珚珛珜珝珟珡珢珣珤珦珨珪珫珬珮珯珰珱珳\",4],[\"ac40\",\"珸\",10,\"琄琇琈琋琌琍琎琑\",8,\"琜\",5,\"琣琤琧琩琫琭琯琱琲琷\",4,\"琽琾琿瑀瑂\",11],[\"ac80\",\"瑎\",6,\"瑖瑘瑝瑠\",12,\"瑮瑯瑱\",4,\"瑸瑹瑺\"],[\"ad40\",\"瑻瑼瑽瑿璂璄璅璆璈璉璊璌璍璏璑\",10,\"璝璟\",7,\"璪\",15,\"璻\",12],[\"ad80\",\"瓈\",9,\"瓓\",8,\"瓝瓟瓡瓥瓧\",6,\"瓰瓱瓲\"],[\"ae40\",\"瓳瓵瓸\",6,\"甀甁甂甃甅\",7,\"甎甐甒甔甕甖甗甛甝甞甠\",4,\"甦甧甪甮甴甶甹甼甽甿畁畂畃畄畆畇畉畊畍畐畑畒畓畕畖畗畘\"],[\"ae80\",\"畝\",7,\"畧畨畩畫\",6,\"畳畵當畷畺\",4,\"疀疁疂疄疅疇\"],[\"af40\",\"疈疉疊疌疍疎疐疓疕疘疛疜疞疢疦\",4,\"疭疶疷疺疻疿痀痁痆痋痌痎痏痐痑痓痗痙痚痜痝痟痠痡痥痩痬痭痮痯痲痳痵痶痷痸痺痻痽痾瘂瘄瘆瘇\"],[\"af80\",\"瘈瘉瘋瘍瘎瘏瘑瘒瘓瘔瘖瘚瘜瘝瘞瘡瘣瘧瘨瘬瘮瘯瘱瘲瘶瘷瘹瘺瘻瘽癁療癄\"],[\"b040\",\"癅\",6,\"癎\",5,\"癕癗\",4,\"癝癟癠癡癢癤\",6,\"癬癭癮癰\",7,\"癹発發癿皀皁皃皅皉皊皌皍皏皐皒皔皕皗皘皚皛\"],[\"b080\",\"皜\",7,\"皥\",8,\"皯皰皳皵\",9,\"盀盁盃啊阿埃挨哎唉哀皑癌蔼矮艾碍爱隘鞍氨安俺按暗岸胺案肮昂盎凹敖熬翱袄傲奥懊澳芭捌扒叭吧笆八疤巴拔跋靶把耙坝霸罢爸白柏百摆佰败拜稗斑班搬扳般颁板版扮拌伴瓣半办绊邦帮梆榜膀绑棒磅蚌镑傍谤苞胞包褒剥\"],[\"b140\",\"盄盇盉盋盌盓盕盙盚盜盝盞盠\",4,\"盦\",7,\"盰盳盵盶盷盺盻盽盿眀眂眃眅眆眊県眎\",10,\"眛眜眝眞眡眣眤眥眧眪眫\"],[\"b180\",\"眬眮眰\",4,\"眹眻眽眾眿睂睄睅睆睈\",7,\"睒\",7,\"睜薄雹保堡饱宝抱报暴豹鲍爆杯碑悲卑北辈背贝钡倍狈备惫焙被奔苯本笨崩绷甭泵蹦迸逼鼻比鄙笔彼碧蓖蔽毕毙毖币庇痹闭敝弊必辟壁臂避陛鞭边编贬扁便变卞辨辩辫遍标彪膘表鳖憋别瘪彬斌濒滨宾摈兵冰柄丙秉饼炳\"],[\"b240\",\"睝睞睟睠睤睧睩睪睭\",11,\"睺睻睼瞁瞂瞃瞆\",5,\"瞏瞐瞓\",11,\"瞡瞣瞤瞦瞨瞫瞭瞮瞯瞱瞲瞴瞶\",4],[\"b280\",\"瞼瞾矀\",12,\"矎\",8,\"矘矙矚矝\",4,\"矤病并玻菠播拨钵波博勃搏铂箔伯帛舶脖膊渤泊驳捕卜哺补埠不布步簿部怖擦猜裁材才财睬踩采彩菜蔡餐参蚕残惭惨灿苍舱仓沧藏操糙槽曹草厕策侧册测层蹭插叉茬茶查碴搽察岔差诧拆柴豺搀掺蝉馋谗缠铲产阐颤昌猖\"],[\"b340\",\"矦矨矪矯矰矱矲矴矵矷矹矺矻矼砃\",5,\"砊砋砎砏砐砓砕砙砛砞砠砡砢砤砨砪砫砮砯砱砲砳砵砶砽砿硁硂硃硄硆硈硉硊硋硍硏硑硓硔硘硙硚\"],[\"b380\",\"硛硜硞\",11,\"硯\",7,\"硸硹硺硻硽\",6,\"场尝常长偿肠厂敞畅唱倡超抄钞朝嘲潮巢吵炒车扯撤掣彻澈郴臣辰尘晨忱沉陈趁衬撑称城橙成呈乘程惩澄诚承逞骋秤吃痴持匙池迟弛驰耻齿侈尺赤翅斥炽充冲虫崇宠抽酬畴踌稠愁筹仇绸瞅丑臭初出橱厨躇锄雏滁除楚\"],[\"b440\",\"碄碅碆碈碊碋碏碐碒碔碕碖碙碝碞碠碢碤碦碨\",7,\"碵碶碷碸確碻碼碽碿磀磂磃磄磆磇磈磌磍磎磏磑磒磓磖磗磘磚\",9],[\"b480\",\"磤磥磦磧磩磪磫磭\",4,\"磳磵磶磸磹磻\",5,\"礂礃礄礆\",6,\"础储矗搐触处揣川穿椽传船喘串疮窗幢床闯创吹炊捶锤垂春椿醇唇淳纯蠢戳绰疵茨磁雌辞慈瓷词此刺赐次聪葱囱匆从丛凑粗醋簇促蹿篡窜摧崔催脆瘁粹淬翠村存寸磋撮搓措挫错搭达答瘩打大呆歹傣戴带殆代贷袋待逮\"],[\"b540\",\"礍\",5,\"礔\",9,\"礟\",4,\"礥\",14,\"礵\",4,\"礽礿祂祃祄祅祇祊\",8,\"祔祕祘祙祡祣\"],[\"b580\",\"祤祦祩祪祫祬祮祰\",6,\"祹祻\",4,\"禂禃禆禇禈禉禋禌禍禎禐禑禒怠耽担丹单郸掸胆旦氮但惮淡诞弹蛋当挡党荡档刀捣蹈倒岛祷导到稻悼道盗德得的蹬灯登等瞪凳邓堤低滴迪敌笛狄涤翟嫡抵底地蒂第帝弟递缔颠掂滇碘点典靛垫电佃甸店惦奠淀殿碉叼雕凋刁掉吊钓调跌爹碟蝶迭谍叠\"],[\"b640\",\"禓\",6,\"禛\",11,\"禨\",10,\"禴\",4,\"禼禿秂秄秅秇秈秊秌秎秏秐秓秔秖秗秙\",5,\"秠秡秢秥秨秪\"],[\"b680\",\"秬秮秱\",6,\"秹秺秼秾秿稁稄稅稇稈稉稊稌稏\",4,\"稕稖稘稙稛稜丁盯叮钉顶鼎锭定订丢东冬董懂动栋侗恫冻洞兜抖斗陡豆逗痘都督毒犊独读堵睹赌杜镀肚度渡妒端短锻段断缎堆兑队对墩吨蹲敦顿囤钝盾遁掇哆多夺垛躲朵跺舵剁惰堕蛾峨鹅俄额讹娥恶厄扼遏鄂饿恩而儿耳尔饵洱二\"],[\"b740\",\"稝稟稡稢稤\",14,\"稴稵稶稸稺稾穀\",5,\"穇\",9,\"穒\",4,\"穘\",16],[\"b780\",\"穩\",6,\"穱穲穳穵穻穼穽穾窂窅窇窉窊窋窌窎窏窐窓窔窙窚窛窞窡窢贰发罚筏伐乏阀法珐藩帆番翻樊矾钒繁凡烦反返范贩犯饭泛坊芳方肪房防妨仿访纺放菲非啡飞肥匪诽吠肺废沸费芬酚吩氛分纷坟焚汾粉奋份忿愤粪丰封枫蜂峰锋风疯烽逢冯缝讽奉凤佛否夫敷肤孵扶拂辐幅氟符伏俘服\"],[\"b840\",\"窣窤窧窩窪窫窮\",4,\"窴\",10,\"竀\",10,\"竌\",9,\"竗竘竚竛竜竝竡竢竤竧\",5,\"竮竰竱竲竳\"],[\"b880\",\"竴\",4,\"竻竼竾笀笁笂笅笇笉笌笍笎笐笒笓笖笗笘笚笜笝笟笡笢笣笧笩笭浮涪福袱弗甫抚辅俯釜斧脯腑府腐赴副覆赋复傅付阜父腹负富讣附妇缚咐噶嘎该改概钙盖溉干甘杆柑竿肝赶感秆敢赣冈刚钢缸肛纲岗港杠篙皋高膏羔糕搞镐稿告哥歌搁戈鸽胳疙割革葛格蛤阁隔铬个各给根跟耕更庚羹\"],[\"b940\",\"笯笰笲笴笵笶笷笹笻笽笿\",5,\"筆筈筊筍筎筓筕筗筙筜筞筟筡筣\",10,\"筯筰筳筴筶筸筺筼筽筿箁箂箃箄箆\",6,\"箎箏\"],[\"b980\",\"箑箒箓箖箘箙箚箛箞箟箠箣箤箥箮箯箰箲箳箵箶箷箹\",7,\"篂篃範埂耿梗工攻功恭龚供躬公宫弓巩汞拱贡共钩勾沟苟狗垢构购够辜菇咕箍估沽孤姑鼓古蛊骨谷股故顾固雇刮瓜剐寡挂褂乖拐怪棺关官冠观管馆罐惯灌贯光广逛瑰规圭硅归龟闺轨鬼诡癸桂柜跪贵刽辊滚棍锅郭国果裹过哈\"],[\"ba40\",\"篅篈築篊篋篍篎篏篐篒篔\",4,\"篛篜篞篟篠篢篣篤篧篨篩篫篬篭篯篰篲\",4,\"篸篹篺篻篽篿\",7,\"簈簉簊簍簎簐\",5,\"簗簘簙\"],[\"ba80\",\"簚\",4,\"簠\",5,\"簨簩簫\",12,\"簹\",5,\"籂骸孩海氦亥害骇酣憨邯韩含涵寒函喊罕翰撼捍旱憾悍焊汗汉夯杭航壕嚎豪毫郝好耗号浩呵喝荷菏核禾和何合盒貉阂河涸赫褐鹤贺嘿黑痕很狠恨哼亨横衡恒轰哄烘虹鸿洪宏弘红喉侯猴吼厚候后呼乎忽瑚壶葫胡蝴狐糊湖\"],[\"bb40\",\"籃\",9,\"籎\",36,\"籵\",5,\"籾\",9],[\"bb80\",\"粈粊\",6,\"粓粔粖粙粚粛粠粡粣粦粧粨粩粫粬粭粯粰粴\",4,\"粺粻弧虎唬护互沪户花哗华猾滑画划化话槐徊怀淮坏欢环桓还缓换患唤痪豢焕涣宦幻荒慌黄磺蝗簧皇凰惶煌晃幌恍谎灰挥辉徽恢蛔回毁悔慧卉惠晦贿秽会烩汇讳诲绘荤昏婚魂浑混豁活伙火获或惑霍货祸击圾基机畸稽积箕\"],[\"bc40\",\"粿糀糂糃糄糆糉糋糎\",6,\"糘糚糛糝糞糡\",6,\"糩\",5,\"糰\",7,\"糹糺糼\",13,\"紋\",5],[\"bc80\",\"紑\",14,\"紡紣紤紥紦紨紩紪紬紭紮細\",6,\"肌饥迹激讥鸡姬绩缉吉极棘辑籍集及急疾汲即嫉级挤几脊己蓟技冀季伎祭剂悸济寄寂计记既忌际妓继纪嘉枷夹佳家加荚颊贾甲钾假稼价架驾嫁歼监坚尖笺间煎兼肩艰奸缄茧检柬碱硷拣捡简俭剪减荐槛鉴践贱见键箭件\"],[\"bd40\",\"紷\",54,\"絯\",7],[\"bd80\",\"絸\",32,\"健舰剑饯渐溅涧建僵姜将浆江疆蒋桨奖讲匠酱降蕉椒礁焦胶交郊浇骄娇嚼搅铰矫侥脚狡角饺缴绞剿教酵轿较叫窖揭接皆秸街阶截劫节桔杰捷睫竭洁结解姐戒藉芥界借介疥诫届巾筋斤金今津襟紧锦仅谨进靳晋禁近烬浸\"],[\"be40\",\"継\",12,\"綧\",6,\"綯\",42],[\"be80\",\"線\",32,\"尽劲荆兢茎睛晶鲸京惊精粳经井警景颈静境敬镜径痉靖竟竞净炯窘揪究纠玖韭久灸九酒厩救旧臼舅咎就疚鞠拘狙疽居驹菊局咀矩举沮聚拒据巨具距踞锯俱句惧炬剧捐鹃娟倦眷卷绢撅攫抉掘倔爵觉决诀绝均菌钧军君峻\"],[\"bf40\",\"緻\",62],[\"bf80\",\"縺縼\",4,\"繂\",4,\"繈\",21,\"俊竣浚郡骏喀咖卡咯开揩楷凯慨刊堪勘坎砍看康慷糠扛抗亢炕考拷烤靠坷苛柯棵磕颗科壳咳可渴克刻客课肯啃垦恳坑吭空恐孔控抠口扣寇枯哭窟苦酷库裤夸垮挎跨胯块筷侩快宽款匡筐狂框矿眶旷况亏盔岿窥葵奎魁傀\"],[\"c040\",\"繞\",35,\"纃\",23,\"纜纝纞\"],[\"c080\",\"纮纴纻纼绖绤绬绹缊缐缞缷缹缻\",6,\"罃罆\",9,\"罒罓馈愧溃坤昆捆困括扩廓阔垃拉喇蜡腊辣啦莱来赖蓝婪栏拦篮阑兰澜谰揽览懒缆烂滥琅榔狼廊郎朗浪捞劳牢老佬姥酪烙涝勒乐雷镭蕾磊累儡垒擂肋类泪棱楞冷厘梨犁黎篱狸离漓理李里鲤礼莉荔吏栗丽厉励砾历利傈例俐\"],[\"c140\",\"罖罙罛罜罝罞罠罣\",4,\"罫罬罭罯罰罳罵罶罷罸罺罻罼罽罿羀羂\",7,\"羋羍羏\",4,\"羕\",4,\"羛羜羠羢羣羥羦羨\",6,\"羱\"],[\"c180\",\"羳\",4,\"羺羻羾翀翂翃翄翆翇翈翉翋翍翏\",4,\"翖翗翙\",5,\"翢翣痢立粒沥隶力璃哩俩联莲连镰廉怜涟帘敛脸链恋炼练粮凉梁粱良两辆量晾亮谅撩聊僚疗燎寥辽潦了撂镣廖料列裂烈劣猎琳林磷霖临邻鳞淋凛赁吝拎玲菱零龄铃伶羚凌灵陵岭领另令溜琉榴硫馏留刘瘤流柳六龙聋咙笼窿\"],[\"c240\",\"翤翧翨翪翫翬翭翯翲翴\",6,\"翽翾翿耂耇耈耉耊耎耏耑耓耚耛耝耞耟耡耣耤耫\",5,\"耲耴耹耺耼耾聀聁聄聅聇聈聉聎聏聐聑聓聕聖聗\"],[\"c280\",\"聙聛\",13,\"聫\",5,\"聲\",11,\"隆垄拢陇楼娄搂篓漏陋芦卢颅庐炉掳卤虏鲁麓碌露路赂鹿潞禄录陆戮驴吕铝侣旅履屡缕虑氯律率滤绿峦挛孪滦卵乱掠略抡轮伦仑沦纶论萝螺罗逻锣箩骡裸落洛骆络妈麻玛码蚂马骂嘛吗埋买麦卖迈脉瞒馒蛮满蔓曼慢漫\"],[\"c340\",\"聾肁肂肅肈肊肍\",5,\"肔肕肗肙肞肣肦肧肨肬肰肳肵肶肸肹肻胅胇\",4,\"胏\",6,\"胘胟胠胢胣胦胮胵胷胹胻胾胿脀脁脃脄脅脇脈脋\"],[\"c380\",\"脌脕脗脙脛脜脝脟\",12,\"脭脮脰脳脴脵脷脹\",4,\"脿谩芒茫盲氓忙莽猫茅锚毛矛铆卯茂冒帽貌贸么玫枚梅酶霉煤没眉媒镁每美昧寐妹媚门闷们萌蒙檬盟锰猛梦孟眯醚靡糜迷谜弥米秘觅泌蜜密幂棉眠绵冕免勉娩缅面苗描瞄藐秒渺庙妙蔑灭民抿皿敏悯闽明螟鸣铭名命谬摸\"],[\"c440\",\"腀\",5,\"腇腉腍腎腏腒腖腗腘腛\",4,\"腡腢腣腤腦腨腪腫腬腯腲腳腵腶腷腸膁膃\",4,\"膉膋膌膍膎膐膒\",5,\"膙膚膞\",4,\"膤膥\"],[\"c480\",\"膧膩膫\",7,\"膴\",5,\"膼膽膾膿臄臅臇臈臉臋臍\",6,\"摹蘑模膜磨摩魔抹末莫墨默沫漠寞陌谋牟某拇牡亩姆母墓暮幕募慕木目睦牧穆拿哪呐钠那娜纳氖乃奶耐奈南男难囊挠脑恼闹淖呢馁内嫩能妮霓倪泥尼拟你匿腻逆溺蔫拈年碾撵捻念娘酿鸟尿捏聂孽啮镊镍涅您柠狞凝宁\"],[\"c540\",\"臔\",14,\"臤臥臦臨臩臫臮\",4,\"臵\",5,\"臽臿舃與\",4,\"舎舏舑舓舕\",5,\"舝舠舤舥舦舧舩舮舲舺舼舽舿\"],[\"c580\",\"艀艁艂艃艅艆艈艊艌艍艎艐\",7,\"艙艛艜艝艞艠\",7,\"艩拧泞牛扭钮纽脓浓农弄奴努怒女暖虐疟挪懦糯诺哦欧鸥殴藕呕偶沤啪趴爬帕怕琶拍排牌徘湃派攀潘盘磐盼畔判叛乓庞旁耪胖抛咆刨炮袍跑泡呸胚培裴赔陪配佩沛喷盆砰抨烹澎彭蓬棚硼篷膨朋鹏捧碰坯砒霹批披劈琵毗\"],[\"c640\",\"艪艫艬艭艱艵艶艷艸艻艼芀芁芃芅芆芇芉芌芐芓芔芕芖芚芛芞芠芢芣芧芲芵芶芺芻芼芿苀苂苃苅苆苉苐苖苙苚苝苢苧苨苩苪苬苭苮苰苲苳苵苶苸\"],[\"c680\",\"苺苼\",4,\"茊茋茍茐茒茓茖茘茙茝\",9,\"茩茪茮茰茲茷茻茽啤脾疲皮匹痞僻屁譬篇偏片骗飘漂瓢票撇瞥拼频贫品聘乒坪苹萍平凭瓶评屏坡泼颇婆破魄迫粕剖扑铺仆莆葡菩蒲埔朴圃普浦谱曝瀑期欺栖戚妻七凄漆柒沏其棋奇歧畦崎脐齐旗祈祁骑起岂乞企启契砌器气迄弃汽泣讫掐\"],[\"c740\",\"茾茿荁荂荄荅荈荊\",4,\"荓荕\",4,\"荝荢荰\",6,\"荹荺荾\",6,\"莇莈莊莋莌莍莏莐莑莔莕莖莗莙莚莝莟莡\",6,\"莬莭莮\"],[\"c780\",\"莯莵莻莾莿菂菃菄菆菈菉菋菍菎菐菑菒菓菕菗菙菚菛菞菢菣菤菦菧菨菫菬菭恰洽牵扦钎铅千迁签仟谦乾黔钱钳前潜遣浅谴堑嵌欠歉枪呛腔羌墙蔷强抢橇锹敲悄桥瞧乔侨巧鞘撬翘峭俏窍切茄且怯窃钦侵亲秦琴勤芹擒禽寝沁青轻氢倾卿清擎晴氰情顷请庆琼穷秋丘邱球求囚酋泅趋区蛆曲躯屈驱渠\"],[\"c840\",\"菮華菳\",4,\"菺菻菼菾菿萀萂萅萇萈萉萊萐萒\",5,\"萙萚萛萞\",5,\"萩\",7,\"萲\",5,\"萹萺萻萾\",7,\"葇葈葉\"],[\"c880\",\"葊\",6,\"葒\",4,\"葘葝葞葟葠葢葤\",4,\"葪葮葯葰葲葴葷葹葻葼取娶龋趣去圈颧权醛泉全痊拳犬券劝缺炔瘸却鹊榷确雀裙群然燃冉染瓤壤攘嚷让饶扰绕惹热壬仁人忍韧任认刃妊纫扔仍日戎茸蓉荣融熔溶容绒冗揉柔肉茹蠕儒孺如辱乳汝入褥软阮蕊瑞锐闰润若弱撒洒萨腮鳃塞赛三叁\"],[\"c940\",\"葽\",4,\"蒃蒄蒅蒆蒊蒍蒏\",7,\"蒘蒚蒛蒝蒞蒟蒠蒢\",12,\"蒰蒱蒳蒵蒶蒷蒻蒼蒾蓀蓂蓃蓅蓆蓇蓈蓋蓌蓎蓏蓒蓔蓕蓗\"],[\"c980\",\"蓘\",4,\"蓞蓡蓢蓤蓧\",4,\"蓭蓮蓯蓱\",10,\"蓽蓾蔀蔁蔂伞散桑嗓丧搔骚扫嫂瑟色涩森僧莎砂杀刹沙纱傻啥煞筛晒珊苫杉山删煽衫闪陕擅赡膳善汕扇缮墒伤商赏晌上尚裳梢捎稍烧芍勺韶少哨邵绍奢赊蛇舌舍赦摄射慑涉社设砷申呻伸身深娠绅神沈审婶甚肾慎渗声生甥牲升绳\"],[\"ca40\",\"蔃\",8,\"蔍蔎蔏蔐蔒蔔蔕蔖蔘蔙蔛蔜蔝蔞蔠蔢\",8,\"蔭\",9,\"蔾\",4,\"蕄蕅蕆蕇蕋\",10],[\"ca80\",\"蕗蕘蕚蕛蕜蕝蕟\",4,\"蕥蕦蕧蕩\",8,\"蕳蕵蕶蕷蕸蕼蕽蕿薀薁省盛剩胜圣师失狮施湿诗尸虱十石拾时什食蚀实识史矢使屎驶始式示士世柿事拭誓逝势是嗜噬适仕侍释饰氏市恃室视试收手首守寿授售受瘦兽蔬枢梳殊抒输叔舒淑疏书赎孰熟薯暑曙署蜀黍鼠属术述树束戍竖墅庶数漱\"],[\"cb40\",\"薂薃薆薈\",6,\"薐\",10,\"薝\",6,\"薥薦薧薩薫薬薭薱\",5,\"薸薺\",6,\"藂\",6,\"藊\",4,\"藑藒\"],[\"cb80\",\"藔藖\",5,\"藝\",6,\"藥藦藧藨藪\",14,\"恕刷耍摔衰甩帅栓拴霜双爽谁水睡税吮瞬顺舜说硕朔烁斯撕嘶思私司丝死肆寺嗣四伺似饲巳松耸怂颂送宋讼诵搜艘擞嗽苏酥俗素速粟僳塑溯宿诉肃酸蒜算虽隋随绥髓碎岁穗遂隧祟孙损笋蓑梭唆缩琐索锁所塌他它她塔\"],[\"cc40\",\"藹藺藼藽藾蘀\",4,\"蘆\",10,\"蘒蘓蘔蘕蘗\",15,\"蘨蘪\",13,\"蘹蘺蘻蘽蘾蘿虀\"],[\"cc80\",\"虁\",11,\"虒虓處\",4,\"虛虜虝號虠虡虣\",7,\"獭挞蹋踏胎苔抬台泰酞太态汰坍摊贪瘫滩坛檀痰潭谭谈坦毯袒碳探叹炭汤塘搪堂棠膛唐糖倘躺淌趟烫掏涛滔绦萄桃逃淘陶讨套特藤腾疼誊梯剔踢锑提题蹄啼体替嚏惕涕剃屉天添填田甜恬舔腆挑条迢眺跳贴铁帖厅听烃\"],[\"cd40\",\"虭虯虰虲\",6,\"蚃\",6,\"蚎\",4,\"蚔蚖\",5,\"蚞\",4,\"蚥蚦蚫蚭蚮蚲蚳蚷蚸蚹蚻\",4,\"蛁蛂蛃蛅蛈蛌蛍蛒蛓蛕蛖蛗蛚蛜\"],[\"cd80\",\"蛝蛠蛡蛢蛣蛥蛦蛧蛨蛪蛫蛬蛯蛵蛶蛷蛺蛻蛼蛽蛿蜁蜄蜅蜆蜋蜌蜎蜏蜐蜑蜔蜖汀廷停亭庭挺艇通桐酮瞳同铜彤童桶捅筒统痛偷投头透凸秃突图徒途涂屠土吐兔湍团推颓腿蜕褪退吞屯臀拖托脱鸵陀驮驼椭妥拓唾挖哇蛙洼娃瓦袜歪外豌弯湾玩顽丸烷完碗挽晚皖惋宛婉万腕汪王亡枉网往旺望忘妄威\"],[\"ce40\",\"蜙蜛蜝蜟蜠蜤蜦蜧蜨蜪蜫蜬蜭蜯蜰蜲蜳蜵蜶蜸蜹蜺蜼蜽蝀\",6,\"蝊蝋蝍蝏蝐蝑蝒蝔蝕蝖蝘蝚\",5,\"蝡蝢蝦\",7,\"蝯蝱蝲蝳蝵\"],[\"ce80\",\"蝷蝸蝹蝺蝿螀螁螄螆螇螉螊螌螎\",4,\"螔螕螖螘\",6,\"螠\",4,\"巍微危韦违桅围唯惟为潍维苇萎委伟伪尾纬未蔚味畏胃喂魏位渭谓尉慰卫瘟温蚊文闻纹吻稳紊问嗡翁瓮挝蜗涡窝我斡卧握沃巫呜钨乌污诬屋无芜梧吾吴毋武五捂午舞伍侮坞戊雾晤物勿务悟误昔熙析西硒矽晰嘻吸锡牺\"],[\"cf40\",\"螥螦螧螩螪螮螰螱螲螴螶螷螸螹螻螼螾螿蟁\",4,\"蟇蟈蟉蟌\",4,\"蟔\",6,\"蟜蟝蟞蟟蟡蟢蟣蟤蟦蟧蟨蟩蟫蟬蟭蟯\",9],[\"cf80\",\"蟺蟻蟼蟽蟿蠀蠁蠂蠄\",5,\"蠋\",7,\"蠔蠗蠘蠙蠚蠜\",4,\"蠣稀息希悉膝夕惜熄烯溪汐犀檄袭席习媳喜铣洗系隙戏细瞎虾匣霞辖暇峡侠狭下厦夏吓掀锨先仙鲜纤咸贤衔舷闲涎弦嫌显险现献县腺馅羡宪陷限线相厢镶香箱襄湘乡翔祥详想响享项巷橡像向象萧硝霄削哮嚣销消宵淆晓\"],[\"d040\",\"蠤\",13,\"蠳\",5,\"蠺蠻蠽蠾蠿衁衂衃衆\",5,\"衎\",5,\"衕衖衘衚\",6,\"衦衧衪衭衯衱衳衴衵衶衸衹衺\"],[\"d080\",\"衻衼袀袃袆袇袉袊袌袎袏袐袑袓袔袕袗\",4,\"袝\",4,\"袣袥\",5,\"小孝校肖啸笑效楔些歇蝎鞋协挟携邪斜胁谐写械卸蟹懈泄泻谢屑薪芯锌欣辛新忻心信衅星腥猩惺兴刑型形邢行醒幸杏性姓兄凶胸匈汹雄熊休修羞朽嗅锈秀袖绣墟戌需虚嘘须徐许蓄酗叙旭序畜恤絮婿绪续轩喧宣悬旋玄\"],[\"d140\",\"袬袮袯袰袲\",4,\"袸袹袺袻袽袾袿裀裃裄裇裈裊裋裌裍裏裐裑裓裖裗裚\",4,\"裠裡裦裧裩\",6,\"裲裵裶裷裺裻製裿褀褁褃\",5],[\"d180\",\"褉褋\",4,\"褑褔\",4,\"褜\",4,\"褢褣褤褦褧褨褩褬褭褮褯褱褲褳褵褷选癣眩绚靴薛学穴雪血勋熏循旬询寻驯巡殉汛训讯逊迅压押鸦鸭呀丫芽牙蚜崖衙涯雅哑亚讶焉咽阉烟淹盐严研蜒岩延言颜阎炎沿奄掩眼衍演艳堰燕厌砚雁唁彦焰宴谚验殃央鸯秧杨扬佯疡羊洋阳氧仰痒养样漾邀腰妖瑶\"],[\"d240\",\"褸\",8,\"襂襃襅\",24,\"襠\",5,\"襧\",19,\"襼\"],[\"d280\",\"襽襾覀覂覄覅覇\",26,\"摇尧遥窑谣姚咬舀药要耀椰噎耶爷野冶也页掖业叶曳腋夜液一壹医揖铱依伊衣颐夷遗移仪胰疑沂宜姨彝椅蚁倚已乙矣以艺抑易邑屹亿役臆逸肄疫亦裔意毅忆义益溢诣议谊译异翼翌绎茵荫因殷音阴姻吟银淫寅饮尹引隐\"],[\"d340\",\"覢\",30,\"觃觍觓觔觕觗觘觙觛觝觟觠觡觢觤觧觨觩觪觬觭觮觰觱觲觴\",6],[\"d380\",\"觻\",4,\"訁\",5,\"計\",21,\"印英樱婴鹰应缨莹萤营荧蝇迎赢盈影颖硬映哟拥佣臃痈庸雍踊蛹咏泳涌永恿勇用幽优悠忧尤由邮铀犹油游酉有友右佑釉诱又幼迂淤于盂榆虞愚舆余俞逾鱼愉渝渔隅予娱雨与屿禹宇语羽玉域芋郁吁遇喻峪御愈欲狱育誉\"],[\"d440\",\"訞\",31,\"訿\",8,\"詉\",21],[\"d480\",\"詟\",25,\"詺\",6,\"浴寓裕预豫驭鸳渊冤元垣袁原援辕园员圆猿源缘远苑愿怨院曰约越跃钥岳粤月悦阅耘云郧匀陨允运蕴酝晕韵孕匝砸杂栽哉灾宰载再在咱攒暂赞赃脏葬遭糟凿藻枣早澡蚤躁噪造皂灶燥责择则泽贼怎增憎曾赠扎喳渣札轧\"],[\"d540\",\"誁\",7,\"誋\",7,\"誔\",46],[\"d580\",\"諃\",32,\"铡闸眨栅榨咋乍炸诈摘斋宅窄债寨瞻毡詹粘沾盏斩辗崭展蘸栈占战站湛绽樟章彰漳张掌涨杖丈帐账仗胀瘴障招昭找沼赵照罩兆肇召遮折哲蛰辙者锗蔗这浙珍斟真甄砧臻贞针侦枕疹诊震振镇阵蒸挣睁征狰争怔整拯正政\"],[\"d640\",\"諤\",34,\"謈\",27],[\"d680\",\"謤謥謧\",30,\"帧症郑证芝枝支吱蜘知肢脂汁之织职直植殖执值侄址指止趾只旨纸志挚掷至致置帜峙制智秩稚质炙痔滞治窒中盅忠钟衷终种肿重仲众舟周州洲诌粥轴肘帚咒皱宙昼骤珠株蛛朱猪诸诛逐竹烛煮拄瞩嘱主著柱助蛀贮铸筑\"],[\"d740\",\"譆\",31,\"譧\",4,\"譭\",25],[\"d780\",\"讇\",24,\"讬讱讻诇诐诪谉谞住注祝驻抓爪拽专砖转撰赚篆桩庄装妆撞壮状椎锥追赘坠缀谆准捉拙卓桌琢茁酌啄着灼浊兹咨资姿滋淄孜紫仔籽滓子自渍字鬃棕踪宗综总纵邹走奏揍租足卒族祖诅阻组钻纂嘴醉最罪尊遵昨左佐柞做作坐座\"],[\"d840\",\"谸\",8,\"豂豃豄豅豈豊豋豍\",7,\"豖豗豘豙豛\",5,\"豣\",6,\"豬\",6,\"豴豵豶豷豻\",6,\"貃貄貆貇\"],[\"d880\",\"貈貋貍\",6,\"貕貖貗貙\",20,\"亍丌兀丐廿卅丕亘丞鬲孬噩丨禺丿匕乇夭爻卮氐囟胤馗毓睾鼗丶亟鼐乜乩亓芈孛啬嘏仄厍厝厣厥厮靥赝匚叵匦匮匾赜卦卣刂刈刎刭刳刿剀剌剞剡剜蒯剽劂劁劐劓冂罔亻仃仉仂仨仡仫仞伛仳伢佤仵伥伧伉伫佞佧攸佚佝\"],[\"d940\",\"貮\",62],[\"d980\",\"賭\",32,\"佟佗伲伽佶佴侑侉侃侏佾佻侪佼侬侔俦俨俪俅俚俣俜俑俟俸倩偌俳倬倏倮倭俾倜倌倥倨偾偃偕偈偎偬偻傥傧傩傺僖儆僭僬僦僮儇儋仝氽佘佥俎龠汆籴兮巽黉馘冁夔勹匍訇匐凫夙兕亠兖亳衮袤亵脔裒禀嬴蠃羸冫冱冽冼\"],[\"da40\",\"贎\",14,\"贠赑赒赗赟赥赨赩赪赬赮赯赱赲赸\",8,\"趂趃趆趇趈趉趌\",4,\"趒趓趕\",9,\"趠趡\"],[\"da80\",\"趢趤\",12,\"趲趶趷趹趻趽跀跁跂跅跇跈跉跊跍跐跒跓跔凇冖冢冥讠讦讧讪讴讵讷诂诃诋诏诎诒诓诔诖诘诙诜诟诠诤诨诩诮诰诳诶诹诼诿谀谂谄谇谌谏谑谒谔谕谖谙谛谘谝谟谠谡谥谧谪谫谮谯谲谳谵谶卩卺阝阢阡阱阪阽阼陂陉陔陟陧陬陲陴隈隍隗隰邗邛邝邙邬邡邴邳邶邺\"],[\"db40\",\"跕跘跙跜跠跡跢跥跦跧跩跭跮跰跱跲跴跶跼跾\",6,\"踆踇踈踋踍踎踐踑踒踓踕\",7,\"踠踡踤\",4,\"踫踭踰踲踳踴踶踷踸踻踼踾\"],[\"db80\",\"踿蹃蹅蹆蹌\",4,\"蹓\",5,\"蹚\",11,\"蹧蹨蹪蹫蹮蹱邸邰郏郅邾郐郄郇郓郦郢郜郗郛郫郯郾鄄鄢鄞鄣鄱鄯鄹酃酆刍奂劢劬劭劾哿勐勖勰叟燮矍廴凵凼鬯厶弁畚巯坌垩垡塾墼壅壑圩圬圪圳圹圮圯坜圻坂坩垅坫垆坼坻坨坭坶坳垭垤垌垲埏垧垴垓垠埕埘埚埙埒垸埴埯埸埤埝\"],[\"dc40\",\"蹳蹵蹷\",4,\"蹽蹾躀躂躃躄躆躈\",6,\"躑躒躓躕\",6,\"躝躟\",11,\"躭躮躰躱躳\",6,\"躻\",7],[\"dc80\",\"軃\",10,\"軏\",21,\"堋堍埽埭堀堞堙塄堠塥塬墁墉墚墀馨鼙懿艹艽艿芏芊芨芄芎芑芗芙芫芸芾芰苈苊苣芘芷芮苋苌苁芩芴芡芪芟苄苎芤苡茉苷苤茏茇苜苴苒苘茌苻苓茑茚茆茔茕苠苕茜荑荛荜茈莒茼茴茱莛荞茯荏荇荃荟荀茗荠茭茺茳荦荥\"],[\"dd40\",\"軥\",62],[\"dd80\",\"輤\",32,\"荨茛荩荬荪荭荮莰荸莳莴莠莪莓莜莅荼莶莩荽莸荻莘莞莨莺莼菁萁菥菘堇萘萋菝菽菖萜萸萑萆菔菟萏萃菸菹菪菅菀萦菰菡葜葑葚葙葳蒇蒈葺蒉葸萼葆葩葶蒌蒎萱葭蓁蓍蓐蓦蒽蓓蓊蒿蒺蓠蒡蒹蒴蒗蓥蓣蔌甍蔸蓰蔹蔟蔺\"],[\"de40\",\"轅\",32,\"轪辀辌辒辝辠辡辢辤辥辦辧辪辬辭辮辯農辳辴辵辷辸辺辻込辿迀迃迆\"],[\"de80\",\"迉\",4,\"迏迒迖迗迚迠迡迣迧迬迯迱迲迴迵迶迺迻迼迾迿逇逈逌逎逓逕逘蕖蔻蓿蓼蕙蕈蕨蕤蕞蕺瞢蕃蕲蕻薤薨薇薏蕹薮薜薅薹薷薰藓藁藜藿蘧蘅蘩蘖蘼廾弈夼奁耷奕奚奘匏尢尥尬尴扌扪抟抻拊拚拗拮挢拶挹捋捃掭揶捱捺掎掴捭掬掊捩掮掼揲揸揠揿揄揞揎摒揆掾摅摁搋搛搠搌搦搡摞撄摭撖\"],[\"df40\",\"這逜連逤逥逧\",5,\"逰\",4,\"逷逹逺逽逿遀遃遅遆遈\",4,\"過達違遖遙遚遜\",5,\"遤遦遧適遪遫遬遯\",4,\"遶\",6,\"遾邁\"],[\"df80\",\"還邅邆邇邉邊邌\",4,\"邒邔邖邘邚邜邞邟邠邤邥邧邨邩邫邭邲邷邼邽邿郀摺撷撸撙撺擀擐擗擤擢攉攥攮弋忒甙弑卟叱叽叩叨叻吒吖吆呋呒呓呔呖呃吡呗呙吣吲咂咔呷呱呤咚咛咄呶呦咝哐咭哂咴哒咧咦哓哔呲咣哕咻咿哌哙哚哜咩咪咤哝哏哞唛哧唠哽唔哳唢唣唏唑唧唪啧喏喵啉啭啁啕唿啐唼\"],[\"e040\",\"郂郃郆郈郉郋郌郍郒郔郕郖郘郙郚郞郟郠郣郤郥郩郪郬郮郰郱郲郳郵郶郷郹郺郻郼郿鄀鄁鄃鄅\",19,\"鄚鄛鄜\"],[\"e080\",\"鄝鄟鄠鄡鄤\",10,\"鄰鄲\",6,\"鄺\",8,\"酄唷啖啵啶啷唳唰啜喋嗒喃喱喹喈喁喟啾嗖喑啻嗟喽喾喔喙嗪嗷嗉嘟嗑嗫嗬嗔嗦嗝嗄嗯嗥嗲嗳嗌嗍嗨嗵嗤辔嘞嘈嘌嘁嘤嘣嗾嘀嘧嘭噘嘹噗嘬噍噢噙噜噌噔嚆噤噱噫噻噼嚅嚓嚯囔囗囝囡囵囫囹囿圄圊圉圜帏帙帔帑帱帻帼\"],[\"e140\",\"酅酇酈酑酓酔酕酖酘酙酛酜酟酠酦酧酨酫酭酳酺酻酼醀\",4,\"醆醈醊醎醏醓\",6,\"醜\",5,\"醤\",5,\"醫醬醰醱醲醳醶醷醸醹醻\"],[\"e180\",\"醼\",10,\"釈釋釐釒\",9,\"針\",8,\"帷幄幔幛幞幡岌屺岍岐岖岈岘岙岑岚岜岵岢岽岬岫岱岣峁岷峄峒峤峋峥崂崃崧崦崮崤崞崆崛嵘崾崴崽嵬嵛嵯嵝嵫嵋嵊嵩嵴嶂嶙嶝豳嶷巅彳彷徂徇徉後徕徙徜徨徭徵徼衢彡犭犰犴犷犸狃狁狎狍狒狨狯狩狲狴狷猁狳猃狺\"],[\"e240\",\"釦\",62],[\"e280\",\"鈥\",32,\"狻猗猓猡猊猞猝猕猢猹猥猬猸猱獐獍獗獠獬獯獾舛夥飧夤夂饣饧\",5,\"饴饷饽馀馄馇馊馍馐馑馓馔馕庀庑庋庖庥庠庹庵庾庳赓廒廑廛廨廪膺忄忉忖忏怃忮怄忡忤忾怅怆忪忭忸怙怵怦怛怏怍怩怫怊怿怡恸恹恻恺恂\"],[\"e340\",\"鉆\",45,\"鉵\",16],[\"e380\",\"銆\",7,\"銏\",24,\"恪恽悖悚悭悝悃悒悌悛惬悻悱惝惘惆惚悴愠愦愕愣惴愀愎愫慊慵憬憔憧憷懔懵忝隳闩闫闱闳闵闶闼闾阃阄阆阈阊阋阌阍阏阒阕阖阗阙阚丬爿戕氵汔汜汊沣沅沐沔沌汨汩汴汶沆沩泐泔沭泷泸泱泗沲泠泖泺泫泮沱泓泯泾\"],[\"e440\",\"銨\",5,\"銯\",24,\"鋉\",31],[\"e480\",\"鋩\",32,\"洹洧洌浃浈洇洄洙洎洫浍洮洵洚浏浒浔洳涑浯涞涠浞涓涔浜浠浼浣渚淇淅淞渎涿淠渑淦淝淙渖涫渌涮渫湮湎湫溲湟溆湓湔渲渥湄滟溱溘滠漭滢溥溧溽溻溷滗溴滏溏滂溟潢潆潇漤漕滹漯漶潋潴漪漉漩澉澍澌潸潲潼潺濑\"],[\"e540\",\"錊\",51,\"錿\",10],[\"e580\",\"鍊\",31,\"鍫濉澧澹澶濂濡濮濞濠濯瀚瀣瀛瀹瀵灏灞宀宄宕宓宥宸甯骞搴寤寮褰寰蹇謇辶迓迕迥迮迤迩迦迳迨逅逄逋逦逑逍逖逡逵逶逭逯遄遑遒遐遨遘遢遛暹遴遽邂邈邃邋彐彗彖彘尻咫屐屙孱屣屦羼弪弩弭艴弼鬻屮妁妃妍妩妪妣\"],[\"e640\",\"鍬\",34,\"鎐\",27],[\"e680\",\"鎬\",29,\"鏋鏌鏍妗姊妫妞妤姒妲妯姗妾娅娆姝娈姣姘姹娌娉娲娴娑娣娓婀婧婊婕娼婢婵胬媪媛婷婺媾嫫媲嫒嫔媸嫠嫣嫱嫖嫦嫘嫜嬉嬗嬖嬲嬷孀尕尜孚孥孳孑孓孢驵驷驸驺驿驽骀骁骅骈骊骐骒骓骖骘骛骜骝骟骠骢骣骥骧纟纡纣纥纨纩\"],[\"e740\",\"鏎\",7,\"鏗\",54],[\"e780\",\"鐎\",32,\"纭纰纾绀绁绂绉绋绌绐绔绗绛绠绡绨绫绮绯绱绲缍绶绺绻绾缁缂缃缇缈缋缌缏缑缒缗缙缜缛缟缡\",6,\"缪缫缬缭缯\",4,\"缵幺畿巛甾邕玎玑玮玢玟珏珂珑玷玳珀珉珈珥珙顼琊珩珧珞玺珲琏琪瑛琦琥琨琰琮琬\"],[\"e840\",\"鐯\",14,\"鐿\",43,\"鑬鑭鑮鑯\"],[\"e880\",\"鑰\",20,\"钑钖钘铇铏铓铔铚铦铻锜锠琛琚瑁瑜瑗瑕瑙瑷瑭瑾璜璎璀璁璇璋璞璨璩璐璧瓒璺韪韫韬杌杓杞杈杩枥枇杪杳枘枧杵枨枞枭枋杷杼柰栉柘栊柩枰栌柙枵柚枳柝栀柃枸柢栎柁柽栲栳桠桡桎桢桄桤梃栝桕桦桁桧桀栾桊桉栩梵梏桴桷梓桫棂楮棼椟椠棹\"],[\"e940\",\"锧锳锽镃镈镋镕镚镠镮镴镵長\",7,\"門\",42],[\"e980\",\"閫\",32,\"椤棰椋椁楗棣椐楱椹楠楂楝榄楫榀榘楸椴槌榇榈槎榉楦楣楹榛榧榻榫榭槔榱槁槊槟榕槠榍槿樯槭樗樘橥槲橄樾檠橐橛樵檎橹樽樨橘橼檑檐檩檗檫猷獒殁殂殇殄殒殓殍殚殛殡殪轫轭轱轲轳轵轶轸轷轹轺轼轾辁辂辄辇辋\"],[\"ea40\",\"闌\",27,\"闬闿阇阓阘阛阞阠阣\",6,\"阫阬阭阯阰阷阸阹阺阾陁陃陊陎陏陑陒陓陖陗\"],[\"ea80\",\"陘陙陚陜陝陞陠陣陥陦陫陭\",4,\"陳陸\",12,\"隇隉隊辍辎辏辘辚軎戋戗戛戟戢戡戥戤戬臧瓯瓴瓿甏甑甓攴旮旯旰昊昙杲昃昕昀炅曷昝昴昱昶昵耆晟晔晁晏晖晡晗晷暄暌暧暝暾曛曜曦曩贲贳贶贻贽赀赅赆赈赉赇赍赕赙觇觊觋觌觎觏觐觑牮犟牝牦牯牾牿犄犋犍犏犒挈挲掰\"],[\"eb40\",\"隌階隑隒隓隕隖隚際隝\",9,\"隨\",7,\"隱隲隴隵隷隸隺隻隿雂雃雈雊雋雐雑雓雔雖\",9,\"雡\",6,\"雫\"],[\"eb80\",\"雬雭雮雰雱雲雴雵雸雺電雼雽雿霂霃霅霊霋霌霐霑霒霔霕霗\",4,\"霝霟霠搿擘耄毪毳毽毵毹氅氇氆氍氕氘氙氚氡氩氤氪氲攵敕敫牍牒牖爰虢刖肟肜肓肼朊肽肱肫肭肴肷胧胨胩胪胛胂胄胙胍胗朐胝胫胱胴胭脍脎胲胼朕脒豚脶脞脬脘脲腈腌腓腴腙腚腱腠腩腼腽腭腧塍媵膈膂膑滕膣膪臌朦臊膻\"],[\"ec40\",\"霡\",8,\"霫霬霮霯霱霳\",4,\"霺霻霼霽霿\",18,\"靔靕靗靘靚靜靝靟靣靤靦靧靨靪\",7],[\"ec80\",\"靲靵靷\",4,\"靽\",7,\"鞆\",4,\"鞌鞎鞏鞐鞓鞕鞖鞗鞙\",4,\"臁膦欤欷欹歃歆歙飑飒飓飕飙飚殳彀毂觳斐齑斓於旆旄旃旌旎旒旖炀炜炖炝炻烀炷炫炱烨烊焐焓焖焯焱煳煜煨煅煲煊煸煺熘熳熵熨熠燠燔燧燹爝爨灬焘煦熹戾戽扃扈扉礻祀祆祉祛祜祓祚祢祗祠祯祧祺禅禊禚禧禳忑忐\"],[\"ed40\",\"鞞鞟鞡鞢鞤\",6,\"鞬鞮鞰鞱鞳鞵\",46],[\"ed80\",\"韤韥韨韮\",4,\"韴韷\",23,\"怼恝恚恧恁恙恣悫愆愍慝憩憝懋懑戆肀聿沓泶淼矶矸砀砉砗砘砑斫砭砜砝砹砺砻砟砼砥砬砣砩硎硭硖硗砦硐硇硌硪碛碓碚碇碜碡碣碲碹碥磔磙磉磬磲礅磴礓礤礞礴龛黹黻黼盱眄眍盹眇眈眚眢眙眭眦眵眸睐睑睇睃睚睨\"],[\"ee40\",\"頏\",62],[\"ee80\",\"顎\",32,\"睢睥睿瞍睽瞀瞌瞑瞟瞠瞰瞵瞽町畀畎畋畈畛畲畹疃罘罡罟詈罨罴罱罹羁罾盍盥蠲钅钆钇钋钊钌钍钏钐钔钗钕钚钛钜钣钤钫钪钭钬钯钰钲钴钶\",4,\"钼钽钿铄铈\",6,\"铐铑铒铕铖铗铙铘铛铞铟铠铢铤铥铧铨铪\"],[\"ef40\",\"顯\",5,\"颋颎颒颕颙颣風\",37,\"飏飐飔飖飗飛飜飝飠\",4],[\"ef80\",\"飥飦飩\",30,\"铩铫铮铯铳铴铵铷铹铼铽铿锃锂锆锇锉锊锍锎锏锒\",4,\"锘锛锝锞锟锢锪锫锩锬锱锲锴锶锷锸锼锾锿镂锵镄镅镆镉镌镎镏镒镓镔镖镗镘镙镛镞镟镝镡镢镤\",8,\"镯镱镲镳锺矧矬雉秕秭秣秫稆嵇稃稂稞稔\"],[\"f040\",\"餈\",4,\"餎餏餑\",28,\"餯\",26],[\"f080\",\"饊\",9,\"饖\",12,\"饤饦饳饸饹饻饾馂馃馉稹稷穑黏馥穰皈皎皓皙皤瓞瓠甬鸠鸢鸨\",4,\"鸲鸱鸶鸸鸷鸹鸺鸾鹁鹂鹄鹆鹇鹈鹉鹋鹌鹎鹑鹕鹗鹚鹛鹜鹞鹣鹦\",6,\"鹱鹭鹳疒疔疖疠疝疬疣疳疴疸痄疱疰痃痂痖痍痣痨痦痤痫痧瘃痱痼痿瘐瘀瘅瘌瘗瘊瘥瘘瘕瘙\"],[\"f140\",\"馌馎馚\",10,\"馦馧馩\",47],[\"f180\",\"駙\",32,\"瘛瘼瘢瘠癀瘭瘰瘿瘵癃瘾瘳癍癞癔癜癖癫癯翊竦穸穹窀窆窈窕窦窠窬窨窭窳衤衩衲衽衿袂袢裆袷袼裉裢裎裣裥裱褚裼裨裾裰褡褙褓褛褊褴褫褶襁襦襻疋胥皲皴矜耒耔耖耜耠耢耥耦耧耩耨耱耋耵聃聆聍聒聩聱覃顸颀颃\"],[\"f240\",\"駺\",62],[\"f280\",\"騹\",32,\"颉颌颍颏颔颚颛颞颟颡颢颥颦虍虔虬虮虿虺虼虻蚨蚍蚋蚬蚝蚧蚣蚪蚓蚩蚶蛄蚵蛎蚰蚺蚱蚯蛉蛏蚴蛩蛱蛲蛭蛳蛐蜓蛞蛴蛟蛘蛑蜃蜇蛸蜈蜊蜍蜉蜣蜻蜞蜥蜮蜚蜾蝈蜴蜱蜩蜷蜿螂蜢蝽蝾蝻蝠蝰蝌蝮螋蝓蝣蝼蝤蝙蝥螓螯螨蟒\"],[\"f340\",\"驚\",17,\"驲骃骉骍骎骔骕骙骦骩\",6,\"骲骳骴骵骹骻骽骾骿髃髄髆\",4,\"髍髎髏髐髒體髕髖髗髙髚髛髜\"],[\"f380\",\"髝髞髠髢髣髤髥髧髨髩髪髬髮髰\",8,\"髺髼\",6,\"鬄鬅鬆蟆螈螅螭螗螃螫蟥螬螵螳蟋蟓螽蟑蟀蟊蟛蟪蟠蟮蠖蠓蟾蠊蠛蠡蠹蠼缶罂罄罅舐竺竽笈笃笄笕笊笫笏筇笸笪笙笮笱笠笥笤笳笾笞筘筚筅筵筌筝筠筮筻筢筲筱箐箦箧箸箬箝箨箅箪箜箢箫箴篑篁篌篝篚篥篦篪簌篾篼簏簖簋\"],[\"f440\",\"鬇鬉\",5,\"鬐鬑鬒鬔\",10,\"鬠鬡鬢鬤\",10,\"鬰鬱鬳\",7,\"鬽鬾鬿魀魆魊魋魌魎魐魒魓魕\",5],[\"f480\",\"魛\",32,\"簟簪簦簸籁籀臾舁舂舄臬衄舡舢舣舭舯舨舫舸舻舳舴舾艄艉艋艏艚艟艨衾袅袈裘裟襞羝羟羧羯羰羲籼敉粑粝粜粞粢粲粼粽糁糇糌糍糈糅糗糨艮暨羿翎翕翥翡翦翩翮翳糸絷綦綮繇纛麸麴赳趄趔趑趱赧赭豇豉酊酐酎酏酤\"],[\"f540\",\"魼\",62],[\"f580\",\"鮻\",32,\"酢酡酰酩酯酽酾酲酴酹醌醅醐醍醑醢醣醪醭醮醯醵醴醺豕鹾趸跫踅蹙蹩趵趿趼趺跄跖跗跚跞跎跏跛跆跬跷跸跣跹跻跤踉跽踔踝踟踬踮踣踯踺蹀踹踵踽踱蹉蹁蹂蹑蹒蹊蹰蹶蹼蹯蹴躅躏躔躐躜躞豸貂貊貅貘貔斛觖觞觚觜\"],[\"f640\",\"鯜\",62],[\"f680\",\"鰛\",32,\"觥觫觯訾謦靓雩雳雯霆霁霈霏霎霪霭霰霾龀龃龅\",5,\"龌黾鼋鼍隹隼隽雎雒瞿雠銎銮鋈錾鍪鏊鎏鐾鑫鱿鲂鲅鲆鲇鲈稣鲋鲎鲐鲑鲒鲔鲕鲚鲛鲞\",5,\"鲥\",4,\"鲫鲭鲮鲰\",7,\"鲺鲻鲼鲽鳄鳅鳆鳇鳊鳋\"],[\"f740\",\"鰼\",62],[\"f780\",\"鱻鱽鱾鲀鲃鲄鲉鲊鲌鲏鲓鲖鲗鲘鲙鲝鲪鲬鲯鲹鲾\",4,\"鳈鳉鳑鳒鳚鳛鳠鳡鳌\",4,\"鳓鳔鳕鳗鳘鳙鳜鳝鳟鳢靼鞅鞑鞒鞔鞯鞫鞣鞲鞴骱骰骷鹘骶骺骼髁髀髅髂髋髌髑魅魃魇魉魈魍魑飨餍餮饕饔髟髡髦髯髫髻髭髹鬈鬏鬓鬟鬣麽麾縻麂麇麈麋麒鏖麝麟黛黜黝黠黟黢黩黧黥黪黯鼢鼬鼯鼹鼷鼽鼾齄\"],[\"f840\",\"鳣\",62],[\"f880\",\"鴢\",32],[\"f940\",\"鵃\",62],[\"f980\",\"鶂\",32],[\"fa40\",\"鶣\",62],[\"fa80\",\"鷢\",32],[\"fb40\",\"鸃\",27,\"鸤鸧鸮鸰鸴鸻鸼鹀鹍鹐鹒鹓鹔鹖鹙鹝鹟鹠鹡鹢鹥鹮鹯鹲鹴\",9,\"麀\"],[\"fb80\",\"麁麃麄麅麆麉麊麌\",5,\"麔\",8,\"麞麠\",5,\"麧麨麩麪\"],[\"fc40\",\"麫\",8,\"麵麶麷麹麺麼麿\",4,\"黅黆黇黈黊黋黌黐黒黓黕黖黗黙黚點黡黣黤黦黨黫黬黭黮黰\",8,\"黺黽黿\",6],[\"fc80\",\"鼆\",4,\"鼌鼏鼑鼒鼔鼕鼖鼘鼚\",5,\"鼡鼣\",8,\"鼭鼮鼰鼱\"],[\"fd40\",\"鼲\",4,\"鼸鼺鼼鼿\",4,\"齅\",10,\"齒\",38],[\"fd80\",\"齹\",5,\"龁龂龍\",11,\"龜龝龞龡\",4,\"郎凉秊裏隣\"],[\"fe40\",\"兀嗀﨎﨏﨑﨓﨔礼﨟蘒﨡﨣﨤﨧﨨﨩\"]]");
+})), Cm = /* @__PURE__ */ i({ default: () => wm }), wm, Tm = n((() => {
+	wm = [
 		[
 			"a140",
 			"",
@@ -16522,12 +16522,12 @@ var Up = { completion: {
 		],
 		["8135f437", ""]
 	];
-})), wm = /* @__PURE__ */ i({
-	default: () => Dm,
-	gbChars: () => Em,
-	uChars: () => Tm
-}), Tm, Em, Dm, Om = n((() => {
-	Tm = [
+})), Em = /* @__PURE__ */ i({
+	default: () => km,
+	gbChars: () => Om,
+	uChars: () => Dm
+}), Dm, Om, km, Am = n((() => {
+	Dm = [
 		128,
 		165,
 		169,
@@ -16735,7 +16735,7 @@ var Up = { completion: {
 		65375,
 		65510,
 		65536
-	], Em = [
+	], Om = [
 		0,
 		36,
 		38,
@@ -16943,22 +16943,22 @@ var Up = { completion: {
 		39265,
 		39394,
 		189e3
-	], Dm = {
-		uChars: Tm,
-		gbChars: Em
+	], km = {
+		uChars: Dm,
+		gbChars: Om
 	};
-})), km = /* @__PURE__ */ i({ default: () => Am }), Am, jm = n((() => {
-	Am = /*#__PURE__*/ JSON.parse("[[\"0\",\"\\u0000\",127],[\"8141\",\"갂갃갅갆갋\",4,\"갘갞갟갡갢갣갥\",6,\"갮갲갳갴\"],[\"8161\",\"갵갶갷갺갻갽갾갿걁\",9,\"걌걎\",5,\"걕\"],[\"8181\",\"걖걗걙걚걛걝\",18,\"걲걳걵걶걹걻\",4,\"겂겇겈겍겎겏겑겒겓겕\",6,\"겞겢\",5,\"겫겭겮겱\",6,\"겺겾겿곀곂곃곅곆곇곉곊곋곍\",7,\"곖곘\",7,\"곢곣곥곦곩곫곭곮곲곴곷\",4,\"곾곿괁괂괃괅괇\",4,\"괎괐괒괓\"],[\"8241\",\"괔괕괖괗괙괚괛괝괞괟괡\",7,\"괪괫괮\",5],[\"8261\",\"괶괷괹괺괻괽\",6,\"굆굈굊\",5,\"굑굒굓굕굖굗\"],[\"8281\",\"굙\",7,\"굢굤\",7,\"굮굯굱굲굷굸굹굺굾궀궃\",4,\"궊궋궍궎궏궑\",10,\"궞\",5,\"궥\",17,\"궸\",7,\"귂귃귅귆귇귉\",6,\"귒귔\",7,\"귝귞귟귡귢귣귥\",18],[\"8341\",\"귺귻귽귾긂\",5,\"긊긌긎\",5,\"긕\",7],[\"8361\",\"긝\",18,\"긲긳긵긶긹긻긼\"],[\"8381\",\"긽긾긿깂깄깇깈깉깋깏깑깒깓깕깗\",4,\"깞깢깣깤깦깧깪깫깭깮깯깱\",6,\"깺깾\",5,\"꺆\",5,\"꺍\",46,\"꺿껁껂껃껅\",6,\"껎껒\",5,\"껚껛껝\",8],[\"8441\",\"껦껧껩껪껬껮\",5,\"껵껶껷껹껺껻껽\",8],[\"8461\",\"꼆꼉꼊꼋꼌꼎꼏꼑\",18],[\"8481\",\"꼤\",7,\"꼮꼯꼱꼳꼵\",6,\"꼾꽀꽄꽅꽆꽇꽊\",5,\"꽑\",10,\"꽞\",5,\"꽦\",18,\"꽺\",5,\"꾁꾂꾃꾅꾆꾇꾉\",6,\"꾒꾓꾔꾖\",5,\"꾝\",26,\"꾺꾻꾽꾾\"],[\"8541\",\"꾿꿁\",5,\"꿊꿌꿏\",4,\"꿕\",6,\"꿝\",4],[\"8561\",\"꿢\",5,\"꿪\",5,\"꿲꿳꿵꿶꿷꿹\",6,\"뀂뀃\"],[\"8581\",\"뀅\",6,\"뀍뀎뀏뀑뀒뀓뀕\",6,\"뀞\",9,\"뀩\",26,\"끆끇끉끋끍끏끐끑끒끖끘끚끛끜끞\",29,\"끾끿낁낂낃낅\",6,\"낎낐낒\",5,\"낛낝낞낣낤\"],[\"8641\",\"낥낦낧낪낰낲낶낷낹낺낻낽\",6,\"냆냊\",5,\"냒\"],[\"8661\",\"냓냕냖냗냙\",6,\"냡냢냣냤냦\",10],[\"8681\",\"냱\",22,\"넊넍넎넏넑넔넕넖넗넚넞\",4,\"넦넧넩넪넫넭\",6,\"넶넺\",5,\"녂녃녅녆녇녉\",6,\"녒녓녖녗녙녚녛녝녞녟녡\",22,\"녺녻녽녾녿놁놃\",4,\"놊놌놎놏놐놑놕놖놗놙놚놛놝\"],[\"8741\",\"놞\",9,\"놩\",15],[\"8761\",\"놹\",18,\"뇍뇎뇏뇑뇒뇓뇕\"],[\"8781\",\"뇖\",5,\"뇞뇠\",7,\"뇪뇫뇭뇮뇯뇱\",7,\"뇺뇼뇾\",5,\"눆눇눉눊눍\",6,\"눖눘눚\",5,\"눡\",18,\"눵\",6,\"눽\",26,\"뉙뉚뉛뉝뉞뉟뉡\",6,\"뉪\",4],[\"8841\",\"뉯\",4,\"뉶\",5,\"뉽\",6,\"늆늇늈늊\",4],[\"8861\",\"늏늒늓늕늖늗늛\",4,\"늢늤늧늨늩늫늭늮늯늱늲늳늵늶늷\"],[\"8881\",\"늸\",15,\"닊닋닍닎닏닑닓\",4,\"닚닜닞닟닠닡닣닧닩닪닰닱닲닶닼닽닾댂댃댅댆댇댉\",6,\"댒댖\",5,\"댝\",54,\"덗덙덚덝덠덡덢덣\"],[\"8941\",\"덦덨덪덬덭덯덲덳덵덶덷덹\",6,\"뎂뎆\",5,\"뎍\"],[\"8961\",\"뎎뎏뎑뎒뎓뎕\",10,\"뎢\",5,\"뎩뎪뎫뎭\"],[\"8981\",\"뎮\",21,\"돆돇돉돊돍돏돑돒돓돖돘돚돜돞돟돡돢돣돥돦돧돩\",18,\"돽\",18,\"됑\",6,\"됙됚됛됝됞됟됡\",6,\"됪됬\",7,\"됵\",15],[\"8a41\",\"둅\",10,\"둒둓둕둖둗둙\",6,\"둢둤둦\"],[\"8a61\",\"둧\",4,\"둭\",18,\"뒁뒂\"],[\"8a81\",\"뒃\",4,\"뒉\",19,\"뒞\",5,\"뒥뒦뒧뒩뒪뒫뒭\",7,\"뒶뒸뒺\",5,\"듁듂듃듅듆듇듉\",6,\"듑듒듓듔듖\",5,\"듞듟듡듢듥듧\",4,\"듮듰듲\",5,\"듹\",26,\"딖딗딙딚딝\"],[\"8b41\",\"딞\",5,\"딦딫\",4,\"딲딳딵딶딷딹\",6,\"땂땆\"],[\"8b61\",\"땇땈땉땊땎땏땑땒땓땕\",6,\"땞땢\",8],[\"8b81\",\"땫\",52,\"떢떣떥떦떧떩떬떭떮떯떲떶\",4,\"떾떿뗁뗂뗃뗅\",6,\"뗎뗒\",5,\"뗙\",18,\"뗭\",18],[\"8c41\",\"똀\",15,\"똒똓똕똖똗똙\",4],[\"8c61\",\"똞\",6,\"똦\",5,\"똭\",6,\"똵\",5],[\"8c81\",\"똻\",12,\"뙉\",26,\"뙥뙦뙧뙩\",50,\"뚞뚟뚡뚢뚣뚥\",5,\"뚭뚮뚯뚰뚲\",16],[\"8d41\",\"뛃\",16,\"뛕\",8],[\"8d61\",\"뛞\",17,\"뛱뛲뛳뛵뛶뛷뛹뛺\"],[\"8d81\",\"뛻\",4,\"뜂뜃뜄뜆\",33,\"뜪뜫뜭뜮뜱\",6,\"뜺뜼\",7,\"띅띆띇띉띊띋띍\",6,\"띖\",9,\"띡띢띣띥띦띧띩\",6,\"띲띴띶\",5,\"띾띿랁랂랃랅\",6,\"랎랓랔랕랚랛랝랞\"],[\"8e41\",\"랟랡\",6,\"랪랮\",5,\"랶랷랹\",8],[\"8e61\",\"럂\",4,\"럈럊\",19],[\"8e81\",\"럞\",13,\"럮럯럱럲럳럵\",6,\"럾렂\",4,\"렊렋렍렎렏렑\",6,\"렚렜렞\",5,\"렦렧렩렪렫렭\",6,\"렶렺\",5,\"롁롂롃롅\",11,\"롒롔\",7,\"롞롟롡롢롣롥\",6,\"롮롰롲\",5,\"롹롺롻롽\",7],[\"8f41\",\"뢅\",7,\"뢎\",17],[\"8f61\",\"뢠\",7,\"뢩\",6,\"뢱뢲뢳뢵뢶뢷뢹\",4],[\"8f81\",\"뢾뢿룂룄룆\",5,\"룍룎룏룑룒룓룕\",7,\"룞룠룢\",5,\"룪룫룭룮룯룱\",6,\"룺룼룾\",5,\"뤅\",18,\"뤙\",6,\"뤡\",26,\"뤾뤿륁륂륃륅\",6,\"륍륎륐륒\",5],[\"9041\",\"륚륛륝륞륟륡\",6,\"륪륬륮\",5,\"륶륷륹륺륻륽\"],[\"9061\",\"륾\",5,\"릆릈릋릌릏\",15],[\"9081\",\"릟\",12,\"릮릯릱릲릳릵\",6,\"릾맀맂\",5,\"맊맋맍맓\",4,\"맚맜맟맠맢맦맧맩맪맫맭\",6,\"맶맻\",4,\"먂\",5,\"먉\",11,\"먖\",33,\"먺먻먽먾먿멁멃멄멅멆\"],[\"9141\",\"멇멊멌멏멐멑멒멖멗멙멚멛멝\",6,\"멦멪\",5],[\"9161\",\"멲멳멵멶멷멹\",9,\"몆몈몉몊몋몍\",5],[\"9181\",\"몓\",20,\"몪몭몮몯몱몳\",4,\"몺몼몾\",5,\"뫅뫆뫇뫉\",14,\"뫚\",33,\"뫽뫾뫿묁묂묃묅\",7,\"묎묐묒\",5,\"묙묚묛묝묞묟묡\",6],[\"9241\",\"묨묪묬\",7,\"묷묹묺묿\",4,\"뭆뭈뭊뭋뭌뭎뭑뭒\"],[\"9261\",\"뭓뭕뭖뭗뭙\",7,\"뭢뭤\",7,\"뭭\",4],[\"9281\",\"뭲\",21,\"뮉뮊뮋뮍뮎뮏뮑\",18,\"뮥뮦뮧뮩뮪뮫뮭\",6,\"뮵뮶뮸\",7,\"믁믂믃믅믆믇믉\",6,\"믑믒믔\",35,\"믺믻믽믾밁\"],[\"9341\",\"밃\",4,\"밊밎밐밒밓밙밚밠밡밢밣밦밨밪밫밬밮밯밲밳밵\"],[\"9361\",\"밶밷밹\",6,\"뱂뱆뱇뱈뱊뱋뱎뱏뱑\",8],[\"9381\",\"뱚뱛뱜뱞\",37,\"벆벇벉벊벍벏\",4,\"벖벘벛\",4,\"벢벣벥벦벩\",6,\"벲벶\",5,\"벾벿볁볂볃볅\",7,\"볎볒볓볔볖볗볙볚볛볝\",22,\"볷볹볺볻볽\"],[\"9441\",\"볾\",5,\"봆봈봊\",5,\"봑봒봓봕\",8],[\"9461\",\"봞\",5,\"봥\",6,\"봭\",12],[\"9481\",\"봺\",5,\"뵁\",6,\"뵊뵋뵍뵎뵏뵑\",6,\"뵚\",9,\"뵥뵦뵧뵩\",22,\"붂붃붅붆붋\",4,\"붒붔붖붗붘붛붝\",6,\"붥\",10,\"붱\",6,\"붹\",24],[\"9541\",\"뷒뷓뷖뷗뷙뷚뷛뷝\",11,\"뷪\",5,\"뷱\"],[\"9561\",\"뷲뷳뷵뷶뷷뷹\",6,\"븁븂븄븆\",5,\"븎븏븑븒븓\"],[\"9581\",\"븕\",6,\"븞븠\",35,\"빆빇빉빊빋빍빏\",4,\"빖빘빜빝빞빟빢빣빥빦빧빩빫\",4,\"빲빶\",4,\"빾빿뺁뺂뺃뺅\",6,\"뺎뺒\",5,\"뺚\",13,\"뺩\",14],[\"9641\",\"뺸\",23,\"뻒뻓\"],[\"9661\",\"뻕뻖뻙\",6,\"뻡뻢뻦\",5,\"뻭\",8],[\"9681\",\"뻶\",10,\"뼂\",5,\"뼊\",13,\"뼚뼞\",33,\"뽂뽃뽅뽆뽇뽉\",6,\"뽒뽓뽔뽖\",44],[\"9741\",\"뾃\",16,\"뾕\",8],[\"9761\",\"뾞\",17,\"뾱\",7],[\"9781\",\"뾹\",11,\"뿆\",5,\"뿎뿏뿑뿒뿓뿕\",6,\"뿝뿞뿠뿢\",89,\"쀽쀾쀿\"],[\"9841\",\"쁀\",16,\"쁒\",5,\"쁙쁚쁛\"],[\"9861\",\"쁝쁞쁟쁡\",6,\"쁪\",15],[\"9881\",\"쁺\",21,\"삒삓삕삖삗삙\",6,\"삢삤삦\",5,\"삮삱삲삷\",4,\"삾샂샃샄샆샇샊샋샍샎샏샑\",6,\"샚샞\",5,\"샦샧샩샪샫샭\",6,\"샶샸샺\",5,\"섁섂섃섅섆섇섉\",6,\"섑섒섓섔섖\",5,\"섡섢섥섨섩섪섫섮\"],[\"9941\",\"섲섳섴섵섷섺섻섽섾섿셁\",6,\"셊셎\",5,\"셖셗\"],[\"9961\",\"셙셚셛셝\",6,\"셦셪\",5,\"셱셲셳셵셶셷셹셺셻\"],[\"9981\",\"셼\",8,\"솆\",5,\"솏솑솒솓솕솗\",4,\"솞솠솢솣솤솦솧솪솫솭솮솯솱\",11,\"솾\",5,\"쇅쇆쇇쇉쇊쇋쇍\",6,\"쇕쇖쇙\",6,\"쇡쇢쇣쇥쇦쇧쇩\",6,\"쇲쇴\",7,\"쇾쇿숁숂숃숅\",6,\"숎숐숒\",5,\"숚숛숝숞숡숢숣\"],[\"9a41\",\"숤숥숦숧숪숬숮숰숳숵\",16],[\"9a61\",\"쉆쉇쉉\",6,\"쉒쉓쉕쉖쉗쉙\",6,\"쉡쉢쉣쉤쉦\"],[\"9a81\",\"쉧\",4,\"쉮쉯쉱쉲쉳쉵\",6,\"쉾슀슂\",5,\"슊\",5,\"슑\",6,\"슙슚슜슞\",5,\"슦슧슩슪슫슮\",5,\"슶슸슺\",33,\"싞싟싡싢싥\",5,\"싮싰싲싳싴싵싷싺싽싾싿쌁\",6,\"쌊쌋쌎쌏\"],[\"9b41\",\"쌐쌑쌒쌖쌗쌙쌚쌛쌝\",6,\"쌦쌧쌪\",8],[\"9b61\",\"쌳\",17,\"썆\",7],[\"9b81\",\"썎\",25,\"썪썫썭썮썯썱썳\",4,\"썺썻썾\",5,\"쎅쎆쎇쎉쎊쎋쎍\",50,\"쏁\",22,\"쏚\"],[\"9c41\",\"쏛쏝쏞쏡쏣\",4,\"쏪쏫쏬쏮\",5,\"쏶쏷쏹\",5],[\"9c61\",\"쏿\",8,\"쐉\",6,\"쐑\",9],[\"9c81\",\"쐛\",8,\"쐥\",6,\"쐭쐮쐯쐱쐲쐳쐵\",6,\"쐾\",9,\"쑉\",26,\"쑦쑧쑩쑪쑫쑭\",6,\"쑶쑷쑸쑺\",5,\"쒁\",18,\"쒕\",6,\"쒝\",12],[\"9d41\",\"쒪\",13,\"쒹쒺쒻쒽\",8],[\"9d61\",\"쓆\",25],[\"9d81\",\"쓠\",8,\"쓪\",5,\"쓲쓳쓵쓶쓷쓹쓻쓼쓽쓾씂\",9,\"씍씎씏씑씒씓씕\",6,\"씝\",10,\"씪씫씭씮씯씱\",6,\"씺씼씾\",5,\"앆앇앋앏앐앑앒앖앚앛앜앟앢앣앥앦앧앩\",6,\"앲앶\",5,\"앾앿얁얂얃얅얆얈얉얊얋얎얐얒얓얔\"],[\"9e41\",\"얖얙얚얛얝얞얟얡\",7,\"얪\",9,\"얶\"],[\"9e61\",\"얷얺얿\",4,\"엋엍엏엒엓엕엖엗엙\",6,\"엢엤엦엧\"],[\"9e81\",\"엨엩엪엫엯엱엲엳엵엸엹엺엻옂옃옄옉옊옋옍옎옏옑\",6,\"옚옝\",6,\"옦옧옩옪옫옯옱옲옶옸옺옼옽옾옿왂왃왅왆왇왉\",6,\"왒왖\",5,\"왞왟왡\",10,\"왭왮왰왲\",5,\"왺왻왽왾왿욁\",6,\"욊욌욎\",5,\"욖욗욙욚욛욝\",6,\"욦\"],[\"9f41\",\"욨욪\",5,\"욲욳욵욶욷욻\",4,\"웂웄웆\",5,\"웎\"],[\"9f61\",\"웏웑웒웓웕\",6,\"웞웟웢\",5,\"웪웫웭웮웯웱웲\"],[\"9f81\",\"웳\",4,\"웺웻웼웾\",5,\"윆윇윉윊윋윍\",6,\"윖윘윚\",5,\"윢윣윥윦윧윩\",6,\"윲윴윶윸윹윺윻윾윿읁읂읃읅\",4,\"읋읎읐읙읚읛읝읞읟읡\",6,\"읩읪읬\",7,\"읶읷읹읺읻읿잀잁잂잆잋잌잍잏잒잓잕잙잛\",4,\"잢잧\",4,\"잮잯잱잲잳잵잶잷\"],[\"a041\",\"잸잹잺잻잾쟂\",5,\"쟊쟋쟍쟏쟑\",6,\"쟙쟚쟛쟜\"],[\"a061\",\"쟞\",5,\"쟥쟦쟧쟩쟪쟫쟭\",13],[\"a081\",\"쟻\",4,\"젂젃젅젆젇젉젋\",4,\"젒젔젗\",4,\"젞젟젡젢젣젥\",6,\"젮젰젲\",5,\"젹젺젻젽젾젿졁\",6,\"졊졋졎\",5,\"졕\",26,\"졲졳졵졶졷졹졻\",4,\"좂좄좈좉좊좎\",5,\"좕\",7,\"좞좠좢좣좤\"],[\"a141\",\"좥좦좧좩\",18,\"좾좿죀죁\"],[\"a161\",\"죂죃죅죆죇죉죊죋죍\",6,\"죖죘죚\",5,\"죢죣죥\"],[\"a181\",\"죦\",14,\"죶\",5,\"죾죿줁줂줃줇\",4,\"줎　、。·‥…¨〃­―∥＼∼‘’“”〔〕〈\",9,\"±×÷≠≤≥∞∴°′″℃Å￠￡￥♂♀∠⊥⌒∂∇≡≒§※☆★○●◎◇◆□■△▲▽▼→←↑↓↔〓≪≫√∽∝∵∫∬∈∋⊆⊇⊂⊃∪∩∧∨￢\"],[\"a241\",\"줐줒\",5,\"줙\",18],[\"a261\",\"줭\",6,\"줵\",18],[\"a281\",\"쥈\",7,\"쥒쥓쥕쥖쥗쥙\",6,\"쥢쥤\",7,\"쥭쥮쥯⇒⇔∀∃´～ˇ˘˝˚˙¸˛¡¿ː∮∑∏¤℉‰◁◀▷▶♤♠♡♥♧♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬㉿㈜№㏇™㏂㏘℡€®\"],[\"a341\",\"쥱쥲쥳쥵\",6,\"쥽\",10,\"즊즋즍즎즏\"],[\"a361\",\"즑\",6,\"즚즜즞\",16],[\"a381\",\"즯\",16,\"짂짃짅짆짉짋\",4,\"짒짔짗짘짛！\",58,\"￦］\",32,\"￣\"],[\"a441\",\"짞짟짡짣짥짦짨짩짪짫짮짲\",5,\"짺짻짽짾짿쨁쨂쨃쨄\"],[\"a461\",\"쨅쨆쨇쨊쨎\",5,\"쨕쨖쨗쨙\",12],[\"a481\",\"쨦쨧쨨쨪\",28,\"ㄱ\",93],[\"a541\",\"쩇\",4,\"쩎쩏쩑쩒쩓쩕\",6,\"쩞쩢\",5,\"쩩쩪\"],[\"a561\",\"쩫\",17,\"쩾\",5,\"쪅쪆\"],[\"a581\",\"쪇\",16,\"쪙\",14,\"ⅰ\",9],[\"a5b0\",\"Ⅰ\",9],[\"a5c1\",\"Α\",16,\"Σ\",6],[\"a5e1\",\"α\",16,\"σ\",6],[\"a641\",\"쪨\",19,\"쪾쪿쫁쫂쫃쫅\"],[\"a661\",\"쫆\",5,\"쫎쫐쫒쫔쫕쫖쫗쫚\",5,\"쫡\",6],[\"a681\",\"쫨쫩쫪쫫쫭\",6,\"쫵\",18,\"쬉쬊─│┌┐┘└├┬┤┴┼━┃┏┓┛┗┣┳┫┻╋┠┯┨┷┿┝┰┥┸╂┒┑┚┙┖┕┎┍┞┟┡┢┦┧┩┪┭┮┱┲┵┶┹┺┽┾╀╁╃\",7],[\"a741\",\"쬋\",4,\"쬑쬒쬓쬕쬖쬗쬙\",6,\"쬢\",7],[\"a761\",\"쬪\",22,\"쭂쭃쭄\"],[\"a781\",\"쭅쭆쭇쭊쭋쭍쭎쭏쭑\",6,\"쭚쭛쭜쭞\",5,\"쭥\",7,\"㎕㎖㎗ℓ㎘㏄㎣㎤㎥㎦㎙\",9,\"㏊㎍㎎㎏㏏㎈㎉㏈㎧㎨㎰\",9,\"㎀\",4,\"㎺\",5,\"㎐\",4,\"Ω㏀㏁㎊㎋㎌㏖㏅㎭㎮㎯㏛㎩㎪㎫㎬㏝㏐㏓㏃㏉㏜㏆\"],[\"a841\",\"쭭\",10,\"쭺\",14],[\"a861\",\"쮉\",18,\"쮝\",6],[\"a881\",\"쮤\",19,\"쮹\",11,\"ÆÐªĦ\"],[\"a8a6\",\"Ĳ\"],[\"a8a8\",\"ĿŁØŒºÞŦŊ\"],[\"a8b1\",\"㉠\",27,\"ⓐ\",25,\"①\",14,\"½⅓⅔¼¾⅛⅜⅝⅞\"],[\"a941\",\"쯅\",14,\"쯕\",10],[\"a961\",\"쯠쯡쯢쯣쯥쯦쯨쯪\",18],[\"a981\",\"쯽\",14,\"찎찏찑찒찓찕\",6,\"찞찟찠찣찤æđðħıĳĸŀłøœßþŧŋŉ㈀\",27,\"⒜\",25,\"⑴\",14,\"¹²³⁴ⁿ₁₂₃₄\"],[\"aa41\",\"찥찦찪찫찭찯찱\",6,\"찺찿\",4,\"챆챇챉챊챋챍챎\"],[\"aa61\",\"챏\",4,\"챖챚\",5,\"챡챢챣챥챧챩\",6,\"챱챲\"],[\"aa81\",\"챳챴챶\",29,\"ぁ\",82],[\"ab41\",\"첔첕첖첗첚첛첝첞첟첡\",6,\"첪첮\",5,\"첶첷첹\"],[\"ab61\",\"첺첻첽\",6,\"쳆쳈쳊\",5,\"쳑쳒쳓쳕\",5],[\"ab81\",\"쳛\",8,\"쳥\",6,\"쳭쳮쳯쳱\",12,\"ァ\",85],[\"ac41\",\"쳾쳿촀촂\",5,\"촊촋촍촎촏촑\",6,\"촚촜촞촟촠\"],[\"ac61\",\"촡촢촣촥촦촧촩촪촫촭\",11,\"촺\",4],[\"ac81\",\"촿\",28,\"쵝쵞쵟А\",5,\"ЁЖ\",25],[\"acd1\",\"а\",5,\"ёж\",25],[\"ad41\",\"쵡쵢쵣쵥\",6,\"쵮쵰쵲\",5,\"쵹\",7],[\"ad61\",\"춁\",6,\"춉\",10,\"춖춗춙춚춛춝춞춟\"],[\"ad81\",\"춠춡춢춣춦춨춪\",5,\"춱\",18,\"췅\"],[\"ae41\",\"췆\",5,\"췍췎췏췑\",16],[\"ae61\",\"췢\",5,\"췩췪췫췭췮췯췱\",6,\"췺췼췾\",4],[\"ae81\",\"츃츅츆츇츉츊츋츍\",6,\"츕츖츗츘츚\",5,\"츢츣츥츦츧츩츪츫\"],[\"af41\",\"츬츭츮츯츲츴츶\",19],[\"af61\",\"칊\",13,\"칚칛칝칞칢\",5,\"칪칬\"],[\"af81\",\"칮\",5,\"칶칷칹칺칻칽\",6,\"캆캈캊\",5,\"캒캓캕캖캗캙\"],[\"b041\",\"캚\",5,\"캢캦\",5,\"캮\",12],[\"b061\",\"캻\",5,\"컂\",19],[\"b081\",\"컖\",13,\"컦컧컩컪컭\",6,\"컶컺\",5,\"가각간갇갈갉갊감\",7,\"같\",4,\"갠갤갬갭갯갰갱갸갹갼걀걋걍걔걘걜거걱건걷걸걺검겁것겄겅겆겉겊겋게겐겔겜겝겟겠겡겨격겪견겯결겸겹겻겼경곁계곈곌곕곗고곡곤곧골곪곬곯곰곱곳공곶과곽관괄괆\"],[\"b141\",\"켂켃켅켆켇켉\",6,\"켒켔켖\",5,\"켝켞켟켡켢켣\"],[\"b161\",\"켥\",6,\"켮켲\",5,\"켹\",11],[\"b181\",\"콅\",14,\"콖콗콙콚콛콝\",6,\"콦콨콪콫콬괌괍괏광괘괜괠괩괬괭괴괵괸괼굄굅굇굉교굔굘굡굣구국군굳굴굵굶굻굼굽굿궁궂궈궉권궐궜궝궤궷귀귁귄귈귐귑귓규균귤그극근귿글긁금급긋긍긔기긱긴긷길긺김깁깃깅깆깊까깍깎깐깔깖깜깝깟깠깡깥깨깩깬깰깸\"],[\"b241\",\"콭콮콯콲콳콵콶콷콹\",6,\"쾁쾂쾃쾄쾆\",5,\"쾍\"],[\"b261\",\"쾎\",18,\"쾢\",5,\"쾩\"],[\"b281\",\"쾪\",5,\"쾱\",18,\"쿅\",6,\"깹깻깼깽꺄꺅꺌꺼꺽꺾껀껄껌껍껏껐껑께껙껜껨껫껭껴껸껼꼇꼈꼍꼐꼬꼭꼰꼲꼴꼼꼽꼿꽁꽂꽃꽈꽉꽐꽜꽝꽤꽥꽹꾀꾄꾈꾐꾑꾕꾜꾸꾹꾼꿀꿇꿈꿉꿋꿍꿎꿔꿜꿨꿩꿰꿱꿴꿸뀀뀁뀄뀌뀐뀔뀜뀝뀨끄끅끈끊끌끎끓끔끕끗끙\"],[\"b341\",\"쿌\",19,\"쿢쿣쿥쿦쿧쿩\"],[\"b361\",\"쿪\",5,\"쿲쿴쿶\",5,\"쿽쿾쿿퀁퀂퀃퀅\",5],[\"b381\",\"퀋\",5,\"퀒\",5,\"퀙\",19,\"끝끼끽낀낄낌낍낏낑나낙낚난낟날낡낢남납낫\",4,\"낱낳내낵낸낼냄냅냇냈냉냐냑냔냘냠냥너넉넋넌널넒넓넘넙넛넜넝넣네넥넨넬넴넵넷넸넹녀녁년녈념녑녔녕녘녜녠노녹논놀놂놈놉놋농높놓놔놘놜놨뇌뇐뇔뇜뇝\"],[\"b441\",\"퀮\",5,\"퀶퀷퀹퀺퀻퀽\",6,\"큆큈큊\",5],[\"b461\",\"큑큒큓큕큖큗큙\",6,\"큡\",10,\"큮큯\"],[\"b481\",\"큱큲큳큵\",6,\"큾큿킀킂\",18,\"뇟뇨뇩뇬뇰뇹뇻뇽누눅눈눋눌눔눕눗눙눠눴눼뉘뉜뉠뉨뉩뉴뉵뉼늄늅늉느늑는늘늙늚늠늡늣능늦늪늬늰늴니닉닌닐닒님닙닛닝닢다닥닦단닫\",4,\"닳담답닷\",4,\"닿대댁댄댈댐댑댓댔댕댜더덕덖던덛덜덞덟덤덥\"],[\"b541\",\"킕\",14,\"킦킧킩킪킫킭\",5],[\"b561\",\"킳킶킸킺\",5,\"탂탃탅탆탇탊\",5,\"탒탖\",4],[\"b581\",\"탛탞탟탡탢탣탥\",6,\"탮탲\",5,\"탹\",11,\"덧덩덫덮데덱덴델뎀뎁뎃뎄뎅뎌뎐뎔뎠뎡뎨뎬도독돈돋돌돎돐돔돕돗동돛돝돠돤돨돼됐되된될됨됩됫됴두둑둔둘둠둡둣둥둬뒀뒈뒝뒤뒨뒬뒵뒷뒹듀듄듈듐듕드득든듣들듦듬듭듯등듸디딕딘딛딜딤딥딧딨딩딪따딱딴딸\"],[\"b641\",\"턅\",7,\"턎\",17],[\"b661\",\"턠\",15,\"턲턳턵턶턷턹턻턼턽턾\"],[\"b681\",\"턿텂텆\",5,\"텎텏텑텒텓텕\",6,\"텞텠텢\",5,\"텩텪텫텭땀땁땃땄땅땋때땍땐땔땜땝땟땠땡떠떡떤떨떪떫떰떱떳떴떵떻떼떽뗀뗄뗌뗍뗏뗐뗑뗘뗬또똑똔똘똥똬똴뙈뙤뙨뚜뚝뚠뚤뚫뚬뚱뛔뛰뛴뛸뜀뜁뜅뜨뜩뜬뜯뜰뜸뜹뜻띄띈띌띔띕띠띤띨띰띱띳띵라락란랄람랍랏랐랑랒랖랗\"],[\"b741\",\"텮\",13,\"텽\",6,\"톅톆톇톉톊\"],[\"b761\",\"톋\",20,\"톢톣톥톦톧\"],[\"b781\",\"톩\",6,\"톲톴톶톷톸톹톻톽톾톿퇁\",14,\"래랙랜랠램랩랫랬랭랴략랸럇량러럭런럴럼럽럿렀렁렇레렉렌렐렘렙렛렝려력련렬렴렵렷렸령례롄롑롓로록론롤롬롭롯롱롸롼뢍뢨뢰뢴뢸룀룁룃룅료룐룔룝룟룡루룩룬룰룸룹룻룽뤄뤘뤠뤼뤽륀륄륌륏륑류륙륜률륨륩\"],[\"b841\",\"퇐\",7,\"퇙\",17],[\"b861\",\"퇫\",8,\"퇵퇶퇷퇹\",13],[\"b881\",\"툈툊\",5,\"툑\",24,\"륫륭르륵른를름릅릇릉릊릍릎리릭린릴림립릿링마막만많\",4,\"맘맙맛망맞맡맣매맥맨맬맴맵맷맸맹맺먀먁먈먕머먹먼멀멂멈멉멋멍멎멓메멕멘멜멤멥멧멨멩며멱면멸몃몄명몇몌모목몫몬몰몲몸몹못몽뫄뫈뫘뫙뫼\"],[\"b941\",\"툪툫툮툯툱툲툳툵\",6,\"툾퉀퉂\",5,\"퉉퉊퉋퉌\"],[\"b961\",\"퉍\",14,\"퉝\",6,\"퉥퉦퉧퉨\"],[\"b981\",\"퉩\",22,\"튂튃튅튆튇튉튊튋튌묀묄묍묏묑묘묜묠묩묫무묵묶문묻물묽묾뭄뭅뭇뭉뭍뭏뭐뭔뭘뭡뭣뭬뮈뮌뮐뮤뮨뮬뮴뮷므믄믈믐믓미믹민믿밀밂밈밉밋밌밍및밑바\",4,\"받\",4,\"밤밥밧방밭배백밴밸뱀뱁뱃뱄뱅뱉뱌뱍뱐뱝버벅번벋벌벎범법벗\"],[\"ba41\",\"튍튎튏튒튓튔튖\",5,\"튝튞튟튡튢튣튥\",6,\"튭\"],[\"ba61\",\"튮튯튰튲\",5,\"튺튻튽튾틁틃\",4,\"틊틌\",5],[\"ba81\",\"틒틓틕틖틗틙틚틛틝\",6,\"틦\",9,\"틲틳틵틶틷틹틺벙벚베벡벤벧벨벰벱벳벴벵벼벽변별볍볏볐병볕볘볜보복볶본볼봄봅봇봉봐봔봤봬뵀뵈뵉뵌뵐뵘뵙뵤뵨부북분붇불붉붊붐붑붓붕붙붚붜붤붰붸뷔뷕뷘뷜뷩뷰뷴뷸븀븃븅브븍븐블븜븝븟비빅빈빌빎빔빕빗빙빚빛빠빡빤\"],[\"bb41\",\"틻\",4,\"팂팄팆\",5,\"팏팑팒팓팕팗\",4,\"팞팢팣\"],[\"bb61\",\"팤팦팧팪팫팭팮팯팱\",6,\"팺팾\",5,\"퍆퍇퍈퍉\"],[\"bb81\",\"퍊\",31,\"빨빪빰빱빳빴빵빻빼빽뺀뺄뺌뺍뺏뺐뺑뺘뺙뺨뻐뻑뻔뻗뻘뻠뻣뻤뻥뻬뼁뼈뼉뼘뼙뼛뼜뼝뽀뽁뽄뽈뽐뽑뽕뾔뾰뿅뿌뿍뿐뿔뿜뿟뿡쀼쁑쁘쁜쁠쁨쁩삐삑삔삘삠삡삣삥사삭삯산삳살삵삶삼삽삿샀상샅새색샌샐샘샙샛샜생샤\"],[\"bc41\",\"퍪\",17,\"퍾퍿펁펂펃펅펆펇\"],[\"bc61\",\"펈펉펊펋펎펒\",5,\"펚펛펝펞펟펡\",6,\"펪펬펮\"],[\"bc81\",\"펯\",4,\"펵펶펷펹펺펻펽\",6,\"폆폇폊\",5,\"폑\",5,\"샥샨샬샴샵샷샹섀섄섈섐섕서\",4,\"섣설섦섧섬섭섯섰성섶세섹센셀셈셉셋셌셍셔셕션셜셤셥셧셨셩셰셴셸솅소속솎손솔솖솜솝솟송솥솨솩솬솰솽쇄쇈쇌쇔쇗쇘쇠쇤쇨쇰쇱쇳쇼쇽숀숄숌숍숏숑수숙순숟술숨숩숫숭\"],[\"bd41\",\"폗폙\",7,\"폢폤\",7,\"폮폯폱폲폳폵폶폷\"],[\"bd61\",\"폸폹폺폻폾퐀퐂\",5,\"퐉\",13],[\"bd81\",\"퐗\",5,\"퐞\",25,\"숯숱숲숴쉈쉐쉑쉔쉘쉠쉥쉬쉭쉰쉴쉼쉽쉿슁슈슉슐슘슛슝스슥슨슬슭슴습슷승시식신싣실싫심십싯싱싶싸싹싻싼쌀쌈쌉쌌쌍쌓쌔쌕쌘쌜쌤쌥쌨쌩썅써썩썬썰썲썸썹썼썽쎄쎈쎌쏀쏘쏙쏜쏟쏠쏢쏨쏩쏭쏴쏵쏸쐈쐐쐤쐬쐰\"],[\"be41\",\"퐸\",7,\"푁푂푃푅\",14],[\"be61\",\"푔\",7,\"푝푞푟푡푢푣푥\",7,\"푮푰푱푲\"],[\"be81\",\"푳\",4,\"푺푻푽푾풁풃\",4,\"풊풌풎\",5,\"풕\",8,\"쐴쐼쐽쑈쑤쑥쑨쑬쑴쑵쑹쒀쒔쒜쒸쒼쓩쓰쓱쓴쓸쓺쓿씀씁씌씐씔씜씨씩씬씰씸씹씻씽아악안앉않알앍앎앓암압앗았앙앝앞애액앤앨앰앱앳앴앵야약얀얄얇얌얍얏양얕얗얘얜얠얩어억언얹얻얼얽얾엄\",6,\"엌엎\"],[\"bf41\",\"풞\",10,\"풪\",14],[\"bf61\",\"풹\",18,\"퓍퓎퓏퓑퓒퓓퓕\"],[\"bf81\",\"퓖\",5,\"퓝퓞퓠\",7,\"퓩퓪퓫퓭퓮퓯퓱\",6,\"퓹퓺퓼에엑엔엘엠엡엣엥여역엮연열엶엷염\",5,\"옅옆옇예옌옐옘옙옛옜오옥온올옭옮옰옳옴옵옷옹옻와왁완왈왐왑왓왔왕왜왝왠왬왯왱외왹왼욀욈욉욋욍요욕욘욜욤욥욧용우욱운울욹욺움웁웃웅워웍원월웜웝웠웡웨\"],[\"c041\",\"퓾\",5,\"픅픆픇픉픊픋픍\",6,\"픖픘\",5],[\"c061\",\"픞\",25],[\"c081\",\"픸픹픺픻픾픿핁핂핃핅\",6,\"핎핐핒\",5,\"핚핛핝핞핟핡핢핣웩웬웰웸웹웽위윅윈윌윔윕윗윙유육윤율윰윱윳융윷으윽은을읊음읍읏응\",7,\"읜읠읨읫이익인일읽읾잃임입잇있잉잊잎자작잔잖잗잘잚잠잡잣잤장잦재잭잰잴잼잽잿쟀쟁쟈쟉쟌쟎쟐쟘쟝쟤쟨쟬저적전절젊\"],[\"c141\",\"핤핦핧핪핬핮\",5,\"핶핷핹핺핻핽\",6,\"햆햊햋\"],[\"c161\",\"햌햍햎햏햑\",19,\"햦햧\"],[\"c181\",\"햨\",31,\"점접젓정젖제젝젠젤젬젭젯젱져젼졀졈졉졌졍졔조족존졸졺좀좁좃종좆좇좋좌좍좔좝좟좡좨좼좽죄죈죌죔죕죗죙죠죡죤죵주죽준줄줅줆줌줍줏중줘줬줴쥐쥑쥔쥘쥠쥡쥣쥬쥰쥴쥼즈즉즌즐즘즙즛증지직진짇질짊짐집짓\"],[\"c241\",\"헊헋헍헎헏헑헓\",4,\"헚헜헞\",5,\"헦헧헩헪헫헭헮\"],[\"c261\",\"헯\",4,\"헶헸헺\",5,\"혂혃혅혆혇혉\",6,\"혒\"],[\"c281\",\"혖\",5,\"혝혞혟혡혢혣혥\",7,\"혮\",9,\"혺혻징짖짙짚짜짝짠짢짤짧짬짭짯짰짱째짹짼쨀쨈쨉쨋쨌쨍쨔쨘쨩쩌쩍쩐쩔쩜쩝쩟쩠쩡쩨쩽쪄쪘쪼쪽쫀쫄쫌쫍쫏쫑쫓쫘쫙쫠쫬쫴쬈쬐쬔쬘쬠쬡쭁쭈쭉쭌쭐쭘쭙쭝쭤쭸쭹쮜쮸쯔쯤쯧쯩찌찍찐찔찜찝찡찢찧차착찬찮찰참찹찻\"],[\"c341\",\"혽혾혿홁홂홃홄홆홇홊홌홎홏홐홒홓홖홗홙홚홛홝\",4],[\"c361\",\"홢\",4,\"홨홪\",5,\"홲홳홵\",11],[\"c381\",\"횁횂횄횆\",5,\"횎횏횑횒횓횕\",7,\"횞횠횢\",5,\"횩횪찼창찾채책챈챌챔챕챗챘챙챠챤챦챨챰챵처척천철첨첩첫첬청체첵첸첼쳄쳅쳇쳉쳐쳔쳤쳬쳰촁초촉촌촐촘촙촛총촤촨촬촹최쵠쵤쵬쵭쵯쵱쵸춈추축춘출춤춥춧충춰췄췌췐취췬췰췸췹췻췽츄츈츌츔츙츠측츤츨츰츱츳층\"],[\"c441\",\"횫횭횮횯횱\",7,\"횺횼\",7,\"훆훇훉훊훋\"],[\"c461\",\"훍훎훏훐훒훓훕훖훘훚\",5,\"훡훢훣훥훦훧훩\",4],[\"c481\",\"훮훯훱훲훳훴훶\",5,\"훾훿휁휂휃휅\",11,\"휒휓휔치칙친칟칠칡침칩칫칭카칵칸칼캄캅캇캉캐캑캔캘캠캡캣캤캥캬캭컁커컥컨컫컬컴컵컷컸컹케켁켄켈켐켑켓켕켜켠켤켬켭켯켰켱켸코콕콘콜콤콥콧콩콰콱콴콸쾀쾅쾌쾡쾨쾰쿄쿠쿡쿤쿨쿰쿱쿳쿵쿼퀀퀄퀑퀘퀭퀴퀵퀸퀼\"],[\"c541\",\"휕휖휗휚휛휝휞휟휡\",6,\"휪휬휮\",5,\"휶휷휹\"],[\"c561\",\"휺휻휽\",6,\"흅흆흈흊\",5,\"흒흓흕흚\",4],[\"c581\",\"흟흢흤흦흧흨흪흫흭흮흯흱흲흳흵\",6,\"흾흿힀힂\",5,\"힊힋큄큅큇큉큐큔큘큠크큭큰클큼큽킁키킥킨킬킴킵킷킹타탁탄탈탉탐탑탓탔탕태택탠탤탬탭탯탰탱탸턍터턱턴털턺텀텁텃텄텅테텍텐텔템텝텟텡텨텬텼톄톈토톡톤톨톰톱톳통톺톼퇀퇘퇴퇸툇툉툐투툭툰툴툼툽툿퉁퉈퉜\"],[\"c641\",\"힍힎힏힑\",6,\"힚힜힞\",5],[\"c6a1\",\"퉤튀튁튄튈튐튑튕튜튠튤튬튱트특튼튿틀틂틈틉틋틔틘틜틤틥티틱틴틸팀팁팃팅파팍팎판팔팖팜팝팟팠팡팥패팩팬팰팸팹팻팼팽퍄퍅퍼퍽펀펄펌펍펏펐펑페펙펜펠펨펩펫펭펴편펼폄폅폈평폐폘폡폣포폭폰폴폼폽폿퐁\"],[\"c7a1\",\"퐈퐝푀푄표푠푤푭푯푸푹푼푿풀풂품풉풋풍풔풩퓌퓐퓔퓜퓟퓨퓬퓰퓸퓻퓽프픈플픔픕픗피픽핀필핌핍핏핑하학한할핥함합핫항해핵핸핼햄햅햇했행햐향허헉헌헐헒험헙헛헝헤헥헨헬헴헵헷헹혀혁현혈혐협혓혔형혜혠\"],[\"c8a1\",\"혤혭호혹혼홀홅홈홉홋홍홑화확환활홧황홰홱홴횃횅회획횐횔횝횟횡효횬횰횹횻후훅훈훌훑훔훗훙훠훤훨훰훵훼훽휀휄휑휘휙휜휠휨휩휫휭휴휵휸휼흄흇흉흐흑흔흖흗흘흙흠흡흣흥흩희흰흴흼흽힁히힉힌힐힘힙힛힝\"],[\"caa1\",\"伽佳假價加可呵哥嘉嫁家暇架枷柯歌珂痂稼苛茄街袈訶賈跏軻迦駕刻却各恪慤殼珏脚覺角閣侃刊墾奸姦干幹懇揀杆柬桿澗癎看磵稈竿簡肝艮艱諫間乫喝曷渴碣竭葛褐蝎鞨勘坎堪嵌感憾戡敢柑橄減甘疳監瞰紺邯鑑鑒龕\"],[\"cba1\",\"匣岬甲胛鉀閘剛堈姜岡崗康强彊慷江畺疆糠絳綱羌腔舡薑襁講鋼降鱇介价個凱塏愷愾慨改槪漑疥皆盖箇芥蓋豈鎧開喀客坑更粳羹醵倨去居巨拒据據擧渠炬祛距踞車遽鉅鋸乾件健巾建愆楗腱虔蹇鍵騫乞傑杰桀儉劍劒檢\"],[\"cca1\",\"瞼鈐黔劫怯迲偈憩揭擊格檄激膈覡隔堅牽犬甄絹繭肩見譴遣鵑抉決潔結缺訣兼慊箝謙鉗鎌京俓倞傾儆勁勍卿坰境庚徑慶憬擎敬景暻更梗涇炅烱璟璥瓊痙硬磬竟競絅經耕耿脛莖警輕逕鏡頃頸驚鯨係啓堺契季屆悸戒桂械\"],[\"cda1\",\"棨溪界癸磎稽系繫繼計誡谿階鷄古叩告呱固姑孤尻庫拷攷故敲暠枯槁沽痼皐睾稿羔考股膏苦苽菰藁蠱袴誥賈辜錮雇顧高鼓哭斛曲梏穀谷鵠困坤崑昆梱棍滾琨袞鯤汨滑骨供公共功孔工恐恭拱控攻珙空蚣貢鞏串寡戈果瓜\"],[\"cea1\",\"科菓誇課跨過鍋顆廓槨藿郭串冠官寬慣棺款灌琯瓘管罐菅觀貫關館刮恝括适侊光匡壙廣曠洸炚狂珖筐胱鑛卦掛罫乖傀塊壞怪愧拐槐魁宏紘肱轟交僑咬喬嬌嶠巧攪敎校橋狡皎矯絞翹膠蕎蛟較轎郊餃驕鮫丘久九仇俱具勾\"],[\"cfa1\",\"區口句咎嘔坵垢寇嶇廐懼拘救枸柩構歐毆毬求溝灸狗玖球瞿矩究絿耉臼舅舊苟衢謳購軀逑邱鉤銶駒驅鳩鷗龜國局菊鞠鞫麴君窘群裙軍郡堀屈掘窟宮弓穹窮芎躬倦券勸卷圈拳捲權淃眷厥獗蕨蹶闕机櫃潰詭軌饋句晷歸貴\"],[\"d0a1\",\"鬼龜叫圭奎揆槻珪硅窺竅糾葵規赳逵閨勻均畇筠菌鈞龜橘克剋劇戟棘極隙僅劤勤懃斤根槿瑾筋芹菫覲謹近饉契今妗擒昑檎琴禁禽芩衾衿襟金錦伋及急扱汲級給亘兢矜肯企伎其冀嗜器圻基埼夔奇妓寄岐崎己幾忌技旗旣\"],[\"d1a1\",\"朞期杞棋棄機欺氣汽沂淇玘琦琪璂璣畸畿碁磯祁祇祈祺箕紀綺羈耆耭肌記譏豈起錡錤飢饑騎騏驥麒緊佶吉拮桔金喫儺喇奈娜懦懶拏拿癩\",5,\"那樂\",4,\"諾酪駱亂卵暖欄煖爛蘭難鸞捏捺南嵐枏楠湳濫男藍襤拉\"],[\"d2a1\",\"納臘蠟衲囊娘廊\",4,\"乃來內奈柰耐冷女年撚秊念恬拈捻寧寗努勞奴弩怒擄櫓爐瑙盧\",5,\"駑魯\",10,\"濃籠聾膿農惱牢磊腦賂雷尿壘\",7,\"嫩訥杻紐勒\",5,\"能菱陵尼泥匿溺多茶\"],[\"d3a1\",\"丹亶但單團壇彖斷旦檀段湍短端簞緞蛋袒鄲鍛撻澾獺疸達啖坍憺擔曇淡湛潭澹痰聃膽蕁覃談譚錟沓畓答踏遝唐堂塘幢戇撞棠當糖螳黨代垈坮大對岱帶待戴擡玳臺袋貸隊黛宅德悳倒刀到圖堵塗導屠島嶋度徒悼挑掉搗桃\"],[\"d4a1\",\"棹櫂淘渡滔濤燾盜睹禱稻萄覩賭跳蹈逃途道都鍍陶韜毒瀆牘犢獨督禿篤纛讀墩惇敦旽暾沌焞燉豚頓乭突仝冬凍動同憧東桐棟洞潼疼瞳童胴董銅兜斗杜枓痘竇荳讀豆逗頭屯臀芚遁遯鈍得嶝橙燈登等藤謄鄧騰喇懶拏癩羅\"],[\"d5a1\",\"蘿螺裸邏樂洛烙珞絡落諾酪駱丹亂卵欄欒瀾爛蘭鸞剌辣嵐擥攬欖濫籃纜藍襤覽拉臘蠟廊朗浪狼琅瑯螂郞來崍徠萊冷掠略亮倆兩凉梁樑粮粱糧良諒輛量侶儷勵呂廬慮戾旅櫚濾礪藜蠣閭驢驪麗黎力曆歷瀝礫轢靂憐戀攣漣\"],[\"d6a1\",\"煉璉練聯蓮輦連鍊冽列劣洌烈裂廉斂殮濂簾獵令伶囹寧岺嶺怜玲笭羚翎聆逞鈴零靈領齡例澧禮醴隷勞怒撈擄櫓潞瀘爐盧老蘆虜路輅露魯鷺鹵碌祿綠菉錄鹿麓論壟弄朧瀧瓏籠聾儡瀨牢磊賂賚賴雷了僚寮廖料燎療瞭聊蓼\"],[\"d7a1\",\"遼鬧龍壘婁屢樓淚漏瘻累縷蔞褸鏤陋劉旒柳榴流溜瀏琉瑠留瘤硫謬類六戮陸侖倫崙淪綸輪律慄栗率隆勒肋凜凌楞稜綾菱陵俚利厘吏唎履悧李梨浬犁狸理璃異痢籬罹羸莉裏裡里釐離鯉吝潾燐璘藺躪隣鱗麟林淋琳臨霖砬\"],[\"d8a1\",\"立笠粒摩瑪痲碼磨馬魔麻寞幕漠膜莫邈万卍娩巒彎慢挽晩曼滿漫灣瞞萬蔓蠻輓饅鰻唜抹末沫茉襪靺亡妄忘忙望網罔芒茫莽輞邙埋妹媒寐昧枚梅每煤罵買賣邁魅脈貊陌驀麥孟氓猛盲盟萌冪覓免冕勉棉沔眄眠綿緬面麵滅\"],[\"d9a1\",\"蔑冥名命明暝椧溟皿瞑茗蓂螟酩銘鳴袂侮冒募姆帽慕摸摹暮某模母毛牟牡瑁眸矛耗芼茅謀謨貌木沐牧目睦穆鶩歿沒夢朦蒙卯墓妙廟描昴杳渺猫竗苗錨務巫憮懋戊拇撫无楙武毋無珷畝繆舞茂蕪誣貿霧鵡墨默們刎吻問文\"],[\"daa1\",\"汶紊紋聞蚊門雯勿沕物味媚尾嵋彌微未梶楣渼湄眉米美薇謎迷靡黴岷悶愍憫敏旻旼民泯玟珉緡閔密蜜謐剝博拍搏撲朴樸泊珀璞箔粕縛膊舶薄迫雹駁伴半反叛拌搬攀斑槃泮潘班畔瘢盤盼磐磻礬絆般蟠返頒飯勃拔撥渤潑\"],[\"dba1\",\"發跋醱鉢髮魃倣傍坊妨尨幇彷房放方旁昉枋榜滂磅紡肪膀舫芳蒡蚌訪謗邦防龐倍俳北培徘拜排杯湃焙盃背胚裴裵褙賠輩配陪伯佰帛柏栢白百魄幡樊煩燔番磻繁蕃藩飜伐筏罰閥凡帆梵氾汎泛犯範范法琺僻劈壁擘檗璧癖\"],[\"dca1\",\"碧蘗闢霹便卞弁變辨辯邊別瞥鱉鼈丙倂兵屛幷昞昺柄棅炳甁病秉竝輧餠騈保堡報寶普步洑湺潽珤甫菩補褓譜輔伏僕匐卜宓復服福腹茯蔔複覆輹輻馥鰒本乶俸奉封峯峰捧棒烽熢琫縫蓬蜂逢鋒鳳不付俯傅剖副否咐埠夫婦\"],[\"dda1\",\"孚孵富府復扶敷斧浮溥父符簿缶腐腑膚艀芙莩訃負賦賻赴趺部釜阜附駙鳧北分吩噴墳奔奮忿憤扮昐汾焚盆粉糞紛芬賁雰不佛弗彿拂崩朋棚硼繃鵬丕備匕匪卑妃婢庇悲憊扉批斐枇榧比毖毗毘沸泌琵痺砒碑秕秘粃緋翡肥\"],[\"dea1\",\"脾臂菲蜚裨誹譬費鄙非飛鼻嚬嬪彬斌檳殯浜濱瀕牝玭貧賓頻憑氷聘騁乍事些仕伺似使俟僿史司唆嗣四士奢娑寫寺射巳師徙思捨斜斯柶査梭死沙泗渣瀉獅砂社祀祠私篩紗絲肆舍莎蓑蛇裟詐詞謝賜赦辭邪飼駟麝削數朔索\"],[\"dfa1\",\"傘刪山散汕珊産疝算蒜酸霰乷撒殺煞薩三參杉森渗芟蔘衫揷澁鈒颯上傷像償商喪嘗孀尙峠常床庠廂想桑橡湘爽牀狀相祥箱翔裳觴詳象賞霜塞璽賽嗇塞穡索色牲生甥省笙墅壻嶼序庶徐恕抒捿敍暑曙書栖棲犀瑞筮絮緖署\"],[\"e0a1\",\"胥舒薯西誓逝鋤黍鼠夕奭席惜昔晳析汐淅潟石碩蓆釋錫仙僊先善嬋宣扇敾旋渲煽琁瑄璇璿癬禪線繕羨腺膳船蘚蟬詵跣選銑鐥饍鮮卨屑楔泄洩渫舌薛褻設說雪齧剡暹殲纖蟾贍閃陝攝涉燮葉城姓宬性惺成星晟猩珹盛省筬\"],[\"e1a1\",\"聖聲腥誠醒世勢歲洗稅笹細說貰召嘯塑宵小少巢所掃搔昭梳沼消溯瀟炤燒甦疏疎瘙笑篠簫素紹蔬蕭蘇訴逍遡邵銷韶騷俗屬束涑粟續謖贖速孫巽損蓀遜飡率宋悚松淞訟誦送頌刷殺灑碎鎖衰釗修受嗽囚垂壽嫂守岫峀帥愁\"],[\"e2a1\",\"戍手授搜收數樹殊水洙漱燧狩獸琇璲瘦睡秀穗竪粹綏綬繡羞脩茱蒐蓚藪袖誰讐輸遂邃酬銖銹隋隧隨雖需須首髓鬚叔塾夙孰宿淑潚熟琡璹肅菽巡徇循恂旬栒楯橓殉洵淳珣盾瞬筍純脣舜荀蓴蕣詢諄醇錞順馴戌術述鉥崇崧\"],[\"e3a1\",\"嵩瑟膝蝨濕拾習褶襲丞乘僧勝升承昇繩蠅陞侍匙嘶始媤尸屎屍市弑恃施是時枾柴猜矢示翅蒔蓍視試詩諡豕豺埴寔式息拭植殖湜熄篒蝕識軾食飾伸侁信呻娠宸愼新晨燼申神紳腎臣莘薪藎蜃訊身辛辰迅失室實悉審尋心沁\"],[\"e4a1\",\"沈深瀋甚芯諶什十拾雙氏亞俄兒啞娥峨我牙芽莪蛾衙訝阿雅餓鴉鵝堊岳嶽幄惡愕握樂渥鄂鍔顎鰐齷安岸按晏案眼雁鞍顔鮟斡謁軋閼唵岩巖庵暗癌菴闇壓押狎鴨仰央怏昻殃秧鴦厓哀埃崖愛曖涯碍艾隘靄厄扼掖液縊腋額\"],[\"e5a1\",\"櫻罌鶯鸚也倻冶夜惹揶椰爺耶若野弱掠略約若葯蒻藥躍亮佯兩凉壤孃恙揚攘敭暘梁楊樣洋瀁煬痒瘍禳穰糧羊良襄諒讓釀陽量養圄御於漁瘀禦語馭魚齬億憶抑檍臆偃堰彦焉言諺孼蘖俺儼嚴奄掩淹嶪業円予余勵呂女如廬\"],[\"e6a1\",\"旅歟汝濾璵礖礪與艅茹輿轝閭餘驪麗黎亦力域役易曆歷疫繹譯轢逆驛嚥堧姸娟宴年延憐戀捐挻撚椽沇沿涎涓淵演漣烟然煙煉燃燕璉硏硯秊筵緣練縯聯衍軟輦蓮連鉛鍊鳶列劣咽悅涅烈熱裂說閱厭廉念捻染殮炎焰琰艶苒\"],[\"e7a1\",\"簾閻髥鹽曄獵燁葉令囹塋寧嶺嶸影怜映暎楹榮永泳渶潁濚瀛瀯煐營獰玲瑛瑩瓔盈穎纓羚聆英詠迎鈴鍈零霙靈領乂倪例刈叡曳汭濊猊睿穢芮藝蘂禮裔詣譽豫醴銳隸霓預五伍俉傲午吾吳嗚塢墺奧娛寤悟惡懊敖旿晤梧汚澳\"],[\"e8a1\",\"烏熬獒筽蜈誤鰲鼇屋沃獄玉鈺溫瑥瘟穩縕蘊兀壅擁瓮甕癰翁邕雍饔渦瓦窩窪臥蛙蝸訛婉完宛梡椀浣玩琓琬碗緩翫脘腕莞豌阮頑曰往旺枉汪王倭娃歪矮外嵬巍猥畏了僚僥凹堯夭妖姚寥寮尿嶢拗搖撓擾料曜樂橈燎燿瑤療\"],[\"e9a1\",\"窈窯繇繞耀腰蓼蟯要謠遙遼邀饒慾欲浴縟褥辱俑傭冗勇埇墉容庸慂榕涌湧溶熔瑢用甬聳茸蓉踊鎔鏞龍于佑偶優又友右宇寓尤愚憂旴牛玗瑀盂祐禑禹紆羽芋藕虞迂遇郵釪隅雨雩勖彧旭昱栯煜稶郁頊云暈橒殞澐熉耘芸蕓\"],[\"eaa1\",\"運隕雲韻蔚鬱亐熊雄元原員圓園垣媛嫄寃怨愿援沅洹湲源爰猿瑗苑袁轅遠阮院願鴛月越鉞位偉僞危圍委威尉慰暐渭爲瑋緯胃萎葦蔿蝟衛褘謂違韋魏乳侑儒兪劉唯喩孺宥幼幽庾悠惟愈愉揄攸有杻柔柚柳楡楢油洧流游溜\"],[\"eba1\",\"濡猶猷琉瑜由留癒硫紐維臾萸裕誘諛諭踰蹂遊逾遺酉釉鍮類六堉戮毓肉育陸倫允奫尹崙淪潤玧胤贇輪鈗閏律慄栗率聿戎瀜絨融隆垠恩慇殷誾銀隱乙吟淫蔭陰音飮揖泣邑凝應膺鷹依倚儀宜意懿擬椅毅疑矣義艤薏蟻衣誼\"],[\"eca1\",\"議醫二以伊利吏夷姨履已弛彛怡易李梨泥爾珥理異痍痢移罹而耳肄苡荑裏裡貽貳邇里離飴餌匿溺瀷益翊翌翼謚人仁刃印吝咽因姻寅引忍湮燐璘絪茵藺蚓認隣靭靷鱗麟一佚佾壹日溢逸鎰馹任壬妊姙恁林淋稔臨荏賃入卄\"],[\"eda1\",\"立笠粒仍剩孕芿仔刺咨姉姿子字孜恣慈滋炙煮玆瓷疵磁紫者自茨蔗藉諮資雌作勺嚼斫昨灼炸爵綽芍酌雀鵲孱棧殘潺盞岑暫潛箴簪蠶雜丈仗匠場墻壯奬將帳庄張掌暲杖樟檣欌漿牆狀獐璋章粧腸臟臧莊葬蔣薔藏裝贓醬長\"],[\"eea1\",\"障再哉在宰才材栽梓渽滓災縡裁財載齋齎爭箏諍錚佇低儲咀姐底抵杵楮樗沮渚狙猪疽箸紵苧菹著藷詛貯躇這邸雎齟勣吊嫡寂摘敵滴狄炙的積笛籍績翟荻謫賊赤跡蹟迪迹適鏑佃佺傳全典前剪塡塼奠專展廛悛戰栓殿氈澱\"],[\"efa1\",\"煎琠田甸畑癲筌箋箭篆纏詮輾轉鈿銓錢鐫電顚顫餞切截折浙癤竊節絶占岾店漸点粘霑鮎點接摺蝶丁井亭停偵呈姃定幀庭廷征情挺政整旌晶晸柾楨檉正汀淀淨渟湞瀞炡玎珽町睛碇禎程穽精綎艇訂諪貞鄭酊釘鉦鋌錠霆靖\"],[\"f0a1\",\"靜頂鼎制劑啼堤帝弟悌提梯濟祭第臍薺製諸蹄醍除際霽題齊俎兆凋助嘲弔彫措操早晁曺曹朝條棗槽漕潮照燥爪璪眺祖祚租稠窕粗糟組繰肇藻蚤詔調趙躁造遭釣阻雕鳥族簇足鏃存尊卒拙猝倧宗從悰慫棕淙琮種終綜縱腫\"],[\"f1a1\",\"踪踵鍾鐘佐坐左座挫罪主住侏做姝胄呪周嗾奏宙州廚晝朱柱株注洲湊澍炷珠疇籌紂紬綢舟蛛註誅走躊輳週酎酒鑄駐竹粥俊儁准埈寯峻晙樽浚準濬焌畯竣蠢逡遵雋駿茁中仲衆重卽櫛楫汁葺增憎曾拯烝甑症繒蒸證贈之只\"],[\"f2a1\",\"咫地址志持指摯支旨智枝枳止池沚漬知砥祉祗紙肢脂至芝芷蜘誌識贄趾遲直稙稷織職唇嗔塵振搢晉晋桭榛殄津溱珍瑨璡畛疹盡眞瞋秦縉縝臻蔯袗診賑軫辰進鎭陣陳震侄叱姪嫉帙桎瓆疾秩窒膣蛭質跌迭斟朕什執潗緝輯\"],[\"f3a1\",\"鏶集徵懲澄且侘借叉嗟嵯差次此磋箚茶蹉車遮捉搾着窄錯鑿齪撰澯燦璨瓚竄簒纂粲纘讚贊鑽餐饌刹察擦札紮僭參塹慘慙懺斬站讒讖倉倡創唱娼廠彰愴敞昌昶暢槍滄漲猖瘡窓脹艙菖蒼債埰寀寨彩採砦綵菜蔡采釵冊柵策\"],[\"f4a1\",\"責凄妻悽處倜刺剔尺慽戚拓擲斥滌瘠脊蹠陟隻仟千喘天川擅泉淺玔穿舛薦賤踐遷釧闡阡韆凸哲喆徹撤澈綴輟轍鐵僉尖沾添甛瞻簽籤詹諂堞妾帖捷牒疊睫諜貼輒廳晴淸聽菁請靑鯖切剃替涕滯締諦逮遞體初剿哨憔抄招梢\"],[\"f5a1\",\"椒楚樵炒焦硝礁礎秒稍肖艸苕草蕉貂超酢醋醮促囑燭矗蜀觸寸忖村邨叢塚寵悤憁摠總聰蔥銃撮催崔最墜抽推椎楸樞湫皺秋芻萩諏趨追鄒酋醜錐錘鎚雛騶鰍丑畜祝竺筑築縮蓄蹙蹴軸逐春椿瑃出朮黜充忠沖蟲衝衷悴膵萃\"],[\"f6a1\",\"贅取吹嘴娶就炊翠聚脆臭趣醉驟鷲側仄厠惻測層侈値嗤峙幟恥梔治淄熾痔痴癡稚穉緇緻置致蚩輜雉馳齒則勅飭親七柒漆侵寢枕沈浸琛砧針鍼蟄秤稱快他咤唾墮妥惰打拖朶楕舵陀馱駝倬卓啄坼度托拓擢晫柝濁濯琢琸託\"],[\"f7a1\",\"鐸呑嘆坦彈憚歎灘炭綻誕奪脫探眈耽貪塔搭榻宕帑湯糖蕩兌台太怠態殆汰泰笞胎苔跆邰颱宅擇澤撑攄兎吐土討慟桶洞痛筒統通堆槌腿褪退頹偸套妬投透鬪慝特闖坡婆巴把播擺杷波派爬琶破罷芭跛頗判坂板版瓣販辦鈑\"],[\"f8a1\",\"阪八叭捌佩唄悖敗沛浿牌狽稗覇貝彭澎烹膨愎便偏扁片篇編翩遍鞭騙貶坪平枰萍評吠嬖幣廢弊斃肺蔽閉陛佈包匍匏咆哺圃布怖抛抱捕暴泡浦疱砲胞脯苞葡蒲袍褒逋鋪飽鮑幅暴曝瀑爆輻俵剽彪慓杓標漂瓢票表豹飇飄驃\"],[\"f9a1\",\"品稟楓諷豊風馮彼披疲皮被避陂匹弼必泌珌畢疋筆苾馝乏逼下何厦夏廈昰河瑕荷蝦賀遐霞鰕壑學虐謔鶴寒恨悍旱汗漢澣瀚罕翰閑閒限韓割轄函含咸啣喊檻涵緘艦銜陷鹹合哈盒蛤閤闔陜亢伉姮嫦巷恒抗杭桁沆港缸肛航\"],[\"faa1\",\"行降項亥偕咳垓奚孩害懈楷海瀣蟹解該諧邂駭骸劾核倖幸杏荇行享向嚮珦鄕響餉饗香噓墟虛許憲櫶獻軒歇險驗奕爀赫革俔峴弦懸晛泫炫玄玹現眩睍絃絢縣舷衒見賢鉉顯孑穴血頁嫌俠協夾峽挾浹狹脅脇莢鋏頰亨兄刑型\"],[\"fba1\",\"形泂滎瀅灐炯熒珩瑩荊螢衡逈邢鎣馨兮彗惠慧暳蕙蹊醯鞋乎互呼壕壺好岵弧戶扈昊晧毫浩淏湖滸澔濠濩灝狐琥瑚瓠皓祜糊縞胡芦葫蒿虎號蝴護豪鎬頀顥惑或酷婚昏混渾琿魂忽惚笏哄弘汞泓洪烘紅虹訌鴻化和嬅樺火畵\"],[\"fca1\",\"禍禾花華話譁貨靴廓擴攫確碻穫丸喚奐宦幻患換歡晥桓渙煥環紈還驩鰥活滑猾豁闊凰幌徨恍惶愰慌晃晄榥況湟滉潢煌璜皇篁簧荒蝗遑隍黃匯回廻徊恢悔懷晦會檜淮澮灰獪繪膾茴蛔誨賄劃獲宖橫鐄哮嚆孝效斅曉梟涍淆\"],[\"fda1\",\"爻肴酵驍侯候厚后吼喉嗅帿後朽煦珝逅勛勳塤壎焄熏燻薰訓暈薨喧暄煊萱卉喙毁彙徽揮暉煇諱輝麾休携烋畦虧恤譎鷸兇凶匈洶胸黑昕欣炘痕吃屹紇訖欠欽歆吸恰洽翕興僖凞喜噫囍姬嬉希憙憘戱晞曦熙熹熺犧禧稀羲詰\"]]");
-})), Mm = /* @__PURE__ */ i({ default: () => Nm }), Nm, Pm = n((() => {
-	Nm = /*#__PURE__*/ JSON.parse("[[\"0\",\"\\u0000\",127],[\"a140\",\"　，、。．‧；：？！︰…‥﹐﹑﹒·﹔﹕﹖﹗｜–︱—︳╴︴﹏（）︵︶｛｝︷︸〔〕︹︺【】︻︼《》︽︾〈〉︿﹀「」﹁﹂『』﹃﹄﹙﹚\"],[\"a1a1\",\"﹛﹜﹝﹞‘’“”〝〞‵′＃＆＊※§〃○●△▲◎☆★◇◆□■▽▼㊣℅¯￣＿ˍ﹉﹊﹍﹎﹋﹌﹟﹠﹡＋－×÷±√＜＞＝≦≧≠∞≒≡﹢\",4,\"～∩∪⊥∠∟⊿㏒㏑∫∮∵∴♀♂⊕⊙↑↓←→↖↗↙↘∥∣／\"],[\"a240\",\"＼∕﹨＄￥〒￠￡％＠℃℉﹩﹪﹫㏕㎜㎝㎞㏎㎡㎎㎏㏄°兙兛兞兝兡兣嗧瓩糎▁\",7,\"▏▎▍▌▋▊▉┼┴┬┤├▔─│▕┌┐└┘╭\"],[\"a2a1\",\"╮╰╯═╞╪╡◢◣◥◤╱╲╳０\",9,\"Ⅰ\",9,\"〡\",8,\"十卄卅Ａ\",25,\"ａ\",21],[\"a340\",\"ｗｘｙｚΑ\",16,\"Σ\",6,\"α\",16,\"σ\",6,\"ㄅ\",10],[\"a3a1\",\"ㄐ\",25,\"˙ˉˊˇˋ\"],[\"a3e1\",\"€\"],[\"a440\",\"一乙丁七乃九了二人儿入八几刀刁力匕十卜又三下丈上丫丸凡久么也乞于亡兀刃勺千叉口土士夕大女子孑孓寸小尢尸山川工己已巳巾干廾弋弓才\"],[\"a4a1\",\"丑丐不中丰丹之尹予云井互五亢仁什仃仆仇仍今介仄元允內六兮公冗凶分切刈勻勾勿化匹午升卅卞厄友及反壬天夫太夭孔少尤尺屯巴幻廿弔引心戈戶手扎支文斗斤方日曰月木欠止歹毋比毛氏水火爪父爻片牙牛犬王丙\"],[\"a540\",\"世丕且丘主乍乏乎以付仔仕他仗代令仙仞充兄冉冊冬凹出凸刊加功包匆北匝仟半卉卡占卯卮去可古右召叮叩叨叼司叵叫另只史叱台句叭叻四囚外\"],[\"a5a1\",\"央失奴奶孕它尼巨巧左市布平幼弁弘弗必戊打扔扒扑斥旦朮本未末札正母民氐永汁汀氾犯玄玉瓜瓦甘生用甩田由甲申疋白皮皿目矛矢石示禾穴立丞丟乒乓乩亙交亦亥仿伉伙伊伕伍伐休伏仲件任仰仳份企伋光兇兆先全\"],[\"a640\",\"共再冰列刑划刎刖劣匈匡匠印危吉吏同吊吐吁吋各向名合吃后吆吒因回囝圳地在圭圬圯圩夙多夷夸妄奸妃好她如妁字存宇守宅安寺尖屹州帆并年\"],[\"a6a1\",\"式弛忙忖戎戌戍成扣扛托收早旨旬旭曲曳有朽朴朱朵次此死氖汝汗汙江池汐汕污汛汍汎灰牟牝百竹米糸缶羊羽老考而耒耳聿肉肋肌臣自至臼舌舛舟艮色艾虫血行衣西阡串亨位住佇佗佞伴佛何估佐佑伽伺伸佃佔似但佣\"],[\"a740\",\"作你伯低伶余佝佈佚兌克免兵冶冷別判利刪刨劫助努劬匣即卵吝吭吞吾否呎吧呆呃吳呈呂君吩告吹吻吸吮吵吶吠吼呀吱含吟听囪困囤囫坊坑址坍\"],[\"a7a1\",\"均坎圾坐坏圻壯夾妝妒妨妞妣妙妖妍妤妓妊妥孝孜孚孛完宋宏尬局屁尿尾岐岑岔岌巫希序庇床廷弄弟彤形彷役忘忌志忍忱快忸忪戒我抄抗抖技扶抉扭把扼找批扳抒扯折扮投抓抑抆改攻攸旱更束李杏材村杜杖杞杉杆杠\"],[\"a840\",\"杓杗步每求汞沙沁沈沉沅沛汪決沐汰沌汨沖沒汽沃汲汾汴沆汶沍沔沘沂灶灼災灸牢牡牠狄狂玖甬甫男甸皂盯矣私秀禿究系罕肖肓肝肘肛肚育良芒\"],[\"a8a1\",\"芋芍見角言谷豆豕貝赤走足身車辛辰迂迆迅迄巡邑邢邪邦那酉釆里防阮阱阪阬並乖乳事些亞享京佯依侍佳使佬供例來侃佰併侈佩佻侖佾侏侑佺兔兒兕兩具其典冽函刻券刷刺到刮制剁劾劻卒協卓卑卦卷卸卹取叔受味呵\"],[\"a940\",\"咖呸咕咀呻呷咄咒咆呼咐呱呶和咚呢周咋命咎固垃坷坪坩坡坦坤坼夜奉奇奈奄奔妾妻委妹妮姑姆姐姍始姓姊妯妳姒姅孟孤季宗定官宜宙宛尚屈居\"],[\"a9a1\",\"屆岷岡岸岩岫岱岳帘帚帖帕帛帑幸庚店府底庖延弦弧弩往征彿彼忝忠忽念忿怏怔怯怵怖怪怕怡性怩怫怛或戕房戾所承拉拌拄抿拂抹拒招披拓拔拋拈抨抽押拐拙拇拍抵拚抱拘拖拗拆抬拎放斧於旺昔易昌昆昂明昀昏昕昊\"],[\"aa40\",\"昇服朋杭枋枕東果杳杷枇枝林杯杰板枉松析杵枚枓杼杪杲欣武歧歿氓氛泣注泳沱泌泥河沽沾沼波沫法泓沸泄油況沮泗泅泱沿治泡泛泊沬泯泜泖泠\"],[\"aaa1\",\"炕炎炒炊炙爬爭爸版牧物狀狎狙狗狐玩玨玟玫玥甽疝疙疚的盂盲直知矽社祀祁秉秈空穹竺糾罔羌羋者肺肥肢肱股肫肩肴肪肯臥臾舍芳芝芙芭芽芟芹花芬芥芯芸芣芰芾芷虎虱初表軋迎返近邵邸邱邶采金長門阜陀阿阻附\"],[\"ab40\",\"陂隹雨青非亟亭亮信侵侯便俠俑俏保促侶俘俟俊俗侮俐俄係俚俎俞侷兗冒冑冠剎剃削前剌剋則勇勉勃勁匍南卻厚叛咬哀咨哎哉咸咦咳哇哂咽咪品\"],[\"aba1\",\"哄哈咯咫咱咻咩咧咿囿垂型垠垣垢城垮垓奕契奏奎奐姜姘姿姣姨娃姥姪姚姦威姻孩宣宦室客宥封屎屏屍屋峙峒巷帝帥帟幽庠度建弈弭彥很待徊律徇後徉怒思怠急怎怨恍恰恨恢恆恃恬恫恪恤扁拜挖按拼拭持拮拽指拱拷\"],[\"ac40\",\"拯括拾拴挑挂政故斫施既春昭映昧是星昨昱昤曷柿染柱柔某柬架枯柵柩柯柄柑枴柚查枸柏柞柳枰柙柢柝柒歪殃殆段毒毗氟泉洋洲洪流津洌洱洞洗\"],[\"aca1\",\"活洽派洶洛泵洹洧洸洩洮洵洎洫炫為炳炬炯炭炸炮炤爰牲牯牴狩狠狡玷珊玻玲珍珀玳甚甭畏界畎畋疫疤疥疢疣癸皆皇皈盈盆盃盅省盹相眉看盾盼眇矜砂研砌砍祆祉祈祇禹禺科秒秋穿突竿竽籽紂紅紀紉紇約紆缸美羿耄\"],[\"ad40\",\"耐耍耑耶胖胥胚胃胄背胡胛胎胞胤胝致舢苧范茅苣苛苦茄若茂茉苒苗英茁苜苔苑苞苓苟苯茆虐虹虻虺衍衫要觔計訂訃貞負赴赳趴軍軌述迦迢迪迥\"],[\"ada1\",\"迭迫迤迨郊郎郁郃酋酊重閂限陋陌降面革韋韭音頁風飛食首香乘亳倌倍倣俯倦倥俸倩倖倆值借倚倒們俺倀倔倨俱倡個候倘俳修倭倪俾倫倉兼冤冥冢凍凌准凋剖剜剔剛剝匪卿原厝叟哨唐唁唷哼哥哲唆哺唔哩哭員唉哮哪\"],[\"ae40\",\"哦唧唇哽唏圃圄埂埔埋埃堉夏套奘奚娑娘娜娟娛娓姬娠娣娩娥娌娉孫屘宰害家宴宮宵容宸射屑展屐峭峽峻峪峨峰島崁峴差席師庫庭座弱徒徑徐恙\"],[\"aea1\",\"恣恥恐恕恭恩息悄悟悚悍悔悌悅悖扇拳挈拿捎挾振捕捂捆捏捉挺捐挽挪挫挨捍捌效敉料旁旅時晉晏晃晒晌晅晁書朔朕朗校核案框桓根桂桔栩梳栗桌桑栽柴桐桀格桃株桅栓栘桁殊殉殷氣氧氨氦氤泰浪涕消涇浦浸海浙涓\"],[\"af40\",\"浬涉浮浚浴浩涌涊浹涅浥涔烊烘烤烙烈烏爹特狼狹狽狸狷玆班琉珮珠珪珞畔畝畜畚留疾病症疲疳疽疼疹痂疸皋皰益盍盎眩真眠眨矩砰砧砸砝破砷\"],[\"afa1\",\"砥砭砠砟砲祕祐祠祟祖神祝祗祚秤秣秧租秦秩秘窄窈站笆笑粉紡紗紋紊素索純紐紕級紜納紙紛缺罟羔翅翁耆耘耕耙耗耽耿胱脂胰脅胭胴脆胸胳脈能脊胼胯臭臬舀舐航舫舨般芻茫荒荔荊茸荐草茵茴荏茲茹茶茗荀茱茨荃\"],[\"b040\",\"虔蚊蚪蚓蚤蚩蚌蚣蚜衰衷袁袂衽衹記訐討訌訕訊託訓訖訏訑豈豺豹財貢起躬軒軔軏辱送逆迷退迺迴逃追逅迸邕郡郝郢酒配酌釘針釗釜釙閃院陣陡\"],[\"b0a1\",\"陛陝除陘陞隻飢馬骨高鬥鬲鬼乾偺偽停假偃偌做偉健偶偎偕偵側偷偏倏偯偭兜冕凰剪副勒務勘動匐匏匙匿區匾參曼商啪啦啄啞啡啃啊唱啖問啕唯啤唸售啜唬啣唳啁啗圈國圉域堅堊堆埠埤基堂堵執培夠奢娶婁婉婦婪婀\"],[\"b140\",\"娼婢婚婆婊孰寇寅寄寂宿密尉專將屠屜屝崇崆崎崛崖崢崑崩崔崙崤崧崗巢常帶帳帷康庸庶庵庾張強彗彬彩彫得徙從徘御徠徜恿患悉悠您惋悴惦悽\"],[\"b1a1\",\"情悻悵惜悼惘惕惆惟悸惚惇戚戛扈掠控捲掖探接捷捧掘措捱掩掉掃掛捫推掄授掙採掬排掏掀捻捩捨捺敝敖救教敗啟敏敘敕敔斜斛斬族旋旌旎晝晚晤晨晦晞曹勗望梁梯梢梓梵桿桶梱梧梗械梃棄梭梆梅梔條梨梟梡梂欲殺\"],[\"b240\",\"毫毬氫涎涼淳淙液淡淌淤添淺清淇淋涯淑涮淞淹涸混淵淅淒渚涵淚淫淘淪深淮淨淆淄涪淬涿淦烹焉焊烽烯爽牽犁猜猛猖猓猙率琅琊球理現琍瓠瓶\"],[\"b2a1\",\"瓷甜產略畦畢異疏痔痕疵痊痍皎盔盒盛眷眾眼眶眸眺硫硃硎祥票祭移窒窕笠笨笛第符笙笞笮粒粗粕絆絃統紮紹紼絀細紳組累終紲紱缽羞羚翌翎習耜聊聆脯脖脣脫脩脰脤舂舵舷舶船莎莞莘荸莢莖莽莫莒莊莓莉莠荷荻荼\"],[\"b340\",\"莆莧處彪蛇蛀蚶蛄蚵蛆蛋蚱蚯蛉術袞袈被袒袖袍袋覓規訪訝訣訥許設訟訛訢豉豚販責貫貨貪貧赧赦趾趺軛軟這逍通逗連速逝逐逕逞造透逢逖逛途\"],[\"b3a1\",\"部郭都酗野釵釦釣釧釭釩閉陪陵陳陸陰陴陶陷陬雀雪雩章竟頂頃魚鳥鹵鹿麥麻傢傍傅備傑傀傖傘傚最凱割剴創剩勞勝勛博厥啻喀喧啼喊喝喘喂喜喪喔喇喋喃喳單喟唾喲喚喻喬喱啾喉喫喙圍堯堪場堤堰報堡堝堠壹壺奠\"],[\"b440\",\"婷媚婿媒媛媧孳孱寒富寓寐尊尋就嵌嵐崴嵇巽幅帽幀幃幾廊廁廂廄弼彭復循徨惑惡悲悶惠愜愣惺愕惰惻惴慨惱愎惶愉愀愒戟扉掣掌描揀揩揉揆揍\"],[\"b4a1\",\"插揣提握揖揭揮捶援揪換摒揚揹敞敦敢散斑斐斯普晰晴晶景暑智晾晷曾替期朝棺棕棠棘棗椅棟棵森棧棹棒棲棣棋棍植椒椎棉棚楮棻款欺欽殘殖殼毯氮氯氬港游湔渡渲湧湊渠渥渣減湛湘渤湖湮渭渦湯渴湍渺測湃渝渾滋\"],[\"b540\",\"溉渙湎湣湄湲湩湟焙焚焦焰無然煮焜牌犄犀猶猥猴猩琺琪琳琢琥琵琶琴琯琛琦琨甥甦畫番痢痛痣痙痘痞痠登發皖皓皴盜睏短硝硬硯稍稈程稅稀窘\"],[\"b5a1\",\"窗窖童竣等策筆筐筒答筍筋筏筑粟粥絞結絨絕紫絮絲絡給絢絰絳善翔翕耋聒肅腕腔腋腑腎脹腆脾腌腓腴舒舜菩萃菸萍菠菅萋菁華菱菴著萊菰萌菌菽菲菊萸萎萄菜萇菔菟虛蛟蛙蛭蛔蛛蛤蛐蛞街裁裂袱覃視註詠評詞証詁\"],[\"b640\",\"詔詛詐詆訴診訶詖象貂貯貼貳貽賁費賀貴買貶貿貸越超趁跎距跋跚跑跌跛跆軻軸軼辜逮逵週逸進逶鄂郵鄉郾酣酥量鈔鈕鈣鈉鈞鈍鈐鈇鈑閔閏開閑\"],[\"b6a1\",\"間閒閎隊階隋陽隅隆隍陲隄雁雅雄集雇雯雲韌項順須飧飪飯飩飲飭馮馭黃黍黑亂傭債傲傳僅傾催傷傻傯僇剿剷剽募勦勤勢勣匯嗟嗨嗓嗦嗎嗜嗇嗑嗣嗤嗯嗚嗡嗅嗆嗥嗉園圓塞塑塘塗塚塔填塌塭塊塢塒塋奧嫁嫉嫌媾媽媼\"],[\"b740\",\"媳嫂媲嵩嵯幌幹廉廈弒彙徬微愚意慈感想愛惹愁愈慎慌慄慍愾愴愧愍愆愷戡戢搓搾搞搪搭搽搬搏搜搔損搶搖搗搆敬斟新暗暉暇暈暖暄暘暍會榔業\"],[\"b7a1\",\"楚楷楠楔極椰概楊楨楫楞楓楹榆楝楣楛歇歲毀殿毓毽溢溯滓溶滂源溝滇滅溥溘溼溺溫滑準溜滄滔溪溧溴煎煙煩煤煉照煜煬煦煌煥煞煆煨煖爺牒猷獅猿猾瑯瑚瑕瑟瑞瑁琿瑙瑛瑜當畸瘀痰瘁痲痱痺痿痴痳盞盟睛睫睦睞督\"],[\"b840\",\"睹睪睬睜睥睨睢矮碎碰碗碘碌碉硼碑碓硿祺祿禁萬禽稜稚稠稔稟稞窟窠筷節筠筮筧粱粳粵經絹綑綁綏絛置罩罪署義羨群聖聘肆肄腱腰腸腥腮腳腫\"],[\"b8a1\",\"腹腺腦舅艇蒂葷落萱葵葦葫葉葬葛萼萵葡董葩葭葆虞虜號蛹蜓蜈蜇蜀蛾蛻蜂蜃蜆蜊衙裟裔裙補裘裝裡裊裕裒覜解詫該詳試詩詰誇詼詣誠話誅詭詢詮詬詹詻訾詨豢貊貉賊資賈賄貲賃賂賅跡跟跨路跳跺跪跤跦躲較載軾輊\"],[\"b940\",\"辟農運遊道遂達逼違遐遇遏過遍遑逾遁鄒鄗酬酪酩釉鈷鉗鈸鈽鉀鈾鉛鉋鉤鉑鈴鉉鉍鉅鈹鈿鉚閘隘隔隕雍雋雉雊雷電雹零靖靴靶預頑頓頊頒頌飼飴\"],[\"b9a1\",\"飽飾馳馱馴髡鳩麂鼎鼓鼠僧僮僥僖僭僚僕像僑僱僎僩兢凳劃劂匱厭嗾嘀嘛嘗嗽嘔嘆嘉嘍嘎嗷嘖嘟嘈嘐嗶團圖塵塾境墓墊塹墅塽壽夥夢夤奪奩嫡嫦嫩嫗嫖嫘嫣孵寞寧寡寥實寨寢寤察對屢嶄嶇幛幣幕幗幔廓廖弊彆彰徹慇\"],[\"ba40\",\"愿態慷慢慣慟慚慘慵截撇摘摔撤摸摟摺摑摧搴摭摻敲斡旗旖暢暨暝榜榨榕槁榮槓構榛榷榻榫榴槐槍榭槌榦槃榣歉歌氳漳演滾漓滴漩漾漠漬漏漂漢\"],[\"baa1\",\"滿滯漆漱漸漲漣漕漫漯澈漪滬漁滲滌滷熔熙煽熊熄熒爾犒犖獄獐瑤瑣瑪瑰瑭甄疑瘧瘍瘋瘉瘓盡監瞄睽睿睡磁碟碧碳碩碣禎福禍種稱窪窩竭端管箕箋筵算箝箔箏箸箇箄粹粽精綻綰綜綽綾綠緊綴網綱綺綢綿綵綸維緒緇綬\"],[\"bb40\",\"罰翠翡翟聞聚肇腐膀膏膈膊腿膂臧臺與舔舞艋蓉蒿蓆蓄蒙蒞蒲蒜蓋蒸蓀蓓蒐蒼蓑蓊蜿蜜蜻蜢蜥蜴蜘蝕蜷蜩裳褂裴裹裸製裨褚裯誦誌語誣認誡誓誤\"],[\"bba1\",\"說誥誨誘誑誚誧豪貍貌賓賑賒赫趙趕跼輔輒輕輓辣遠遘遜遣遙遞遢遝遛鄙鄘鄞酵酸酷酴鉸銀銅銘銖鉻銓銜銨鉼銑閡閨閩閣閥閤隙障際雌雒需靼鞅韶頗領颯颱餃餅餌餉駁骯骰髦魁魂鳴鳶鳳麼鼻齊億儀僻僵價儂儈儉儅凜\"],[\"bc40\",\"劇劈劉劍劊勰厲嘮嘻嘹嘲嘿嘴嘩噓噎噗噴嘶嘯嘰墀墟增墳墜墮墩墦奭嬉嫻嬋嫵嬌嬈寮寬審寫層履嶝嶔幢幟幡廢廚廟廝廣廠彈影德徵慶慧慮慝慕憂\"],[\"bca1\",\"慼慰慫慾憧憐憫憎憬憚憤憔憮戮摩摯摹撞撲撈撐撰撥撓撕撩撒撮播撫撚撬撙撢撳敵敷數暮暫暴暱樣樟槨樁樞標槽模樓樊槳樂樅槭樑歐歎殤毅毆漿潼澄潑潦潔澆潭潛潸潮澎潺潰潤澗潘滕潯潠潟熟熬熱熨牖犛獎獗瑩璋璃\"],[\"bd40\",\"瑾璀畿瘠瘩瘟瘤瘦瘡瘢皚皺盤瞎瞇瞌瞑瞋磋磅確磊碾磕碼磐稿稼穀稽稷稻窯窮箭箱範箴篆篇篁箠篌糊締練緯緻緘緬緝編緣線緞緩綞緙緲緹罵罷羯\"],[\"bda1\",\"翩耦膛膜膝膠膚膘蔗蔽蔚蓮蔬蔭蔓蔑蔣蔡蔔蓬蔥蓿蔆螂蝴蝶蝠蝦蝸蝨蝙蝗蝌蝓衛衝褐複褒褓褕褊誼諒談諄誕請諸課諉諂調誰論諍誶誹諛豌豎豬賠賞賦賤賬賭賢賣賜質賡赭趟趣踫踐踝踢踏踩踟踡踞躺輝輛輟輩輦輪輜輞\"],[\"be40\",\"輥適遮遨遭遷鄰鄭鄧鄱醇醉醋醃鋅銻銷鋪銬鋤鋁銳銼鋒鋇鋰銲閭閱霄霆震霉靠鞍鞋鞏頡頫頜颳養餓餒餘駝駐駟駛駑駕駒駙骷髮髯鬧魅魄魷魯鴆鴉\"],[\"bea1\",\"鴃麩麾黎墨齒儒儘儔儐儕冀冪凝劑劓勳噙噫噹噩噤噸噪器噥噱噯噬噢噶壁墾壇壅奮嬝嬴學寰導彊憲憑憩憊懍憶憾懊懈戰擅擁擋撻撼據擄擇擂操撿擒擔撾整曆曉暹曄曇暸樽樸樺橙橫橘樹橄橢橡橋橇樵機橈歙歷氅濂澱澡\"],[\"bf40\",\"濃澤濁澧澳激澹澶澦澠澴熾燉燐燒燈燕熹燎燙燜燃燄獨璜璣璘璟璞瓢甌甍瘴瘸瘺盧盥瞠瞞瞟瞥磨磚磬磧禦積穎穆穌穋窺篙簑築篤篛篡篩篦糕糖縊\"],[\"bfa1\",\"縑縈縛縣縞縝縉縐罹羲翰翱翮耨膳膩膨臻興艘艙蕊蕙蕈蕨蕩蕃蕉蕭蕪蕞螃螟螞螢融衡褪褲褥褫褡親覦諦諺諫諱謀諜諧諮諾謁謂諷諭諳諶諼豫豭貓賴蹄踱踴蹂踹踵輻輯輸輳辨辦遵遴選遲遼遺鄴醒錠錶鋸錳錯錢鋼錫錄錚\"],[\"c040\",\"錐錦錡錕錮錙閻隧隨險雕霎霑霖霍霓霏靛靜靦鞘頰頸頻頷頭頹頤餐館餞餛餡餚駭駢駱骸骼髻髭鬨鮑鴕鴣鴦鴨鴒鴛默黔龍龜優償儡儲勵嚎嚀嚐嚅嚇\"],[\"c0a1\",\"嚏壕壓壑壎嬰嬪嬤孺尷屨嶼嶺嶽嶸幫彌徽應懂懇懦懋戲戴擎擊擘擠擰擦擬擱擢擭斂斃曙曖檀檔檄檢檜櫛檣橾檗檐檠歜殮毚氈濘濱濟濠濛濤濫濯澀濬濡濩濕濮濰燧營燮燦燥燭燬燴燠爵牆獰獲璩環璦璨癆療癌盪瞳瞪瞰瞬\"],[\"c140\",\"瞧瞭矯磷磺磴磯礁禧禪穗窿簇簍篾篷簌篠糠糜糞糢糟糙糝縮績繆縷縲繃縫總縱繅繁縴縹繈縵縿縯罄翳翼聱聲聰聯聳臆臃膺臂臀膿膽臉膾臨舉艱薪\"],[\"c1a1\",\"薄蕾薜薑薔薯薛薇薨薊虧蟀蟑螳蟒蟆螫螻螺蟈蟋褻褶襄褸褽覬謎謗謙講謊謠謝謄謐豁谿豳賺賽購賸賻趨蹉蹋蹈蹊轄輾轂轅輿避遽還邁邂邀鄹醣醞醜鍍鎂錨鍵鍊鍥鍋錘鍾鍬鍛鍰鍚鍔闊闋闌闈闆隱隸雖霜霞鞠韓顆颶餵騁\"],[\"c240\",\"駿鮮鮫鮪鮭鴻鴿麋黏點黜黝黛鼾齋叢嚕嚮壙壘嬸彝懣戳擴擲擾攆擺擻擷斷曜朦檳檬櫃檻檸櫂檮檯歟歸殯瀉瀋濾瀆濺瀑瀏燻燼燾燸獷獵璧璿甕癖癘\"],[\"c2a1\",\"癒瞽瞿瞻瞼礎禮穡穢穠竄竅簫簧簪簞簣簡糧織繕繞繚繡繒繙罈翹翻職聶臍臏舊藏薩藍藐藉薰薺薹薦蟯蟬蟲蟠覆覲觴謨謹謬謫豐贅蹙蹣蹦蹤蹟蹕軀轉轍邇邃邈醫醬釐鎔鎊鎖鎢鎳鎮鎬鎰鎘鎚鎗闔闖闐闕離雜雙雛雞霤鞣鞦\"],[\"c340\",\"鞭韹額顏題顎顓颺餾餿餽餮馥騎髁鬃鬆魏魎魍鯊鯉鯽鯈鯀鵑鵝鵠黠鼕鼬儳嚥壞壟壢寵龐廬懲懷懶懵攀攏曠曝櫥櫝櫚櫓瀛瀟瀨瀚瀝瀕瀘爆爍牘犢獸\"],[\"c3a1\",\"獺璽瓊瓣疇疆癟癡矇礙禱穫穩簾簿簸簽簷籀繫繭繹繩繪羅繳羶羹羸臘藩藝藪藕藤藥藷蟻蠅蠍蟹蟾襠襟襖襞譁譜識證譚譎譏譆譙贈贊蹼蹲躇蹶蹬蹺蹴轔轎辭邊邋醱醮鏡鏑鏟鏃鏈鏜鏝鏖鏢鏍鏘鏤鏗鏨關隴難霪霧靡韜韻類\"],[\"c440\",\"願顛颼饅饉騖騙鬍鯨鯧鯖鯛鶉鵡鵲鵪鵬麒麗麓麴勸嚨嚷嚶嚴嚼壤孀孃孽寶巉懸懺攘攔攙曦朧櫬瀾瀰瀲爐獻瓏癢癥礦礪礬礫竇競籌籃籍糯糰辮繽繼\"],[\"c4a1\",\"纂罌耀臚艦藻藹蘑藺蘆蘋蘇蘊蠔蠕襤覺觸議譬警譯譟譫贏贍躉躁躅躂醴釋鐘鐃鏽闡霰飄饒饑馨騫騰騷騵鰓鰍鹹麵黨鼯齟齣齡儷儸囁囀囂夔屬巍懼懾攝攜斕曩櫻欄櫺殲灌爛犧瓖瓔癩矓籐纏續羼蘗蘭蘚蠣蠢蠡蠟襪襬覽譴\"],[\"c540\",\"護譽贓躊躍躋轟辯醺鐮鐳鐵鐺鐸鐲鐫闢霸霹露響顧顥饗驅驃驀騾髏魔魑鰭鰥鶯鶴鷂鶸麝黯鼙齜齦齧儼儻囈囊囉孿巔巒彎懿攤權歡灑灘玀瓤疊癮癬\"],[\"c5a1\",\"禳籠籟聾聽臟襲襯觼讀贖贗躑躓轡酈鑄鑑鑒霽霾韃韁顫饕驕驍髒鬚鱉鰱鰾鰻鷓鷗鼴齬齪龔囌巖戀攣攫攪曬欐瓚竊籤籣籥纓纖纔臢蘸蘿蠱變邐邏鑣鑠鑤靨顯饜驚驛驗髓體髑鱔鱗鱖鷥麟黴囑壩攬灞癱癲矗罐羈蠶蠹衢讓讒\"],[\"c640\",\"讖艷贛釀鑪靂靈靄韆顰驟鬢魘鱟鷹鷺鹼鹽鼇齷齲廳欖灣籬籮蠻觀躡釁鑲鑰顱饞髖鬣黌灤矚讚鑷韉驢驥纜讜躪釅鑽鑾鑼鱷鱸黷豔鑿鸚爨驪鬱鸛鸞籲\"],[\"c940\",\"乂乜凵匚厂万丌乇亍囗兀屮彳丏冇与丮亓仂仉仈冘勼卬厹圠夃夬尐巿旡殳毌气爿丱丼仨仜仩仡仝仚刌匜卌圢圣夗夯宁宄尒尻屴屳帄庀庂忉戉扐氕\"],[\"c9a1\",\"氶汃氿氻犮犰玊禸肊阞伎优伬仵伔仱伀价伈伝伂伅伢伓伄仴伒冱刓刉刐劦匢匟卍厊吇囡囟圮圪圴夼妀奼妅奻奾奷奿孖尕尥屼屺屻屾巟幵庄异弚彴忕忔忏扜扞扤扡扦扢扙扠扚扥旯旮朾朹朸朻机朿朼朳氘汆汒汜汏汊汔汋\"],[\"ca40\",\"汌灱牞犴犵玎甪癿穵网艸艼芀艽艿虍襾邙邗邘邛邔阢阤阠阣佖伻佢佉体佤伾佧佒佟佁佘伭伳伿佡冏冹刜刞刡劭劮匉卣卲厎厏吰吷吪呔呅吙吜吥吘\"],[\"caa1\",\"吽呏呁吨吤呇囮囧囥坁坅坌坉坋坒夆奀妦妘妠妗妎妢妐妏妧妡宎宒尨尪岍岏岈岋岉岒岊岆岓岕巠帊帎庋庉庌庈庍弅弝彸彶忒忑忐忭忨忮忳忡忤忣忺忯忷忻怀忴戺抃抌抎抏抔抇扱扻扺扰抁抈扷扽扲扴攷旰旴旳旲旵杅杇\"],[\"cb40\",\"杙杕杌杈杝杍杚杋毐氙氚汸汧汫沄沋沏汱汯汩沚汭沇沕沜汦汳汥汻沎灴灺牣犿犽狃狆狁犺狅玕玗玓玔玒町甹疔疕皁礽耴肕肙肐肒肜芐芏芅芎芑芓\"],[\"cba1\",\"芊芃芄豸迉辿邟邡邥邞邧邠阰阨阯阭丳侘佼侅佽侀侇佶佴侉侄佷佌侗佪侚佹侁佸侐侜侔侞侒侂侕佫佮冞冼冾刵刲刳剆刱劼匊匋匼厒厔咇呿咁咑咂咈呫呺呾呥呬呴呦咍呯呡呠咘呣呧呤囷囹坯坲坭坫坱坰坶垀坵坻坳坴坢\"],[\"cc40\",\"坨坽夌奅妵妺姏姎妲姌姁妶妼姃姖妱妽姀姈妴姇孢孥宓宕屄屇岮岤岠岵岯岨岬岟岣岭岢岪岧岝岥岶岰岦帗帔帙弨弢弣弤彔徂彾彽忞忥怭怦怙怲怋\"],[\"cca1\",\"怴怊怗怳怚怞怬怢怍怐怮怓怑怌怉怜戔戽抭抴拑抾抪抶拊抮抳抯抻抩抰抸攽斨斻昉旼昄昒昈旻昃昋昍昅旽昑昐曶朊枅杬枎枒杶杻枘枆构杴枍枌杺枟枑枙枃杽极杸杹枔欥殀歾毞氝沓泬泫泮泙沶泔沭泧沷泐泂沺泃泆泭泲\"],[\"cd40\",\"泒泝沴沊沝沀泞泀洰泍泇沰泹泏泩泑炔炘炅炓炆炄炑炖炂炚炃牪狖狋狘狉狜狒狔狚狌狑玤玡玭玦玢玠玬玝瓝瓨甿畀甾疌疘皯盳盱盰盵矸矼矹矻矺\"],[\"cda1\",\"矷祂礿秅穸穻竻籵糽耵肏肮肣肸肵肭舠芠苀芫芚芘芛芵芧芮芼芞芺芴芨芡芩苂芤苃芶芢虰虯虭虮豖迒迋迓迍迖迕迗邲邴邯邳邰阹阽阼阺陃俍俅俓侲俉俋俁俔俜俙侻侳俛俇俖侺俀侹俬剄剉勀勂匽卼厗厖厙厘咺咡咭咥哏\"],[\"ce40\",\"哃茍咷咮哖咶哅哆咠呰咼咢咾呲哞咰垵垞垟垤垌垗垝垛垔垘垏垙垥垚垕壴复奓姡姞姮娀姱姝姺姽姼姶姤姲姷姛姩姳姵姠姾姴姭宨屌峐峘峌峗峋峛\"],[\"cea1\",\"峞峚峉峇峊峖峓峔峏峈峆峎峟峸巹帡帢帣帠帤庰庤庢庛庣庥弇弮彖徆怷怹恔恲恞恅恓恇恉恛恌恀恂恟怤恄恘恦恮扂扃拏挍挋拵挎挃拫拹挏挌拸拶挀挓挔拺挕拻拰敁敃斪斿昶昡昲昵昜昦昢昳昫昺昝昴昹昮朏朐柁柲柈枺\"],[\"cf40\",\"柜枻柸柘柀枷柅柫柤柟枵柍枳柷柶柮柣柂枹柎柧柰枲柼柆柭柌枮柦柛柺柉柊柃柪柋欨殂殄殶毖毘毠氠氡洨洴洭洟洼洿洒洊泚洳洄洙洺洚洑洀洝浂\"],[\"cfa1\",\"洁洘洷洃洏浀洇洠洬洈洢洉洐炷炟炾炱炰炡炴炵炩牁牉牊牬牰牳牮狊狤狨狫狟狪狦狣玅珌珂珈珅玹玶玵玴珫玿珇玾珃珆玸珋瓬瓮甮畇畈疧疪癹盄眈眃眄眅眊盷盻盺矧矨砆砑砒砅砐砏砎砉砃砓祊祌祋祅祄秕种秏秖秎窀\"],[\"d040\",\"穾竑笀笁籺籸籹籿粀粁紃紈紁罘羑羍羾耇耎耏耔耷胘胇胠胑胈胂胐胅胣胙胜胊胕胉胏胗胦胍臿舡芔苙苾苹茇苨茀苕茺苫苖苴苬苡苲苵茌苻苶苰苪\"],[\"d0a1\",\"苤苠苺苳苭虷虴虼虳衁衎衧衪衩觓訄訇赲迣迡迮迠郱邽邿郕郅邾郇郋郈釔釓陔陏陑陓陊陎倞倅倇倓倢倰倛俵俴倳倷倬俶俷倗倜倠倧倵倯倱倎党冔冓凊凄凅凈凎剡剚剒剞剟剕剢勍匎厞唦哢唗唒哧哳哤唚哿唄唈哫唑唅哱\"],[\"d140\",\"唊哻哷哸哠唎唃唋圁圂埌堲埕埒垺埆垽垼垸垶垿埇埐垹埁夎奊娙娖娭娮娕娏娗娊娞娳孬宧宭宬尃屖屔峬峿峮峱峷崀峹帩帨庨庮庪庬弳弰彧恝恚恧\"],[\"d1a1\",\"恁悢悈悀悒悁悝悃悕悛悗悇悜悎戙扆拲挐捖挬捄捅挶捃揤挹捋捊挼挩捁挴捘捔捙挭捇挳捚捑挸捗捀捈敊敆旆旃旄旂晊晟晇晑朒朓栟栚桉栲栳栻桋桏栖栱栜栵栫栭栯桎桄栴栝栒栔栦栨栮桍栺栥栠欬欯欭欱欴歭肂殈毦毤\"],[\"d240\",\"毨毣毢毧氥浺浣浤浶洍浡涒浘浢浭浯涑涍淯浿涆浞浧浠涗浰浼浟涂涘洯浨涋浾涀涄洖涃浻浽浵涐烜烓烑烝烋缹烢烗烒烞烠烔烍烅烆烇烚烎烡牂牸\"],[\"d2a1\",\"牷牶猀狺狴狾狶狳狻猁珓珙珥珖玼珧珣珩珜珒珛珔珝珚珗珘珨瓞瓟瓴瓵甡畛畟疰痁疻痄痀疿疶疺皊盉眝眛眐眓眒眣眑眕眙眚眢眧砣砬砢砵砯砨砮砫砡砩砳砪砱祔祛祏祜祓祒祑秫秬秠秮秭秪秜秞秝窆窉窅窋窌窊窇竘笐\"],[\"d340\",\"笄笓笅笏笈笊笎笉笒粄粑粊粌粈粍粅紞紝紑紎紘紖紓紟紒紏紌罜罡罞罠罝罛羖羒翃翂翀耖耾耹胺胲胹胵脁胻脀舁舯舥茳茭荄茙荑茥荖茿荁茦茜茢\"],[\"d3a1\",\"荂荎茛茪茈茼荍茖茤茠茷茯茩荇荅荌荓茞茬荋茧荈虓虒蚢蚨蚖蚍蚑蚞蚇蚗蚆蚋蚚蚅蚥蚙蚡蚧蚕蚘蚎蚝蚐蚔衃衄衭衵衶衲袀衱衿衯袃衾衴衼訒豇豗豻貤貣赶赸趵趷趶軑軓迾迵适迿迻逄迼迶郖郠郙郚郣郟郥郘郛郗郜郤酐\"],[\"d440\",\"酎酏釕釢釚陜陟隼飣髟鬯乿偰偪偡偞偠偓偋偝偲偈偍偁偛偊偢倕偅偟偩偫偣偤偆偀偮偳偗偑凐剫剭剬剮勖勓匭厜啵啶唼啍啐唴唪啑啢唶唵唰啒啅\"],[\"d4a1\",\"唌唲啥啎唹啈唭唻啀啋圊圇埻堔埢埶埜埴堀埭埽堈埸堋埳埏堇埮埣埲埥埬埡堎埼堐埧堁堌埱埩埰堍堄奜婠婘婕婧婞娸娵婭婐婟婥婬婓婤婗婃婝婒婄婛婈媎娾婍娹婌婰婩婇婑婖婂婜孲孮寁寀屙崞崋崝崚崠崌崨崍崦崥崏\"],[\"d540\",\"崰崒崣崟崮帾帴庱庴庹庲庳弶弸徛徖徟悊悐悆悾悰悺惓惔惏惤惙惝惈悱惛悷惊悿惃惍惀挲捥掊掂捽掽掞掭掝掗掫掎捯掇掐据掯捵掜捭掮捼掤挻掟\"],[\"d5a1\",\"捸掅掁掑掍捰敓旍晥晡晛晙晜晢朘桹梇梐梜桭桮梮梫楖桯梣梬梩桵桴梲梏桷梒桼桫桲梪梀桱桾梛梖梋梠梉梤桸桻梑梌梊桽欶欳欷欸殑殏殍殎殌氪淀涫涴涳湴涬淩淢涷淶淔渀淈淠淟淖涾淥淜淝淛淴淊涽淭淰涺淕淂淏淉\"],[\"d640\",\"淐淲淓淽淗淍淣涻烺焍烷焗烴焌烰焄烳焐烼烿焆焓焀烸烶焋焂焎牾牻牼牿猝猗猇猑猘猊猈狿猏猞玈珶珸珵琄琁珽琇琀珺珼珿琌琋珴琈畤畣痎痒痏\"],[\"d6a1\",\"痋痌痑痐皏皉盓眹眯眭眱眲眴眳眽眥眻眵硈硒硉硍硊硌砦硅硐祤祧祩祪祣祫祡离秺秸秶秷窏窔窐笵筇笴笥笰笢笤笳笘笪笝笱笫笭笯笲笸笚笣粔粘粖粣紵紽紸紶紺絅紬紩絁絇紾紿絊紻紨罣羕羜羝羛翊翋翍翐翑翇翏翉耟\"],[\"d740\",\"耞耛聇聃聈脘脥脙脛脭脟脬脞脡脕脧脝脢舑舸舳舺舴舲艴莐莣莨莍荺荳莤荴莏莁莕莙荵莔莩荽莃莌莝莛莪莋荾莥莯莈莗莰荿莦莇莮荶莚虙虖蚿蚷\"],[\"d7a1\",\"蛂蛁蛅蚺蚰蛈蚹蚳蚸蛌蚴蚻蚼蛃蚽蚾衒袉袕袨袢袪袚袑袡袟袘袧袙袛袗袤袬袌袓袎覂觖觙觕訰訧訬訞谹谻豜豝豽貥赽赻赹趼跂趹趿跁軘軞軝軜軗軠軡逤逋逑逜逌逡郯郪郰郴郲郳郔郫郬郩酖酘酚酓酕釬釴釱釳釸釤釹釪\"],[\"d840\",\"釫釷釨釮镺閆閈陼陭陫陱陯隿靪頄飥馗傛傕傔傞傋傣傃傌傎傝偨傜傒傂傇兟凔匒匑厤厧喑喨喥喭啷噅喢喓喈喏喵喁喣喒喤啽喌喦啿喕喡喎圌堩堷\"],[\"d8a1\",\"堙堞堧堣堨埵塈堥堜堛堳堿堶堮堹堸堭堬堻奡媯媔媟婺媢媞婸媦婼媥媬媕媮娷媄媊媗媃媋媩婻婽媌媜媏媓媝寪寍寋寔寑寊寎尌尰崷嵃嵫嵁嵋崿崵嵑嵎嵕崳崺嵒崽崱嵙嵂崹嵉崸崼崲崶嵀嵅幄幁彘徦徥徫惉悹惌惢惎惄愔\"],[\"d940\",\"惲愊愖愅惵愓惸惼惾惁愃愘愝愐惿愄愋扊掔掱掰揎揥揨揯揃撝揳揊揠揶揕揲揵摡揟掾揝揜揄揘揓揂揇揌揋揈揰揗揙攲敧敪敤敜敨敥斌斝斞斮旐旒\"],[\"d9a1\",\"晼晬晻暀晱晹晪晲朁椌棓椄棜椪棬棪棱椏棖棷棫棤棶椓椐棳棡椇棌椈楰梴椑棯棆椔棸棐棽棼棨椋椊椗棎棈棝棞棦棴棑椆棔棩椕椥棇欹欻欿欼殔殗殙殕殽毰毲毳氰淼湆湇渟湉溈渼渽湅湢渫渿湁湝湳渜渳湋湀湑渻渃渮湞\"],[\"da40\",\"湨湜湡渱渨湠湱湫渹渢渰湓湥渧湸湤湷湕湹湒湦渵渶湚焠焞焯烻焮焱焣焥焢焲焟焨焺焛牋牚犈犉犆犅犋猒猋猰猢猱猳猧猲猭猦猣猵猌琮琬琰琫琖\"],[\"daa1\",\"琚琡琭琱琤琣琝琩琠琲瓻甯畯畬痧痚痡痦痝痟痤痗皕皒盚睆睇睄睍睅睊睎睋睌矞矬硠硤硥硜硭硱硪确硰硩硨硞硢祴祳祲祰稂稊稃稌稄窙竦竤筊笻筄筈筌筎筀筘筅粢粞粨粡絘絯絣絓絖絧絪絏絭絜絫絒絔絩絑絟絎缾缿罥\"],[\"db40\",\"罦羢羠羡翗聑聏聐胾胔腃腊腒腏腇脽腍脺臦臮臷臸臹舄舼舽舿艵茻菏菹萣菀菨萒菧菤菼菶萐菆菈菫菣莿萁菝菥菘菿菡菋菎菖菵菉萉萏菞萑萆菂菳\"],[\"dba1\",\"菕菺菇菑菪萓菃菬菮菄菻菗菢萛菛菾蛘蛢蛦蛓蛣蛚蛪蛝蛫蛜蛬蛩蛗蛨蛑衈衖衕袺裗袹袸裀袾袶袼袷袽袲褁裉覕覘覗觝觚觛詎詍訹詙詀詗詘詄詅詒詈詑詊詌詏豟貁貀貺貾貰貹貵趄趀趉跘跓跍跇跖跜跏跕跙跈跗跅軯軷軺\"],[\"dc40\",\"軹軦軮軥軵軧軨軶軫軱軬軴軩逭逴逯鄆鄬鄄郿郼鄈郹郻鄁鄀鄇鄅鄃酡酤酟酢酠鈁鈊鈥鈃鈚鈦鈏鈌鈀鈒釿釽鈆鈄鈧鈂鈜鈤鈙鈗鈅鈖镻閍閌閐隇陾隈\"],[\"dca1\",\"隉隃隀雂雈雃雱雰靬靰靮頇颩飫鳦黹亃亄亶傽傿僆傮僄僊傴僈僂傰僁傺傱僋僉傶傸凗剺剸剻剼嗃嗛嗌嗐嗋嗊嗝嗀嗔嗄嗩喿嗒喍嗏嗕嗢嗖嗈嗲嗍嗙嗂圔塓塨塤塏塍塉塯塕塎塝塙塥塛堽塣塱壼嫇嫄嫋媺媸媱媵媰媿嫈媻嫆\"],[\"dd40\",\"媷嫀嫊媴媶嫍媹媐寖寘寙尟尳嵱嵣嵊嵥嵲嵬嵞嵨嵧嵢巰幏幎幊幍幋廅廌廆廋廇彀徯徭惷慉慊愫慅愶愲愮慆愯慏愩慀戠酨戣戥戤揅揱揫搐搒搉搠搤\"],[\"dda1\",\"搳摃搟搕搘搹搷搢搣搌搦搰搨摁搵搯搊搚摀搥搧搋揧搛搮搡搎敯斒旓暆暌暕暐暋暊暙暔晸朠楦楟椸楎楢楱椿楅楪椹楂楗楙楺楈楉椵楬椳椽楥棰楸椴楩楀楯楄楶楘楁楴楌椻楋椷楜楏楑椲楒椯楻椼歆歅歃歂歈歁殛嗀毻毼\"],[\"de40\",\"毹毷毸溛滖滈溏滀溟溓溔溠溱溹滆滒溽滁溞滉溷溰滍溦滏溲溾滃滜滘溙溒溎溍溤溡溿溳滐滊溗溮溣煇煔煒煣煠煁煝煢煲煸煪煡煂煘煃煋煰煟煐煓\"],[\"dea1\",\"煄煍煚牏犍犌犑犐犎猼獂猻猺獀獊獉瑄瑊瑋瑒瑑瑗瑀瑏瑐瑎瑂瑆瑍瑔瓡瓿瓾瓽甝畹畷榃痯瘏瘃痷痾痼痹痸瘐痻痶痭痵痽皙皵盝睕睟睠睒睖睚睩睧睔睙睭矠碇碚碔碏碄碕碅碆碡碃硹碙碀碖硻祼禂祽祹稑稘稙稒稗稕稢稓\"],[\"df40\",\"稛稐窣窢窞竫筦筤筭筴筩筲筥筳筱筰筡筸筶筣粲粴粯綈綆綀綍絿綅絺綎絻綃絼綌綔綄絽綒罭罫罧罨罬羦羥羧翛翜耡腤腠腷腜腩腛腢腲朡腞腶腧腯\"],[\"dfa1\",\"腄腡舝艉艄艀艂艅蓱萿葖葶葹蒏蒍葥葑葀蒆葧萰葍葽葚葙葴葳葝蔇葞萷萺萴葺葃葸萲葅萩菙葋萯葂萭葟葰萹葎葌葒葯蓅蒎萻葇萶萳葨葾葄萫葠葔葮葐蜋蜄蛷蜌蛺蛖蛵蝍蛸蜎蜉蜁蛶蜍蜅裖裋裍裎裞裛裚裌裐覅覛觟觥觤\"],[\"e040\",\"觡觠觢觜触詶誆詿詡訿詷誂誄詵誃誁詴詺谼豋豊豥豤豦貆貄貅賌赨赩趑趌趎趏趍趓趔趐趒跰跠跬跱跮跐跩跣跢跧跲跫跴輆軿輁輀輅輇輈輂輋遒逿\"],[\"e0a1\",\"遄遉逽鄐鄍鄏鄑鄖鄔鄋鄎酮酯鉈鉒鈰鈺鉦鈳鉥鉞銃鈮鉊鉆鉭鉬鉏鉠鉧鉯鈶鉡鉰鈱鉔鉣鉐鉲鉎鉓鉌鉖鈲閟閜閞閛隒隓隑隗雎雺雽雸雵靳靷靸靲頏頍頎颬飶飹馯馲馰馵骭骫魛鳪鳭鳧麀黽僦僔僗僨僳僛僪僝僤僓僬僰僯僣僠\"],[\"e140\",\"凘劀劁勩勫匰厬嘧嘕嘌嘒嗼嘏嘜嘁嘓嘂嗺嘝嘄嗿嗹墉塼墐墘墆墁塿塴墋塺墇墑墎塶墂墈塻墔墏壾奫嫜嫮嫥嫕嫪嫚嫭嫫嫳嫢嫠嫛嫬嫞嫝嫙嫨嫟孷寠\"],[\"e1a1\",\"寣屣嶂嶀嵽嶆嵺嶁嵷嶊嶉嶈嵾嵼嶍嵹嵿幘幙幓廘廑廗廎廜廕廙廒廔彄彃彯徶愬愨慁慞慱慳慒慓慲慬憀慴慔慺慛慥愻慪慡慖戩戧戫搫摍摛摝摴摶摲摳摽摵摦撦摎撂摞摜摋摓摠摐摿搿摬摫摙摥摷敳斠暡暠暟朅朄朢榱榶槉\"],[\"e240\",\"榠槎榖榰榬榼榑榙榎榧榍榩榾榯榿槄榽榤槔榹槊榚槏榳榓榪榡榞槙榗榐槂榵榥槆歊歍歋殞殟殠毃毄毾滎滵滱漃漥滸漷滻漮漉潎漙漚漧漘漻漒滭漊\"],[\"e2a1\",\"漶潳滹滮漭潀漰漼漵滫漇漎潃漅滽滶漹漜滼漺漟漍漞漈漡熇熐熉熀熅熂熏煻熆熁熗牄牓犗犕犓獃獍獑獌瑢瑳瑱瑵瑲瑧瑮甀甂甃畽疐瘖瘈瘌瘕瘑瘊瘔皸瞁睼瞅瞂睮瞀睯睾瞃碲碪碴碭碨硾碫碞碥碠碬碢碤禘禊禋禖禕禔禓\"],[\"e340\",\"禗禈禒禐稫穊稰稯稨稦窨窫窬竮箈箜箊箑箐箖箍箌箛箎箅箘劄箙箤箂粻粿粼粺綧綷緂綣綪緁緀緅綝緎緄緆緋緌綯綹綖綼綟綦綮綩綡緉罳翢翣翥翞\"],[\"e3a1\",\"耤聝聜膉膆膃膇膍膌膋舕蒗蒤蒡蒟蒺蓎蓂蒬蒮蒫蒹蒴蓁蓍蒪蒚蒱蓐蒝蒧蒻蒢蒔蓇蓌蒛蒩蒯蒨蓖蒘蒶蓏蒠蓗蓔蓒蓛蒰蒑虡蜳蜣蜨蝫蝀蜮蜞蜡蜙蜛蝃蜬蝁蜾蝆蜠蜲蜪蜭蜼蜒蜺蜱蜵蝂蜦蜧蜸蜤蜚蜰蜑裷裧裱裲裺裾裮裼裶裻\"],[\"e440\",\"裰裬裫覝覡覟覞觩觫觨誫誙誋誒誏誖谽豨豩賕賏賗趖踉踂跿踍跽踊踃踇踆踅跾踀踄輐輑輎輍鄣鄜鄠鄢鄟鄝鄚鄤鄡鄛酺酲酹酳銥銤鉶銛鉺銠銔銪銍\"],[\"e4a1\",\"銦銚銫鉹銗鉿銣鋮銎銂銕銢鉽銈銡銊銆銌銙銧鉾銇銩銝銋鈭隞隡雿靘靽靺靾鞃鞀鞂靻鞄鞁靿韎韍頖颭颮餂餀餇馝馜駃馹馻馺駂馽駇骱髣髧鬾鬿魠魡魟鳱鳲鳵麧僿儃儰僸儆儇僶僾儋儌僽儊劋劌勱勯噈噂噌嘵噁噊噉噆噘\"],[\"e540\",\"噚噀嘳嘽嘬嘾嘸嘪嘺圚墫墝墱墠墣墯墬墥墡壿嫿嫴嫽嫷嫶嬃嫸嬂嫹嬁嬇嬅嬏屧嶙嶗嶟嶒嶢嶓嶕嶠嶜嶡嶚嶞幩幝幠幜緳廛廞廡彉徲憋憃慹憱憰憢憉\"],[\"e5a1\",\"憛憓憯憭憟憒憪憡憍慦憳戭摮摰撖撠撅撗撜撏撋撊撌撣撟摨撱撘敶敺敹敻斲斳暵暰暩暲暷暪暯樀樆樗槥槸樕槱槤樠槿槬槢樛樝槾樧槲槮樔槷槧橀樈槦槻樍槼槫樉樄樘樥樏槶樦樇槴樖歑殥殣殢殦氁氀毿氂潁漦潾澇濆澒\"],[\"e640\",\"澍澉澌潢潏澅潚澖潶潬澂潕潲潒潐潗澔澓潝漀潡潫潽潧澐潓澋潩潿澕潣潷潪潻熲熯熛熰熠熚熩熵熝熥熞熤熡熪熜熧熳犘犚獘獒獞獟獠獝獛獡獚獙\"],[\"e6a1\",\"獢璇璉璊璆璁瑽璅璈瑼瑹甈甇畾瘥瘞瘙瘝瘜瘣瘚瘨瘛皜皝皞皛瞍瞏瞉瞈磍碻磏磌磑磎磔磈磃磄磉禚禡禠禜禢禛歶稹窲窴窳箷篋箾箬篎箯箹篊箵糅糈糌糋緷緛緪緧緗緡縃緺緦緶緱緰緮緟罶羬羰羭翭翫翪翬翦翨聤聧膣膟\"],[\"e740\",\"膞膕膢膙膗舖艏艓艒艐艎艑蔤蔻蔏蔀蔩蔎蔉蔍蔟蔊蔧蔜蓻蔫蓺蔈蔌蓴蔪蓲蔕蓷蓫蓳蓼蔒蓪蓩蔖蓾蔨蔝蔮蔂蓽蔞蓶蔱蔦蓧蓨蓰蓯蓹蔘蔠蔰蔋蔙蔯虢\"],[\"e7a1\",\"蝖蝣蝤蝷蟡蝳蝘蝔蝛蝒蝡蝚蝑蝞蝭蝪蝐蝎蝟蝝蝯蝬蝺蝮蝜蝥蝏蝻蝵蝢蝧蝩衚褅褌褔褋褗褘褙褆褖褑褎褉覢覤覣觭觰觬諏諆誸諓諑諔諕誻諗誾諀諅諘諃誺誽諙谾豍貏賥賟賙賨賚賝賧趠趜趡趛踠踣踥踤踮踕踛踖踑踙踦踧\"],[\"e840\",\"踔踒踘踓踜踗踚輬輤輘輚輠輣輖輗遳遰遯遧遫鄯鄫鄩鄪鄲鄦鄮醅醆醊醁醂醄醀鋐鋃鋄鋀鋙銶鋏鋱鋟鋘鋩鋗鋝鋌鋯鋂鋨鋊鋈鋎鋦鋍鋕鋉鋠鋞鋧鋑鋓\"],[\"e8a1\",\"銵鋡鋆銴镼閬閫閮閰隤隢雓霅霈霂靚鞊鞎鞈韐韏頞頝頦頩頨頠頛頧颲餈飺餑餔餖餗餕駜駍駏駓駔駎駉駖駘駋駗駌骳髬髫髳髲髱魆魃魧魴魱魦魶魵魰魨魤魬鳼鳺鳽鳿鳷鴇鴀鳹鳻鴈鴅鴄麃黓鼏鼐儜儓儗儚儑凞匴叡噰噠噮\"],[\"e940\",\"噳噦噣噭噲噞噷圜圛壈墽壉墿墺壂墼壆嬗嬙嬛嬡嬔嬓嬐嬖嬨嬚嬠嬞寯嶬嶱嶩嶧嶵嶰嶮嶪嶨嶲嶭嶯嶴幧幨幦幯廩廧廦廨廥彋徼憝憨憖懅憴懆懁懌憺\"],[\"e9a1\",\"憿憸憌擗擖擐擏擉撽撉擃擛擳擙攳敿敼斢曈暾曀曊曋曏暽暻暺曌朣樴橦橉橧樲橨樾橝橭橶橛橑樨橚樻樿橁橪橤橐橏橔橯橩橠樼橞橖橕橍橎橆歕歔歖殧殪殫毈毇氄氃氆澭濋澣濇澼濎濈潞濄澽澞濊澨瀄澥澮澺澬澪濏澿澸\"],[\"ea40\",\"澢濉澫濍澯澲澰燅燂熿熸燖燀燁燋燔燊燇燏熽燘熼燆燚燛犝犞獩獦獧獬獥獫獪瑿璚璠璔璒璕璡甋疀瘯瘭瘱瘽瘳瘼瘵瘲瘰皻盦瞚瞝瞡瞜瞛瞢瞣瞕瞙\"],[\"eaa1\",\"瞗磝磩磥磪磞磣磛磡磢磭磟磠禤穄穈穇窶窸窵窱窷篞篣篧篝篕篥篚篨篹篔篪篢篜篫篘篟糒糔糗糐糑縒縡縗縌縟縠縓縎縜縕縚縢縋縏縖縍縔縥縤罃罻罼罺羱翯耪耩聬膱膦膮膹膵膫膰膬膴膲膷膧臲艕艖艗蕖蕅蕫蕍蕓蕡蕘\"],[\"eb40\",\"蕀蕆蕤蕁蕢蕄蕑蕇蕣蔾蕛蕱蕎蕮蕵蕕蕧蕠薌蕦蕝蕔蕥蕬虣虥虤螛螏螗螓螒螈螁螖螘蝹螇螣螅螐螑螝螄螔螜螚螉褞褦褰褭褮褧褱褢褩褣褯褬褟觱諠\"],[\"eba1\",\"諢諲諴諵諝謔諤諟諰諈諞諡諨諿諯諻貑貒貐賵賮賱賰賳赬赮趥趧踳踾踸蹀蹅踶踼踽蹁踰踿躽輶輮輵輲輹輷輴遶遹遻邆郺鄳鄵鄶醓醐醑醍醏錧錞錈錟錆錏鍺錸錼錛錣錒錁鍆錭錎錍鋋錝鋺錥錓鋹鋷錴錂錤鋿錩錹錵錪錔錌\"],[\"ec40\",\"錋鋾錉錀鋻錖閼闍閾閹閺閶閿閵閽隩雔霋霒霐鞙鞗鞔韰韸頵頯頲餤餟餧餩馞駮駬駥駤駰駣駪駩駧骹骿骴骻髶髺髹髷鬳鮀鮅鮇魼魾魻鮂鮓鮒鮐魺鮕\"],[\"eca1\",\"魽鮈鴥鴗鴠鴞鴔鴩鴝鴘鴢鴐鴙鴟麈麆麇麮麭黕黖黺鼒鼽儦儥儢儤儠儩勴嚓嚌嚍嚆嚄嚃噾嚂噿嚁壖壔壏壒嬭嬥嬲嬣嬬嬧嬦嬯嬮孻寱寲嶷幬幪徾徻懃憵憼懧懠懥懤懨懞擯擩擣擫擤擨斁斀斶旚曒檍檖檁檥檉檟檛檡檞檇檓檎\"],[\"ed40\",\"檕檃檨檤檑橿檦檚檅檌檒歛殭氉濌澩濴濔濣濜濭濧濦濞濲濝濢濨燡燱燨燲燤燰燢獳獮獯璗璲璫璐璪璭璱璥璯甐甑甒甏疄癃癈癉癇皤盩瞵瞫瞲瞷瞶\"],[\"eda1\",\"瞴瞱瞨矰磳磽礂磻磼磲礅磹磾礄禫禨穜穛穖穘穔穚窾竀竁簅簏篲簀篿篻簎篴簋篳簂簉簃簁篸篽簆篰篱簐簊糨縭縼繂縳顈縸縪繉繀繇縩繌縰縻縶繄縺罅罿罾罽翴翲耬膻臄臌臊臅臇膼臩艛艚艜薃薀薏薧薕薠薋薣蕻薤薚薞\"],[\"ee40\",\"蕷蕼薉薡蕺蕸蕗薎薖薆薍薙薝薁薢薂薈薅蕹蕶薘薐薟虨螾螪螭蟅螰螬螹螵螼螮蟉蟃蟂蟌螷螯蟄蟊螴螶螿螸螽蟞螲褵褳褼褾襁襒褷襂覭覯覮觲觳謞\"],[\"eea1\",\"謘謖謑謅謋謢謏謒謕謇謍謈謆謜謓謚豏豰豲豱豯貕貔賹赯蹎蹍蹓蹐蹌蹇轃轀邅遾鄸醚醢醛醙醟醡醝醠鎡鎃鎯鍤鍖鍇鍼鍘鍜鍶鍉鍐鍑鍠鍭鎏鍌鍪鍹鍗鍕鍒鍏鍱鍷鍻鍡鍞鍣鍧鎀鍎鍙闇闀闉闃闅閷隮隰隬霠霟霘霝霙鞚鞡鞜\"],[\"ef40\",\"鞞鞝韕韔韱顁顄顊顉顅顃餥餫餬餪餳餲餯餭餱餰馘馣馡騂駺駴駷駹駸駶駻駽駾駼騃骾髾髽鬁髼魈鮚鮨鮞鮛鮦鮡鮥鮤鮆鮢鮠鮯鴳鵁鵧鴶鴮鴯鴱鴸鴰\"],[\"efa1\",\"鵅鵂鵃鴾鴷鵀鴽翵鴭麊麉麍麰黈黚黻黿鼤鼣鼢齔龠儱儭儮嚘嚜嚗嚚嚝嚙奰嬼屩屪巀幭幮懘懟懭懮懱懪懰懫懖懩擿攄擽擸攁攃擼斔旛曚曛曘櫅檹檽櫡櫆檺檶檷櫇檴檭歞毉氋瀇瀌瀍瀁瀅瀔瀎濿瀀濻瀦濼濷瀊爁燿燹爃燽獶\"],[\"f040\",\"璸瓀璵瓁璾璶璻瓂甔甓癜癤癙癐癓癗癚皦皽盬矂瞺磿礌礓礔礉礐礒礑禭禬穟簜簩簙簠簟簭簝簦簨簢簥簰繜繐繖繣繘繢繟繑繠繗繓羵羳翷翸聵臑臒\"],[\"f0a1\",\"臐艟艞薴藆藀藃藂薳薵薽藇藄薿藋藎藈藅薱薶藒蘤薸薷薾虩蟧蟦蟢蟛蟫蟪蟥蟟蟳蟤蟔蟜蟓蟭蟘蟣螤蟗蟙蠁蟴蟨蟝襓襋襏襌襆襐襑襉謪謧謣謳謰謵譇謯謼謾謱謥謷謦謶謮謤謻謽謺豂豵貙貘貗賾贄贂贀蹜蹢蹠蹗蹖蹞蹥蹧\"],[\"f140\",\"蹛蹚蹡蹝蹩蹔轆轇轈轋鄨鄺鄻鄾醨醥醧醯醪鎵鎌鎒鎷鎛鎝鎉鎧鎎鎪鎞鎦鎕鎈鎙鎟鎍鎱鎑鎲鎤鎨鎴鎣鎥闒闓闑隳雗雚巂雟雘雝霣霢霥鞬鞮鞨鞫鞤鞪\"],[\"f1a1\",\"鞢鞥韗韙韖韘韺顐顑顒颸饁餼餺騏騋騉騍騄騑騊騅騇騆髀髜鬈鬄鬅鬩鬵魊魌魋鯇鯆鯃鮿鯁鮵鮸鯓鮶鯄鮹鮽鵜鵓鵏鵊鵛鵋鵙鵖鵌鵗鵒鵔鵟鵘鵚麎麌黟鼁鼀鼖鼥鼫鼪鼩鼨齌齕儴儵劖勷厴嚫嚭嚦嚧嚪嚬壚壝壛夒嬽嬾嬿巃幰\"],[\"f240\",\"徿懻攇攐攍攉攌攎斄旞旝曞櫧櫠櫌櫑櫙櫋櫟櫜櫐櫫櫏櫍櫞歠殰氌瀙瀧瀠瀖瀫瀡瀢瀣瀩瀗瀤瀜瀪爌爊爇爂爅犥犦犤犣犡瓋瓅璷瓃甖癠矉矊矄矱礝礛\"],[\"f2a1\",\"礡礜礗礞禰穧穨簳簼簹簬簻糬糪繶繵繸繰繷繯繺繲繴繨罋罊羃羆羷翽翾聸臗臕艤艡艣藫藱藭藙藡藨藚藗藬藲藸藘藟藣藜藑藰藦藯藞藢蠀蟺蠃蟶蟷蠉蠌蠋蠆蟼蠈蟿蠊蠂襢襚襛襗襡襜襘襝襙覈覷覶觶譐譈譊譀譓譖譔譋譕\"],[\"f340\",\"譑譂譒譗豃豷豶貚贆贇贉趬趪趭趫蹭蹸蹳蹪蹯蹻軂轒轑轏轐轓辴酀鄿醰醭鏞鏇鏏鏂鏚鏐鏹鏬鏌鏙鎩鏦鏊鏔鏮鏣鏕鏄鏎鏀鏒鏧镽闚闛雡霩霫霬霨霦\"],[\"f3a1\",\"鞳鞷鞶韝韞韟顜顙顝顗颿颽颻颾饈饇饃馦馧騚騕騥騝騤騛騢騠騧騣騞騜騔髂鬋鬊鬎鬌鬷鯪鯫鯠鯞鯤鯦鯢鯰鯔鯗鯬鯜鯙鯥鯕鯡鯚鵷鶁鶊鶄鶈鵱鶀鵸鶆鶋鶌鵽鵫鵴鵵鵰鵩鶅鵳鵻鶂鵯鵹鵿鶇鵨麔麑黀黼鼭齀齁齍齖齗齘匷嚲\"],[\"f440\",\"嚵嚳壣孅巆巇廮廯忀忁懹攗攖攕攓旟曨曣曤櫳櫰櫪櫨櫹櫱櫮櫯瀼瀵瀯瀷瀴瀱灂瀸瀿瀺瀹灀瀻瀳灁爓爔犨獽獼璺皫皪皾盭矌矎矏矍矲礥礣礧礨礤礩\"],[\"f4a1\",\"禲穮穬穭竷籉籈籊籇籅糮繻繾纁纀羺翿聹臛臙舋艨艩蘢藿蘁藾蘛蘀藶蘄蘉蘅蘌藽蠙蠐蠑蠗蠓蠖襣襦覹觷譠譪譝譨譣譥譧譭趮躆躈躄轙轖轗轕轘轚邍酃酁醷醵醲醳鐋鐓鏻鐠鐏鐔鏾鐕鐐鐨鐙鐍鏵鐀鏷鐇鐎鐖鐒鏺鐉鏸鐊鏿\"],[\"f540\",\"鏼鐌鏶鐑鐆闞闠闟霮霯鞹鞻韽韾顠顢顣顟飁飂饐饎饙饌饋饓騲騴騱騬騪騶騩騮騸騭髇髊髆鬐鬒鬑鰋鰈鯷鰅鰒鯸鱀鰇鰎鰆鰗鰔鰉鶟鶙鶤鶝鶒鶘鶐鶛\"],[\"f5a1\",\"鶠鶔鶜鶪鶗鶡鶚鶢鶨鶞鶣鶿鶩鶖鶦鶧麙麛麚黥黤黧黦鼰鼮齛齠齞齝齙龑儺儹劘劗囃嚽嚾孈孇巋巏廱懽攛欂櫼欃櫸欀灃灄灊灈灉灅灆爝爚爙獾甗癪矐礭礱礯籔籓糲纊纇纈纋纆纍罍羻耰臝蘘蘪蘦蘟蘣蘜蘙蘧蘮蘡蘠蘩蘞蘥\"],[\"f640\",\"蠩蠝蠛蠠蠤蠜蠫衊襭襩襮襫觺譹譸譅譺譻贐贔趯躎躌轞轛轝酆酄酅醹鐿鐻鐶鐩鐽鐼鐰鐹鐪鐷鐬鑀鐱闥闤闣霵霺鞿韡顤飉飆飀饘饖騹騽驆驄驂驁騺\"],[\"f6a1\",\"騿髍鬕鬗鬘鬖鬺魒鰫鰝鰜鰬鰣鰨鰩鰤鰡鶷鶶鶼鷁鷇鷊鷏鶾鷅鷃鶻鶵鷎鶹鶺鶬鷈鶱鶭鷌鶳鷍鶲鹺麜黫黮黭鼛鼘鼚鼱齎齥齤龒亹囆囅囋奱孋孌巕巑廲攡攠攦攢欋欈欉氍灕灖灗灒爞爟犩獿瓘瓕瓙瓗癭皭礵禴穰穱籗籜籙籛籚\"],[\"f740\",\"糴糱纑罏羇臞艫蘴蘵蘳蘬蘲蘶蠬蠨蠦蠪蠥襱覿覾觻譾讄讂讆讅譿贕躕躔躚躒躐躖躗轠轢酇鑌鑐鑊鑋鑏鑇鑅鑈鑉鑆霿韣顪顩飋饔饛驎驓驔驌驏驈驊\"],[\"f7a1\",\"驉驒驐髐鬙鬫鬻魖魕鱆鱈鰿鱄鰹鰳鱁鰼鰷鰴鰲鰽鰶鷛鷒鷞鷚鷋鷐鷜鷑鷟鷩鷙鷘鷖鷵鷕鷝麶黰鼵鼳鼲齂齫龕龢儽劙壨壧奲孍巘蠯彏戁戃戄攩攥斖曫欑欒欏毊灛灚爢玂玁玃癰矔籧籦纕艬蘺虀蘹蘼蘱蘻蘾蠰蠲蠮蠳襶襴襳觾\"],[\"f840\",\"讌讎讋讈豅贙躘轤轣醼鑢鑕鑝鑗鑞韄韅頀驖驙鬞鬟鬠鱒鱘鱐鱊鱍鱋鱕鱙鱌鱎鷻鷷鷯鷣鷫鷸鷤鷶鷡鷮鷦鷲鷰鷢鷬鷴鷳鷨鷭黂黐黲黳鼆鼜鼸鼷鼶齃齏\"],[\"f8a1\",\"齱齰齮齯囓囍孎屭攭曭曮欓灟灡灝灠爣瓛瓥矕礸禷禶籪纗羉艭虃蠸蠷蠵衋讔讕躞躟躠躝醾醽釂鑫鑨鑩雥靆靃靇韇韥驞髕魙鱣鱧鱦鱢鱞鱠鸂鷾鸇鸃鸆鸅鸀鸁鸉鷿鷽鸄麠鼞齆齴齵齶囔攮斸欘欙欗欚灢爦犪矘矙礹籩籫糶纚\"],[\"f940\",\"纘纛纙臠臡虆虇虈襹襺襼襻觿讘讙躥躤躣鑮鑭鑯鑱鑳靉顲饟鱨鱮鱭鸋鸍鸐鸏鸒鸑麡黵鼉齇齸齻齺齹圞灦籯蠼趲躦釃鑴鑸鑶鑵驠鱴鱳鱱鱵鸔鸓黶鼊\"],[\"f9a1\",\"龤灨灥糷虪蠾蠽蠿讞貜躩軉靋顳顴飌饡馫驤驦驧鬤鸕鸗齈戇欞爧虌躨钂钀钁驩驨鬮鸙爩虋讟钃鱹麷癵驫鱺鸝灩灪麤齾齉龘碁銹裏墻恒粧嫺╔╦╗╠╬╣╚╩╝╒╤╕╞╪╡╘╧╛╓╥╖╟╫╢╙╨╜║═╭╮╰╯▓\"]]");
-})), Fm = /* @__PURE__ */ i({ default: () => Im }), Im, Lm = n((() => {
-	Im = /*#__PURE__*/ JSON.parse("[[\"8740\",\"䏰䰲䘃䖦䕸𧉧䵷䖳𧲱䳢𧳅㮕䜶䝄䱇䱀𤊿𣘗𧍒𦺋𧃒䱗𪍑䝏䗚䲅𧱬䴇䪤䚡𦬣爥𥩔𡩣𣸆𣽡晍囻\"],[\"8767\",\"綕夝𨮹㷴霴𧯯寛𡵞媤㘥𩺰嫑宷峼杮薓𩥅瑡璝㡵𡵓𣚞𦀡㻬\"],[\"87a1\",\"𥣞㫵竼龗𤅡𨤍𣇪𠪊𣉞䌊蒄龖鐯䤰蘓墖靊鈘秐稲晠権袝瑌篅枂稬剏遆㓦珄𥶹瓆鿇垳䤯呌䄱𣚎堘穲𧭥讏䚮𦺈䆁𥶙箮𢒼鿈𢓁𢓉𢓌鿉蔄𣖻䂴鿊䓡𪷿拁灮鿋\"],[\"8840\",\"㇀\",4,\"𠄌㇅𠃑𠃍㇆㇇𠃋𡿨㇈𠃊㇉㇊㇋㇌𠄎㇍㇎ĀÁǍÀĒÉĚÈŌÓǑÒ࿿Ê̄Ế࿿Ê̌ỀÊāáǎàɑēéěèīíǐìōóǒòūúǔùǖǘǚ\"],[\"88a1\",\"ǜü࿿ê̄ế࿿ê̌ềêɡ⏚⏛\"],[\"8940\",\"𪎩𡅅\"],[\"8943\",\"攊\"],[\"8946\",\"丽滝鵎釟\"],[\"894c\",\"𧜵撑会伨侨兖兴农凤务动医华发变团声处备夲头学实実岚庆总斉柾栄桥济炼电纤纬纺织经统缆缷艺苏药视设询车轧轮\"],[\"89a1\",\"琑糼緍楆竉刧\"],[\"89ab\",\"醌碸酞肼\"],[\"89b0\",\"贋胶𠧧\"],[\"89b5\",\"肟黇䳍鷉鸌䰾𩷶𧀎鸊𪄳㗁\"],[\"89c1\",\"溚舾甙\"],[\"89c5\",\"䤑马骏龙禇𨑬𡷊𠗐𢫦两亁亀亇亿仫伷㑌侽㹈倃傈㑽㒓㒥円夅凛凼刅争剹劐匧㗇厩㕑厰㕓参吣㕭㕲㚁咓咣咴咹哐哯唘唣唨㖘唿㖥㖿嗗㗅\"],[\"8a40\",\"𧶄唥\"],[\"8a43\",\"𠱂𠴕𥄫喐𢳆㧬𠍁蹆𤶸𩓥䁓𨂾睺𢰸㨴䟕𨅝𦧲𤷪擝𠵼𠾴𠳕𡃴撍蹾𠺖𠰋𠽤𢲩𨉖𤓓\"],[\"8a64\",\"𠵆𩩍𨃩䟴𤺧𢳂骲㩧𩗴㿭㔆𥋇𩟔𧣈𢵄鵮頕\"],[\"8a76\",\"䏙𦂥撴哣𢵌𢯊𡁷㧻𡁯\"],[\"8aa1\",\"𦛚𦜖𧦠擪𥁒𠱃蹨𢆡𨭌𠜱\"],[\"8aac\",\"䠋𠆩㿺塳𢶍\"],[\"8ab2\",\"𤗈𠓼𦂗𠽌𠶖啹䂻䎺\"],[\"8abb\",\"䪴𢩦𡂝膪飵𠶜捹㧾𢝵跀嚡摼㹃\"],[\"8ac9\",\"𪘁𠸉𢫏𢳉\"],[\"8ace\",\"𡃈𣧂㦒㨆𨊛㕸𥹉𢃇噒𠼱𢲲𩜠㒼氽𤸻\"],[\"8adf\",\"𧕴𢺋𢈈𪙛𨳍𠹺𠰴𦠜羓𡃏𢠃𢤹㗻𥇣𠺌𠾍𠺪㾓𠼰𠵇𡅏𠹌\"],[\"8af6\",\"𠺫𠮩𠵈𡃀𡄽㿹𢚖搲𠾭\"],[\"8b40\",\"𣏴𧘹𢯎𠵾𠵿𢱑𢱕㨘𠺘𡃇𠼮𪘲𦭐𨳒𨶙𨳊閪哌苄喹\"],[\"8b55\",\"𩻃鰦骶𧝞𢷮煀腭胬尜𦕲脴㞗卟𨂽醶𠻺𠸏𠹷𠻻㗝𤷫㘉𠳖嚯𢞵𡃉𠸐𠹸𡁸𡅈𨈇𡑕𠹹𤹐𢶤婔𡀝𡀞𡃵𡃶垜𠸑\"],[\"8ba1\",\"𧚔𨋍𠾵𠹻𥅾㜃𠾶𡆀𥋘𪊽𤧚𡠺𤅷𨉼墙剨㘚𥜽箲孨䠀䬬鼧䧧鰟鮍𥭴𣄽嗻㗲嚉丨夂𡯁屮靑𠂆乛亻㔾尣彑忄㣺扌攵歺氵氺灬爫丬犭𤣩罒礻糹罓𦉪㓁\"],[\"8bde\",\"𦍋耂肀𦘒𦥑卝衤见𧢲讠贝钅镸长门𨸏韦页风飞饣𩠐鱼鸟黄歯龜丷𠂇阝户钢\"],[\"8c40\",\"倻淾𩱳龦㷉袏𤅎灷峵䬠𥇍㕙𥴰愢𨨲辧釶熑朙玺𣊁𪄇㲋𡦀䬐磤琂冮𨜏䀉橣𪊺䈣蘏𠩯稪𩥇𨫪靕灍匤𢁾鏴盙𨧣龧矝亣俰傼丯众龨吴綋墒壐𡶶庒庙忂𢜒斋\"],[\"8ca1\",\"𣏹椙橃𣱣泿\"],[\"8ca7\",\"爀𤔅玌㻛𤨓嬕璹讃𥲤𥚕窓篬糃繬苸薗龩袐龪躹龫迏蕟駠鈡龬𨶹𡐿䁱䊢娚\"],[\"8cc9\",\"顨杫䉶圽\"],[\"8cce\",\"藖𤥻芿𧄍䲁𦵴嵻𦬕𦾾龭龮宖龯曧繛湗秊㶈䓃𣉖𢞖䎚䔶\"],[\"8ce6\",\"峕𣬚諹屸㴒𣕑嵸龲煗䕘𤃬𡸣䱷㥸㑊𠆤𦱁諌侴𠈹妿腬顖𩣺弻\"],[\"8d40\",\"𠮟\"],[\"8d42\",\"𢇁𨥭䄂䚻𩁹㼇龳𪆵䃸㟖䛷𦱆䅼𨚲𧏿䕭㣔𥒚䕡䔛䶉䱻䵶䗪㿈𤬏㙡䓞䒽䇭崾嵈嵖㷼㠏嶤嶹㠠㠸幂庽弥徃㤈㤔㤿㥍惗愽峥㦉憷憹懏㦸戬抐拥挘㧸嚱\"],[\"8da1\",\"㨃揢揻搇摚㩋擀崕嘡龟㪗斆㪽旿晓㫲暒㬢朖㭂枤栀㭘桊梄㭲㭱㭻椉楃牜楤榟榅㮼槖㯝橥橴橱檂㯬檙㯲檫檵櫔櫶殁毁毪汵沪㳋洂洆洦涁㳯涤涱渕渘温溆𨧀溻滢滚齿滨滩漤漴㵆𣽁澁澾㵪㵵熷岙㶊瀬㶑灐灔灯灿炉𠌥䏁㗱𠻘\"],[\"8e40\",\"𣻗垾𦻓焾𥟠㙎榢𨯩孴穉𥣡𩓙穥穽𥦬窻窰竂竃燑𦒍䇊竚竝竪䇯咲𥰁笋筕笩𥌎𥳾箢筯莜𥮴𦱿篐萡箒箸𥴠㶭𥱥蒒篺簆簵𥳁籄粃𤢂粦晽𤕸糉糇糦籴糳糵糎\"],[\"8ea1\",\"繧䔝𦹄絝𦻖璍綉綫焵綳緒𤁗𦀩緤㴓緵𡟹緥𨍭縝𦄡𦅚繮纒䌫鑬縧罀罁罇礶𦋐駡羗𦍑羣𡙡𠁨䕜𣝦䔃𨌺翺𦒉者耈耝耨耯𪂇𦳃耻耼聡𢜔䦉𦘦𣷣𦛨朥肧𨩈脇脚墰𢛶汿𦒘𤾸擧𡒊舘𡡞橓𤩥𤪕䑺舩𠬍𦩒𣵾俹𡓽蓢荢𦬊𤦧𣔰𡝳𣷸芪椛芳䇛\"],[\"8f40\",\"蕋苐茚𠸖𡞴㛁𣅽𣕚艻苢茘𣺋𦶣𦬅𦮗𣗎㶿茝嗬莅䔋𦶥莬菁菓㑾𦻔橗蕚㒖𦹂𢻯葘𥯤葱㷓䓤檧葊𣲵祘蒨𦮖𦹷𦹃蓞萏莑䒠蒓蓤𥲑䉀𥳀䕃蔴嫲𦺙䔧蕳䔖枿蘖\"],[\"8fa1\",\"𨘥𨘻藁𧂈蘂𡖂𧃍䕫䕪蘨㙈𡢢号𧎚虾蝱𪃸蟮𢰧螱蟚蠏噡虬桖䘏衅衆𧗠𣶹𧗤衞袜䙛袴袵揁装睷𧜏覇覊覦覩覧覼𨨥觧𧤤𧪽誜瞓釾誐𧩙竩𧬺𣾏䜓𧬸煼謌謟𥐰𥕥謿譌譍誩𤩺讐讛誯𡛟䘕衏貛𧵔𧶏貫㜥𧵓賖𧶘𧶽贒贃𡤐賛灜贑𤳉㻐起\"],[\"9040\",\"趩𨀂𡀔𤦊㭼𨆼𧄌竧躭躶軃鋔輙輭𨍥𨐒辥錃𪊟𠩐辳䤪𨧞𨔽𣶻廸𣉢迹𪀔𨚼𨔁𢌥㦀𦻗逷𨔼𧪾遡𨕬𨘋邨𨜓郄𨛦邮都酧㫰醩釄粬𨤳𡺉鈎沟鉁鉢𥖹銹𨫆𣲛𨬌𥗛\"],[\"90a1\",\"𠴱錬鍫𨫡𨯫炏嫃𨫢𨫥䥥鉄𨯬𨰹𨯿鍳鑛躼閅閦鐦閠濶䊹𢙺𨛘𡉼𣸮䧟氜陻隖䅬隣𦻕懚隶磵𨫠隽双䦡𦲸𠉴𦐐𩂯𩃥𤫑𡤕𣌊霱虂霶䨏䔽䖅𤫩灵孁霛靜𩇕靗孊𩇫靟鐥僐𣂷𣂼鞉鞟鞱鞾韀韒韠𥑬韮琜𩐳響韵𩐝𧥺䫑頴頳顋顦㬎𧅵㵑𠘰𤅜\"],[\"9140\",\"𥜆飊颷飈飇䫿𦴧𡛓喰飡飦飬鍸餹𤨩䭲𩡗𩤅駵騌騻騐驘𥜥㛄𩂱𩯕髠髢𩬅髴䰎鬔鬭𨘀倴鬴𦦨㣃𣁽魐魀𩴾婅𡡣鮎𤉋鰂鯿鰌𩹨鷔𩾷𪆒𪆫𪃡𪄣𪇟鵾鶃𪄴鸎梈\"],[\"91a1\",\"鷄𢅛𪆓𪈠𡤻𪈳鴹𪂹𪊴麐麕麞麢䴴麪麯𤍤黁㭠㧥㴝伲㞾𨰫鼂鼈䮖鐤𦶢鼗鼖鼹嚟嚊齅馸𩂋韲葿齢齩竜龎爖䮾𤥵𤦻煷𤧸𤍈𤩑玞𨯚𡣺禟𨥾𨸶鍩鏳𨩄鋬鎁鏋𨥬𤒹爗㻫睲穃烐𤑳𤏸煾𡟯炣𡢾𣖙㻇𡢅𥐯𡟸㜢𡛻𡠹㛡𡝴𡣑𥽋㜣𡛀坛𤨥𡏾𡊨\"],[\"9240\",\"𡏆𡒶蔃𣚦蔃葕𤦔𧅥𣸱𥕜𣻻𧁒䓴𣛮𩦝𦼦柹㜳㰕㷧塬𡤢栐䁗𣜿𤃡𤂋𤄏𦰡哋嚞𦚱嚒𠿟𠮨𠸍鏆𨬓鎜仸儫㠙𤐶亼𠑥𠍿佋侊𥙑婨𠆫𠏋㦙𠌊𠐔㐵伩𠋀𨺳𠉵諚𠈌亘\"],[\"92a1\",\"働儍侢伃𤨎𣺊佂倮偬傁俌俥偘僼兙兛兝兞湶𣖕𣸹𣺿浲𡢄𣺉冨凃𠗠䓝𠒣𠒒𠒑赺𨪜𠜎剙劤𠡳勡鍮䙺熌𤎌𠰠𤦬𡃤槑𠸝瑹㻞璙琔瑖玘䮎𤪼𤂍叐㖄爏𤃉喴𠍅响𠯆圝鉝雴鍦埝垍坿㘾壋媙𨩆𡛺𡝯𡜐娬妸銏婾嫏娒𥥆𡧳𡡡𤊕㛵洅瑃娡𥺃\"],[\"9340\",\"媁𨯗𠐓鏠璌𡌃焅䥲鐈𨧻鎽㞠尞岞幞幈𡦖𡥼𣫮廍孏𡤃𡤄㜁𡢠㛝𡛾㛓脪𨩇𡶺𣑲𨦨弌弎𡤧𡞫婫𡜻孄蘔𧗽衠恾𢡠𢘫忛㺸𢖯𢖾𩂈𦽳懀𠀾𠁆𢘛憙憘恵𢲛𢴇𤛔𩅍\"],[\"93a1\",\"摱𤙥𢭪㨩𢬢𣑐𩣪𢹸挷𪑛撶挱揑𤧣𢵧护𢲡搻敫楲㯴𣂎𣊭𤦉𣊫唍𣋠𡣙𩐿曎𣊉𣆳㫠䆐𥖄𨬢𥖏𡛼𥕛𥐥磮𣄃𡠪𣈴㑤𣈏𣆂𤋉暎𦴤晫䮓昰𧡰𡷫晣𣋒𣋡昞𥡲㣑𣠺𣞼㮙𣞢𣏾瓐㮖枏𤘪梶栞㯄檾㡣𣟕𤒇樳橒櫉欅𡤒攑梘橌㯗橺歗𣿀𣲚鎠鋲𨯪𨫋\"],[\"9440\",\"銉𨀞𨧜鑧涥漋𤧬浧𣽿㶏渄𤀼娽渊塇洤硂焻𤌚𤉶烱牐犇犔𤞏𤜥兹𤪤𠗫瑺𣻸𣙟𤩊𤤗𥿡㼆㺱𤫟𨰣𣼵悧㻳瓌琼鎇琷䒟𦷪䕑疃㽣𤳙𤴆㽘畕癳𪗆㬙瑨𨫌𤦫𤦎㫻\"],[\"94a1\",\"㷍𤩎㻿𤧅𤣳釺圲鍂𨫣𡡤僟𥈡𥇧睸𣈲眎眏睻𤚗𣞁㩞𤣰琸璛㺿𤪺𤫇䃈𤪖𦆮錇𥖁砞碍碈磒珐祙𧝁𥛣䄎禛蒖禥樭𣻺稺秴䅮𡛦䄲鈵秱𠵌𤦌𠊙𣶺𡝮㖗啫㕰㚪𠇔𠰍竢婙𢛵𥪯𥪜娍𠉛磰娪𥯆竾䇹籝籭䈑𥮳𥺼𥺦糍𤧹𡞰粎籼粮檲緜縇緓罎𦉡\"],[\"9540\",\"𦅜𧭈綗𥺂䉪𦭵𠤖柖𠁎𣗏埄𦐒𦏸𤥢翝笧𠠬𥫩𥵃笌𥸎駦虅驣樜𣐿㧢𤧷𦖭騟𦖠蒀𧄧𦳑䓪脷䐂胆脉腂𦞴飃𦩂艢艥𦩑葓𦶧蘐𧈛媆䅿𡡀嬫𡢡嫤𡣘蚠蜨𣶏蠭𧐢娂\"],[\"95a1\",\"衮佅袇袿裦襥襍𥚃襔𧞅𧞄𨯵𨯙𨮜𨧹㺭蒣䛵䛏㟲訽訜𩑈彍鈫𤊄旔焩烄𡡅鵭貟賩𧷜妚矃姰䍮㛔踪躧𤰉輰轊䋴汘澻𢌡䢛潹溋𡟚鯩㚵𤤯邻邗啱䤆醻鐄𨩋䁢𨫼鐧𨰝𨰻蓥訫閙閧閗閖𨴴瑅㻂𤣿𤩂𤏪㻧𣈥随𨻧𨹦𨹥㻌𤧭𤩸𣿮琒瑫㻼靁𩂰\"],[\"9640\",\"桇䨝𩂓𥟟靝鍨𨦉𨰦𨬯𦎾銺嬑譩䤼珹𤈛鞛靱餸𠼦巁𨯅𤪲頟𩓚鋶𩗗釥䓀𨭐𤩧𨭤飜𨩅㼀鈪䤥萔餻饍𧬆㷽馛䭯馪驜𨭥𥣈檏騡嫾騯𩣱䮐𩥈馼䮽䮗鍽塲𡌂堢𤦸\"],[\"96a1\",\"𡓨硄𢜟𣶸棅㵽鑘㤧慐𢞁𢥫愇鱏鱓鱻鰵鰐魿鯏𩸭鮟𪇵𪃾鴡䲮𤄄鸘䲰鴌𪆴𪃭𪃳𩤯鶥蒽𦸒𦿟𦮂藼䔳𦶤𦺄𦷰萠藮𦸀𣟗𦁤秢𣖜𣙀䤭𤧞㵢鏛銾鍈𠊿碹鉷鑍俤㑀遤𥕝砽硔碶硋𡝗𣇉𤥁㚚佲濚濙瀞瀞吔𤆵垻壳垊鴖埗焴㒯𤆬燫𦱀𤾗嬨𡞵𨩉\"],[\"9740\",\"愌嫎娋䊼𤒈㜬䭻𨧼鎻鎸𡣖𠼝葲𦳀𡐓𤋺𢰦𤏁妔𣶷𦝁綨𦅛𦂤𤦹𤦋𨧺鋥珢㻩璴𨭣𡢟㻡𤪳櫘珳珻㻖𤨾𤪔𡟙𤩦𠎧𡐤𤧥瑈𤤖炥𤥶銄珦鍟𠓾錱𨫎𨨖鎆𨯧𥗕䤵𨪂煫\"],[\"97a1\",\"𤥃𠳿嚤𠘚𠯫𠲸唂秄𡟺緾𡛂𤩐𡡒䔮鐁㜊𨫀𤦭妰𡢿𡢃𧒄媡㛢𣵛㚰鉟婹𨪁𡡢鍴㳍𠪴䪖㦊僴㵩㵌𡎜煵䋻𨈘渏𩃤䓫浗𧹏灧沯㳖𣿭𣸭渂漌㵯𠏵畑㚼㓈䚀㻚䡱姄鉮䤾轁𨰜𦯀堒埈㛖𡑒烾𤍢𤩱𢿣𡊰𢎽梹楧𡎘𣓥𧯴𣛟𨪃𣟖𣏺𤲟樚𣚭𦲷萾䓟䓎\"],[\"9840\",\"𦴦𦵑𦲂𦿞漗𧄉茽𡜺菭𦲀𧁓𡟛妉媂𡞳婡婱𡤅𤇼㜭姯𡜼㛇熎鎐暚𤊥婮娫𤊓樫𣻹𧜶𤑛𤋊焝𤉙𨧡侰𦴨峂𤓎𧹍𤎽樌𤉖𡌄炦焳𤏩㶥泟勇𤩏繥姫崯㷳彜𤩝𡟟綤萦\"],[\"98a1\",\"咅𣫺𣌀𠈔坾𠣕𠘙㿥𡾞𪊶瀃𩅛嵰玏糓𨩙𩐠俈翧狍猐𧫴猸猹𥛶獁獈㺩𧬘遬燵𤣲珡臶㻊県㻑沢国琙琞琟㻢㻰㻴㻺瓓㼎㽓畂畭畲疍㽼痈痜㿀癍㿗癴㿜発𤽜熈嘣覀塩䀝睃䀹条䁅㗛瞘䁪䁯属瞾矋売砘点砜䂨砹硇硑硦葈𥔵礳栃礲䄃\"],[\"9940\",\"䄉禑禙辻稆込䅧窑䆲窼艹䇄竏竛䇏両筢筬筻簒簛䉠䉺类粜䊌粸䊔糭输烀𠳏総緔緐緽羮羴犟䎗耠耥笹耮耱联㷌垴炠肷胩䏭脌猪脎脒畠脔䐁㬹腖腙腚\"],[\"99a1\",\"䐓堺腼膄䐥膓䐭膥埯臁臤艔䒏芦艶苊苘苿䒰荗险榊萅烵葤惣蒈䔄蒾蓡蓸蔐蔸蕒䔻蕯蕰藠䕷虲蚒蚲蛯际螋䘆䘗袮裿褤襇覑𧥧訩訸誔誴豑賔賲贜䞘塟跃䟭仮踺嗘坔蹱嗵躰䠷軎転軤軭軲辷迁迊迌逳駄䢭飠鈓䤞鈨鉘鉫銱銮銿\"],[\"9a40\",\"鋣鋫鋳鋴鋽鍃鎄鎭䥅䥑麿鐗匁鐝鐭鐾䥪鑔鑹锭関䦧间阳䧥枠䨤靀䨵鞲韂噔䫤惨颹䬙飱塄餎餙冴餜餷饂饝饢䭰駅䮝騼鬏窃魩鮁鯝鯱鯴䱭鰠㝯𡯂鵉鰺\"],[\"9aa1\",\"黾噐鶓鶽鷀鷼银辶鹻麬麱麽黆铜黢黱黸竈齄𠂔𠊷𠎠椚铃妬𠓗塀铁㞹𠗕𠘕𠙶𡚺块煳𠫂𠫍𠮿呪吆𠯋咞𠯻𠰻𠱓𠱥𠱼惧𠲍噺𠲵𠳝𠳭𠵯𠶲𠷈楕鰯螥𠸄𠸎𠻗𠾐𠼭𠹳尠𠾼帋𡁜𡁏𡁶朞𡁻𡂈𡂖㙇𡂿𡃓𡄯𡄻卤蒭𡋣𡍵𡌶讁𡕷𡘙𡟃𡟇乸炻𡠭𡥪\"],[\"9b40\",\"𡨭𡩅𡰪𡱰𡲬𡻈拃𡻕𡼕熘桕𢁅槩㛈𢉼𢏗𢏺𢜪𢡱𢥏苽𢥧𢦓𢫕覥𢫨辠𢬎鞸𢬿顇骽𢱌\"],[\"9b62\",\"𢲈𢲷𥯨𢴈𢴒𢶷𢶕𢹂𢽴𢿌𣀳𣁦𣌟𣏞徱晈暿𧩹𣕧𣗳爁𤦺矗𣘚𣜖纇𠍆墵朎\"],[\"9ba1\",\"椘𣪧𧙗𥿢𣸑𣺹𧗾𢂚䣐䪸𤄙𨪚𤋮𤌍𤀻𤌴𤎖𤩅𠗊凒𠘑妟𡺨㮾𣳿𤐄𤓖垈𤙴㦛𤜯𨗨𩧉㝢𢇃譞𨭎駖𤠒𤣻𤨕爉𤫀𠱸奥𤺥𤾆𠝹軚𥀬劏圿煱𥊙𥐙𣽊𤪧喼𥑆𥑮𦭒釔㑳𥔿𧘲𥕞䜘𥕢𥕦𥟇𤤿𥡝偦㓻𣏌惞𥤃䝼𨥈𥪮𥮉𥰆𡶐垡煑澶𦄂𧰒遖𦆲𤾚譢𦐂𦑊\"],[\"9c40\",\"嵛𦯷輶𦒄𡤜諪𤧶𦒈𣿯𦔒䯀𦖿𦚵𢜛鑥𥟡憕娧晉侻嚹𤔡𦛼乪𤤴陖涏𦲽㘘襷𦞙𦡮𦐑𦡞營𦣇筂𩃀𠨑𦤦鄄𦤹穅鷰𦧺騦𦨭㙟𦑩𠀡禃𦨴𦭛崬𣔙菏𦮝䛐𦲤画补𦶮墶\"],[\"9ca1\",\"㜜𢖍𧁋𧇍㱔𧊀𧊅銁𢅺𧊋錰𧋦𤧐氹钟𧑐𠻸蠧裵𢤦𨑳𡞱溸𤨪𡠠㦤㚹尐秣䔿暶𩲭𩢤襃𧟌𧡘囖䃟𡘊㦡𣜯𨃨𡏅熭荦𧧝𩆨婧䲷𧂯𨦫𧧽𧨊𧬋𧵦𤅺筃祾𨀉澵𪋟樃𨌘厢𦸇鎿栶靝𨅯𨀣𦦵𡏭𣈯𨁈嶅𨰰𨂃圕頣𨥉嶫𤦈斾槕叒𤪥𣾁㰑朶𨂐𨃴𨄮𡾡𨅏\"],[\"9d40\",\"𨆉𨆯𨈚𨌆𨌯𨎊㗊𨑨𨚪䣺揦𨥖砈鉕𨦸䏲𨧧䏟𨧨𨭆𨯔姸𨰉輋𨿅𩃬筑𩄐𩄼㷷𩅞𤫊运犏嚋𩓧𩗩𩖰𩖸𩜲𩣑𩥉𩥪𩧃𩨨𩬎𩵚𩶛纟𩻸𩼣䲤镇𪊓熢𪋿䶑递𪗋䶜𠲜达嗁\"],[\"9da1\",\"辺𢒰边𤪓䔉繿潖檱仪㓤𨬬𧢝㜺躀𡟵𨀤𨭬𨮙𧨾𦚯㷫𧙕𣲷𥘵𥥖亚𥺁𦉘嚿𠹭踎孭𣺈𤲞揞拐𡟶𡡻攰嘭𥱊吚𥌑㷆𩶘䱽嘢嘞罉𥻘奵𣵀蝰东𠿪𠵉𣚺脗鵞贘瘻鱅癎瞹鍅吲腈苷嘥脲萘肽嗪祢噃吖𠺝㗎嘅嗱曱𨋢㘭甴嗰喺咗啲𠱁𠲖廐𥅈𠹶𢱢\"],[\"9e40\",\"𠺢麫絚嗞𡁵抝靭咔賍燶酶揼掹揾啩𢭃鱲𢺳冚㓟𠶧冧呍唞唓癦踭𦢊疱肶蠄螆裇膶萜𡃁䓬猄𤜆宐茋𦢓噻𢛴𧴯𤆣𧵳𦻐𧊶酰𡇙鈈𣳼𪚩𠺬𠻹牦𡲢䝎𤿂𧿹𠿫䃺\"],[\"9ea1\",\"鱝攟𢶠䣳𤟠𩵼𠿬𠸊恢𧖣𠿭\"],[\"9ead\",\"𦁈𡆇熣纎鵐业丄㕷嬍沲卧㚬㧜卽㚥𤘘墚𤭮舭呋垪𥪕𠥹\"],[\"9ec5\",\"㩒𢑥獴𩺬䴉鯭𣳾𩼰䱛𤾩𩖞𩿞葜𣶶𧊲𦞳𣜠挮紥𣻷𣸬㨪逈勌㹴㙺䗩𠒎癀嫰𠺶硺𧼮墧䂿噼鮋嵴癔𪐴麅䳡痹㟻愙𣃚𤏲\"],[\"9ef5\",\"噝𡊩垧𤥣𩸆刴𧂮㖭汊鵼\"],[\"9f40\",\"籖鬹埞𡝬屓擓𩓐𦌵𧅤蚭𠴨𦴢𤫢𠵱\"],[\"9f4f\",\"凾𡼏嶎霃𡷑麁遌笟鬂峑箣扨挵髿篏鬪籾鬮籂粆鰕篼鬉鼗鰛𤤾齚啳寃俽麘俲剠㸆勑坧偖妷帒韈鶫轜呩鞴饀鞺匬愰\"],[\"9fa1\",\"椬叚鰊鴂䰻陁榀傦畆𡝭駚剳\"],[\"9fae\",\"酙隁酜\"],[\"9fb2\",\"酑𨺗捿𦴣櫊嘑醎畺抅𠏼獏籰𥰡𣳽\"],[\"9fc1\",\"𤤙盖鮝个𠳔莾衂\"],[\"9fc9\",\"届槀僭坺刟巵从氱𠇲伹咜哚劚趂㗾弌㗳\"],[\"9fdb\",\"歒酼龥鮗頮颴骺麨麄煺笔\"],[\"9fe7\",\"毺蠘罸\"],[\"9feb\",\"嘠𪙊蹷齓\"],[\"9ff0\",\"跔蹏鸜踁抂𨍽踨蹵竓𤩷稾磘泪詧瘇\"],[\"a040\",\"𨩚鼦泎蟖痃𪊲硓咢贌狢獱謭猂瓱賫𤪻蘯徺袠䒷\"],[\"a055\",\"𡠻𦸅\"],[\"a058\",\"詾𢔛\"],[\"a05b\",\"惽癧髗鵄鍮鮏蟵\"],[\"a063\",\"蠏賷猬霡鮰㗖犲䰇籑饊𦅙慙䰄麖慽\"],[\"a073\",\"坟慯抦戹拎㩜懢厪𣏵捤栂㗒\"],[\"a0a1\",\"嵗𨯂迚𨸹\"],[\"a0a6\",\"僙𡵆礆匲阸𠼻䁥\"],[\"a0ae\",\"矾\"],[\"a0b0\",\"糂𥼚糚稭聦聣絍甅瓲覔舚朌聢𧒆聛瓰脃眤覉𦟌畓𦻑螩蟎臈螌詉貭譃眫瓸蓚㘵榲趦\"],[\"a0d4\",\"覩瑨涹蟁𤀑瓧㷛煶悤憜㳑煢恷\"],[\"a0e2\",\"罱𨬭牐惩䭾删㰘𣳇𥻗𧙖𥔱𡥄𡋾𩤃𦷜𧂭峁𦆭𨨏𣙷𠃮𦡆𤼎䕢嬟𦍌齐麦𦉫\"],[\"a3c0\",\"␀\",31,\"␡\"],[\"c6a1\",\"①\",9,\"⑴\",9,\"ⅰ\",9,\"丶丿亅亠冂冖冫勹匸卩厶夊宀巛⼳广廴彐彡攴无疒癶辵隶¨ˆヽヾゝゞ〃仝々〆〇ー［］✽ぁ\",23],[\"c740\",\"す\",58,\"ァアィイ\"],[\"c7a1\",\"ゥ\",81,\"А\",5,\"ЁЖ\",4],[\"c840\",\"Л\",26,\"ёж\",25,\"⇧↸↹㇏𠃌乚𠂊刂䒑\"],[\"c8a1\",\"龰冈龱𧘇\"],[\"c8cd\",\"￢￤＇＂㈱№℡゛゜⺀⺄⺆⺇⺈⺊⺌⺍⺕⺜⺝⺥⺧⺪⺬⺮⺶⺼⺾⻆⻊⻌⻍⻏⻖⻗⻞⻣\"],[\"c8f5\",\"ʃɐɛɔɵœøŋʊɪ\"],[\"f9fe\",\"￭\"],[\"fa40\",\"𠕇鋛𠗟𣿅蕌䊵珯况㙉𤥂𨧤鍄𡧛苮𣳈砼杄拟𤤳𨦪𠊠𦮳𡌅侫𢓭倈𦴩𧪄𣘀𤪱𢔓倩𠍾徤𠎀𠍇滛𠐟偽儁㑺儎顬㝃萖𤦤𠒇兠𣎴兪𠯿𢃼𠋥𢔰𠖎𣈳𡦃宂蝽𠖳𣲙冲冸\"],[\"faa1\",\"鴴凉减凑㳜凓𤪦决凢卂凭菍椾𣜭彻刋刦刼劵剗劔効勅簕蕂勠蘍𦬓包𨫞啉滙𣾀𠥔𣿬匳卄𠯢泋𡜦栛珕恊㺪㣌𡛨燝䒢卭却𨚫卾卿𡖖𡘓矦厓𨪛厠厫厮玧𥝲㽙玜叁叅汉义埾叙㪫𠮏叠𣿫𢶣叶𠱷吓灹唫晗浛呭𦭓𠵴啝咏咤䞦𡜍𠻝㶴𠵍\"],[\"fb40\",\"𨦼𢚘啇䳭启琗喆喩嘅𡣗𤀺䕒𤐵暳𡂴嘷曍𣊊暤暭噍噏磱囱鞇叾圀囯园𨭦㘣𡉏坆𤆥汮炋坂㚱𦱾埦𡐖堃𡑔𤍣堦𤯵塜墪㕡壠壜𡈼壻寿坃𪅐𤉸鏓㖡够梦㛃湙\"],[\"fba1\",\"𡘾娤啓𡚒蔅姉𠵎𦲁𦴪𡟜姙𡟻𡞲𦶦浱𡠨𡛕姹𦹅媫婣㛦𤦩婷㜈媖瑥嫓𦾡𢕔㶅𡤑㜲𡚸広勐孶斈孼𧨎䀄䡝𠈄寕慠𡨴𥧌𠖥寳宝䴐尅𡭄尓珎尔𡲥𦬨屉䣝岅峩峯嶋𡷹𡸷崐崘嵆𡺤岺巗苼㠭𤤁𢁉𢅳芇㠶㯂帮檊幵幺𤒼𠳓厦亷廐厨𡝱帉廴𨒂\"],[\"fc40\",\"廹廻㢠廼栾鐛弍𠇁弢㫞䢮𡌺强𦢈𢏐彘𢑱彣鞽𦹮彲鍀𨨶徧嶶㵟𥉐𡽪𧃸𢙨釖𠊞𨨩怱暅𡡷㥣㷇㘹垐𢞴祱㹀悞悤悳𤦂𤦏𧩓璤僡媠慤萤慂慈𦻒憁凴𠙖憇宪𣾷\"],[\"fca1\",\"𢡟懓𨮝𩥝懐㤲𢦀𢣁怣慜攞掋𠄘担𡝰拕𢸍捬𤧟㨗搸揸𡎎𡟼撐澊𢸶頔𤂌𥜝擡擥鑻㩦携㩗敍漖𤨨𤨣斅敭敟𣁾斵𤥀䬷旑䃘𡠩无旣忟𣐀昘𣇷𣇸晄𣆤𣆥晋𠹵晧𥇦晳晴𡸽𣈱𨗴𣇈𥌓矅𢣷馤朂𤎜𤨡㬫槺𣟂杞杧杢𤇍𩃭柗䓩栢湐鈼栁𣏦𦶠桝\"],[\"fd40\",\"𣑯槡樋𨫟楳棃𣗍椁椀㴲㨁𣘼㮀枬楡𨩊䋼椶榘㮡𠏉荣傐槹𣙙𢄪橅𣜃檝㯳枱櫈𩆜㰍欝𠤣惞欵歴𢟍溵𣫛𠎵𡥘㝀吡𣭚毡𣻼毜氷𢒋𤣱𦭑汚舦汹𣶼䓅𣶽𤆤𤤌𤤀\"],[\"fda1\",\"𣳉㛥㳫𠴲鮃𣇹𢒑羏样𦴥𦶡𦷫涖浜湼漄𤥿𤂅𦹲蔳𦽴凇沜渝萮𨬡港𣸯瑓𣾂秌湏媑𣁋濸㜍澝𣸰滺𡒗𤀽䕕鏰潄潜㵎潴𩅰㴻澟𤅄濓𤂑𤅕𤀹𣿰𣾴𤄿凟𤅖𤅗𤅀𦇝灋灾炧炁烌烕烖烟䄄㷨熴熖𤉷焫煅媈煊煮岜𤍥煏鍢𤋁焬𤑚𤨧𤨢熺𨯨炽爎\"],[\"fe40\",\"鑂爕夑鑃爤鍁𥘅爮牀𤥴梽牕牗㹕𣁄栍漽犂猪猫𤠣𨠫䣭𨠄猨献珏玪𠰺𦨮珉瑉𤇢𡛧𤨤昣㛅𤦷𤦍𤧻珷琕椃𤨦琹𠗃㻗瑜𢢭瑠𨺲瑇珤瑶莹瑬㜰瑴鏱樬璂䥓𤪌\"],[\"fea1\",\"𤅟𤩹𨮏孆𨰃𡢞瓈𡦈甎瓩甞𨻙𡩋寗𨺬鎅畍畊畧畮𤾂㼄𤴓疎瑝疞疴瘂瘬癑癏癯癶𦏵皐臯㟸𦤑𦤎皡皥皷盌𦾟葢𥂝𥅽𡸜眞眦着撯𥈠睘𣊬瞯𨥤𨥨𡛁矴砉𡍶𤨒棊碯磇磓隥礮𥗠磗礴碱𧘌辸袄𨬫𦂃𢘜禆褀椂禀𥡗禝𧬹礼禩渪𧄦㺨秆𩄍秔\"]]");
-})), Rm = /* @__PURE__ */ a(((t, n) => {
+})), jm = /* @__PURE__ */ i({ default: () => Mm }), Mm, Nm = n((() => {
+	Mm = /*#__PURE__*/ JSON.parse("[[\"0\",\"\\u0000\",127],[\"8141\",\"갂갃갅갆갋\",4,\"갘갞갟갡갢갣갥\",6,\"갮갲갳갴\"],[\"8161\",\"갵갶갷갺갻갽갾갿걁\",9,\"걌걎\",5,\"걕\"],[\"8181\",\"걖걗걙걚걛걝\",18,\"걲걳걵걶걹걻\",4,\"겂겇겈겍겎겏겑겒겓겕\",6,\"겞겢\",5,\"겫겭겮겱\",6,\"겺겾겿곀곂곃곅곆곇곉곊곋곍\",7,\"곖곘\",7,\"곢곣곥곦곩곫곭곮곲곴곷\",4,\"곾곿괁괂괃괅괇\",4,\"괎괐괒괓\"],[\"8241\",\"괔괕괖괗괙괚괛괝괞괟괡\",7,\"괪괫괮\",5],[\"8261\",\"괶괷괹괺괻괽\",6,\"굆굈굊\",5,\"굑굒굓굕굖굗\"],[\"8281\",\"굙\",7,\"굢굤\",7,\"굮굯굱굲굷굸굹굺굾궀궃\",4,\"궊궋궍궎궏궑\",10,\"궞\",5,\"궥\",17,\"궸\",7,\"귂귃귅귆귇귉\",6,\"귒귔\",7,\"귝귞귟귡귢귣귥\",18],[\"8341\",\"귺귻귽귾긂\",5,\"긊긌긎\",5,\"긕\",7],[\"8361\",\"긝\",18,\"긲긳긵긶긹긻긼\"],[\"8381\",\"긽긾긿깂깄깇깈깉깋깏깑깒깓깕깗\",4,\"깞깢깣깤깦깧깪깫깭깮깯깱\",6,\"깺깾\",5,\"꺆\",5,\"꺍\",46,\"꺿껁껂껃껅\",6,\"껎껒\",5,\"껚껛껝\",8],[\"8441\",\"껦껧껩껪껬껮\",5,\"껵껶껷껹껺껻껽\",8],[\"8461\",\"꼆꼉꼊꼋꼌꼎꼏꼑\",18],[\"8481\",\"꼤\",7,\"꼮꼯꼱꼳꼵\",6,\"꼾꽀꽄꽅꽆꽇꽊\",5,\"꽑\",10,\"꽞\",5,\"꽦\",18,\"꽺\",5,\"꾁꾂꾃꾅꾆꾇꾉\",6,\"꾒꾓꾔꾖\",5,\"꾝\",26,\"꾺꾻꾽꾾\"],[\"8541\",\"꾿꿁\",5,\"꿊꿌꿏\",4,\"꿕\",6,\"꿝\",4],[\"8561\",\"꿢\",5,\"꿪\",5,\"꿲꿳꿵꿶꿷꿹\",6,\"뀂뀃\"],[\"8581\",\"뀅\",6,\"뀍뀎뀏뀑뀒뀓뀕\",6,\"뀞\",9,\"뀩\",26,\"끆끇끉끋끍끏끐끑끒끖끘끚끛끜끞\",29,\"끾끿낁낂낃낅\",6,\"낎낐낒\",5,\"낛낝낞낣낤\"],[\"8641\",\"낥낦낧낪낰낲낶낷낹낺낻낽\",6,\"냆냊\",5,\"냒\"],[\"8661\",\"냓냕냖냗냙\",6,\"냡냢냣냤냦\",10],[\"8681\",\"냱\",22,\"넊넍넎넏넑넔넕넖넗넚넞\",4,\"넦넧넩넪넫넭\",6,\"넶넺\",5,\"녂녃녅녆녇녉\",6,\"녒녓녖녗녙녚녛녝녞녟녡\",22,\"녺녻녽녾녿놁놃\",4,\"놊놌놎놏놐놑놕놖놗놙놚놛놝\"],[\"8741\",\"놞\",9,\"놩\",15],[\"8761\",\"놹\",18,\"뇍뇎뇏뇑뇒뇓뇕\"],[\"8781\",\"뇖\",5,\"뇞뇠\",7,\"뇪뇫뇭뇮뇯뇱\",7,\"뇺뇼뇾\",5,\"눆눇눉눊눍\",6,\"눖눘눚\",5,\"눡\",18,\"눵\",6,\"눽\",26,\"뉙뉚뉛뉝뉞뉟뉡\",6,\"뉪\",4],[\"8841\",\"뉯\",4,\"뉶\",5,\"뉽\",6,\"늆늇늈늊\",4],[\"8861\",\"늏늒늓늕늖늗늛\",4,\"늢늤늧늨늩늫늭늮늯늱늲늳늵늶늷\"],[\"8881\",\"늸\",15,\"닊닋닍닎닏닑닓\",4,\"닚닜닞닟닠닡닣닧닩닪닰닱닲닶닼닽닾댂댃댅댆댇댉\",6,\"댒댖\",5,\"댝\",54,\"덗덙덚덝덠덡덢덣\"],[\"8941\",\"덦덨덪덬덭덯덲덳덵덶덷덹\",6,\"뎂뎆\",5,\"뎍\"],[\"8961\",\"뎎뎏뎑뎒뎓뎕\",10,\"뎢\",5,\"뎩뎪뎫뎭\"],[\"8981\",\"뎮\",21,\"돆돇돉돊돍돏돑돒돓돖돘돚돜돞돟돡돢돣돥돦돧돩\",18,\"돽\",18,\"됑\",6,\"됙됚됛됝됞됟됡\",6,\"됪됬\",7,\"됵\",15],[\"8a41\",\"둅\",10,\"둒둓둕둖둗둙\",6,\"둢둤둦\"],[\"8a61\",\"둧\",4,\"둭\",18,\"뒁뒂\"],[\"8a81\",\"뒃\",4,\"뒉\",19,\"뒞\",5,\"뒥뒦뒧뒩뒪뒫뒭\",7,\"뒶뒸뒺\",5,\"듁듂듃듅듆듇듉\",6,\"듑듒듓듔듖\",5,\"듞듟듡듢듥듧\",4,\"듮듰듲\",5,\"듹\",26,\"딖딗딙딚딝\"],[\"8b41\",\"딞\",5,\"딦딫\",4,\"딲딳딵딶딷딹\",6,\"땂땆\"],[\"8b61\",\"땇땈땉땊땎땏땑땒땓땕\",6,\"땞땢\",8],[\"8b81\",\"땫\",52,\"떢떣떥떦떧떩떬떭떮떯떲떶\",4,\"떾떿뗁뗂뗃뗅\",6,\"뗎뗒\",5,\"뗙\",18,\"뗭\",18],[\"8c41\",\"똀\",15,\"똒똓똕똖똗똙\",4],[\"8c61\",\"똞\",6,\"똦\",5,\"똭\",6,\"똵\",5],[\"8c81\",\"똻\",12,\"뙉\",26,\"뙥뙦뙧뙩\",50,\"뚞뚟뚡뚢뚣뚥\",5,\"뚭뚮뚯뚰뚲\",16],[\"8d41\",\"뛃\",16,\"뛕\",8],[\"8d61\",\"뛞\",17,\"뛱뛲뛳뛵뛶뛷뛹뛺\"],[\"8d81\",\"뛻\",4,\"뜂뜃뜄뜆\",33,\"뜪뜫뜭뜮뜱\",6,\"뜺뜼\",7,\"띅띆띇띉띊띋띍\",6,\"띖\",9,\"띡띢띣띥띦띧띩\",6,\"띲띴띶\",5,\"띾띿랁랂랃랅\",6,\"랎랓랔랕랚랛랝랞\"],[\"8e41\",\"랟랡\",6,\"랪랮\",5,\"랶랷랹\",8],[\"8e61\",\"럂\",4,\"럈럊\",19],[\"8e81\",\"럞\",13,\"럮럯럱럲럳럵\",6,\"럾렂\",4,\"렊렋렍렎렏렑\",6,\"렚렜렞\",5,\"렦렧렩렪렫렭\",6,\"렶렺\",5,\"롁롂롃롅\",11,\"롒롔\",7,\"롞롟롡롢롣롥\",6,\"롮롰롲\",5,\"롹롺롻롽\",7],[\"8f41\",\"뢅\",7,\"뢎\",17],[\"8f61\",\"뢠\",7,\"뢩\",6,\"뢱뢲뢳뢵뢶뢷뢹\",4],[\"8f81\",\"뢾뢿룂룄룆\",5,\"룍룎룏룑룒룓룕\",7,\"룞룠룢\",5,\"룪룫룭룮룯룱\",6,\"룺룼룾\",5,\"뤅\",18,\"뤙\",6,\"뤡\",26,\"뤾뤿륁륂륃륅\",6,\"륍륎륐륒\",5],[\"9041\",\"륚륛륝륞륟륡\",6,\"륪륬륮\",5,\"륶륷륹륺륻륽\"],[\"9061\",\"륾\",5,\"릆릈릋릌릏\",15],[\"9081\",\"릟\",12,\"릮릯릱릲릳릵\",6,\"릾맀맂\",5,\"맊맋맍맓\",4,\"맚맜맟맠맢맦맧맩맪맫맭\",6,\"맶맻\",4,\"먂\",5,\"먉\",11,\"먖\",33,\"먺먻먽먾먿멁멃멄멅멆\"],[\"9141\",\"멇멊멌멏멐멑멒멖멗멙멚멛멝\",6,\"멦멪\",5],[\"9161\",\"멲멳멵멶멷멹\",9,\"몆몈몉몊몋몍\",5],[\"9181\",\"몓\",20,\"몪몭몮몯몱몳\",4,\"몺몼몾\",5,\"뫅뫆뫇뫉\",14,\"뫚\",33,\"뫽뫾뫿묁묂묃묅\",7,\"묎묐묒\",5,\"묙묚묛묝묞묟묡\",6],[\"9241\",\"묨묪묬\",7,\"묷묹묺묿\",4,\"뭆뭈뭊뭋뭌뭎뭑뭒\"],[\"9261\",\"뭓뭕뭖뭗뭙\",7,\"뭢뭤\",7,\"뭭\",4],[\"9281\",\"뭲\",21,\"뮉뮊뮋뮍뮎뮏뮑\",18,\"뮥뮦뮧뮩뮪뮫뮭\",6,\"뮵뮶뮸\",7,\"믁믂믃믅믆믇믉\",6,\"믑믒믔\",35,\"믺믻믽믾밁\"],[\"9341\",\"밃\",4,\"밊밎밐밒밓밙밚밠밡밢밣밦밨밪밫밬밮밯밲밳밵\"],[\"9361\",\"밶밷밹\",6,\"뱂뱆뱇뱈뱊뱋뱎뱏뱑\",8],[\"9381\",\"뱚뱛뱜뱞\",37,\"벆벇벉벊벍벏\",4,\"벖벘벛\",4,\"벢벣벥벦벩\",6,\"벲벶\",5,\"벾벿볁볂볃볅\",7,\"볎볒볓볔볖볗볙볚볛볝\",22,\"볷볹볺볻볽\"],[\"9441\",\"볾\",5,\"봆봈봊\",5,\"봑봒봓봕\",8],[\"9461\",\"봞\",5,\"봥\",6,\"봭\",12],[\"9481\",\"봺\",5,\"뵁\",6,\"뵊뵋뵍뵎뵏뵑\",6,\"뵚\",9,\"뵥뵦뵧뵩\",22,\"붂붃붅붆붋\",4,\"붒붔붖붗붘붛붝\",6,\"붥\",10,\"붱\",6,\"붹\",24],[\"9541\",\"뷒뷓뷖뷗뷙뷚뷛뷝\",11,\"뷪\",5,\"뷱\"],[\"9561\",\"뷲뷳뷵뷶뷷뷹\",6,\"븁븂븄븆\",5,\"븎븏븑븒븓\"],[\"9581\",\"븕\",6,\"븞븠\",35,\"빆빇빉빊빋빍빏\",4,\"빖빘빜빝빞빟빢빣빥빦빧빩빫\",4,\"빲빶\",4,\"빾빿뺁뺂뺃뺅\",6,\"뺎뺒\",5,\"뺚\",13,\"뺩\",14],[\"9641\",\"뺸\",23,\"뻒뻓\"],[\"9661\",\"뻕뻖뻙\",6,\"뻡뻢뻦\",5,\"뻭\",8],[\"9681\",\"뻶\",10,\"뼂\",5,\"뼊\",13,\"뼚뼞\",33,\"뽂뽃뽅뽆뽇뽉\",6,\"뽒뽓뽔뽖\",44],[\"9741\",\"뾃\",16,\"뾕\",8],[\"9761\",\"뾞\",17,\"뾱\",7],[\"9781\",\"뾹\",11,\"뿆\",5,\"뿎뿏뿑뿒뿓뿕\",6,\"뿝뿞뿠뿢\",89,\"쀽쀾쀿\"],[\"9841\",\"쁀\",16,\"쁒\",5,\"쁙쁚쁛\"],[\"9861\",\"쁝쁞쁟쁡\",6,\"쁪\",15],[\"9881\",\"쁺\",21,\"삒삓삕삖삗삙\",6,\"삢삤삦\",5,\"삮삱삲삷\",4,\"삾샂샃샄샆샇샊샋샍샎샏샑\",6,\"샚샞\",5,\"샦샧샩샪샫샭\",6,\"샶샸샺\",5,\"섁섂섃섅섆섇섉\",6,\"섑섒섓섔섖\",5,\"섡섢섥섨섩섪섫섮\"],[\"9941\",\"섲섳섴섵섷섺섻섽섾섿셁\",6,\"셊셎\",5,\"셖셗\"],[\"9961\",\"셙셚셛셝\",6,\"셦셪\",5,\"셱셲셳셵셶셷셹셺셻\"],[\"9981\",\"셼\",8,\"솆\",5,\"솏솑솒솓솕솗\",4,\"솞솠솢솣솤솦솧솪솫솭솮솯솱\",11,\"솾\",5,\"쇅쇆쇇쇉쇊쇋쇍\",6,\"쇕쇖쇙\",6,\"쇡쇢쇣쇥쇦쇧쇩\",6,\"쇲쇴\",7,\"쇾쇿숁숂숃숅\",6,\"숎숐숒\",5,\"숚숛숝숞숡숢숣\"],[\"9a41\",\"숤숥숦숧숪숬숮숰숳숵\",16],[\"9a61\",\"쉆쉇쉉\",6,\"쉒쉓쉕쉖쉗쉙\",6,\"쉡쉢쉣쉤쉦\"],[\"9a81\",\"쉧\",4,\"쉮쉯쉱쉲쉳쉵\",6,\"쉾슀슂\",5,\"슊\",5,\"슑\",6,\"슙슚슜슞\",5,\"슦슧슩슪슫슮\",5,\"슶슸슺\",33,\"싞싟싡싢싥\",5,\"싮싰싲싳싴싵싷싺싽싾싿쌁\",6,\"쌊쌋쌎쌏\"],[\"9b41\",\"쌐쌑쌒쌖쌗쌙쌚쌛쌝\",6,\"쌦쌧쌪\",8],[\"9b61\",\"쌳\",17,\"썆\",7],[\"9b81\",\"썎\",25,\"썪썫썭썮썯썱썳\",4,\"썺썻썾\",5,\"쎅쎆쎇쎉쎊쎋쎍\",50,\"쏁\",22,\"쏚\"],[\"9c41\",\"쏛쏝쏞쏡쏣\",4,\"쏪쏫쏬쏮\",5,\"쏶쏷쏹\",5],[\"9c61\",\"쏿\",8,\"쐉\",6,\"쐑\",9],[\"9c81\",\"쐛\",8,\"쐥\",6,\"쐭쐮쐯쐱쐲쐳쐵\",6,\"쐾\",9,\"쑉\",26,\"쑦쑧쑩쑪쑫쑭\",6,\"쑶쑷쑸쑺\",5,\"쒁\",18,\"쒕\",6,\"쒝\",12],[\"9d41\",\"쒪\",13,\"쒹쒺쒻쒽\",8],[\"9d61\",\"쓆\",25],[\"9d81\",\"쓠\",8,\"쓪\",5,\"쓲쓳쓵쓶쓷쓹쓻쓼쓽쓾씂\",9,\"씍씎씏씑씒씓씕\",6,\"씝\",10,\"씪씫씭씮씯씱\",6,\"씺씼씾\",5,\"앆앇앋앏앐앑앒앖앚앛앜앟앢앣앥앦앧앩\",6,\"앲앶\",5,\"앾앿얁얂얃얅얆얈얉얊얋얎얐얒얓얔\"],[\"9e41\",\"얖얙얚얛얝얞얟얡\",7,\"얪\",9,\"얶\"],[\"9e61\",\"얷얺얿\",4,\"엋엍엏엒엓엕엖엗엙\",6,\"엢엤엦엧\"],[\"9e81\",\"엨엩엪엫엯엱엲엳엵엸엹엺엻옂옃옄옉옊옋옍옎옏옑\",6,\"옚옝\",6,\"옦옧옩옪옫옯옱옲옶옸옺옼옽옾옿왂왃왅왆왇왉\",6,\"왒왖\",5,\"왞왟왡\",10,\"왭왮왰왲\",5,\"왺왻왽왾왿욁\",6,\"욊욌욎\",5,\"욖욗욙욚욛욝\",6,\"욦\"],[\"9f41\",\"욨욪\",5,\"욲욳욵욶욷욻\",4,\"웂웄웆\",5,\"웎\"],[\"9f61\",\"웏웑웒웓웕\",6,\"웞웟웢\",5,\"웪웫웭웮웯웱웲\"],[\"9f81\",\"웳\",4,\"웺웻웼웾\",5,\"윆윇윉윊윋윍\",6,\"윖윘윚\",5,\"윢윣윥윦윧윩\",6,\"윲윴윶윸윹윺윻윾윿읁읂읃읅\",4,\"읋읎읐읙읚읛읝읞읟읡\",6,\"읩읪읬\",7,\"읶읷읹읺읻읿잀잁잂잆잋잌잍잏잒잓잕잙잛\",4,\"잢잧\",4,\"잮잯잱잲잳잵잶잷\"],[\"a041\",\"잸잹잺잻잾쟂\",5,\"쟊쟋쟍쟏쟑\",6,\"쟙쟚쟛쟜\"],[\"a061\",\"쟞\",5,\"쟥쟦쟧쟩쟪쟫쟭\",13],[\"a081\",\"쟻\",4,\"젂젃젅젆젇젉젋\",4,\"젒젔젗\",4,\"젞젟젡젢젣젥\",6,\"젮젰젲\",5,\"젹젺젻젽젾젿졁\",6,\"졊졋졎\",5,\"졕\",26,\"졲졳졵졶졷졹졻\",4,\"좂좄좈좉좊좎\",5,\"좕\",7,\"좞좠좢좣좤\"],[\"a141\",\"좥좦좧좩\",18,\"좾좿죀죁\"],[\"a161\",\"죂죃죅죆죇죉죊죋죍\",6,\"죖죘죚\",5,\"죢죣죥\"],[\"a181\",\"죦\",14,\"죶\",5,\"죾죿줁줂줃줇\",4,\"줎　、。·‥…¨〃­―∥＼∼‘’“”〔〕〈\",9,\"±×÷≠≤≥∞∴°′″℃Å￠￡￥♂♀∠⊥⌒∂∇≡≒§※☆★○●◎◇◆□■△▲▽▼→←↑↓↔〓≪≫√∽∝∵∫∬∈∋⊆⊇⊂⊃∪∩∧∨￢\"],[\"a241\",\"줐줒\",5,\"줙\",18],[\"a261\",\"줭\",6,\"줵\",18],[\"a281\",\"쥈\",7,\"쥒쥓쥕쥖쥗쥙\",6,\"쥢쥤\",7,\"쥭쥮쥯⇒⇔∀∃´～ˇ˘˝˚˙¸˛¡¿ː∮∑∏¤℉‰◁◀▷▶♤♠♡♥♧♣⊙◈▣◐◑▒▤▥▨▧▦▩♨☏☎☜☞¶†‡↕↗↙↖↘♭♩♪♬㉿㈜№㏇™㏂㏘℡€®\"],[\"a341\",\"쥱쥲쥳쥵\",6,\"쥽\",10,\"즊즋즍즎즏\"],[\"a361\",\"즑\",6,\"즚즜즞\",16],[\"a381\",\"즯\",16,\"짂짃짅짆짉짋\",4,\"짒짔짗짘짛！\",58,\"￦］\",32,\"￣\"],[\"a441\",\"짞짟짡짣짥짦짨짩짪짫짮짲\",5,\"짺짻짽짾짿쨁쨂쨃쨄\"],[\"a461\",\"쨅쨆쨇쨊쨎\",5,\"쨕쨖쨗쨙\",12],[\"a481\",\"쨦쨧쨨쨪\",28,\"ㄱ\",93],[\"a541\",\"쩇\",4,\"쩎쩏쩑쩒쩓쩕\",6,\"쩞쩢\",5,\"쩩쩪\"],[\"a561\",\"쩫\",17,\"쩾\",5,\"쪅쪆\"],[\"a581\",\"쪇\",16,\"쪙\",14,\"ⅰ\",9],[\"a5b0\",\"Ⅰ\",9],[\"a5c1\",\"Α\",16,\"Σ\",6],[\"a5e1\",\"α\",16,\"σ\",6],[\"a641\",\"쪨\",19,\"쪾쪿쫁쫂쫃쫅\"],[\"a661\",\"쫆\",5,\"쫎쫐쫒쫔쫕쫖쫗쫚\",5,\"쫡\",6],[\"a681\",\"쫨쫩쫪쫫쫭\",6,\"쫵\",18,\"쬉쬊─│┌┐┘└├┬┤┴┼━┃┏┓┛┗┣┳┫┻╋┠┯┨┷┿┝┰┥┸╂┒┑┚┙┖┕┎┍┞┟┡┢┦┧┩┪┭┮┱┲┵┶┹┺┽┾╀╁╃\",7],[\"a741\",\"쬋\",4,\"쬑쬒쬓쬕쬖쬗쬙\",6,\"쬢\",7],[\"a761\",\"쬪\",22,\"쭂쭃쭄\"],[\"a781\",\"쭅쭆쭇쭊쭋쭍쭎쭏쭑\",6,\"쭚쭛쭜쭞\",5,\"쭥\",7,\"㎕㎖㎗ℓ㎘㏄㎣㎤㎥㎦㎙\",9,\"㏊㎍㎎㎏㏏㎈㎉㏈㎧㎨㎰\",9,\"㎀\",4,\"㎺\",5,\"㎐\",4,\"Ω㏀㏁㎊㎋㎌㏖㏅㎭㎮㎯㏛㎩㎪㎫㎬㏝㏐㏓㏃㏉㏜㏆\"],[\"a841\",\"쭭\",10,\"쭺\",14],[\"a861\",\"쮉\",18,\"쮝\",6],[\"a881\",\"쮤\",19,\"쮹\",11,\"ÆÐªĦ\"],[\"a8a6\",\"Ĳ\"],[\"a8a8\",\"ĿŁØŒºÞŦŊ\"],[\"a8b1\",\"㉠\",27,\"ⓐ\",25,\"①\",14,\"½⅓⅔¼¾⅛⅜⅝⅞\"],[\"a941\",\"쯅\",14,\"쯕\",10],[\"a961\",\"쯠쯡쯢쯣쯥쯦쯨쯪\",18],[\"a981\",\"쯽\",14,\"찎찏찑찒찓찕\",6,\"찞찟찠찣찤æđðħıĳĸŀłøœßþŧŋŉ㈀\",27,\"⒜\",25,\"⑴\",14,\"¹²³⁴ⁿ₁₂₃₄\"],[\"aa41\",\"찥찦찪찫찭찯찱\",6,\"찺찿\",4,\"챆챇챉챊챋챍챎\"],[\"aa61\",\"챏\",4,\"챖챚\",5,\"챡챢챣챥챧챩\",6,\"챱챲\"],[\"aa81\",\"챳챴챶\",29,\"ぁ\",82],[\"ab41\",\"첔첕첖첗첚첛첝첞첟첡\",6,\"첪첮\",5,\"첶첷첹\"],[\"ab61\",\"첺첻첽\",6,\"쳆쳈쳊\",5,\"쳑쳒쳓쳕\",5],[\"ab81\",\"쳛\",8,\"쳥\",6,\"쳭쳮쳯쳱\",12,\"ァ\",85],[\"ac41\",\"쳾쳿촀촂\",5,\"촊촋촍촎촏촑\",6,\"촚촜촞촟촠\"],[\"ac61\",\"촡촢촣촥촦촧촩촪촫촭\",11,\"촺\",4],[\"ac81\",\"촿\",28,\"쵝쵞쵟А\",5,\"ЁЖ\",25],[\"acd1\",\"а\",5,\"ёж\",25],[\"ad41\",\"쵡쵢쵣쵥\",6,\"쵮쵰쵲\",5,\"쵹\",7],[\"ad61\",\"춁\",6,\"춉\",10,\"춖춗춙춚춛춝춞춟\"],[\"ad81\",\"춠춡춢춣춦춨춪\",5,\"춱\",18,\"췅\"],[\"ae41\",\"췆\",5,\"췍췎췏췑\",16],[\"ae61\",\"췢\",5,\"췩췪췫췭췮췯췱\",6,\"췺췼췾\",4],[\"ae81\",\"츃츅츆츇츉츊츋츍\",6,\"츕츖츗츘츚\",5,\"츢츣츥츦츧츩츪츫\"],[\"af41\",\"츬츭츮츯츲츴츶\",19],[\"af61\",\"칊\",13,\"칚칛칝칞칢\",5,\"칪칬\"],[\"af81\",\"칮\",5,\"칶칷칹칺칻칽\",6,\"캆캈캊\",5,\"캒캓캕캖캗캙\"],[\"b041\",\"캚\",5,\"캢캦\",5,\"캮\",12],[\"b061\",\"캻\",5,\"컂\",19],[\"b081\",\"컖\",13,\"컦컧컩컪컭\",6,\"컶컺\",5,\"가각간갇갈갉갊감\",7,\"같\",4,\"갠갤갬갭갯갰갱갸갹갼걀걋걍걔걘걜거걱건걷걸걺검겁것겄겅겆겉겊겋게겐겔겜겝겟겠겡겨격겪견겯결겸겹겻겼경곁계곈곌곕곗고곡곤곧골곪곬곯곰곱곳공곶과곽관괄괆\"],[\"b141\",\"켂켃켅켆켇켉\",6,\"켒켔켖\",5,\"켝켞켟켡켢켣\"],[\"b161\",\"켥\",6,\"켮켲\",5,\"켹\",11],[\"b181\",\"콅\",14,\"콖콗콙콚콛콝\",6,\"콦콨콪콫콬괌괍괏광괘괜괠괩괬괭괴괵괸괼굄굅굇굉교굔굘굡굣구국군굳굴굵굶굻굼굽굿궁궂궈궉권궐궜궝궤궷귀귁귄귈귐귑귓규균귤그극근귿글긁금급긋긍긔기긱긴긷길긺김깁깃깅깆깊까깍깎깐깔깖깜깝깟깠깡깥깨깩깬깰깸\"],[\"b241\",\"콭콮콯콲콳콵콶콷콹\",6,\"쾁쾂쾃쾄쾆\",5,\"쾍\"],[\"b261\",\"쾎\",18,\"쾢\",5,\"쾩\"],[\"b281\",\"쾪\",5,\"쾱\",18,\"쿅\",6,\"깹깻깼깽꺄꺅꺌꺼꺽꺾껀껄껌껍껏껐껑께껙껜껨껫껭껴껸껼꼇꼈꼍꼐꼬꼭꼰꼲꼴꼼꼽꼿꽁꽂꽃꽈꽉꽐꽜꽝꽤꽥꽹꾀꾄꾈꾐꾑꾕꾜꾸꾹꾼꿀꿇꿈꿉꿋꿍꿎꿔꿜꿨꿩꿰꿱꿴꿸뀀뀁뀄뀌뀐뀔뀜뀝뀨끄끅끈끊끌끎끓끔끕끗끙\"],[\"b341\",\"쿌\",19,\"쿢쿣쿥쿦쿧쿩\"],[\"b361\",\"쿪\",5,\"쿲쿴쿶\",5,\"쿽쿾쿿퀁퀂퀃퀅\",5],[\"b381\",\"퀋\",5,\"퀒\",5,\"퀙\",19,\"끝끼끽낀낄낌낍낏낑나낙낚난낟날낡낢남납낫\",4,\"낱낳내낵낸낼냄냅냇냈냉냐냑냔냘냠냥너넉넋넌널넒넓넘넙넛넜넝넣네넥넨넬넴넵넷넸넹녀녁년녈념녑녔녕녘녜녠노녹논놀놂놈놉놋농높놓놔놘놜놨뇌뇐뇔뇜뇝\"],[\"b441\",\"퀮\",5,\"퀶퀷퀹퀺퀻퀽\",6,\"큆큈큊\",5],[\"b461\",\"큑큒큓큕큖큗큙\",6,\"큡\",10,\"큮큯\"],[\"b481\",\"큱큲큳큵\",6,\"큾큿킀킂\",18,\"뇟뇨뇩뇬뇰뇹뇻뇽누눅눈눋눌눔눕눗눙눠눴눼뉘뉜뉠뉨뉩뉴뉵뉼늄늅늉느늑는늘늙늚늠늡늣능늦늪늬늰늴니닉닌닐닒님닙닛닝닢다닥닦단닫\",4,\"닳담답닷\",4,\"닿대댁댄댈댐댑댓댔댕댜더덕덖던덛덜덞덟덤덥\"],[\"b541\",\"킕\",14,\"킦킧킩킪킫킭\",5],[\"b561\",\"킳킶킸킺\",5,\"탂탃탅탆탇탊\",5,\"탒탖\",4],[\"b581\",\"탛탞탟탡탢탣탥\",6,\"탮탲\",5,\"탹\",11,\"덧덩덫덮데덱덴델뎀뎁뎃뎄뎅뎌뎐뎔뎠뎡뎨뎬도독돈돋돌돎돐돔돕돗동돛돝돠돤돨돼됐되된될됨됩됫됴두둑둔둘둠둡둣둥둬뒀뒈뒝뒤뒨뒬뒵뒷뒹듀듄듈듐듕드득든듣들듦듬듭듯등듸디딕딘딛딜딤딥딧딨딩딪따딱딴딸\"],[\"b641\",\"턅\",7,\"턎\",17],[\"b661\",\"턠\",15,\"턲턳턵턶턷턹턻턼턽턾\"],[\"b681\",\"턿텂텆\",5,\"텎텏텑텒텓텕\",6,\"텞텠텢\",5,\"텩텪텫텭땀땁땃땄땅땋때땍땐땔땜땝땟땠땡떠떡떤떨떪떫떰떱떳떴떵떻떼떽뗀뗄뗌뗍뗏뗐뗑뗘뗬또똑똔똘똥똬똴뙈뙤뙨뚜뚝뚠뚤뚫뚬뚱뛔뛰뛴뛸뜀뜁뜅뜨뜩뜬뜯뜰뜸뜹뜻띄띈띌띔띕띠띤띨띰띱띳띵라락란랄람랍랏랐랑랒랖랗\"],[\"b741\",\"텮\",13,\"텽\",6,\"톅톆톇톉톊\"],[\"b761\",\"톋\",20,\"톢톣톥톦톧\"],[\"b781\",\"톩\",6,\"톲톴톶톷톸톹톻톽톾톿퇁\",14,\"래랙랜랠램랩랫랬랭랴략랸럇량러럭런럴럼럽럿렀렁렇레렉렌렐렘렙렛렝려력련렬렴렵렷렸령례롄롑롓로록론롤롬롭롯롱롸롼뢍뢨뢰뢴뢸룀룁룃룅료룐룔룝룟룡루룩룬룰룸룹룻룽뤄뤘뤠뤼뤽륀륄륌륏륑류륙륜률륨륩\"],[\"b841\",\"퇐\",7,\"퇙\",17],[\"b861\",\"퇫\",8,\"퇵퇶퇷퇹\",13],[\"b881\",\"툈툊\",5,\"툑\",24,\"륫륭르륵른를름릅릇릉릊릍릎리릭린릴림립릿링마막만많\",4,\"맘맙맛망맞맡맣매맥맨맬맴맵맷맸맹맺먀먁먈먕머먹먼멀멂멈멉멋멍멎멓메멕멘멜멤멥멧멨멩며멱면멸몃몄명몇몌모목몫몬몰몲몸몹못몽뫄뫈뫘뫙뫼\"],[\"b941\",\"툪툫툮툯툱툲툳툵\",6,\"툾퉀퉂\",5,\"퉉퉊퉋퉌\"],[\"b961\",\"퉍\",14,\"퉝\",6,\"퉥퉦퉧퉨\"],[\"b981\",\"퉩\",22,\"튂튃튅튆튇튉튊튋튌묀묄묍묏묑묘묜묠묩묫무묵묶문묻물묽묾뭄뭅뭇뭉뭍뭏뭐뭔뭘뭡뭣뭬뮈뮌뮐뮤뮨뮬뮴뮷므믄믈믐믓미믹민믿밀밂밈밉밋밌밍및밑바\",4,\"받\",4,\"밤밥밧방밭배백밴밸뱀뱁뱃뱄뱅뱉뱌뱍뱐뱝버벅번벋벌벎범법벗\"],[\"ba41\",\"튍튎튏튒튓튔튖\",5,\"튝튞튟튡튢튣튥\",6,\"튭\"],[\"ba61\",\"튮튯튰튲\",5,\"튺튻튽튾틁틃\",4,\"틊틌\",5],[\"ba81\",\"틒틓틕틖틗틙틚틛틝\",6,\"틦\",9,\"틲틳틵틶틷틹틺벙벚베벡벤벧벨벰벱벳벴벵벼벽변별볍볏볐병볕볘볜보복볶본볼봄봅봇봉봐봔봤봬뵀뵈뵉뵌뵐뵘뵙뵤뵨부북분붇불붉붊붐붑붓붕붙붚붜붤붰붸뷔뷕뷘뷜뷩뷰뷴뷸븀븃븅브븍븐블븜븝븟비빅빈빌빎빔빕빗빙빚빛빠빡빤\"],[\"bb41\",\"틻\",4,\"팂팄팆\",5,\"팏팑팒팓팕팗\",4,\"팞팢팣\"],[\"bb61\",\"팤팦팧팪팫팭팮팯팱\",6,\"팺팾\",5,\"퍆퍇퍈퍉\"],[\"bb81\",\"퍊\",31,\"빨빪빰빱빳빴빵빻빼빽뺀뺄뺌뺍뺏뺐뺑뺘뺙뺨뻐뻑뻔뻗뻘뻠뻣뻤뻥뻬뼁뼈뼉뼘뼙뼛뼜뼝뽀뽁뽄뽈뽐뽑뽕뾔뾰뿅뿌뿍뿐뿔뿜뿟뿡쀼쁑쁘쁜쁠쁨쁩삐삑삔삘삠삡삣삥사삭삯산삳살삵삶삼삽삿샀상샅새색샌샐샘샙샛샜생샤\"],[\"bc41\",\"퍪\",17,\"퍾퍿펁펂펃펅펆펇\"],[\"bc61\",\"펈펉펊펋펎펒\",5,\"펚펛펝펞펟펡\",6,\"펪펬펮\"],[\"bc81\",\"펯\",4,\"펵펶펷펹펺펻펽\",6,\"폆폇폊\",5,\"폑\",5,\"샥샨샬샴샵샷샹섀섄섈섐섕서\",4,\"섣설섦섧섬섭섯섰성섶세섹센셀셈셉셋셌셍셔셕션셜셤셥셧셨셩셰셴셸솅소속솎손솔솖솜솝솟송솥솨솩솬솰솽쇄쇈쇌쇔쇗쇘쇠쇤쇨쇰쇱쇳쇼쇽숀숄숌숍숏숑수숙순숟술숨숩숫숭\"],[\"bd41\",\"폗폙\",7,\"폢폤\",7,\"폮폯폱폲폳폵폶폷\"],[\"bd61\",\"폸폹폺폻폾퐀퐂\",5,\"퐉\",13],[\"bd81\",\"퐗\",5,\"퐞\",25,\"숯숱숲숴쉈쉐쉑쉔쉘쉠쉥쉬쉭쉰쉴쉼쉽쉿슁슈슉슐슘슛슝스슥슨슬슭슴습슷승시식신싣실싫심십싯싱싶싸싹싻싼쌀쌈쌉쌌쌍쌓쌔쌕쌘쌜쌤쌥쌨쌩썅써썩썬썰썲썸썹썼썽쎄쎈쎌쏀쏘쏙쏜쏟쏠쏢쏨쏩쏭쏴쏵쏸쐈쐐쐤쐬쐰\"],[\"be41\",\"퐸\",7,\"푁푂푃푅\",14],[\"be61\",\"푔\",7,\"푝푞푟푡푢푣푥\",7,\"푮푰푱푲\"],[\"be81\",\"푳\",4,\"푺푻푽푾풁풃\",4,\"풊풌풎\",5,\"풕\",8,\"쐴쐼쐽쑈쑤쑥쑨쑬쑴쑵쑹쒀쒔쒜쒸쒼쓩쓰쓱쓴쓸쓺쓿씀씁씌씐씔씜씨씩씬씰씸씹씻씽아악안앉않알앍앎앓암압앗았앙앝앞애액앤앨앰앱앳앴앵야약얀얄얇얌얍얏양얕얗얘얜얠얩어억언얹얻얼얽얾엄\",6,\"엌엎\"],[\"bf41\",\"풞\",10,\"풪\",14],[\"bf61\",\"풹\",18,\"퓍퓎퓏퓑퓒퓓퓕\"],[\"bf81\",\"퓖\",5,\"퓝퓞퓠\",7,\"퓩퓪퓫퓭퓮퓯퓱\",6,\"퓹퓺퓼에엑엔엘엠엡엣엥여역엮연열엶엷염\",5,\"옅옆옇예옌옐옘옙옛옜오옥온올옭옮옰옳옴옵옷옹옻와왁완왈왐왑왓왔왕왜왝왠왬왯왱외왹왼욀욈욉욋욍요욕욘욜욤욥욧용우욱운울욹욺움웁웃웅워웍원월웜웝웠웡웨\"],[\"c041\",\"퓾\",5,\"픅픆픇픉픊픋픍\",6,\"픖픘\",5],[\"c061\",\"픞\",25],[\"c081\",\"픸픹픺픻픾픿핁핂핃핅\",6,\"핎핐핒\",5,\"핚핛핝핞핟핡핢핣웩웬웰웸웹웽위윅윈윌윔윕윗윙유육윤율윰윱윳융윷으윽은을읊음읍읏응\",7,\"읜읠읨읫이익인일읽읾잃임입잇있잉잊잎자작잔잖잗잘잚잠잡잣잤장잦재잭잰잴잼잽잿쟀쟁쟈쟉쟌쟎쟐쟘쟝쟤쟨쟬저적전절젊\"],[\"c141\",\"핤핦핧핪핬핮\",5,\"핶핷핹핺핻핽\",6,\"햆햊햋\"],[\"c161\",\"햌햍햎햏햑\",19,\"햦햧\"],[\"c181\",\"햨\",31,\"점접젓정젖제젝젠젤젬젭젯젱져젼졀졈졉졌졍졔조족존졸졺좀좁좃종좆좇좋좌좍좔좝좟좡좨좼좽죄죈죌죔죕죗죙죠죡죤죵주죽준줄줅줆줌줍줏중줘줬줴쥐쥑쥔쥘쥠쥡쥣쥬쥰쥴쥼즈즉즌즐즘즙즛증지직진짇질짊짐집짓\"],[\"c241\",\"헊헋헍헎헏헑헓\",4,\"헚헜헞\",5,\"헦헧헩헪헫헭헮\"],[\"c261\",\"헯\",4,\"헶헸헺\",5,\"혂혃혅혆혇혉\",6,\"혒\"],[\"c281\",\"혖\",5,\"혝혞혟혡혢혣혥\",7,\"혮\",9,\"혺혻징짖짙짚짜짝짠짢짤짧짬짭짯짰짱째짹짼쨀쨈쨉쨋쨌쨍쨔쨘쨩쩌쩍쩐쩔쩜쩝쩟쩠쩡쩨쩽쪄쪘쪼쪽쫀쫄쫌쫍쫏쫑쫓쫘쫙쫠쫬쫴쬈쬐쬔쬘쬠쬡쭁쭈쭉쭌쭐쭘쭙쭝쭤쭸쭹쮜쮸쯔쯤쯧쯩찌찍찐찔찜찝찡찢찧차착찬찮찰참찹찻\"],[\"c341\",\"혽혾혿홁홂홃홄홆홇홊홌홎홏홐홒홓홖홗홙홚홛홝\",4],[\"c361\",\"홢\",4,\"홨홪\",5,\"홲홳홵\",11],[\"c381\",\"횁횂횄횆\",5,\"횎횏횑횒횓횕\",7,\"횞횠횢\",5,\"횩횪찼창찾채책챈챌챔챕챗챘챙챠챤챦챨챰챵처척천철첨첩첫첬청체첵첸첼쳄쳅쳇쳉쳐쳔쳤쳬쳰촁초촉촌촐촘촙촛총촤촨촬촹최쵠쵤쵬쵭쵯쵱쵸춈추축춘출춤춥춧충춰췄췌췐취췬췰췸췹췻췽츄츈츌츔츙츠측츤츨츰츱츳층\"],[\"c441\",\"횫횭횮횯횱\",7,\"횺횼\",7,\"훆훇훉훊훋\"],[\"c461\",\"훍훎훏훐훒훓훕훖훘훚\",5,\"훡훢훣훥훦훧훩\",4],[\"c481\",\"훮훯훱훲훳훴훶\",5,\"훾훿휁휂휃휅\",11,\"휒휓휔치칙친칟칠칡침칩칫칭카칵칸칼캄캅캇캉캐캑캔캘캠캡캣캤캥캬캭컁커컥컨컫컬컴컵컷컸컹케켁켄켈켐켑켓켕켜켠켤켬켭켯켰켱켸코콕콘콜콤콥콧콩콰콱콴콸쾀쾅쾌쾡쾨쾰쿄쿠쿡쿤쿨쿰쿱쿳쿵쿼퀀퀄퀑퀘퀭퀴퀵퀸퀼\"],[\"c541\",\"휕휖휗휚휛휝휞휟휡\",6,\"휪휬휮\",5,\"휶휷휹\"],[\"c561\",\"휺휻휽\",6,\"흅흆흈흊\",5,\"흒흓흕흚\",4],[\"c581\",\"흟흢흤흦흧흨흪흫흭흮흯흱흲흳흵\",6,\"흾흿힀힂\",5,\"힊힋큄큅큇큉큐큔큘큠크큭큰클큼큽킁키킥킨킬킴킵킷킹타탁탄탈탉탐탑탓탔탕태택탠탤탬탭탯탰탱탸턍터턱턴털턺텀텁텃텄텅테텍텐텔템텝텟텡텨텬텼톄톈토톡톤톨톰톱톳통톺톼퇀퇘퇴퇸툇툉툐투툭툰툴툼툽툿퉁퉈퉜\"],[\"c641\",\"힍힎힏힑\",6,\"힚힜힞\",5],[\"c6a1\",\"퉤튀튁튄튈튐튑튕튜튠튤튬튱트특튼튿틀틂틈틉틋틔틘틜틤틥티틱틴틸팀팁팃팅파팍팎판팔팖팜팝팟팠팡팥패팩팬팰팸팹팻팼팽퍄퍅퍼퍽펀펄펌펍펏펐펑페펙펜펠펨펩펫펭펴편펼폄폅폈평폐폘폡폣포폭폰폴폼폽폿퐁\"],[\"c7a1\",\"퐈퐝푀푄표푠푤푭푯푸푹푼푿풀풂품풉풋풍풔풩퓌퓐퓔퓜퓟퓨퓬퓰퓸퓻퓽프픈플픔픕픗피픽핀필핌핍핏핑하학한할핥함합핫항해핵핸핼햄햅햇했행햐향허헉헌헐헒험헙헛헝헤헥헨헬헴헵헷헹혀혁현혈혐협혓혔형혜혠\"],[\"c8a1\",\"혤혭호혹혼홀홅홈홉홋홍홑화확환활홧황홰홱홴횃횅회획횐횔횝횟횡효횬횰횹횻후훅훈훌훑훔훗훙훠훤훨훰훵훼훽휀휄휑휘휙휜휠휨휩휫휭휴휵휸휼흄흇흉흐흑흔흖흗흘흙흠흡흣흥흩희흰흴흼흽힁히힉힌힐힘힙힛힝\"],[\"caa1\",\"伽佳假價加可呵哥嘉嫁家暇架枷柯歌珂痂稼苛茄街袈訶賈跏軻迦駕刻却各恪慤殼珏脚覺角閣侃刊墾奸姦干幹懇揀杆柬桿澗癎看磵稈竿簡肝艮艱諫間乫喝曷渴碣竭葛褐蝎鞨勘坎堪嵌感憾戡敢柑橄減甘疳監瞰紺邯鑑鑒龕\"],[\"cba1\",\"匣岬甲胛鉀閘剛堈姜岡崗康强彊慷江畺疆糠絳綱羌腔舡薑襁講鋼降鱇介价個凱塏愷愾慨改槪漑疥皆盖箇芥蓋豈鎧開喀客坑更粳羹醵倨去居巨拒据據擧渠炬祛距踞車遽鉅鋸乾件健巾建愆楗腱虔蹇鍵騫乞傑杰桀儉劍劒檢\"],[\"cca1\",\"瞼鈐黔劫怯迲偈憩揭擊格檄激膈覡隔堅牽犬甄絹繭肩見譴遣鵑抉決潔結缺訣兼慊箝謙鉗鎌京俓倞傾儆勁勍卿坰境庚徑慶憬擎敬景暻更梗涇炅烱璟璥瓊痙硬磬竟競絅經耕耿脛莖警輕逕鏡頃頸驚鯨係啓堺契季屆悸戒桂械\"],[\"cda1\",\"棨溪界癸磎稽系繫繼計誡谿階鷄古叩告呱固姑孤尻庫拷攷故敲暠枯槁沽痼皐睾稿羔考股膏苦苽菰藁蠱袴誥賈辜錮雇顧高鼓哭斛曲梏穀谷鵠困坤崑昆梱棍滾琨袞鯤汨滑骨供公共功孔工恐恭拱控攻珙空蚣貢鞏串寡戈果瓜\"],[\"cea1\",\"科菓誇課跨過鍋顆廓槨藿郭串冠官寬慣棺款灌琯瓘管罐菅觀貫關館刮恝括适侊光匡壙廣曠洸炚狂珖筐胱鑛卦掛罫乖傀塊壞怪愧拐槐魁宏紘肱轟交僑咬喬嬌嶠巧攪敎校橋狡皎矯絞翹膠蕎蛟較轎郊餃驕鮫丘久九仇俱具勾\"],[\"cfa1\",\"區口句咎嘔坵垢寇嶇廐懼拘救枸柩構歐毆毬求溝灸狗玖球瞿矩究絿耉臼舅舊苟衢謳購軀逑邱鉤銶駒驅鳩鷗龜國局菊鞠鞫麴君窘群裙軍郡堀屈掘窟宮弓穹窮芎躬倦券勸卷圈拳捲權淃眷厥獗蕨蹶闕机櫃潰詭軌饋句晷歸貴\"],[\"d0a1\",\"鬼龜叫圭奎揆槻珪硅窺竅糾葵規赳逵閨勻均畇筠菌鈞龜橘克剋劇戟棘極隙僅劤勤懃斤根槿瑾筋芹菫覲謹近饉契今妗擒昑檎琴禁禽芩衾衿襟金錦伋及急扱汲級給亘兢矜肯企伎其冀嗜器圻基埼夔奇妓寄岐崎己幾忌技旗旣\"],[\"d1a1\",\"朞期杞棋棄機欺氣汽沂淇玘琦琪璂璣畸畿碁磯祁祇祈祺箕紀綺羈耆耭肌記譏豈起錡錤飢饑騎騏驥麒緊佶吉拮桔金喫儺喇奈娜懦懶拏拿癩\",5,\"那樂\",4,\"諾酪駱亂卵暖欄煖爛蘭難鸞捏捺南嵐枏楠湳濫男藍襤拉\"],[\"d2a1\",\"納臘蠟衲囊娘廊\",4,\"乃來內奈柰耐冷女年撚秊念恬拈捻寧寗努勞奴弩怒擄櫓爐瑙盧\",5,\"駑魯\",10,\"濃籠聾膿農惱牢磊腦賂雷尿壘\",7,\"嫩訥杻紐勒\",5,\"能菱陵尼泥匿溺多茶\"],[\"d3a1\",\"丹亶但單團壇彖斷旦檀段湍短端簞緞蛋袒鄲鍛撻澾獺疸達啖坍憺擔曇淡湛潭澹痰聃膽蕁覃談譚錟沓畓答踏遝唐堂塘幢戇撞棠當糖螳黨代垈坮大對岱帶待戴擡玳臺袋貸隊黛宅德悳倒刀到圖堵塗導屠島嶋度徒悼挑掉搗桃\"],[\"d4a1\",\"棹櫂淘渡滔濤燾盜睹禱稻萄覩賭跳蹈逃途道都鍍陶韜毒瀆牘犢獨督禿篤纛讀墩惇敦旽暾沌焞燉豚頓乭突仝冬凍動同憧東桐棟洞潼疼瞳童胴董銅兜斗杜枓痘竇荳讀豆逗頭屯臀芚遁遯鈍得嶝橙燈登等藤謄鄧騰喇懶拏癩羅\"],[\"d5a1\",\"蘿螺裸邏樂洛烙珞絡落諾酪駱丹亂卵欄欒瀾爛蘭鸞剌辣嵐擥攬欖濫籃纜藍襤覽拉臘蠟廊朗浪狼琅瑯螂郞來崍徠萊冷掠略亮倆兩凉梁樑粮粱糧良諒輛量侶儷勵呂廬慮戾旅櫚濾礪藜蠣閭驢驪麗黎力曆歷瀝礫轢靂憐戀攣漣\"],[\"d6a1\",\"煉璉練聯蓮輦連鍊冽列劣洌烈裂廉斂殮濂簾獵令伶囹寧岺嶺怜玲笭羚翎聆逞鈴零靈領齡例澧禮醴隷勞怒撈擄櫓潞瀘爐盧老蘆虜路輅露魯鷺鹵碌祿綠菉錄鹿麓論壟弄朧瀧瓏籠聾儡瀨牢磊賂賚賴雷了僚寮廖料燎療瞭聊蓼\"],[\"d7a1\",\"遼鬧龍壘婁屢樓淚漏瘻累縷蔞褸鏤陋劉旒柳榴流溜瀏琉瑠留瘤硫謬類六戮陸侖倫崙淪綸輪律慄栗率隆勒肋凜凌楞稜綾菱陵俚利厘吏唎履悧李梨浬犁狸理璃異痢籬罹羸莉裏裡里釐離鯉吝潾燐璘藺躪隣鱗麟林淋琳臨霖砬\"],[\"d8a1\",\"立笠粒摩瑪痲碼磨馬魔麻寞幕漠膜莫邈万卍娩巒彎慢挽晩曼滿漫灣瞞萬蔓蠻輓饅鰻唜抹末沫茉襪靺亡妄忘忙望網罔芒茫莽輞邙埋妹媒寐昧枚梅每煤罵買賣邁魅脈貊陌驀麥孟氓猛盲盟萌冪覓免冕勉棉沔眄眠綿緬面麵滅\"],[\"d9a1\",\"蔑冥名命明暝椧溟皿瞑茗蓂螟酩銘鳴袂侮冒募姆帽慕摸摹暮某模母毛牟牡瑁眸矛耗芼茅謀謨貌木沐牧目睦穆鶩歿沒夢朦蒙卯墓妙廟描昴杳渺猫竗苗錨務巫憮懋戊拇撫无楙武毋無珷畝繆舞茂蕪誣貿霧鵡墨默們刎吻問文\"],[\"daa1\",\"汶紊紋聞蚊門雯勿沕物味媚尾嵋彌微未梶楣渼湄眉米美薇謎迷靡黴岷悶愍憫敏旻旼民泯玟珉緡閔密蜜謐剝博拍搏撲朴樸泊珀璞箔粕縛膊舶薄迫雹駁伴半反叛拌搬攀斑槃泮潘班畔瘢盤盼磐磻礬絆般蟠返頒飯勃拔撥渤潑\"],[\"dba1\",\"發跋醱鉢髮魃倣傍坊妨尨幇彷房放方旁昉枋榜滂磅紡肪膀舫芳蒡蚌訪謗邦防龐倍俳北培徘拜排杯湃焙盃背胚裴裵褙賠輩配陪伯佰帛柏栢白百魄幡樊煩燔番磻繁蕃藩飜伐筏罰閥凡帆梵氾汎泛犯範范法琺僻劈壁擘檗璧癖\"],[\"dca1\",\"碧蘗闢霹便卞弁變辨辯邊別瞥鱉鼈丙倂兵屛幷昞昺柄棅炳甁病秉竝輧餠騈保堡報寶普步洑湺潽珤甫菩補褓譜輔伏僕匐卜宓復服福腹茯蔔複覆輹輻馥鰒本乶俸奉封峯峰捧棒烽熢琫縫蓬蜂逢鋒鳳不付俯傅剖副否咐埠夫婦\"],[\"dda1\",\"孚孵富府復扶敷斧浮溥父符簿缶腐腑膚艀芙莩訃負賦賻赴趺部釜阜附駙鳧北分吩噴墳奔奮忿憤扮昐汾焚盆粉糞紛芬賁雰不佛弗彿拂崩朋棚硼繃鵬丕備匕匪卑妃婢庇悲憊扉批斐枇榧比毖毗毘沸泌琵痺砒碑秕秘粃緋翡肥\"],[\"dea1\",\"脾臂菲蜚裨誹譬費鄙非飛鼻嚬嬪彬斌檳殯浜濱瀕牝玭貧賓頻憑氷聘騁乍事些仕伺似使俟僿史司唆嗣四士奢娑寫寺射巳師徙思捨斜斯柶査梭死沙泗渣瀉獅砂社祀祠私篩紗絲肆舍莎蓑蛇裟詐詞謝賜赦辭邪飼駟麝削數朔索\"],[\"dfa1\",\"傘刪山散汕珊産疝算蒜酸霰乷撒殺煞薩三參杉森渗芟蔘衫揷澁鈒颯上傷像償商喪嘗孀尙峠常床庠廂想桑橡湘爽牀狀相祥箱翔裳觴詳象賞霜塞璽賽嗇塞穡索色牲生甥省笙墅壻嶼序庶徐恕抒捿敍暑曙書栖棲犀瑞筮絮緖署\"],[\"e0a1\",\"胥舒薯西誓逝鋤黍鼠夕奭席惜昔晳析汐淅潟石碩蓆釋錫仙僊先善嬋宣扇敾旋渲煽琁瑄璇璿癬禪線繕羨腺膳船蘚蟬詵跣選銑鐥饍鮮卨屑楔泄洩渫舌薛褻設說雪齧剡暹殲纖蟾贍閃陝攝涉燮葉城姓宬性惺成星晟猩珹盛省筬\"],[\"e1a1\",\"聖聲腥誠醒世勢歲洗稅笹細說貰召嘯塑宵小少巢所掃搔昭梳沼消溯瀟炤燒甦疏疎瘙笑篠簫素紹蔬蕭蘇訴逍遡邵銷韶騷俗屬束涑粟續謖贖速孫巽損蓀遜飡率宋悚松淞訟誦送頌刷殺灑碎鎖衰釗修受嗽囚垂壽嫂守岫峀帥愁\"],[\"e2a1\",\"戍手授搜收數樹殊水洙漱燧狩獸琇璲瘦睡秀穗竪粹綏綬繡羞脩茱蒐蓚藪袖誰讐輸遂邃酬銖銹隋隧隨雖需須首髓鬚叔塾夙孰宿淑潚熟琡璹肅菽巡徇循恂旬栒楯橓殉洵淳珣盾瞬筍純脣舜荀蓴蕣詢諄醇錞順馴戌術述鉥崇崧\"],[\"e3a1\",\"嵩瑟膝蝨濕拾習褶襲丞乘僧勝升承昇繩蠅陞侍匙嘶始媤尸屎屍市弑恃施是時枾柴猜矢示翅蒔蓍視試詩諡豕豺埴寔式息拭植殖湜熄篒蝕識軾食飾伸侁信呻娠宸愼新晨燼申神紳腎臣莘薪藎蜃訊身辛辰迅失室實悉審尋心沁\"],[\"e4a1\",\"沈深瀋甚芯諶什十拾雙氏亞俄兒啞娥峨我牙芽莪蛾衙訝阿雅餓鴉鵝堊岳嶽幄惡愕握樂渥鄂鍔顎鰐齷安岸按晏案眼雁鞍顔鮟斡謁軋閼唵岩巖庵暗癌菴闇壓押狎鴨仰央怏昻殃秧鴦厓哀埃崖愛曖涯碍艾隘靄厄扼掖液縊腋額\"],[\"e5a1\",\"櫻罌鶯鸚也倻冶夜惹揶椰爺耶若野弱掠略約若葯蒻藥躍亮佯兩凉壤孃恙揚攘敭暘梁楊樣洋瀁煬痒瘍禳穰糧羊良襄諒讓釀陽量養圄御於漁瘀禦語馭魚齬億憶抑檍臆偃堰彦焉言諺孼蘖俺儼嚴奄掩淹嶪業円予余勵呂女如廬\"],[\"e6a1\",\"旅歟汝濾璵礖礪與艅茹輿轝閭餘驪麗黎亦力域役易曆歷疫繹譯轢逆驛嚥堧姸娟宴年延憐戀捐挻撚椽沇沿涎涓淵演漣烟然煙煉燃燕璉硏硯秊筵緣練縯聯衍軟輦蓮連鉛鍊鳶列劣咽悅涅烈熱裂說閱厭廉念捻染殮炎焰琰艶苒\"],[\"e7a1\",\"簾閻髥鹽曄獵燁葉令囹塋寧嶺嶸影怜映暎楹榮永泳渶潁濚瀛瀯煐營獰玲瑛瑩瓔盈穎纓羚聆英詠迎鈴鍈零霙靈領乂倪例刈叡曳汭濊猊睿穢芮藝蘂禮裔詣譽豫醴銳隸霓預五伍俉傲午吾吳嗚塢墺奧娛寤悟惡懊敖旿晤梧汚澳\"],[\"e8a1\",\"烏熬獒筽蜈誤鰲鼇屋沃獄玉鈺溫瑥瘟穩縕蘊兀壅擁瓮甕癰翁邕雍饔渦瓦窩窪臥蛙蝸訛婉完宛梡椀浣玩琓琬碗緩翫脘腕莞豌阮頑曰往旺枉汪王倭娃歪矮外嵬巍猥畏了僚僥凹堯夭妖姚寥寮尿嶢拗搖撓擾料曜樂橈燎燿瑤療\"],[\"e9a1\",\"窈窯繇繞耀腰蓼蟯要謠遙遼邀饒慾欲浴縟褥辱俑傭冗勇埇墉容庸慂榕涌湧溶熔瑢用甬聳茸蓉踊鎔鏞龍于佑偶優又友右宇寓尤愚憂旴牛玗瑀盂祐禑禹紆羽芋藕虞迂遇郵釪隅雨雩勖彧旭昱栯煜稶郁頊云暈橒殞澐熉耘芸蕓\"],[\"eaa1\",\"運隕雲韻蔚鬱亐熊雄元原員圓園垣媛嫄寃怨愿援沅洹湲源爰猿瑗苑袁轅遠阮院願鴛月越鉞位偉僞危圍委威尉慰暐渭爲瑋緯胃萎葦蔿蝟衛褘謂違韋魏乳侑儒兪劉唯喩孺宥幼幽庾悠惟愈愉揄攸有杻柔柚柳楡楢油洧流游溜\"],[\"eba1\",\"濡猶猷琉瑜由留癒硫紐維臾萸裕誘諛諭踰蹂遊逾遺酉釉鍮類六堉戮毓肉育陸倫允奫尹崙淪潤玧胤贇輪鈗閏律慄栗率聿戎瀜絨融隆垠恩慇殷誾銀隱乙吟淫蔭陰音飮揖泣邑凝應膺鷹依倚儀宜意懿擬椅毅疑矣義艤薏蟻衣誼\"],[\"eca1\",\"議醫二以伊利吏夷姨履已弛彛怡易李梨泥爾珥理異痍痢移罹而耳肄苡荑裏裡貽貳邇里離飴餌匿溺瀷益翊翌翼謚人仁刃印吝咽因姻寅引忍湮燐璘絪茵藺蚓認隣靭靷鱗麟一佚佾壹日溢逸鎰馹任壬妊姙恁林淋稔臨荏賃入卄\"],[\"eda1\",\"立笠粒仍剩孕芿仔刺咨姉姿子字孜恣慈滋炙煮玆瓷疵磁紫者自茨蔗藉諮資雌作勺嚼斫昨灼炸爵綽芍酌雀鵲孱棧殘潺盞岑暫潛箴簪蠶雜丈仗匠場墻壯奬將帳庄張掌暲杖樟檣欌漿牆狀獐璋章粧腸臟臧莊葬蔣薔藏裝贓醬長\"],[\"eea1\",\"障再哉在宰才材栽梓渽滓災縡裁財載齋齎爭箏諍錚佇低儲咀姐底抵杵楮樗沮渚狙猪疽箸紵苧菹著藷詛貯躇這邸雎齟勣吊嫡寂摘敵滴狄炙的積笛籍績翟荻謫賊赤跡蹟迪迹適鏑佃佺傳全典前剪塡塼奠專展廛悛戰栓殿氈澱\"],[\"efa1\",\"煎琠田甸畑癲筌箋箭篆纏詮輾轉鈿銓錢鐫電顚顫餞切截折浙癤竊節絶占岾店漸点粘霑鮎點接摺蝶丁井亭停偵呈姃定幀庭廷征情挺政整旌晶晸柾楨檉正汀淀淨渟湞瀞炡玎珽町睛碇禎程穽精綎艇訂諪貞鄭酊釘鉦鋌錠霆靖\"],[\"f0a1\",\"靜頂鼎制劑啼堤帝弟悌提梯濟祭第臍薺製諸蹄醍除際霽題齊俎兆凋助嘲弔彫措操早晁曺曹朝條棗槽漕潮照燥爪璪眺祖祚租稠窕粗糟組繰肇藻蚤詔調趙躁造遭釣阻雕鳥族簇足鏃存尊卒拙猝倧宗從悰慫棕淙琮種終綜縱腫\"],[\"f1a1\",\"踪踵鍾鐘佐坐左座挫罪主住侏做姝胄呪周嗾奏宙州廚晝朱柱株注洲湊澍炷珠疇籌紂紬綢舟蛛註誅走躊輳週酎酒鑄駐竹粥俊儁准埈寯峻晙樽浚準濬焌畯竣蠢逡遵雋駿茁中仲衆重卽櫛楫汁葺增憎曾拯烝甑症繒蒸證贈之只\"],[\"f2a1\",\"咫地址志持指摯支旨智枝枳止池沚漬知砥祉祗紙肢脂至芝芷蜘誌識贄趾遲直稙稷織職唇嗔塵振搢晉晋桭榛殄津溱珍瑨璡畛疹盡眞瞋秦縉縝臻蔯袗診賑軫辰進鎭陣陳震侄叱姪嫉帙桎瓆疾秩窒膣蛭質跌迭斟朕什執潗緝輯\"],[\"f3a1\",\"鏶集徵懲澄且侘借叉嗟嵯差次此磋箚茶蹉車遮捉搾着窄錯鑿齪撰澯燦璨瓚竄簒纂粲纘讚贊鑽餐饌刹察擦札紮僭參塹慘慙懺斬站讒讖倉倡創唱娼廠彰愴敞昌昶暢槍滄漲猖瘡窓脹艙菖蒼債埰寀寨彩採砦綵菜蔡采釵冊柵策\"],[\"f4a1\",\"責凄妻悽處倜刺剔尺慽戚拓擲斥滌瘠脊蹠陟隻仟千喘天川擅泉淺玔穿舛薦賤踐遷釧闡阡韆凸哲喆徹撤澈綴輟轍鐵僉尖沾添甛瞻簽籤詹諂堞妾帖捷牒疊睫諜貼輒廳晴淸聽菁請靑鯖切剃替涕滯締諦逮遞體初剿哨憔抄招梢\"],[\"f5a1\",\"椒楚樵炒焦硝礁礎秒稍肖艸苕草蕉貂超酢醋醮促囑燭矗蜀觸寸忖村邨叢塚寵悤憁摠總聰蔥銃撮催崔最墜抽推椎楸樞湫皺秋芻萩諏趨追鄒酋醜錐錘鎚雛騶鰍丑畜祝竺筑築縮蓄蹙蹴軸逐春椿瑃出朮黜充忠沖蟲衝衷悴膵萃\"],[\"f6a1\",\"贅取吹嘴娶就炊翠聚脆臭趣醉驟鷲側仄厠惻測層侈値嗤峙幟恥梔治淄熾痔痴癡稚穉緇緻置致蚩輜雉馳齒則勅飭親七柒漆侵寢枕沈浸琛砧針鍼蟄秤稱快他咤唾墮妥惰打拖朶楕舵陀馱駝倬卓啄坼度托拓擢晫柝濁濯琢琸託\"],[\"f7a1\",\"鐸呑嘆坦彈憚歎灘炭綻誕奪脫探眈耽貪塔搭榻宕帑湯糖蕩兌台太怠態殆汰泰笞胎苔跆邰颱宅擇澤撑攄兎吐土討慟桶洞痛筒統通堆槌腿褪退頹偸套妬投透鬪慝特闖坡婆巴把播擺杷波派爬琶破罷芭跛頗判坂板版瓣販辦鈑\"],[\"f8a1\",\"阪八叭捌佩唄悖敗沛浿牌狽稗覇貝彭澎烹膨愎便偏扁片篇編翩遍鞭騙貶坪平枰萍評吠嬖幣廢弊斃肺蔽閉陛佈包匍匏咆哺圃布怖抛抱捕暴泡浦疱砲胞脯苞葡蒲袍褒逋鋪飽鮑幅暴曝瀑爆輻俵剽彪慓杓標漂瓢票表豹飇飄驃\"],[\"f9a1\",\"品稟楓諷豊風馮彼披疲皮被避陂匹弼必泌珌畢疋筆苾馝乏逼下何厦夏廈昰河瑕荷蝦賀遐霞鰕壑學虐謔鶴寒恨悍旱汗漢澣瀚罕翰閑閒限韓割轄函含咸啣喊檻涵緘艦銜陷鹹合哈盒蛤閤闔陜亢伉姮嫦巷恒抗杭桁沆港缸肛航\"],[\"faa1\",\"行降項亥偕咳垓奚孩害懈楷海瀣蟹解該諧邂駭骸劾核倖幸杏荇行享向嚮珦鄕響餉饗香噓墟虛許憲櫶獻軒歇險驗奕爀赫革俔峴弦懸晛泫炫玄玹現眩睍絃絢縣舷衒見賢鉉顯孑穴血頁嫌俠協夾峽挾浹狹脅脇莢鋏頰亨兄刑型\"],[\"fba1\",\"形泂滎瀅灐炯熒珩瑩荊螢衡逈邢鎣馨兮彗惠慧暳蕙蹊醯鞋乎互呼壕壺好岵弧戶扈昊晧毫浩淏湖滸澔濠濩灝狐琥瑚瓠皓祜糊縞胡芦葫蒿虎號蝴護豪鎬頀顥惑或酷婚昏混渾琿魂忽惚笏哄弘汞泓洪烘紅虹訌鴻化和嬅樺火畵\"],[\"fca1\",\"禍禾花華話譁貨靴廓擴攫確碻穫丸喚奐宦幻患換歡晥桓渙煥環紈還驩鰥活滑猾豁闊凰幌徨恍惶愰慌晃晄榥況湟滉潢煌璜皇篁簧荒蝗遑隍黃匯回廻徊恢悔懷晦會檜淮澮灰獪繪膾茴蛔誨賄劃獲宖橫鐄哮嚆孝效斅曉梟涍淆\"],[\"fda1\",\"爻肴酵驍侯候厚后吼喉嗅帿後朽煦珝逅勛勳塤壎焄熏燻薰訓暈薨喧暄煊萱卉喙毁彙徽揮暉煇諱輝麾休携烋畦虧恤譎鷸兇凶匈洶胸黑昕欣炘痕吃屹紇訖欠欽歆吸恰洽翕興僖凞喜噫囍姬嬉希憙憘戱晞曦熙熹熺犧禧稀羲詰\"]]");
+})), Pm = /* @__PURE__ */ i({ default: () => Fm }), Fm, Im = n((() => {
+	Fm = /*#__PURE__*/ JSON.parse("[[\"0\",\"\\u0000\",127],[\"a140\",\"　，、。．‧；：？！︰…‥﹐﹑﹒·﹔﹕﹖﹗｜–︱—︳╴︴﹏（）︵︶｛｝︷︸〔〕︹︺【】︻︼《》︽︾〈〉︿﹀「」﹁﹂『』﹃﹄﹙﹚\"],[\"a1a1\",\"﹛﹜﹝﹞‘’“”〝〞‵′＃＆＊※§〃○●△▲◎☆★◇◆□■▽▼㊣℅¯￣＿ˍ﹉﹊﹍﹎﹋﹌﹟﹠﹡＋－×÷±√＜＞＝≦≧≠∞≒≡﹢\",4,\"～∩∪⊥∠∟⊿㏒㏑∫∮∵∴♀♂⊕⊙↑↓←→↖↗↙↘∥∣／\"],[\"a240\",\"＼∕﹨＄￥〒￠￡％＠℃℉﹩﹪﹫㏕㎜㎝㎞㏎㎡㎎㎏㏄°兙兛兞兝兡兣嗧瓩糎▁\",7,\"▏▎▍▌▋▊▉┼┴┬┤├▔─│▕┌┐└┘╭\"],[\"a2a1\",\"╮╰╯═╞╪╡◢◣◥◤╱╲╳０\",9,\"Ⅰ\",9,\"〡\",8,\"十卄卅Ａ\",25,\"ａ\",21],[\"a340\",\"ｗｘｙｚΑ\",16,\"Σ\",6,\"α\",16,\"σ\",6,\"ㄅ\",10],[\"a3a1\",\"ㄐ\",25,\"˙ˉˊˇˋ\"],[\"a3e1\",\"€\"],[\"a440\",\"一乙丁七乃九了二人儿入八几刀刁力匕十卜又三下丈上丫丸凡久么也乞于亡兀刃勺千叉口土士夕大女子孑孓寸小尢尸山川工己已巳巾干廾弋弓才\"],[\"a4a1\",\"丑丐不中丰丹之尹予云井互五亢仁什仃仆仇仍今介仄元允內六兮公冗凶分切刈勻勾勿化匹午升卅卞厄友及反壬天夫太夭孔少尤尺屯巴幻廿弔引心戈戶手扎支文斗斤方日曰月木欠止歹毋比毛氏水火爪父爻片牙牛犬王丙\"],[\"a540\",\"世丕且丘主乍乏乎以付仔仕他仗代令仙仞充兄冉冊冬凹出凸刊加功包匆北匝仟半卉卡占卯卮去可古右召叮叩叨叼司叵叫另只史叱台句叭叻四囚外\"],[\"a5a1\",\"央失奴奶孕它尼巨巧左市布平幼弁弘弗必戊打扔扒扑斥旦朮本未末札正母民氐永汁汀氾犯玄玉瓜瓦甘生用甩田由甲申疋白皮皿目矛矢石示禾穴立丞丟乒乓乩亙交亦亥仿伉伙伊伕伍伐休伏仲件任仰仳份企伋光兇兆先全\"],[\"a640\",\"共再冰列刑划刎刖劣匈匡匠印危吉吏同吊吐吁吋各向名合吃后吆吒因回囝圳地在圭圬圯圩夙多夷夸妄奸妃好她如妁字存宇守宅安寺尖屹州帆并年\"],[\"a6a1\",\"式弛忙忖戎戌戍成扣扛托收早旨旬旭曲曳有朽朴朱朵次此死氖汝汗汙江池汐汕污汛汍汎灰牟牝百竹米糸缶羊羽老考而耒耳聿肉肋肌臣自至臼舌舛舟艮色艾虫血行衣西阡串亨位住佇佗佞伴佛何估佐佑伽伺伸佃佔似但佣\"],[\"a740\",\"作你伯低伶余佝佈佚兌克免兵冶冷別判利刪刨劫助努劬匣即卵吝吭吞吾否呎吧呆呃吳呈呂君吩告吹吻吸吮吵吶吠吼呀吱含吟听囪困囤囫坊坑址坍\"],[\"a7a1\",\"均坎圾坐坏圻壯夾妝妒妨妞妣妙妖妍妤妓妊妥孝孜孚孛完宋宏尬局屁尿尾岐岑岔岌巫希序庇床廷弄弟彤形彷役忘忌志忍忱快忸忪戒我抄抗抖技扶抉扭把扼找批扳抒扯折扮投抓抑抆改攻攸旱更束李杏材村杜杖杞杉杆杠\"],[\"a840\",\"杓杗步每求汞沙沁沈沉沅沛汪決沐汰沌汨沖沒汽沃汲汾汴沆汶沍沔沘沂灶灼災灸牢牡牠狄狂玖甬甫男甸皂盯矣私秀禿究系罕肖肓肝肘肛肚育良芒\"],[\"a8a1\",\"芋芍見角言谷豆豕貝赤走足身車辛辰迂迆迅迄巡邑邢邪邦那酉釆里防阮阱阪阬並乖乳事些亞享京佯依侍佳使佬供例來侃佰併侈佩佻侖佾侏侑佺兔兒兕兩具其典冽函刻券刷刺到刮制剁劾劻卒協卓卑卦卷卸卹取叔受味呵\"],[\"a940\",\"咖呸咕咀呻呷咄咒咆呼咐呱呶和咚呢周咋命咎固垃坷坪坩坡坦坤坼夜奉奇奈奄奔妾妻委妹妮姑姆姐姍始姓姊妯妳姒姅孟孤季宗定官宜宙宛尚屈居\"],[\"a9a1\",\"屆岷岡岸岩岫岱岳帘帚帖帕帛帑幸庚店府底庖延弦弧弩往征彿彼忝忠忽念忿怏怔怯怵怖怪怕怡性怩怫怛或戕房戾所承拉拌拄抿拂抹拒招披拓拔拋拈抨抽押拐拙拇拍抵拚抱拘拖拗拆抬拎放斧於旺昔易昌昆昂明昀昏昕昊\"],[\"aa40\",\"昇服朋杭枋枕東果杳杷枇枝林杯杰板枉松析杵枚枓杼杪杲欣武歧歿氓氛泣注泳沱泌泥河沽沾沼波沫法泓沸泄油況沮泗泅泱沿治泡泛泊沬泯泜泖泠\"],[\"aaa1\",\"炕炎炒炊炙爬爭爸版牧物狀狎狙狗狐玩玨玟玫玥甽疝疙疚的盂盲直知矽社祀祁秉秈空穹竺糾罔羌羋者肺肥肢肱股肫肩肴肪肯臥臾舍芳芝芙芭芽芟芹花芬芥芯芸芣芰芾芷虎虱初表軋迎返近邵邸邱邶采金長門阜陀阿阻附\"],[\"ab40\",\"陂隹雨青非亟亭亮信侵侯便俠俑俏保促侶俘俟俊俗侮俐俄係俚俎俞侷兗冒冑冠剎剃削前剌剋則勇勉勃勁匍南卻厚叛咬哀咨哎哉咸咦咳哇哂咽咪品\"],[\"aba1\",\"哄哈咯咫咱咻咩咧咿囿垂型垠垣垢城垮垓奕契奏奎奐姜姘姿姣姨娃姥姪姚姦威姻孩宣宦室客宥封屎屏屍屋峙峒巷帝帥帟幽庠度建弈弭彥很待徊律徇後徉怒思怠急怎怨恍恰恨恢恆恃恬恫恪恤扁拜挖按拼拭持拮拽指拱拷\"],[\"ac40\",\"拯括拾拴挑挂政故斫施既春昭映昧是星昨昱昤曷柿染柱柔某柬架枯柵柩柯柄柑枴柚查枸柏柞柳枰柙柢柝柒歪殃殆段毒毗氟泉洋洲洪流津洌洱洞洗\"],[\"aca1\",\"活洽派洶洛泵洹洧洸洩洮洵洎洫炫為炳炬炯炭炸炮炤爰牲牯牴狩狠狡玷珊玻玲珍珀玳甚甭畏界畎畋疫疤疥疢疣癸皆皇皈盈盆盃盅省盹相眉看盾盼眇矜砂研砌砍祆祉祈祇禹禺科秒秋穿突竿竽籽紂紅紀紉紇約紆缸美羿耄\"],[\"ad40\",\"耐耍耑耶胖胥胚胃胄背胡胛胎胞胤胝致舢苧范茅苣苛苦茄若茂茉苒苗英茁苜苔苑苞苓苟苯茆虐虹虻虺衍衫要觔計訂訃貞負赴赳趴軍軌述迦迢迪迥\"],[\"ada1\",\"迭迫迤迨郊郎郁郃酋酊重閂限陋陌降面革韋韭音頁風飛食首香乘亳倌倍倣俯倦倥俸倩倖倆值借倚倒們俺倀倔倨俱倡個候倘俳修倭倪俾倫倉兼冤冥冢凍凌准凋剖剜剔剛剝匪卿原厝叟哨唐唁唷哼哥哲唆哺唔哩哭員唉哮哪\"],[\"ae40\",\"哦唧唇哽唏圃圄埂埔埋埃堉夏套奘奚娑娘娜娟娛娓姬娠娣娩娥娌娉孫屘宰害家宴宮宵容宸射屑展屐峭峽峻峪峨峰島崁峴差席師庫庭座弱徒徑徐恙\"],[\"aea1\",\"恣恥恐恕恭恩息悄悟悚悍悔悌悅悖扇拳挈拿捎挾振捕捂捆捏捉挺捐挽挪挫挨捍捌效敉料旁旅時晉晏晃晒晌晅晁書朔朕朗校核案框桓根桂桔栩梳栗桌桑栽柴桐桀格桃株桅栓栘桁殊殉殷氣氧氨氦氤泰浪涕消涇浦浸海浙涓\"],[\"af40\",\"浬涉浮浚浴浩涌涊浹涅浥涔烊烘烤烙烈烏爹特狼狹狽狸狷玆班琉珮珠珪珞畔畝畜畚留疾病症疲疳疽疼疹痂疸皋皰益盍盎眩真眠眨矩砰砧砸砝破砷\"],[\"afa1\",\"砥砭砠砟砲祕祐祠祟祖神祝祗祚秤秣秧租秦秩秘窄窈站笆笑粉紡紗紋紊素索純紐紕級紜納紙紛缺罟羔翅翁耆耘耕耙耗耽耿胱脂胰脅胭胴脆胸胳脈能脊胼胯臭臬舀舐航舫舨般芻茫荒荔荊茸荐草茵茴荏茲茹茶茗荀茱茨荃\"],[\"b040\",\"虔蚊蚪蚓蚤蚩蚌蚣蚜衰衷袁袂衽衹記訐討訌訕訊託訓訖訏訑豈豺豹財貢起躬軒軔軏辱送逆迷退迺迴逃追逅迸邕郡郝郢酒配酌釘針釗釜釙閃院陣陡\"],[\"b0a1\",\"陛陝除陘陞隻飢馬骨高鬥鬲鬼乾偺偽停假偃偌做偉健偶偎偕偵側偷偏倏偯偭兜冕凰剪副勒務勘動匐匏匙匿區匾參曼商啪啦啄啞啡啃啊唱啖問啕唯啤唸售啜唬啣唳啁啗圈國圉域堅堊堆埠埤基堂堵執培夠奢娶婁婉婦婪婀\"],[\"b140\",\"娼婢婚婆婊孰寇寅寄寂宿密尉專將屠屜屝崇崆崎崛崖崢崑崩崔崙崤崧崗巢常帶帳帷康庸庶庵庾張強彗彬彩彫得徙從徘御徠徜恿患悉悠您惋悴惦悽\"],[\"b1a1\",\"情悻悵惜悼惘惕惆惟悸惚惇戚戛扈掠控捲掖探接捷捧掘措捱掩掉掃掛捫推掄授掙採掬排掏掀捻捩捨捺敝敖救教敗啟敏敘敕敔斜斛斬族旋旌旎晝晚晤晨晦晞曹勗望梁梯梢梓梵桿桶梱梧梗械梃棄梭梆梅梔條梨梟梡梂欲殺\"],[\"b240\",\"毫毬氫涎涼淳淙液淡淌淤添淺清淇淋涯淑涮淞淹涸混淵淅淒渚涵淚淫淘淪深淮淨淆淄涪淬涿淦烹焉焊烽烯爽牽犁猜猛猖猓猙率琅琊球理現琍瓠瓶\"],[\"b2a1\",\"瓷甜產略畦畢異疏痔痕疵痊痍皎盔盒盛眷眾眼眶眸眺硫硃硎祥票祭移窒窕笠笨笛第符笙笞笮粒粗粕絆絃統紮紹紼絀細紳組累終紲紱缽羞羚翌翎習耜聊聆脯脖脣脫脩脰脤舂舵舷舶船莎莞莘荸莢莖莽莫莒莊莓莉莠荷荻荼\"],[\"b340\",\"莆莧處彪蛇蛀蚶蛄蚵蛆蛋蚱蚯蛉術袞袈被袒袖袍袋覓規訪訝訣訥許設訟訛訢豉豚販責貫貨貪貧赧赦趾趺軛軟這逍通逗連速逝逐逕逞造透逢逖逛途\"],[\"b3a1\",\"部郭都酗野釵釦釣釧釭釩閉陪陵陳陸陰陴陶陷陬雀雪雩章竟頂頃魚鳥鹵鹿麥麻傢傍傅備傑傀傖傘傚最凱割剴創剩勞勝勛博厥啻喀喧啼喊喝喘喂喜喪喔喇喋喃喳單喟唾喲喚喻喬喱啾喉喫喙圍堯堪場堤堰報堡堝堠壹壺奠\"],[\"b440\",\"婷媚婿媒媛媧孳孱寒富寓寐尊尋就嵌嵐崴嵇巽幅帽幀幃幾廊廁廂廄弼彭復循徨惑惡悲悶惠愜愣惺愕惰惻惴慨惱愎惶愉愀愒戟扉掣掌描揀揩揉揆揍\"],[\"b4a1\",\"插揣提握揖揭揮捶援揪換摒揚揹敞敦敢散斑斐斯普晰晴晶景暑智晾晷曾替期朝棺棕棠棘棗椅棟棵森棧棹棒棲棣棋棍植椒椎棉棚楮棻款欺欽殘殖殼毯氮氯氬港游湔渡渲湧湊渠渥渣減湛湘渤湖湮渭渦湯渴湍渺測湃渝渾滋\"],[\"b540\",\"溉渙湎湣湄湲湩湟焙焚焦焰無然煮焜牌犄犀猶猥猴猩琺琪琳琢琥琵琶琴琯琛琦琨甥甦畫番痢痛痣痙痘痞痠登發皖皓皴盜睏短硝硬硯稍稈程稅稀窘\"],[\"b5a1\",\"窗窖童竣等策筆筐筒答筍筋筏筑粟粥絞結絨絕紫絮絲絡給絢絰絳善翔翕耋聒肅腕腔腋腑腎脹腆脾腌腓腴舒舜菩萃菸萍菠菅萋菁華菱菴著萊菰萌菌菽菲菊萸萎萄菜萇菔菟虛蛟蛙蛭蛔蛛蛤蛐蛞街裁裂袱覃視註詠評詞証詁\"],[\"b640\",\"詔詛詐詆訴診訶詖象貂貯貼貳貽賁費賀貴買貶貿貸越超趁跎距跋跚跑跌跛跆軻軸軼辜逮逵週逸進逶鄂郵鄉郾酣酥量鈔鈕鈣鈉鈞鈍鈐鈇鈑閔閏開閑\"],[\"b6a1\",\"間閒閎隊階隋陽隅隆隍陲隄雁雅雄集雇雯雲韌項順須飧飪飯飩飲飭馮馭黃黍黑亂傭債傲傳僅傾催傷傻傯僇剿剷剽募勦勤勢勣匯嗟嗨嗓嗦嗎嗜嗇嗑嗣嗤嗯嗚嗡嗅嗆嗥嗉園圓塞塑塘塗塚塔填塌塭塊塢塒塋奧嫁嫉嫌媾媽媼\"],[\"b740\",\"媳嫂媲嵩嵯幌幹廉廈弒彙徬微愚意慈感想愛惹愁愈慎慌慄慍愾愴愧愍愆愷戡戢搓搾搞搪搭搽搬搏搜搔損搶搖搗搆敬斟新暗暉暇暈暖暄暘暍會榔業\"],[\"b7a1\",\"楚楷楠楔極椰概楊楨楫楞楓楹榆楝楣楛歇歲毀殿毓毽溢溯滓溶滂源溝滇滅溥溘溼溺溫滑準溜滄滔溪溧溴煎煙煩煤煉照煜煬煦煌煥煞煆煨煖爺牒猷獅猿猾瑯瑚瑕瑟瑞瑁琿瑙瑛瑜當畸瘀痰瘁痲痱痺痿痴痳盞盟睛睫睦睞督\"],[\"b840\",\"睹睪睬睜睥睨睢矮碎碰碗碘碌碉硼碑碓硿祺祿禁萬禽稜稚稠稔稟稞窟窠筷節筠筮筧粱粳粵經絹綑綁綏絛置罩罪署義羨群聖聘肆肄腱腰腸腥腮腳腫\"],[\"b8a1\",\"腹腺腦舅艇蒂葷落萱葵葦葫葉葬葛萼萵葡董葩葭葆虞虜號蛹蜓蜈蜇蜀蛾蛻蜂蜃蜆蜊衙裟裔裙補裘裝裡裊裕裒覜解詫該詳試詩詰誇詼詣誠話誅詭詢詮詬詹詻訾詨豢貊貉賊資賈賄貲賃賂賅跡跟跨路跳跺跪跤跦躲較載軾輊\"],[\"b940\",\"辟農運遊道遂達逼違遐遇遏過遍遑逾遁鄒鄗酬酪酩釉鈷鉗鈸鈽鉀鈾鉛鉋鉤鉑鈴鉉鉍鉅鈹鈿鉚閘隘隔隕雍雋雉雊雷電雹零靖靴靶預頑頓頊頒頌飼飴\"],[\"b9a1\",\"飽飾馳馱馴髡鳩麂鼎鼓鼠僧僮僥僖僭僚僕像僑僱僎僩兢凳劃劂匱厭嗾嘀嘛嘗嗽嘔嘆嘉嘍嘎嗷嘖嘟嘈嘐嗶團圖塵塾境墓墊塹墅塽壽夥夢夤奪奩嫡嫦嫩嫗嫖嫘嫣孵寞寧寡寥實寨寢寤察對屢嶄嶇幛幣幕幗幔廓廖弊彆彰徹慇\"],[\"ba40\",\"愿態慷慢慣慟慚慘慵截撇摘摔撤摸摟摺摑摧搴摭摻敲斡旗旖暢暨暝榜榨榕槁榮槓構榛榷榻榫榴槐槍榭槌榦槃榣歉歌氳漳演滾漓滴漩漾漠漬漏漂漢\"],[\"baa1\",\"滿滯漆漱漸漲漣漕漫漯澈漪滬漁滲滌滷熔熙煽熊熄熒爾犒犖獄獐瑤瑣瑪瑰瑭甄疑瘧瘍瘋瘉瘓盡監瞄睽睿睡磁碟碧碳碩碣禎福禍種稱窪窩竭端管箕箋筵算箝箔箏箸箇箄粹粽精綻綰綜綽綾綠緊綴網綱綺綢綿綵綸維緒緇綬\"],[\"bb40\",\"罰翠翡翟聞聚肇腐膀膏膈膊腿膂臧臺與舔舞艋蓉蒿蓆蓄蒙蒞蒲蒜蓋蒸蓀蓓蒐蒼蓑蓊蜿蜜蜻蜢蜥蜴蜘蝕蜷蜩裳褂裴裹裸製裨褚裯誦誌語誣認誡誓誤\"],[\"bba1\",\"說誥誨誘誑誚誧豪貍貌賓賑賒赫趙趕跼輔輒輕輓辣遠遘遜遣遙遞遢遝遛鄙鄘鄞酵酸酷酴鉸銀銅銘銖鉻銓銜銨鉼銑閡閨閩閣閥閤隙障際雌雒需靼鞅韶頗領颯颱餃餅餌餉駁骯骰髦魁魂鳴鳶鳳麼鼻齊億儀僻僵價儂儈儉儅凜\"],[\"bc40\",\"劇劈劉劍劊勰厲嘮嘻嘹嘲嘿嘴嘩噓噎噗噴嘶嘯嘰墀墟增墳墜墮墩墦奭嬉嫻嬋嫵嬌嬈寮寬審寫層履嶝嶔幢幟幡廢廚廟廝廣廠彈影德徵慶慧慮慝慕憂\"],[\"bca1\",\"慼慰慫慾憧憐憫憎憬憚憤憔憮戮摩摯摹撞撲撈撐撰撥撓撕撩撒撮播撫撚撬撙撢撳敵敷數暮暫暴暱樣樟槨樁樞標槽模樓樊槳樂樅槭樑歐歎殤毅毆漿潼澄潑潦潔澆潭潛潸潮澎潺潰潤澗潘滕潯潠潟熟熬熱熨牖犛獎獗瑩璋璃\"],[\"bd40\",\"瑾璀畿瘠瘩瘟瘤瘦瘡瘢皚皺盤瞎瞇瞌瞑瞋磋磅確磊碾磕碼磐稿稼穀稽稷稻窯窮箭箱範箴篆篇篁箠篌糊締練緯緻緘緬緝編緣線緞緩綞緙緲緹罵罷羯\"],[\"bda1\",\"翩耦膛膜膝膠膚膘蔗蔽蔚蓮蔬蔭蔓蔑蔣蔡蔔蓬蔥蓿蔆螂蝴蝶蝠蝦蝸蝨蝙蝗蝌蝓衛衝褐複褒褓褕褊誼諒談諄誕請諸課諉諂調誰論諍誶誹諛豌豎豬賠賞賦賤賬賭賢賣賜質賡赭趟趣踫踐踝踢踏踩踟踡踞躺輝輛輟輩輦輪輜輞\"],[\"be40\",\"輥適遮遨遭遷鄰鄭鄧鄱醇醉醋醃鋅銻銷鋪銬鋤鋁銳銼鋒鋇鋰銲閭閱霄霆震霉靠鞍鞋鞏頡頫頜颳養餓餒餘駝駐駟駛駑駕駒駙骷髮髯鬧魅魄魷魯鴆鴉\"],[\"bea1\",\"鴃麩麾黎墨齒儒儘儔儐儕冀冪凝劑劓勳噙噫噹噩噤噸噪器噥噱噯噬噢噶壁墾壇壅奮嬝嬴學寰導彊憲憑憩憊懍憶憾懊懈戰擅擁擋撻撼據擄擇擂操撿擒擔撾整曆曉暹曄曇暸樽樸樺橙橫橘樹橄橢橡橋橇樵機橈歙歷氅濂澱澡\"],[\"bf40\",\"濃澤濁澧澳激澹澶澦澠澴熾燉燐燒燈燕熹燎燙燜燃燄獨璜璣璘璟璞瓢甌甍瘴瘸瘺盧盥瞠瞞瞟瞥磨磚磬磧禦積穎穆穌穋窺篙簑築篤篛篡篩篦糕糖縊\"],[\"bfa1\",\"縑縈縛縣縞縝縉縐罹羲翰翱翮耨膳膩膨臻興艘艙蕊蕙蕈蕨蕩蕃蕉蕭蕪蕞螃螟螞螢融衡褪褲褥褫褡親覦諦諺諫諱謀諜諧諮諾謁謂諷諭諳諶諼豫豭貓賴蹄踱踴蹂踹踵輻輯輸輳辨辦遵遴選遲遼遺鄴醒錠錶鋸錳錯錢鋼錫錄錚\"],[\"c040\",\"錐錦錡錕錮錙閻隧隨險雕霎霑霖霍霓霏靛靜靦鞘頰頸頻頷頭頹頤餐館餞餛餡餚駭駢駱骸骼髻髭鬨鮑鴕鴣鴦鴨鴒鴛默黔龍龜優償儡儲勵嚎嚀嚐嚅嚇\"],[\"c0a1\",\"嚏壕壓壑壎嬰嬪嬤孺尷屨嶼嶺嶽嶸幫彌徽應懂懇懦懋戲戴擎擊擘擠擰擦擬擱擢擭斂斃曙曖檀檔檄檢檜櫛檣橾檗檐檠歜殮毚氈濘濱濟濠濛濤濫濯澀濬濡濩濕濮濰燧營燮燦燥燭燬燴燠爵牆獰獲璩環璦璨癆療癌盪瞳瞪瞰瞬\"],[\"c140\",\"瞧瞭矯磷磺磴磯礁禧禪穗窿簇簍篾篷簌篠糠糜糞糢糟糙糝縮績繆縷縲繃縫總縱繅繁縴縹繈縵縿縯罄翳翼聱聲聰聯聳臆臃膺臂臀膿膽臉膾臨舉艱薪\"],[\"c1a1\",\"薄蕾薜薑薔薯薛薇薨薊虧蟀蟑螳蟒蟆螫螻螺蟈蟋褻褶襄褸褽覬謎謗謙講謊謠謝謄謐豁谿豳賺賽購賸賻趨蹉蹋蹈蹊轄輾轂轅輿避遽還邁邂邀鄹醣醞醜鍍鎂錨鍵鍊鍥鍋錘鍾鍬鍛鍰鍚鍔闊闋闌闈闆隱隸雖霜霞鞠韓顆颶餵騁\"],[\"c240\",\"駿鮮鮫鮪鮭鴻鴿麋黏點黜黝黛鼾齋叢嚕嚮壙壘嬸彝懣戳擴擲擾攆擺擻擷斷曜朦檳檬櫃檻檸櫂檮檯歟歸殯瀉瀋濾瀆濺瀑瀏燻燼燾燸獷獵璧璿甕癖癘\"],[\"c2a1\",\"癒瞽瞿瞻瞼礎禮穡穢穠竄竅簫簧簪簞簣簡糧織繕繞繚繡繒繙罈翹翻職聶臍臏舊藏薩藍藐藉薰薺薹薦蟯蟬蟲蟠覆覲觴謨謹謬謫豐贅蹙蹣蹦蹤蹟蹕軀轉轍邇邃邈醫醬釐鎔鎊鎖鎢鎳鎮鎬鎰鎘鎚鎗闔闖闐闕離雜雙雛雞霤鞣鞦\"],[\"c340\",\"鞭韹額顏題顎顓颺餾餿餽餮馥騎髁鬃鬆魏魎魍鯊鯉鯽鯈鯀鵑鵝鵠黠鼕鼬儳嚥壞壟壢寵龐廬懲懷懶懵攀攏曠曝櫥櫝櫚櫓瀛瀟瀨瀚瀝瀕瀘爆爍牘犢獸\"],[\"c3a1\",\"獺璽瓊瓣疇疆癟癡矇礙禱穫穩簾簿簸簽簷籀繫繭繹繩繪羅繳羶羹羸臘藩藝藪藕藤藥藷蟻蠅蠍蟹蟾襠襟襖襞譁譜識證譚譎譏譆譙贈贊蹼蹲躇蹶蹬蹺蹴轔轎辭邊邋醱醮鏡鏑鏟鏃鏈鏜鏝鏖鏢鏍鏘鏤鏗鏨關隴難霪霧靡韜韻類\"],[\"c440\",\"願顛颼饅饉騖騙鬍鯨鯧鯖鯛鶉鵡鵲鵪鵬麒麗麓麴勸嚨嚷嚶嚴嚼壤孀孃孽寶巉懸懺攘攔攙曦朧櫬瀾瀰瀲爐獻瓏癢癥礦礪礬礫竇競籌籃籍糯糰辮繽繼\"],[\"c4a1\",\"纂罌耀臚艦藻藹蘑藺蘆蘋蘇蘊蠔蠕襤覺觸議譬警譯譟譫贏贍躉躁躅躂醴釋鐘鐃鏽闡霰飄饒饑馨騫騰騷騵鰓鰍鹹麵黨鼯齟齣齡儷儸囁囀囂夔屬巍懼懾攝攜斕曩櫻欄櫺殲灌爛犧瓖瓔癩矓籐纏續羼蘗蘭蘚蠣蠢蠡蠟襪襬覽譴\"],[\"c540\",\"護譽贓躊躍躋轟辯醺鐮鐳鐵鐺鐸鐲鐫闢霸霹露響顧顥饗驅驃驀騾髏魔魑鰭鰥鶯鶴鷂鶸麝黯鼙齜齦齧儼儻囈囊囉孿巔巒彎懿攤權歡灑灘玀瓤疊癮癬\"],[\"c5a1\",\"禳籠籟聾聽臟襲襯觼讀贖贗躑躓轡酈鑄鑑鑒霽霾韃韁顫饕驕驍髒鬚鱉鰱鰾鰻鷓鷗鼴齬齪龔囌巖戀攣攫攪曬欐瓚竊籤籣籥纓纖纔臢蘸蘿蠱變邐邏鑣鑠鑤靨顯饜驚驛驗髓體髑鱔鱗鱖鷥麟黴囑壩攬灞癱癲矗罐羈蠶蠹衢讓讒\"],[\"c640\",\"讖艷贛釀鑪靂靈靄韆顰驟鬢魘鱟鷹鷺鹼鹽鼇齷齲廳欖灣籬籮蠻觀躡釁鑲鑰顱饞髖鬣黌灤矚讚鑷韉驢驥纜讜躪釅鑽鑾鑼鱷鱸黷豔鑿鸚爨驪鬱鸛鸞籲\"],[\"c940\",\"乂乜凵匚厂万丌乇亍囗兀屮彳丏冇与丮亓仂仉仈冘勼卬厹圠夃夬尐巿旡殳毌气爿丱丼仨仜仩仡仝仚刌匜卌圢圣夗夯宁宄尒尻屴屳帄庀庂忉戉扐氕\"],[\"c9a1\",\"氶汃氿氻犮犰玊禸肊阞伎优伬仵伔仱伀价伈伝伂伅伢伓伄仴伒冱刓刉刐劦匢匟卍厊吇囡囟圮圪圴夼妀奼妅奻奾奷奿孖尕尥屼屺屻屾巟幵庄异弚彴忕忔忏扜扞扤扡扦扢扙扠扚扥旯旮朾朹朸朻机朿朼朳氘汆汒汜汏汊汔汋\"],[\"ca40\",\"汌灱牞犴犵玎甪癿穵网艸艼芀艽艿虍襾邙邗邘邛邔阢阤阠阣佖伻佢佉体佤伾佧佒佟佁佘伭伳伿佡冏冹刜刞刡劭劮匉卣卲厎厏吰吷吪呔呅吙吜吥吘\"],[\"caa1\",\"吽呏呁吨吤呇囮囧囥坁坅坌坉坋坒夆奀妦妘妠妗妎妢妐妏妧妡宎宒尨尪岍岏岈岋岉岒岊岆岓岕巠帊帎庋庉庌庈庍弅弝彸彶忒忑忐忭忨忮忳忡忤忣忺忯忷忻怀忴戺抃抌抎抏抔抇扱扻扺扰抁抈扷扽扲扴攷旰旴旳旲旵杅杇\"],[\"cb40\",\"杙杕杌杈杝杍杚杋毐氙氚汸汧汫沄沋沏汱汯汩沚汭沇沕沜汦汳汥汻沎灴灺牣犿犽狃狆狁犺狅玕玗玓玔玒町甹疔疕皁礽耴肕肙肐肒肜芐芏芅芎芑芓\"],[\"cba1\",\"芊芃芄豸迉辿邟邡邥邞邧邠阰阨阯阭丳侘佼侅佽侀侇佶佴侉侄佷佌侗佪侚佹侁佸侐侜侔侞侒侂侕佫佮冞冼冾刵刲刳剆刱劼匊匋匼厒厔咇呿咁咑咂咈呫呺呾呥呬呴呦咍呯呡呠咘呣呧呤囷囹坯坲坭坫坱坰坶垀坵坻坳坴坢\"],[\"cc40\",\"坨坽夌奅妵妺姏姎妲姌姁妶妼姃姖妱妽姀姈妴姇孢孥宓宕屄屇岮岤岠岵岯岨岬岟岣岭岢岪岧岝岥岶岰岦帗帔帙弨弢弣弤彔徂彾彽忞忥怭怦怙怲怋\"],[\"cca1\",\"怴怊怗怳怚怞怬怢怍怐怮怓怑怌怉怜戔戽抭抴拑抾抪抶拊抮抳抯抻抩抰抸攽斨斻昉旼昄昒昈旻昃昋昍昅旽昑昐曶朊枅杬枎枒杶杻枘枆构杴枍枌杺枟枑枙枃杽极杸杹枔欥殀歾毞氝沓泬泫泮泙沶泔沭泧沷泐泂沺泃泆泭泲\"],[\"cd40\",\"泒泝沴沊沝沀泞泀洰泍泇沰泹泏泩泑炔炘炅炓炆炄炑炖炂炚炃牪狖狋狘狉狜狒狔狚狌狑玤玡玭玦玢玠玬玝瓝瓨甿畀甾疌疘皯盳盱盰盵矸矼矹矻矺\"],[\"cda1\",\"矷祂礿秅穸穻竻籵糽耵肏肮肣肸肵肭舠芠苀芫芚芘芛芵芧芮芼芞芺芴芨芡芩苂芤苃芶芢虰虯虭虮豖迒迋迓迍迖迕迗邲邴邯邳邰阹阽阼阺陃俍俅俓侲俉俋俁俔俜俙侻侳俛俇俖侺俀侹俬剄剉勀勂匽卼厗厖厙厘咺咡咭咥哏\"],[\"ce40\",\"哃茍咷咮哖咶哅哆咠呰咼咢咾呲哞咰垵垞垟垤垌垗垝垛垔垘垏垙垥垚垕壴复奓姡姞姮娀姱姝姺姽姼姶姤姲姷姛姩姳姵姠姾姴姭宨屌峐峘峌峗峋峛\"],[\"cea1\",\"峞峚峉峇峊峖峓峔峏峈峆峎峟峸巹帡帢帣帠帤庰庤庢庛庣庥弇弮彖徆怷怹恔恲恞恅恓恇恉恛恌恀恂恟怤恄恘恦恮扂扃拏挍挋拵挎挃拫拹挏挌拸拶挀挓挔拺挕拻拰敁敃斪斿昶昡昲昵昜昦昢昳昫昺昝昴昹昮朏朐柁柲柈枺\"],[\"cf40\",\"柜枻柸柘柀枷柅柫柤柟枵柍枳柷柶柮柣柂枹柎柧柰枲柼柆柭柌枮柦柛柺柉柊柃柪柋欨殂殄殶毖毘毠氠氡洨洴洭洟洼洿洒洊泚洳洄洙洺洚洑洀洝浂\"],[\"cfa1\",\"洁洘洷洃洏浀洇洠洬洈洢洉洐炷炟炾炱炰炡炴炵炩牁牉牊牬牰牳牮狊狤狨狫狟狪狦狣玅珌珂珈珅玹玶玵玴珫玿珇玾珃珆玸珋瓬瓮甮畇畈疧疪癹盄眈眃眄眅眊盷盻盺矧矨砆砑砒砅砐砏砎砉砃砓祊祌祋祅祄秕种秏秖秎窀\"],[\"d040\",\"穾竑笀笁籺籸籹籿粀粁紃紈紁罘羑羍羾耇耎耏耔耷胘胇胠胑胈胂胐胅胣胙胜胊胕胉胏胗胦胍臿舡芔苙苾苹茇苨茀苕茺苫苖苴苬苡苲苵茌苻苶苰苪\"],[\"d0a1\",\"苤苠苺苳苭虷虴虼虳衁衎衧衪衩觓訄訇赲迣迡迮迠郱邽邿郕郅邾郇郋郈釔釓陔陏陑陓陊陎倞倅倇倓倢倰倛俵俴倳倷倬俶俷倗倜倠倧倵倯倱倎党冔冓凊凄凅凈凎剡剚剒剞剟剕剢勍匎厞唦哢唗唒哧哳哤唚哿唄唈哫唑唅哱\"],[\"d140\",\"唊哻哷哸哠唎唃唋圁圂埌堲埕埒垺埆垽垼垸垶垿埇埐垹埁夎奊娙娖娭娮娕娏娗娊娞娳孬宧宭宬尃屖屔峬峿峮峱峷崀峹帩帨庨庮庪庬弳弰彧恝恚恧\"],[\"d1a1\",\"恁悢悈悀悒悁悝悃悕悛悗悇悜悎戙扆拲挐捖挬捄捅挶捃揤挹捋捊挼挩捁挴捘捔捙挭捇挳捚捑挸捗捀捈敊敆旆旃旄旂晊晟晇晑朒朓栟栚桉栲栳栻桋桏栖栱栜栵栫栭栯桎桄栴栝栒栔栦栨栮桍栺栥栠欬欯欭欱欴歭肂殈毦毤\"],[\"d240\",\"毨毣毢毧氥浺浣浤浶洍浡涒浘浢浭浯涑涍淯浿涆浞浧浠涗浰浼浟涂涘洯浨涋浾涀涄洖涃浻浽浵涐烜烓烑烝烋缹烢烗烒烞烠烔烍烅烆烇烚烎烡牂牸\"],[\"d2a1\",\"牷牶猀狺狴狾狶狳狻猁珓珙珥珖玼珧珣珩珜珒珛珔珝珚珗珘珨瓞瓟瓴瓵甡畛畟疰痁疻痄痀疿疶疺皊盉眝眛眐眓眒眣眑眕眙眚眢眧砣砬砢砵砯砨砮砫砡砩砳砪砱祔祛祏祜祓祒祑秫秬秠秮秭秪秜秞秝窆窉窅窋窌窊窇竘笐\"],[\"d340\",\"笄笓笅笏笈笊笎笉笒粄粑粊粌粈粍粅紞紝紑紎紘紖紓紟紒紏紌罜罡罞罠罝罛羖羒翃翂翀耖耾耹胺胲胹胵脁胻脀舁舯舥茳茭荄茙荑茥荖茿荁茦茜茢\"],[\"d3a1\",\"荂荎茛茪茈茼荍茖茤茠茷茯茩荇荅荌荓茞茬荋茧荈虓虒蚢蚨蚖蚍蚑蚞蚇蚗蚆蚋蚚蚅蚥蚙蚡蚧蚕蚘蚎蚝蚐蚔衃衄衭衵衶衲袀衱衿衯袃衾衴衼訒豇豗豻貤貣赶赸趵趷趶軑軓迾迵适迿迻逄迼迶郖郠郙郚郣郟郥郘郛郗郜郤酐\"],[\"d440\",\"酎酏釕釢釚陜陟隼飣髟鬯乿偰偪偡偞偠偓偋偝偲偈偍偁偛偊偢倕偅偟偩偫偣偤偆偀偮偳偗偑凐剫剭剬剮勖勓匭厜啵啶唼啍啐唴唪啑啢唶唵唰啒啅\"],[\"d4a1\",\"唌唲啥啎唹啈唭唻啀啋圊圇埻堔埢埶埜埴堀埭埽堈埸堋埳埏堇埮埣埲埥埬埡堎埼堐埧堁堌埱埩埰堍堄奜婠婘婕婧婞娸娵婭婐婟婥婬婓婤婗婃婝婒婄婛婈媎娾婍娹婌婰婩婇婑婖婂婜孲孮寁寀屙崞崋崝崚崠崌崨崍崦崥崏\"],[\"d540\",\"崰崒崣崟崮帾帴庱庴庹庲庳弶弸徛徖徟悊悐悆悾悰悺惓惔惏惤惙惝惈悱惛悷惊悿惃惍惀挲捥掊掂捽掽掞掭掝掗掫掎捯掇掐据掯捵掜捭掮捼掤挻掟\"],[\"d5a1\",\"捸掅掁掑掍捰敓旍晥晡晛晙晜晢朘桹梇梐梜桭桮梮梫楖桯梣梬梩桵桴梲梏桷梒桼桫桲梪梀桱桾梛梖梋梠梉梤桸桻梑梌梊桽欶欳欷欸殑殏殍殎殌氪淀涫涴涳湴涬淩淢涷淶淔渀淈淠淟淖涾淥淜淝淛淴淊涽淭淰涺淕淂淏淉\"],[\"d640\",\"淐淲淓淽淗淍淣涻烺焍烷焗烴焌烰焄烳焐烼烿焆焓焀烸烶焋焂焎牾牻牼牿猝猗猇猑猘猊猈狿猏猞玈珶珸珵琄琁珽琇琀珺珼珿琌琋珴琈畤畣痎痒痏\"],[\"d6a1\",\"痋痌痑痐皏皉盓眹眯眭眱眲眴眳眽眥眻眵硈硒硉硍硊硌砦硅硐祤祧祩祪祣祫祡离秺秸秶秷窏窔窐笵筇笴笥笰笢笤笳笘笪笝笱笫笭笯笲笸笚笣粔粘粖粣紵紽紸紶紺絅紬紩絁絇紾紿絊紻紨罣羕羜羝羛翊翋翍翐翑翇翏翉耟\"],[\"d740\",\"耞耛聇聃聈脘脥脙脛脭脟脬脞脡脕脧脝脢舑舸舳舺舴舲艴莐莣莨莍荺荳莤荴莏莁莕莙荵莔莩荽莃莌莝莛莪莋荾莥莯莈莗莰荿莦莇莮荶莚虙虖蚿蚷\"],[\"d7a1\",\"蛂蛁蛅蚺蚰蛈蚹蚳蚸蛌蚴蚻蚼蛃蚽蚾衒袉袕袨袢袪袚袑袡袟袘袧袙袛袗袤袬袌袓袎覂觖觙觕訰訧訬訞谹谻豜豝豽貥赽赻赹趼跂趹趿跁軘軞軝軜軗軠軡逤逋逑逜逌逡郯郪郰郴郲郳郔郫郬郩酖酘酚酓酕釬釴釱釳釸釤釹釪\"],[\"d840\",\"釫釷釨釮镺閆閈陼陭陫陱陯隿靪頄飥馗傛傕傔傞傋傣傃傌傎傝偨傜傒傂傇兟凔匒匑厤厧喑喨喥喭啷噅喢喓喈喏喵喁喣喒喤啽喌喦啿喕喡喎圌堩堷\"],[\"d8a1\",\"堙堞堧堣堨埵塈堥堜堛堳堿堶堮堹堸堭堬堻奡媯媔媟婺媢媞婸媦婼媥媬媕媮娷媄媊媗媃媋媩婻婽媌媜媏媓媝寪寍寋寔寑寊寎尌尰崷嵃嵫嵁嵋崿崵嵑嵎嵕崳崺嵒崽崱嵙嵂崹嵉崸崼崲崶嵀嵅幄幁彘徦徥徫惉悹惌惢惎惄愔\"],[\"d940\",\"惲愊愖愅惵愓惸惼惾惁愃愘愝愐惿愄愋扊掔掱掰揎揥揨揯揃撝揳揊揠揶揕揲揵摡揟掾揝揜揄揘揓揂揇揌揋揈揰揗揙攲敧敪敤敜敨敥斌斝斞斮旐旒\"],[\"d9a1\",\"晼晬晻暀晱晹晪晲朁椌棓椄棜椪棬棪棱椏棖棷棫棤棶椓椐棳棡椇棌椈楰梴椑棯棆椔棸棐棽棼棨椋椊椗棎棈棝棞棦棴棑椆棔棩椕椥棇欹欻欿欼殔殗殙殕殽毰毲毳氰淼湆湇渟湉溈渼渽湅湢渫渿湁湝湳渜渳湋湀湑渻渃渮湞\"],[\"da40\",\"湨湜湡渱渨湠湱湫渹渢渰湓湥渧湸湤湷湕湹湒湦渵渶湚焠焞焯烻焮焱焣焥焢焲焟焨焺焛牋牚犈犉犆犅犋猒猋猰猢猱猳猧猲猭猦猣猵猌琮琬琰琫琖\"],[\"daa1\",\"琚琡琭琱琤琣琝琩琠琲瓻甯畯畬痧痚痡痦痝痟痤痗皕皒盚睆睇睄睍睅睊睎睋睌矞矬硠硤硥硜硭硱硪确硰硩硨硞硢祴祳祲祰稂稊稃稌稄窙竦竤筊笻筄筈筌筎筀筘筅粢粞粨粡絘絯絣絓絖絧絪絏絭絜絫絒絔絩絑絟絎缾缿罥\"],[\"db40\",\"罦羢羠羡翗聑聏聐胾胔腃腊腒腏腇脽腍脺臦臮臷臸臹舄舼舽舿艵茻菏菹萣菀菨萒菧菤菼菶萐菆菈菫菣莿萁菝菥菘菿菡菋菎菖菵菉萉萏菞萑萆菂菳\"],[\"dba1\",\"菕菺菇菑菪萓菃菬菮菄菻菗菢萛菛菾蛘蛢蛦蛓蛣蛚蛪蛝蛫蛜蛬蛩蛗蛨蛑衈衖衕袺裗袹袸裀袾袶袼袷袽袲褁裉覕覘覗觝觚觛詎詍訹詙詀詗詘詄詅詒詈詑詊詌詏豟貁貀貺貾貰貹貵趄趀趉跘跓跍跇跖跜跏跕跙跈跗跅軯軷軺\"],[\"dc40\",\"軹軦軮軥軵軧軨軶軫軱軬軴軩逭逴逯鄆鄬鄄郿郼鄈郹郻鄁鄀鄇鄅鄃酡酤酟酢酠鈁鈊鈥鈃鈚鈦鈏鈌鈀鈒釿釽鈆鈄鈧鈂鈜鈤鈙鈗鈅鈖镻閍閌閐隇陾隈\"],[\"dca1\",\"隉隃隀雂雈雃雱雰靬靰靮頇颩飫鳦黹亃亄亶傽傿僆傮僄僊傴僈僂傰僁傺傱僋僉傶傸凗剺剸剻剼嗃嗛嗌嗐嗋嗊嗝嗀嗔嗄嗩喿嗒喍嗏嗕嗢嗖嗈嗲嗍嗙嗂圔塓塨塤塏塍塉塯塕塎塝塙塥塛堽塣塱壼嫇嫄嫋媺媸媱媵媰媿嫈媻嫆\"],[\"dd40\",\"媷嫀嫊媴媶嫍媹媐寖寘寙尟尳嵱嵣嵊嵥嵲嵬嵞嵨嵧嵢巰幏幎幊幍幋廅廌廆廋廇彀徯徭惷慉慊愫慅愶愲愮慆愯慏愩慀戠酨戣戥戤揅揱揫搐搒搉搠搤\"],[\"dda1\",\"搳摃搟搕搘搹搷搢搣搌搦搰搨摁搵搯搊搚摀搥搧搋揧搛搮搡搎敯斒旓暆暌暕暐暋暊暙暔晸朠楦楟椸楎楢楱椿楅楪椹楂楗楙楺楈楉椵楬椳椽楥棰楸椴楩楀楯楄楶楘楁楴楌椻楋椷楜楏楑椲楒椯楻椼歆歅歃歂歈歁殛嗀毻毼\"],[\"de40\",\"毹毷毸溛滖滈溏滀溟溓溔溠溱溹滆滒溽滁溞滉溷溰滍溦滏溲溾滃滜滘溙溒溎溍溤溡溿溳滐滊溗溮溣煇煔煒煣煠煁煝煢煲煸煪煡煂煘煃煋煰煟煐煓\"],[\"dea1\",\"煄煍煚牏犍犌犑犐犎猼獂猻猺獀獊獉瑄瑊瑋瑒瑑瑗瑀瑏瑐瑎瑂瑆瑍瑔瓡瓿瓾瓽甝畹畷榃痯瘏瘃痷痾痼痹痸瘐痻痶痭痵痽皙皵盝睕睟睠睒睖睚睩睧睔睙睭矠碇碚碔碏碄碕碅碆碡碃硹碙碀碖硻祼禂祽祹稑稘稙稒稗稕稢稓\"],[\"df40\",\"稛稐窣窢窞竫筦筤筭筴筩筲筥筳筱筰筡筸筶筣粲粴粯綈綆綀綍絿綅絺綎絻綃絼綌綔綄絽綒罭罫罧罨罬羦羥羧翛翜耡腤腠腷腜腩腛腢腲朡腞腶腧腯\"],[\"dfa1\",\"腄腡舝艉艄艀艂艅蓱萿葖葶葹蒏蒍葥葑葀蒆葧萰葍葽葚葙葴葳葝蔇葞萷萺萴葺葃葸萲葅萩菙葋萯葂萭葟葰萹葎葌葒葯蓅蒎萻葇萶萳葨葾葄萫葠葔葮葐蜋蜄蛷蜌蛺蛖蛵蝍蛸蜎蜉蜁蛶蜍蜅裖裋裍裎裞裛裚裌裐覅覛觟觥觤\"],[\"e040\",\"觡觠觢觜触詶誆詿詡訿詷誂誄詵誃誁詴詺谼豋豊豥豤豦貆貄貅賌赨赩趑趌趎趏趍趓趔趐趒跰跠跬跱跮跐跩跣跢跧跲跫跴輆軿輁輀輅輇輈輂輋遒逿\"],[\"e0a1\",\"遄遉逽鄐鄍鄏鄑鄖鄔鄋鄎酮酯鉈鉒鈰鈺鉦鈳鉥鉞銃鈮鉊鉆鉭鉬鉏鉠鉧鉯鈶鉡鉰鈱鉔鉣鉐鉲鉎鉓鉌鉖鈲閟閜閞閛隒隓隑隗雎雺雽雸雵靳靷靸靲頏頍頎颬飶飹馯馲馰馵骭骫魛鳪鳭鳧麀黽僦僔僗僨僳僛僪僝僤僓僬僰僯僣僠\"],[\"e140\",\"凘劀劁勩勫匰厬嘧嘕嘌嘒嗼嘏嘜嘁嘓嘂嗺嘝嘄嗿嗹墉塼墐墘墆墁塿塴墋塺墇墑墎塶墂墈塻墔墏壾奫嫜嫮嫥嫕嫪嫚嫭嫫嫳嫢嫠嫛嫬嫞嫝嫙嫨嫟孷寠\"],[\"e1a1\",\"寣屣嶂嶀嵽嶆嵺嶁嵷嶊嶉嶈嵾嵼嶍嵹嵿幘幙幓廘廑廗廎廜廕廙廒廔彄彃彯徶愬愨慁慞慱慳慒慓慲慬憀慴慔慺慛慥愻慪慡慖戩戧戫搫摍摛摝摴摶摲摳摽摵摦撦摎撂摞摜摋摓摠摐摿搿摬摫摙摥摷敳斠暡暠暟朅朄朢榱榶槉\"],[\"e240\",\"榠槎榖榰榬榼榑榙榎榧榍榩榾榯榿槄榽榤槔榹槊榚槏榳榓榪榡榞槙榗榐槂榵榥槆歊歍歋殞殟殠毃毄毾滎滵滱漃漥滸漷滻漮漉潎漙漚漧漘漻漒滭漊\"],[\"e2a1\",\"漶潳滹滮漭潀漰漼漵滫漇漎潃漅滽滶漹漜滼漺漟漍漞漈漡熇熐熉熀熅熂熏煻熆熁熗牄牓犗犕犓獃獍獑獌瑢瑳瑱瑵瑲瑧瑮甀甂甃畽疐瘖瘈瘌瘕瘑瘊瘔皸瞁睼瞅瞂睮瞀睯睾瞃碲碪碴碭碨硾碫碞碥碠碬碢碤禘禊禋禖禕禔禓\"],[\"e340\",\"禗禈禒禐稫穊稰稯稨稦窨窫窬竮箈箜箊箑箐箖箍箌箛箎箅箘劄箙箤箂粻粿粼粺綧綷緂綣綪緁緀緅綝緎緄緆緋緌綯綹綖綼綟綦綮綩綡緉罳翢翣翥翞\"],[\"e3a1\",\"耤聝聜膉膆膃膇膍膌膋舕蒗蒤蒡蒟蒺蓎蓂蒬蒮蒫蒹蒴蓁蓍蒪蒚蒱蓐蒝蒧蒻蒢蒔蓇蓌蒛蒩蒯蒨蓖蒘蒶蓏蒠蓗蓔蓒蓛蒰蒑虡蜳蜣蜨蝫蝀蜮蜞蜡蜙蜛蝃蜬蝁蜾蝆蜠蜲蜪蜭蜼蜒蜺蜱蜵蝂蜦蜧蜸蜤蜚蜰蜑裷裧裱裲裺裾裮裼裶裻\"],[\"e440\",\"裰裬裫覝覡覟覞觩觫觨誫誙誋誒誏誖谽豨豩賕賏賗趖踉踂跿踍跽踊踃踇踆踅跾踀踄輐輑輎輍鄣鄜鄠鄢鄟鄝鄚鄤鄡鄛酺酲酹酳銥銤鉶銛鉺銠銔銪銍\"],[\"e4a1\",\"銦銚銫鉹銗鉿銣鋮銎銂銕銢鉽銈銡銊銆銌銙銧鉾銇銩銝銋鈭隞隡雿靘靽靺靾鞃鞀鞂靻鞄鞁靿韎韍頖颭颮餂餀餇馝馜駃馹馻馺駂馽駇骱髣髧鬾鬿魠魡魟鳱鳲鳵麧僿儃儰僸儆儇僶僾儋儌僽儊劋劌勱勯噈噂噌嘵噁噊噉噆噘\"],[\"e540\",\"噚噀嘳嘽嘬嘾嘸嘪嘺圚墫墝墱墠墣墯墬墥墡壿嫿嫴嫽嫷嫶嬃嫸嬂嫹嬁嬇嬅嬏屧嶙嶗嶟嶒嶢嶓嶕嶠嶜嶡嶚嶞幩幝幠幜緳廛廞廡彉徲憋憃慹憱憰憢憉\"],[\"e5a1\",\"憛憓憯憭憟憒憪憡憍慦憳戭摮摰撖撠撅撗撜撏撋撊撌撣撟摨撱撘敶敺敹敻斲斳暵暰暩暲暷暪暯樀樆樗槥槸樕槱槤樠槿槬槢樛樝槾樧槲槮樔槷槧橀樈槦槻樍槼槫樉樄樘樥樏槶樦樇槴樖歑殥殣殢殦氁氀毿氂潁漦潾澇濆澒\"],[\"e640\",\"澍澉澌潢潏澅潚澖潶潬澂潕潲潒潐潗澔澓潝漀潡潫潽潧澐潓澋潩潿澕潣潷潪潻熲熯熛熰熠熚熩熵熝熥熞熤熡熪熜熧熳犘犚獘獒獞獟獠獝獛獡獚獙\"],[\"e6a1\",\"獢璇璉璊璆璁瑽璅璈瑼瑹甈甇畾瘥瘞瘙瘝瘜瘣瘚瘨瘛皜皝皞皛瞍瞏瞉瞈磍碻磏磌磑磎磔磈磃磄磉禚禡禠禜禢禛歶稹窲窴窳箷篋箾箬篎箯箹篊箵糅糈糌糋緷緛緪緧緗緡縃緺緦緶緱緰緮緟罶羬羰羭翭翫翪翬翦翨聤聧膣膟\"],[\"e740\",\"膞膕膢膙膗舖艏艓艒艐艎艑蔤蔻蔏蔀蔩蔎蔉蔍蔟蔊蔧蔜蓻蔫蓺蔈蔌蓴蔪蓲蔕蓷蓫蓳蓼蔒蓪蓩蔖蓾蔨蔝蔮蔂蓽蔞蓶蔱蔦蓧蓨蓰蓯蓹蔘蔠蔰蔋蔙蔯虢\"],[\"e7a1\",\"蝖蝣蝤蝷蟡蝳蝘蝔蝛蝒蝡蝚蝑蝞蝭蝪蝐蝎蝟蝝蝯蝬蝺蝮蝜蝥蝏蝻蝵蝢蝧蝩衚褅褌褔褋褗褘褙褆褖褑褎褉覢覤覣觭觰觬諏諆誸諓諑諔諕誻諗誾諀諅諘諃誺誽諙谾豍貏賥賟賙賨賚賝賧趠趜趡趛踠踣踥踤踮踕踛踖踑踙踦踧\"],[\"e840\",\"踔踒踘踓踜踗踚輬輤輘輚輠輣輖輗遳遰遯遧遫鄯鄫鄩鄪鄲鄦鄮醅醆醊醁醂醄醀鋐鋃鋄鋀鋙銶鋏鋱鋟鋘鋩鋗鋝鋌鋯鋂鋨鋊鋈鋎鋦鋍鋕鋉鋠鋞鋧鋑鋓\"],[\"e8a1\",\"銵鋡鋆銴镼閬閫閮閰隤隢雓霅霈霂靚鞊鞎鞈韐韏頞頝頦頩頨頠頛頧颲餈飺餑餔餖餗餕駜駍駏駓駔駎駉駖駘駋駗駌骳髬髫髳髲髱魆魃魧魴魱魦魶魵魰魨魤魬鳼鳺鳽鳿鳷鴇鴀鳹鳻鴈鴅鴄麃黓鼏鼐儜儓儗儚儑凞匴叡噰噠噮\"],[\"e940\",\"噳噦噣噭噲噞噷圜圛壈墽壉墿墺壂墼壆嬗嬙嬛嬡嬔嬓嬐嬖嬨嬚嬠嬞寯嶬嶱嶩嶧嶵嶰嶮嶪嶨嶲嶭嶯嶴幧幨幦幯廩廧廦廨廥彋徼憝憨憖懅憴懆懁懌憺\"],[\"e9a1\",\"憿憸憌擗擖擐擏擉撽撉擃擛擳擙攳敿敼斢曈暾曀曊曋曏暽暻暺曌朣樴橦橉橧樲橨樾橝橭橶橛橑樨橚樻樿橁橪橤橐橏橔橯橩橠樼橞橖橕橍橎橆歕歔歖殧殪殫毈毇氄氃氆澭濋澣濇澼濎濈潞濄澽澞濊澨瀄澥澮澺澬澪濏澿澸\"],[\"ea40\",\"澢濉澫濍澯澲澰燅燂熿熸燖燀燁燋燔燊燇燏熽燘熼燆燚燛犝犞獩獦獧獬獥獫獪瑿璚璠璔璒璕璡甋疀瘯瘭瘱瘽瘳瘼瘵瘲瘰皻盦瞚瞝瞡瞜瞛瞢瞣瞕瞙\"],[\"eaa1\",\"瞗磝磩磥磪磞磣磛磡磢磭磟磠禤穄穈穇窶窸窵窱窷篞篣篧篝篕篥篚篨篹篔篪篢篜篫篘篟糒糔糗糐糑縒縡縗縌縟縠縓縎縜縕縚縢縋縏縖縍縔縥縤罃罻罼罺羱翯耪耩聬膱膦膮膹膵膫膰膬膴膲膷膧臲艕艖艗蕖蕅蕫蕍蕓蕡蕘\"],[\"eb40\",\"蕀蕆蕤蕁蕢蕄蕑蕇蕣蔾蕛蕱蕎蕮蕵蕕蕧蕠薌蕦蕝蕔蕥蕬虣虥虤螛螏螗螓螒螈螁螖螘蝹螇螣螅螐螑螝螄螔螜螚螉褞褦褰褭褮褧褱褢褩褣褯褬褟觱諠\"],[\"eba1\",\"諢諲諴諵諝謔諤諟諰諈諞諡諨諿諯諻貑貒貐賵賮賱賰賳赬赮趥趧踳踾踸蹀蹅踶踼踽蹁踰踿躽輶輮輵輲輹輷輴遶遹遻邆郺鄳鄵鄶醓醐醑醍醏錧錞錈錟錆錏鍺錸錼錛錣錒錁鍆錭錎錍鋋錝鋺錥錓鋹鋷錴錂錤鋿錩錹錵錪錔錌\"],[\"ec40\",\"錋鋾錉錀鋻錖閼闍閾閹閺閶閿閵閽隩雔霋霒霐鞙鞗鞔韰韸頵頯頲餤餟餧餩馞駮駬駥駤駰駣駪駩駧骹骿骴骻髶髺髹髷鬳鮀鮅鮇魼魾魻鮂鮓鮒鮐魺鮕\"],[\"eca1\",\"魽鮈鴥鴗鴠鴞鴔鴩鴝鴘鴢鴐鴙鴟麈麆麇麮麭黕黖黺鼒鼽儦儥儢儤儠儩勴嚓嚌嚍嚆嚄嚃噾嚂噿嚁壖壔壏壒嬭嬥嬲嬣嬬嬧嬦嬯嬮孻寱寲嶷幬幪徾徻懃憵憼懧懠懥懤懨懞擯擩擣擫擤擨斁斀斶旚曒檍檖檁檥檉檟檛檡檞檇檓檎\"],[\"ed40\",\"檕檃檨檤檑橿檦檚檅檌檒歛殭氉濌澩濴濔濣濜濭濧濦濞濲濝濢濨燡燱燨燲燤燰燢獳獮獯璗璲璫璐璪璭璱璥璯甐甑甒甏疄癃癈癉癇皤盩瞵瞫瞲瞷瞶\"],[\"eda1\",\"瞴瞱瞨矰磳磽礂磻磼磲礅磹磾礄禫禨穜穛穖穘穔穚窾竀竁簅簏篲簀篿篻簎篴簋篳簂簉簃簁篸篽簆篰篱簐簊糨縭縼繂縳顈縸縪繉繀繇縩繌縰縻縶繄縺罅罿罾罽翴翲耬膻臄臌臊臅臇膼臩艛艚艜薃薀薏薧薕薠薋薣蕻薤薚薞\"],[\"ee40\",\"蕷蕼薉薡蕺蕸蕗薎薖薆薍薙薝薁薢薂薈薅蕹蕶薘薐薟虨螾螪螭蟅螰螬螹螵螼螮蟉蟃蟂蟌螷螯蟄蟊螴螶螿螸螽蟞螲褵褳褼褾襁襒褷襂覭覯覮觲觳謞\"],[\"eea1\",\"謘謖謑謅謋謢謏謒謕謇謍謈謆謜謓謚豏豰豲豱豯貕貔賹赯蹎蹍蹓蹐蹌蹇轃轀邅遾鄸醚醢醛醙醟醡醝醠鎡鎃鎯鍤鍖鍇鍼鍘鍜鍶鍉鍐鍑鍠鍭鎏鍌鍪鍹鍗鍕鍒鍏鍱鍷鍻鍡鍞鍣鍧鎀鍎鍙闇闀闉闃闅閷隮隰隬霠霟霘霝霙鞚鞡鞜\"],[\"ef40\",\"鞞鞝韕韔韱顁顄顊顉顅顃餥餫餬餪餳餲餯餭餱餰馘馣馡騂駺駴駷駹駸駶駻駽駾駼騃骾髾髽鬁髼魈鮚鮨鮞鮛鮦鮡鮥鮤鮆鮢鮠鮯鴳鵁鵧鴶鴮鴯鴱鴸鴰\"],[\"efa1\",\"鵅鵂鵃鴾鴷鵀鴽翵鴭麊麉麍麰黈黚黻黿鼤鼣鼢齔龠儱儭儮嚘嚜嚗嚚嚝嚙奰嬼屩屪巀幭幮懘懟懭懮懱懪懰懫懖懩擿攄擽擸攁攃擼斔旛曚曛曘櫅檹檽櫡櫆檺檶檷櫇檴檭歞毉氋瀇瀌瀍瀁瀅瀔瀎濿瀀濻瀦濼濷瀊爁燿燹爃燽獶\"],[\"f040\",\"璸瓀璵瓁璾璶璻瓂甔甓癜癤癙癐癓癗癚皦皽盬矂瞺磿礌礓礔礉礐礒礑禭禬穟簜簩簙簠簟簭簝簦簨簢簥簰繜繐繖繣繘繢繟繑繠繗繓羵羳翷翸聵臑臒\"],[\"f0a1\",\"臐艟艞薴藆藀藃藂薳薵薽藇藄薿藋藎藈藅薱薶藒蘤薸薷薾虩蟧蟦蟢蟛蟫蟪蟥蟟蟳蟤蟔蟜蟓蟭蟘蟣螤蟗蟙蠁蟴蟨蟝襓襋襏襌襆襐襑襉謪謧謣謳謰謵譇謯謼謾謱謥謷謦謶謮謤謻謽謺豂豵貙貘貗賾贄贂贀蹜蹢蹠蹗蹖蹞蹥蹧\"],[\"f140\",\"蹛蹚蹡蹝蹩蹔轆轇轈轋鄨鄺鄻鄾醨醥醧醯醪鎵鎌鎒鎷鎛鎝鎉鎧鎎鎪鎞鎦鎕鎈鎙鎟鎍鎱鎑鎲鎤鎨鎴鎣鎥闒闓闑隳雗雚巂雟雘雝霣霢霥鞬鞮鞨鞫鞤鞪\"],[\"f1a1\",\"鞢鞥韗韙韖韘韺顐顑顒颸饁餼餺騏騋騉騍騄騑騊騅騇騆髀髜鬈鬄鬅鬩鬵魊魌魋鯇鯆鯃鮿鯁鮵鮸鯓鮶鯄鮹鮽鵜鵓鵏鵊鵛鵋鵙鵖鵌鵗鵒鵔鵟鵘鵚麎麌黟鼁鼀鼖鼥鼫鼪鼩鼨齌齕儴儵劖勷厴嚫嚭嚦嚧嚪嚬壚壝壛夒嬽嬾嬿巃幰\"],[\"f240\",\"徿懻攇攐攍攉攌攎斄旞旝曞櫧櫠櫌櫑櫙櫋櫟櫜櫐櫫櫏櫍櫞歠殰氌瀙瀧瀠瀖瀫瀡瀢瀣瀩瀗瀤瀜瀪爌爊爇爂爅犥犦犤犣犡瓋瓅璷瓃甖癠矉矊矄矱礝礛\"],[\"f2a1\",\"礡礜礗礞禰穧穨簳簼簹簬簻糬糪繶繵繸繰繷繯繺繲繴繨罋罊羃羆羷翽翾聸臗臕艤艡艣藫藱藭藙藡藨藚藗藬藲藸藘藟藣藜藑藰藦藯藞藢蠀蟺蠃蟶蟷蠉蠌蠋蠆蟼蠈蟿蠊蠂襢襚襛襗襡襜襘襝襙覈覷覶觶譐譈譊譀譓譖譔譋譕\"],[\"f340\",\"譑譂譒譗豃豷豶貚贆贇贉趬趪趭趫蹭蹸蹳蹪蹯蹻軂轒轑轏轐轓辴酀鄿醰醭鏞鏇鏏鏂鏚鏐鏹鏬鏌鏙鎩鏦鏊鏔鏮鏣鏕鏄鏎鏀鏒鏧镽闚闛雡霩霫霬霨霦\"],[\"f3a1\",\"鞳鞷鞶韝韞韟顜顙顝顗颿颽颻颾饈饇饃馦馧騚騕騥騝騤騛騢騠騧騣騞騜騔髂鬋鬊鬎鬌鬷鯪鯫鯠鯞鯤鯦鯢鯰鯔鯗鯬鯜鯙鯥鯕鯡鯚鵷鶁鶊鶄鶈鵱鶀鵸鶆鶋鶌鵽鵫鵴鵵鵰鵩鶅鵳鵻鶂鵯鵹鵿鶇鵨麔麑黀黼鼭齀齁齍齖齗齘匷嚲\"],[\"f440\",\"嚵嚳壣孅巆巇廮廯忀忁懹攗攖攕攓旟曨曣曤櫳櫰櫪櫨櫹櫱櫮櫯瀼瀵瀯瀷瀴瀱灂瀸瀿瀺瀹灀瀻瀳灁爓爔犨獽獼璺皫皪皾盭矌矎矏矍矲礥礣礧礨礤礩\"],[\"f4a1\",\"禲穮穬穭竷籉籈籊籇籅糮繻繾纁纀羺翿聹臛臙舋艨艩蘢藿蘁藾蘛蘀藶蘄蘉蘅蘌藽蠙蠐蠑蠗蠓蠖襣襦覹觷譠譪譝譨譣譥譧譭趮躆躈躄轙轖轗轕轘轚邍酃酁醷醵醲醳鐋鐓鏻鐠鐏鐔鏾鐕鐐鐨鐙鐍鏵鐀鏷鐇鐎鐖鐒鏺鐉鏸鐊鏿\"],[\"f540\",\"鏼鐌鏶鐑鐆闞闠闟霮霯鞹鞻韽韾顠顢顣顟飁飂饐饎饙饌饋饓騲騴騱騬騪騶騩騮騸騭髇髊髆鬐鬒鬑鰋鰈鯷鰅鰒鯸鱀鰇鰎鰆鰗鰔鰉鶟鶙鶤鶝鶒鶘鶐鶛\"],[\"f5a1\",\"鶠鶔鶜鶪鶗鶡鶚鶢鶨鶞鶣鶿鶩鶖鶦鶧麙麛麚黥黤黧黦鼰鼮齛齠齞齝齙龑儺儹劘劗囃嚽嚾孈孇巋巏廱懽攛欂櫼欃櫸欀灃灄灊灈灉灅灆爝爚爙獾甗癪矐礭礱礯籔籓糲纊纇纈纋纆纍罍羻耰臝蘘蘪蘦蘟蘣蘜蘙蘧蘮蘡蘠蘩蘞蘥\"],[\"f640\",\"蠩蠝蠛蠠蠤蠜蠫衊襭襩襮襫觺譹譸譅譺譻贐贔趯躎躌轞轛轝酆酄酅醹鐿鐻鐶鐩鐽鐼鐰鐹鐪鐷鐬鑀鐱闥闤闣霵霺鞿韡顤飉飆飀饘饖騹騽驆驄驂驁騺\"],[\"f6a1\",\"騿髍鬕鬗鬘鬖鬺魒鰫鰝鰜鰬鰣鰨鰩鰤鰡鶷鶶鶼鷁鷇鷊鷏鶾鷅鷃鶻鶵鷎鶹鶺鶬鷈鶱鶭鷌鶳鷍鶲鹺麜黫黮黭鼛鼘鼚鼱齎齥齤龒亹囆囅囋奱孋孌巕巑廲攡攠攦攢欋欈欉氍灕灖灗灒爞爟犩獿瓘瓕瓙瓗癭皭礵禴穰穱籗籜籙籛籚\"],[\"f740\",\"糴糱纑罏羇臞艫蘴蘵蘳蘬蘲蘶蠬蠨蠦蠪蠥襱覿覾觻譾讄讂讆讅譿贕躕躔躚躒躐躖躗轠轢酇鑌鑐鑊鑋鑏鑇鑅鑈鑉鑆霿韣顪顩飋饔饛驎驓驔驌驏驈驊\"],[\"f7a1\",\"驉驒驐髐鬙鬫鬻魖魕鱆鱈鰿鱄鰹鰳鱁鰼鰷鰴鰲鰽鰶鷛鷒鷞鷚鷋鷐鷜鷑鷟鷩鷙鷘鷖鷵鷕鷝麶黰鼵鼳鼲齂齫龕龢儽劙壨壧奲孍巘蠯彏戁戃戄攩攥斖曫欑欒欏毊灛灚爢玂玁玃癰矔籧籦纕艬蘺虀蘹蘼蘱蘻蘾蠰蠲蠮蠳襶襴襳觾\"],[\"f840\",\"讌讎讋讈豅贙躘轤轣醼鑢鑕鑝鑗鑞韄韅頀驖驙鬞鬟鬠鱒鱘鱐鱊鱍鱋鱕鱙鱌鱎鷻鷷鷯鷣鷫鷸鷤鷶鷡鷮鷦鷲鷰鷢鷬鷴鷳鷨鷭黂黐黲黳鼆鼜鼸鼷鼶齃齏\"],[\"f8a1\",\"齱齰齮齯囓囍孎屭攭曭曮欓灟灡灝灠爣瓛瓥矕礸禷禶籪纗羉艭虃蠸蠷蠵衋讔讕躞躟躠躝醾醽釂鑫鑨鑩雥靆靃靇韇韥驞髕魙鱣鱧鱦鱢鱞鱠鸂鷾鸇鸃鸆鸅鸀鸁鸉鷿鷽鸄麠鼞齆齴齵齶囔攮斸欘欙欗欚灢爦犪矘矙礹籩籫糶纚\"],[\"f940\",\"纘纛纙臠臡虆虇虈襹襺襼襻觿讘讙躥躤躣鑮鑭鑯鑱鑳靉顲饟鱨鱮鱭鸋鸍鸐鸏鸒鸑麡黵鼉齇齸齻齺齹圞灦籯蠼趲躦釃鑴鑸鑶鑵驠鱴鱳鱱鱵鸔鸓黶鼊\"],[\"f9a1\",\"龤灨灥糷虪蠾蠽蠿讞貜躩軉靋顳顴飌饡馫驤驦驧鬤鸕鸗齈戇欞爧虌躨钂钀钁驩驨鬮鸙爩虋讟钃鱹麷癵驫鱺鸝灩灪麤齾齉龘碁銹裏墻恒粧嫺╔╦╗╠╬╣╚╩╝╒╤╕╞╪╡╘╧╛╓╥╖╟╫╢╙╨╜║═╭╮╰╯▓\"]]");
+})), Lm = /* @__PURE__ */ i({ default: () => Rm }), Rm, zm = n((() => {
+	Rm = /*#__PURE__*/ JSON.parse("[[\"8740\",\"䏰䰲䘃䖦䕸𧉧䵷䖳𧲱䳢𧳅㮕䜶䝄䱇䱀𤊿𣘗𧍒𦺋𧃒䱗𪍑䝏䗚䲅𧱬䴇䪤䚡𦬣爥𥩔𡩣𣸆𣽡晍囻\"],[\"8767\",\"綕夝𨮹㷴霴𧯯寛𡵞媤㘥𩺰嫑宷峼杮薓𩥅瑡璝㡵𡵓𣚞𦀡㻬\"],[\"87a1\",\"𥣞㫵竼龗𤅡𨤍𣇪𠪊𣉞䌊蒄龖鐯䤰蘓墖靊鈘秐稲晠権袝瑌篅枂稬剏遆㓦珄𥶹瓆鿇垳䤯呌䄱𣚎堘穲𧭥讏䚮𦺈䆁𥶙箮𢒼鿈𢓁𢓉𢓌鿉蔄𣖻䂴鿊䓡𪷿拁灮鿋\"],[\"8840\",\"㇀\",4,\"𠄌㇅𠃑𠃍㇆㇇𠃋𡿨㇈𠃊㇉㇊㇋㇌𠄎㇍㇎ĀÁǍÀĒÉĚÈŌÓǑÒ࿿Ê̄Ế࿿Ê̌ỀÊāáǎàɑēéěèīíǐìōóǒòūúǔùǖǘǚ\"],[\"88a1\",\"ǜü࿿ê̄ế࿿ê̌ềêɡ⏚⏛\"],[\"8940\",\"𪎩𡅅\"],[\"8943\",\"攊\"],[\"8946\",\"丽滝鵎釟\"],[\"894c\",\"𧜵撑会伨侨兖兴农凤务动医华发变团声处备夲头学实実岚庆总斉柾栄桥济炼电纤纬纺织经统缆缷艺苏药视设询车轧轮\"],[\"89a1\",\"琑糼緍楆竉刧\"],[\"89ab\",\"醌碸酞肼\"],[\"89b0\",\"贋胶𠧧\"],[\"89b5\",\"肟黇䳍鷉鸌䰾𩷶𧀎鸊𪄳㗁\"],[\"89c1\",\"溚舾甙\"],[\"89c5\",\"䤑马骏龙禇𨑬𡷊𠗐𢫦两亁亀亇亿仫伷㑌侽㹈倃傈㑽㒓㒥円夅凛凼刅争剹劐匧㗇厩㕑厰㕓参吣㕭㕲㚁咓咣咴咹哐哯唘唣唨㖘唿㖥㖿嗗㗅\"],[\"8a40\",\"𧶄唥\"],[\"8a43\",\"𠱂𠴕𥄫喐𢳆㧬𠍁蹆𤶸𩓥䁓𨂾睺𢰸㨴䟕𨅝𦧲𤷪擝𠵼𠾴𠳕𡃴撍蹾𠺖𠰋𠽤𢲩𨉖𤓓\"],[\"8a64\",\"𠵆𩩍𨃩䟴𤺧𢳂骲㩧𩗴㿭㔆𥋇𩟔𧣈𢵄鵮頕\"],[\"8a76\",\"䏙𦂥撴哣𢵌𢯊𡁷㧻𡁯\"],[\"8aa1\",\"𦛚𦜖𧦠擪𥁒𠱃蹨𢆡𨭌𠜱\"],[\"8aac\",\"䠋𠆩㿺塳𢶍\"],[\"8ab2\",\"𤗈𠓼𦂗𠽌𠶖啹䂻䎺\"],[\"8abb\",\"䪴𢩦𡂝膪飵𠶜捹㧾𢝵跀嚡摼㹃\"],[\"8ac9\",\"𪘁𠸉𢫏𢳉\"],[\"8ace\",\"𡃈𣧂㦒㨆𨊛㕸𥹉𢃇噒𠼱𢲲𩜠㒼氽𤸻\"],[\"8adf\",\"𧕴𢺋𢈈𪙛𨳍𠹺𠰴𦠜羓𡃏𢠃𢤹㗻𥇣𠺌𠾍𠺪㾓𠼰𠵇𡅏𠹌\"],[\"8af6\",\"𠺫𠮩𠵈𡃀𡄽㿹𢚖搲𠾭\"],[\"8b40\",\"𣏴𧘹𢯎𠵾𠵿𢱑𢱕㨘𠺘𡃇𠼮𪘲𦭐𨳒𨶙𨳊閪哌苄喹\"],[\"8b55\",\"𩻃鰦骶𧝞𢷮煀腭胬尜𦕲脴㞗卟𨂽醶𠻺𠸏𠹷𠻻㗝𤷫㘉𠳖嚯𢞵𡃉𠸐𠹸𡁸𡅈𨈇𡑕𠹹𤹐𢶤婔𡀝𡀞𡃵𡃶垜𠸑\"],[\"8ba1\",\"𧚔𨋍𠾵𠹻𥅾㜃𠾶𡆀𥋘𪊽𤧚𡠺𤅷𨉼墙剨㘚𥜽箲孨䠀䬬鼧䧧鰟鮍𥭴𣄽嗻㗲嚉丨夂𡯁屮靑𠂆乛亻㔾尣彑忄㣺扌攵歺氵氺灬爫丬犭𤣩罒礻糹罓𦉪㓁\"],[\"8bde\",\"𦍋耂肀𦘒𦥑卝衤见𧢲讠贝钅镸长门𨸏韦页风飞饣𩠐鱼鸟黄歯龜丷𠂇阝户钢\"],[\"8c40\",\"倻淾𩱳龦㷉袏𤅎灷峵䬠𥇍㕙𥴰愢𨨲辧釶熑朙玺𣊁𪄇㲋𡦀䬐磤琂冮𨜏䀉橣𪊺䈣蘏𠩯稪𩥇𨫪靕灍匤𢁾鏴盙𨧣龧矝亣俰傼丯众龨吴綋墒壐𡶶庒庙忂𢜒斋\"],[\"8ca1\",\"𣏹椙橃𣱣泿\"],[\"8ca7\",\"爀𤔅玌㻛𤨓嬕璹讃𥲤𥚕窓篬糃繬苸薗龩袐龪躹龫迏蕟駠鈡龬𨶹𡐿䁱䊢娚\"],[\"8cc9\",\"顨杫䉶圽\"],[\"8cce\",\"藖𤥻芿𧄍䲁𦵴嵻𦬕𦾾龭龮宖龯曧繛湗秊㶈䓃𣉖𢞖䎚䔶\"],[\"8ce6\",\"峕𣬚諹屸㴒𣕑嵸龲煗䕘𤃬𡸣䱷㥸㑊𠆤𦱁諌侴𠈹妿腬顖𩣺弻\"],[\"8d40\",\"𠮟\"],[\"8d42\",\"𢇁𨥭䄂䚻𩁹㼇龳𪆵䃸㟖䛷𦱆䅼𨚲𧏿䕭㣔𥒚䕡䔛䶉䱻䵶䗪㿈𤬏㙡䓞䒽䇭崾嵈嵖㷼㠏嶤嶹㠠㠸幂庽弥徃㤈㤔㤿㥍惗愽峥㦉憷憹懏㦸戬抐拥挘㧸嚱\"],[\"8da1\",\"㨃揢揻搇摚㩋擀崕嘡龟㪗斆㪽旿晓㫲暒㬢朖㭂枤栀㭘桊梄㭲㭱㭻椉楃牜楤榟榅㮼槖㯝橥橴橱檂㯬檙㯲檫檵櫔櫶殁毁毪汵沪㳋洂洆洦涁㳯涤涱渕渘温溆𨧀溻滢滚齿滨滩漤漴㵆𣽁澁澾㵪㵵熷岙㶊瀬㶑灐灔灯灿炉𠌥䏁㗱𠻘\"],[\"8e40\",\"𣻗垾𦻓焾𥟠㙎榢𨯩孴穉𥣡𩓙穥穽𥦬窻窰竂竃燑𦒍䇊竚竝竪䇯咲𥰁笋筕笩𥌎𥳾箢筯莜𥮴𦱿篐萡箒箸𥴠㶭𥱥蒒篺簆簵𥳁籄粃𤢂粦晽𤕸糉糇糦籴糳糵糎\"],[\"8ea1\",\"繧䔝𦹄絝𦻖璍綉綫焵綳緒𤁗𦀩緤㴓緵𡟹緥𨍭縝𦄡𦅚繮纒䌫鑬縧罀罁罇礶𦋐駡羗𦍑羣𡙡𠁨䕜𣝦䔃𨌺翺𦒉者耈耝耨耯𪂇𦳃耻耼聡𢜔䦉𦘦𣷣𦛨朥肧𨩈脇脚墰𢛶汿𦒘𤾸擧𡒊舘𡡞橓𤩥𤪕䑺舩𠬍𦩒𣵾俹𡓽蓢荢𦬊𤦧𣔰𡝳𣷸芪椛芳䇛\"],[\"8f40\",\"蕋苐茚𠸖𡞴㛁𣅽𣕚艻苢茘𣺋𦶣𦬅𦮗𣗎㶿茝嗬莅䔋𦶥莬菁菓㑾𦻔橗蕚㒖𦹂𢻯葘𥯤葱㷓䓤檧葊𣲵祘蒨𦮖𦹷𦹃蓞萏莑䒠蒓蓤𥲑䉀𥳀䕃蔴嫲𦺙䔧蕳䔖枿蘖\"],[\"8fa1\",\"𨘥𨘻藁𧂈蘂𡖂𧃍䕫䕪蘨㙈𡢢号𧎚虾蝱𪃸蟮𢰧螱蟚蠏噡虬桖䘏衅衆𧗠𣶹𧗤衞袜䙛袴袵揁装睷𧜏覇覊覦覩覧覼𨨥觧𧤤𧪽誜瞓釾誐𧩙竩𧬺𣾏䜓𧬸煼謌謟𥐰𥕥謿譌譍誩𤩺讐讛誯𡛟䘕衏貛𧵔𧶏貫㜥𧵓賖𧶘𧶽贒贃𡤐賛灜贑𤳉㻐起\"],[\"9040\",\"趩𨀂𡀔𤦊㭼𨆼𧄌竧躭躶軃鋔輙輭𨍥𨐒辥錃𪊟𠩐辳䤪𨧞𨔽𣶻廸𣉢迹𪀔𨚼𨔁𢌥㦀𦻗逷𨔼𧪾遡𨕬𨘋邨𨜓郄𨛦邮都酧㫰醩釄粬𨤳𡺉鈎沟鉁鉢𥖹銹𨫆𣲛𨬌𥗛\"],[\"90a1\",\"𠴱錬鍫𨫡𨯫炏嫃𨫢𨫥䥥鉄𨯬𨰹𨯿鍳鑛躼閅閦鐦閠濶䊹𢙺𨛘𡉼𣸮䧟氜陻隖䅬隣𦻕懚隶磵𨫠隽双䦡𦲸𠉴𦐐𩂯𩃥𤫑𡤕𣌊霱虂霶䨏䔽䖅𤫩灵孁霛靜𩇕靗孊𩇫靟鐥僐𣂷𣂼鞉鞟鞱鞾韀韒韠𥑬韮琜𩐳響韵𩐝𧥺䫑頴頳顋顦㬎𧅵㵑𠘰𤅜\"],[\"9140\",\"𥜆飊颷飈飇䫿𦴧𡛓喰飡飦飬鍸餹𤨩䭲𩡗𩤅駵騌騻騐驘𥜥㛄𩂱𩯕髠髢𩬅髴䰎鬔鬭𨘀倴鬴𦦨㣃𣁽魐魀𩴾婅𡡣鮎𤉋鰂鯿鰌𩹨鷔𩾷𪆒𪆫𪃡𪄣𪇟鵾鶃𪄴鸎梈\"],[\"91a1\",\"鷄𢅛𪆓𪈠𡤻𪈳鴹𪂹𪊴麐麕麞麢䴴麪麯𤍤黁㭠㧥㴝伲㞾𨰫鼂鼈䮖鐤𦶢鼗鼖鼹嚟嚊齅馸𩂋韲葿齢齩竜龎爖䮾𤥵𤦻煷𤧸𤍈𤩑玞𨯚𡣺禟𨥾𨸶鍩鏳𨩄鋬鎁鏋𨥬𤒹爗㻫睲穃烐𤑳𤏸煾𡟯炣𡢾𣖙㻇𡢅𥐯𡟸㜢𡛻𡠹㛡𡝴𡣑𥽋㜣𡛀坛𤨥𡏾𡊨\"],[\"9240\",\"𡏆𡒶蔃𣚦蔃葕𤦔𧅥𣸱𥕜𣻻𧁒䓴𣛮𩦝𦼦柹㜳㰕㷧塬𡤢栐䁗𣜿𤃡𤂋𤄏𦰡哋嚞𦚱嚒𠿟𠮨𠸍鏆𨬓鎜仸儫㠙𤐶亼𠑥𠍿佋侊𥙑婨𠆫𠏋㦙𠌊𠐔㐵伩𠋀𨺳𠉵諚𠈌亘\"],[\"92a1\",\"働儍侢伃𤨎𣺊佂倮偬傁俌俥偘僼兙兛兝兞湶𣖕𣸹𣺿浲𡢄𣺉冨凃𠗠䓝𠒣𠒒𠒑赺𨪜𠜎剙劤𠡳勡鍮䙺熌𤎌𠰠𤦬𡃤槑𠸝瑹㻞璙琔瑖玘䮎𤪼𤂍叐㖄爏𤃉喴𠍅响𠯆圝鉝雴鍦埝垍坿㘾壋媙𨩆𡛺𡝯𡜐娬妸銏婾嫏娒𥥆𡧳𡡡𤊕㛵洅瑃娡𥺃\"],[\"9340\",\"媁𨯗𠐓鏠璌𡌃焅䥲鐈𨧻鎽㞠尞岞幞幈𡦖𡥼𣫮廍孏𡤃𡤄㜁𡢠㛝𡛾㛓脪𨩇𡶺𣑲𨦨弌弎𡤧𡞫婫𡜻孄蘔𧗽衠恾𢡠𢘫忛㺸𢖯𢖾𩂈𦽳懀𠀾𠁆𢘛憙憘恵𢲛𢴇𤛔𩅍\"],[\"93a1\",\"摱𤙥𢭪㨩𢬢𣑐𩣪𢹸挷𪑛撶挱揑𤧣𢵧护𢲡搻敫楲㯴𣂎𣊭𤦉𣊫唍𣋠𡣙𩐿曎𣊉𣆳㫠䆐𥖄𨬢𥖏𡛼𥕛𥐥磮𣄃𡠪𣈴㑤𣈏𣆂𤋉暎𦴤晫䮓昰𧡰𡷫晣𣋒𣋡昞𥡲㣑𣠺𣞼㮙𣞢𣏾瓐㮖枏𤘪梶栞㯄檾㡣𣟕𤒇樳橒櫉欅𡤒攑梘橌㯗橺歗𣿀𣲚鎠鋲𨯪𨫋\"],[\"9440\",\"銉𨀞𨧜鑧涥漋𤧬浧𣽿㶏渄𤀼娽渊塇洤硂焻𤌚𤉶烱牐犇犔𤞏𤜥兹𤪤𠗫瑺𣻸𣙟𤩊𤤗𥿡㼆㺱𤫟𨰣𣼵悧㻳瓌琼鎇琷䒟𦷪䕑疃㽣𤳙𤴆㽘畕癳𪗆㬙瑨𨫌𤦫𤦎㫻\"],[\"94a1\",\"㷍𤩎㻿𤧅𤣳釺圲鍂𨫣𡡤僟𥈡𥇧睸𣈲眎眏睻𤚗𣞁㩞𤣰琸璛㺿𤪺𤫇䃈𤪖𦆮錇𥖁砞碍碈磒珐祙𧝁𥛣䄎禛蒖禥樭𣻺稺秴䅮𡛦䄲鈵秱𠵌𤦌𠊙𣶺𡝮㖗啫㕰㚪𠇔𠰍竢婙𢛵𥪯𥪜娍𠉛磰娪𥯆竾䇹籝籭䈑𥮳𥺼𥺦糍𤧹𡞰粎籼粮檲緜縇緓罎𦉡\"],[\"9540\",\"𦅜𧭈綗𥺂䉪𦭵𠤖柖𠁎𣗏埄𦐒𦏸𤥢翝笧𠠬𥫩𥵃笌𥸎駦虅驣樜𣐿㧢𤧷𦖭騟𦖠蒀𧄧𦳑䓪脷䐂胆脉腂𦞴飃𦩂艢艥𦩑葓𦶧蘐𧈛媆䅿𡡀嬫𡢡嫤𡣘蚠蜨𣶏蠭𧐢娂\"],[\"95a1\",\"衮佅袇袿裦襥襍𥚃襔𧞅𧞄𨯵𨯙𨮜𨧹㺭蒣䛵䛏㟲訽訜𩑈彍鈫𤊄旔焩烄𡡅鵭貟賩𧷜妚矃姰䍮㛔踪躧𤰉輰轊䋴汘澻𢌡䢛潹溋𡟚鯩㚵𤤯邻邗啱䤆醻鐄𨩋䁢𨫼鐧𨰝𨰻蓥訫閙閧閗閖𨴴瑅㻂𤣿𤩂𤏪㻧𣈥随𨻧𨹦𨹥㻌𤧭𤩸𣿮琒瑫㻼靁𩂰\"],[\"9640\",\"桇䨝𩂓𥟟靝鍨𨦉𨰦𨬯𦎾銺嬑譩䤼珹𤈛鞛靱餸𠼦巁𨯅𤪲頟𩓚鋶𩗗釥䓀𨭐𤩧𨭤飜𨩅㼀鈪䤥萔餻饍𧬆㷽馛䭯馪驜𨭥𥣈檏騡嫾騯𩣱䮐𩥈馼䮽䮗鍽塲𡌂堢𤦸\"],[\"96a1\",\"𡓨硄𢜟𣶸棅㵽鑘㤧慐𢞁𢥫愇鱏鱓鱻鰵鰐魿鯏𩸭鮟𪇵𪃾鴡䲮𤄄鸘䲰鴌𪆴𪃭𪃳𩤯鶥蒽𦸒𦿟𦮂藼䔳𦶤𦺄𦷰萠藮𦸀𣟗𦁤秢𣖜𣙀䤭𤧞㵢鏛銾鍈𠊿碹鉷鑍俤㑀遤𥕝砽硔碶硋𡝗𣇉𤥁㚚佲濚濙瀞瀞吔𤆵垻壳垊鴖埗焴㒯𤆬燫𦱀𤾗嬨𡞵𨩉\"],[\"9740\",\"愌嫎娋䊼𤒈㜬䭻𨧼鎻鎸𡣖𠼝葲𦳀𡐓𤋺𢰦𤏁妔𣶷𦝁綨𦅛𦂤𤦹𤦋𨧺鋥珢㻩璴𨭣𡢟㻡𤪳櫘珳珻㻖𤨾𤪔𡟙𤩦𠎧𡐤𤧥瑈𤤖炥𤥶銄珦鍟𠓾錱𨫎𨨖鎆𨯧𥗕䤵𨪂煫\"],[\"97a1\",\"𤥃𠳿嚤𠘚𠯫𠲸唂秄𡟺緾𡛂𤩐𡡒䔮鐁㜊𨫀𤦭妰𡢿𡢃𧒄媡㛢𣵛㚰鉟婹𨪁𡡢鍴㳍𠪴䪖㦊僴㵩㵌𡎜煵䋻𨈘渏𩃤䓫浗𧹏灧沯㳖𣿭𣸭渂漌㵯𠏵畑㚼㓈䚀㻚䡱姄鉮䤾轁𨰜𦯀堒埈㛖𡑒烾𤍢𤩱𢿣𡊰𢎽梹楧𡎘𣓥𧯴𣛟𨪃𣟖𣏺𤲟樚𣚭𦲷萾䓟䓎\"],[\"9840\",\"𦴦𦵑𦲂𦿞漗𧄉茽𡜺菭𦲀𧁓𡟛妉媂𡞳婡婱𡤅𤇼㜭姯𡜼㛇熎鎐暚𤊥婮娫𤊓樫𣻹𧜶𤑛𤋊焝𤉙𨧡侰𦴨峂𤓎𧹍𤎽樌𤉖𡌄炦焳𤏩㶥泟勇𤩏繥姫崯㷳彜𤩝𡟟綤萦\"],[\"98a1\",\"咅𣫺𣌀𠈔坾𠣕𠘙㿥𡾞𪊶瀃𩅛嵰玏糓𨩙𩐠俈翧狍猐𧫴猸猹𥛶獁獈㺩𧬘遬燵𤣲珡臶㻊県㻑沢国琙琞琟㻢㻰㻴㻺瓓㼎㽓畂畭畲疍㽼痈痜㿀癍㿗癴㿜発𤽜熈嘣覀塩䀝睃䀹条䁅㗛瞘䁪䁯属瞾矋売砘点砜䂨砹硇硑硦葈𥔵礳栃礲䄃\"],[\"9940\",\"䄉禑禙辻稆込䅧窑䆲窼艹䇄竏竛䇏両筢筬筻簒簛䉠䉺类粜䊌粸䊔糭输烀𠳏総緔緐緽羮羴犟䎗耠耥笹耮耱联㷌垴炠肷胩䏭脌猪脎脒畠脔䐁㬹腖腙腚\"],[\"99a1\",\"䐓堺腼膄䐥膓䐭膥埯臁臤艔䒏芦艶苊苘苿䒰荗险榊萅烵葤惣蒈䔄蒾蓡蓸蔐蔸蕒䔻蕯蕰藠䕷虲蚒蚲蛯际螋䘆䘗袮裿褤襇覑𧥧訩訸誔誴豑賔賲贜䞘塟跃䟭仮踺嗘坔蹱嗵躰䠷軎転軤軭軲辷迁迊迌逳駄䢭飠鈓䤞鈨鉘鉫銱銮銿\"],[\"9a40\",\"鋣鋫鋳鋴鋽鍃鎄鎭䥅䥑麿鐗匁鐝鐭鐾䥪鑔鑹锭関䦧间阳䧥枠䨤靀䨵鞲韂噔䫤惨颹䬙飱塄餎餙冴餜餷饂饝饢䭰駅䮝騼鬏窃魩鮁鯝鯱鯴䱭鰠㝯𡯂鵉鰺\"],[\"9aa1\",\"黾噐鶓鶽鷀鷼银辶鹻麬麱麽黆铜黢黱黸竈齄𠂔𠊷𠎠椚铃妬𠓗塀铁㞹𠗕𠘕𠙶𡚺块煳𠫂𠫍𠮿呪吆𠯋咞𠯻𠰻𠱓𠱥𠱼惧𠲍噺𠲵𠳝𠳭𠵯𠶲𠷈楕鰯螥𠸄𠸎𠻗𠾐𠼭𠹳尠𠾼帋𡁜𡁏𡁶朞𡁻𡂈𡂖㙇𡂿𡃓𡄯𡄻卤蒭𡋣𡍵𡌶讁𡕷𡘙𡟃𡟇乸炻𡠭𡥪\"],[\"9b40\",\"𡨭𡩅𡰪𡱰𡲬𡻈拃𡻕𡼕熘桕𢁅槩㛈𢉼𢏗𢏺𢜪𢡱𢥏苽𢥧𢦓𢫕覥𢫨辠𢬎鞸𢬿顇骽𢱌\"],[\"9b62\",\"𢲈𢲷𥯨𢴈𢴒𢶷𢶕𢹂𢽴𢿌𣀳𣁦𣌟𣏞徱晈暿𧩹𣕧𣗳爁𤦺矗𣘚𣜖纇𠍆墵朎\"],[\"9ba1\",\"椘𣪧𧙗𥿢𣸑𣺹𧗾𢂚䣐䪸𤄙𨪚𤋮𤌍𤀻𤌴𤎖𤩅𠗊凒𠘑妟𡺨㮾𣳿𤐄𤓖垈𤙴㦛𤜯𨗨𩧉㝢𢇃譞𨭎駖𤠒𤣻𤨕爉𤫀𠱸奥𤺥𤾆𠝹軚𥀬劏圿煱𥊙𥐙𣽊𤪧喼𥑆𥑮𦭒釔㑳𥔿𧘲𥕞䜘𥕢𥕦𥟇𤤿𥡝偦㓻𣏌惞𥤃䝼𨥈𥪮𥮉𥰆𡶐垡煑澶𦄂𧰒遖𦆲𤾚譢𦐂𦑊\"],[\"9c40\",\"嵛𦯷輶𦒄𡤜諪𤧶𦒈𣿯𦔒䯀𦖿𦚵𢜛鑥𥟡憕娧晉侻嚹𤔡𦛼乪𤤴陖涏𦲽㘘襷𦞙𦡮𦐑𦡞營𦣇筂𩃀𠨑𦤦鄄𦤹穅鷰𦧺騦𦨭㙟𦑩𠀡禃𦨴𦭛崬𣔙菏𦮝䛐𦲤画补𦶮墶\"],[\"9ca1\",\"㜜𢖍𧁋𧇍㱔𧊀𧊅銁𢅺𧊋錰𧋦𤧐氹钟𧑐𠻸蠧裵𢤦𨑳𡞱溸𤨪𡠠㦤㚹尐秣䔿暶𩲭𩢤襃𧟌𧡘囖䃟𡘊㦡𣜯𨃨𡏅熭荦𧧝𩆨婧䲷𧂯𨦫𧧽𧨊𧬋𧵦𤅺筃祾𨀉澵𪋟樃𨌘厢𦸇鎿栶靝𨅯𨀣𦦵𡏭𣈯𨁈嶅𨰰𨂃圕頣𨥉嶫𤦈斾槕叒𤪥𣾁㰑朶𨂐𨃴𨄮𡾡𨅏\"],[\"9d40\",\"𨆉𨆯𨈚𨌆𨌯𨎊㗊𨑨𨚪䣺揦𨥖砈鉕𨦸䏲𨧧䏟𨧨𨭆𨯔姸𨰉輋𨿅𩃬筑𩄐𩄼㷷𩅞𤫊运犏嚋𩓧𩗩𩖰𩖸𩜲𩣑𩥉𩥪𩧃𩨨𩬎𩵚𩶛纟𩻸𩼣䲤镇𪊓熢𪋿䶑递𪗋䶜𠲜达嗁\"],[\"9da1\",\"辺𢒰边𤪓䔉繿潖檱仪㓤𨬬𧢝㜺躀𡟵𨀤𨭬𨮙𧨾𦚯㷫𧙕𣲷𥘵𥥖亚𥺁𦉘嚿𠹭踎孭𣺈𤲞揞拐𡟶𡡻攰嘭𥱊吚𥌑㷆𩶘䱽嘢嘞罉𥻘奵𣵀蝰东𠿪𠵉𣚺脗鵞贘瘻鱅癎瞹鍅吲腈苷嘥脲萘肽嗪祢噃吖𠺝㗎嘅嗱曱𨋢㘭甴嗰喺咗啲𠱁𠲖廐𥅈𠹶𢱢\"],[\"9e40\",\"𠺢麫絚嗞𡁵抝靭咔賍燶酶揼掹揾啩𢭃鱲𢺳冚㓟𠶧冧呍唞唓癦踭𦢊疱肶蠄螆裇膶萜𡃁䓬猄𤜆宐茋𦢓噻𢛴𧴯𤆣𧵳𦻐𧊶酰𡇙鈈𣳼𪚩𠺬𠻹牦𡲢䝎𤿂𧿹𠿫䃺\"],[\"9ea1\",\"鱝攟𢶠䣳𤟠𩵼𠿬𠸊恢𧖣𠿭\"],[\"9ead\",\"𦁈𡆇熣纎鵐业丄㕷嬍沲卧㚬㧜卽㚥𤘘墚𤭮舭呋垪𥪕𠥹\"],[\"9ec5\",\"㩒𢑥獴𩺬䴉鯭𣳾𩼰䱛𤾩𩖞𩿞葜𣶶𧊲𦞳𣜠挮紥𣻷𣸬㨪逈勌㹴㙺䗩𠒎癀嫰𠺶硺𧼮墧䂿噼鮋嵴癔𪐴麅䳡痹㟻愙𣃚𤏲\"],[\"9ef5\",\"噝𡊩垧𤥣𩸆刴𧂮㖭汊鵼\"],[\"9f40\",\"籖鬹埞𡝬屓擓𩓐𦌵𧅤蚭𠴨𦴢𤫢𠵱\"],[\"9f4f\",\"凾𡼏嶎霃𡷑麁遌笟鬂峑箣扨挵髿篏鬪籾鬮籂粆鰕篼鬉鼗鰛𤤾齚啳寃俽麘俲剠㸆勑坧偖妷帒韈鶫轜呩鞴饀鞺匬愰\"],[\"9fa1\",\"椬叚鰊鴂䰻陁榀傦畆𡝭駚剳\"],[\"9fae\",\"酙隁酜\"],[\"9fb2\",\"酑𨺗捿𦴣櫊嘑醎畺抅𠏼獏籰𥰡𣳽\"],[\"9fc1\",\"𤤙盖鮝个𠳔莾衂\"],[\"9fc9\",\"届槀僭坺刟巵从氱𠇲伹咜哚劚趂㗾弌㗳\"],[\"9fdb\",\"歒酼龥鮗頮颴骺麨麄煺笔\"],[\"9fe7\",\"毺蠘罸\"],[\"9feb\",\"嘠𪙊蹷齓\"],[\"9ff0\",\"跔蹏鸜踁抂𨍽踨蹵竓𤩷稾磘泪詧瘇\"],[\"a040\",\"𨩚鼦泎蟖痃𪊲硓咢贌狢獱謭猂瓱賫𤪻蘯徺袠䒷\"],[\"a055\",\"𡠻𦸅\"],[\"a058\",\"詾𢔛\"],[\"a05b\",\"惽癧髗鵄鍮鮏蟵\"],[\"a063\",\"蠏賷猬霡鮰㗖犲䰇籑饊𦅙慙䰄麖慽\"],[\"a073\",\"坟慯抦戹拎㩜懢厪𣏵捤栂㗒\"],[\"a0a1\",\"嵗𨯂迚𨸹\"],[\"a0a6\",\"僙𡵆礆匲阸𠼻䁥\"],[\"a0ae\",\"矾\"],[\"a0b0\",\"糂𥼚糚稭聦聣絍甅瓲覔舚朌聢𧒆聛瓰脃眤覉𦟌畓𦻑螩蟎臈螌詉貭譃眫瓸蓚㘵榲趦\"],[\"a0d4\",\"覩瑨涹蟁𤀑瓧㷛煶悤憜㳑煢恷\"],[\"a0e2\",\"罱𨬭牐惩䭾删㰘𣳇𥻗𧙖𥔱𡥄𡋾𩤃𦷜𧂭峁𦆭𨨏𣙷𠃮𦡆𤼎䕢嬟𦍌齐麦𦉫\"],[\"a3c0\",\"␀\",31,\"␡\"],[\"c6a1\",\"①\",9,\"⑴\",9,\"ⅰ\",9,\"丶丿亅亠冂冖冫勹匸卩厶夊宀巛⼳广廴彐彡攴无疒癶辵隶¨ˆヽヾゝゞ〃仝々〆〇ー［］✽ぁ\",23],[\"c740\",\"す\",58,\"ァアィイ\"],[\"c7a1\",\"ゥ\",81,\"А\",5,\"ЁЖ\",4],[\"c840\",\"Л\",26,\"ёж\",25,\"⇧↸↹㇏𠃌乚𠂊刂䒑\"],[\"c8a1\",\"龰冈龱𧘇\"],[\"c8cd\",\"￢￤＇＂㈱№℡゛゜⺀⺄⺆⺇⺈⺊⺌⺍⺕⺜⺝⺥⺧⺪⺬⺮⺶⺼⺾⻆⻊⻌⻍⻏⻖⻗⻞⻣\"],[\"c8f5\",\"ʃɐɛɔɵœøŋʊɪ\"],[\"f9fe\",\"￭\"],[\"fa40\",\"𠕇鋛𠗟𣿅蕌䊵珯况㙉𤥂𨧤鍄𡧛苮𣳈砼杄拟𤤳𨦪𠊠𦮳𡌅侫𢓭倈𦴩𧪄𣘀𤪱𢔓倩𠍾徤𠎀𠍇滛𠐟偽儁㑺儎顬㝃萖𤦤𠒇兠𣎴兪𠯿𢃼𠋥𢔰𠖎𣈳𡦃宂蝽𠖳𣲙冲冸\"],[\"faa1\",\"鴴凉减凑㳜凓𤪦决凢卂凭菍椾𣜭彻刋刦刼劵剗劔効勅簕蕂勠蘍𦬓包𨫞啉滙𣾀𠥔𣿬匳卄𠯢泋𡜦栛珕恊㺪㣌𡛨燝䒢卭却𨚫卾卿𡖖𡘓矦厓𨪛厠厫厮玧𥝲㽙玜叁叅汉义埾叙㪫𠮏叠𣿫𢶣叶𠱷吓灹唫晗浛呭𦭓𠵴啝咏咤䞦𡜍𠻝㶴𠵍\"],[\"fb40\",\"𨦼𢚘啇䳭启琗喆喩嘅𡣗𤀺䕒𤐵暳𡂴嘷曍𣊊暤暭噍噏磱囱鞇叾圀囯园𨭦㘣𡉏坆𤆥汮炋坂㚱𦱾埦𡐖堃𡑔𤍣堦𤯵塜墪㕡壠壜𡈼壻寿坃𪅐𤉸鏓㖡够梦㛃湙\"],[\"fba1\",\"𡘾娤啓𡚒蔅姉𠵎𦲁𦴪𡟜姙𡟻𡞲𦶦浱𡠨𡛕姹𦹅媫婣㛦𤦩婷㜈媖瑥嫓𦾡𢕔㶅𡤑㜲𡚸広勐孶斈孼𧨎䀄䡝𠈄寕慠𡨴𥧌𠖥寳宝䴐尅𡭄尓珎尔𡲥𦬨屉䣝岅峩峯嶋𡷹𡸷崐崘嵆𡺤岺巗苼㠭𤤁𢁉𢅳芇㠶㯂帮檊幵幺𤒼𠳓厦亷廐厨𡝱帉廴𨒂\"],[\"fc40\",\"廹廻㢠廼栾鐛弍𠇁弢㫞䢮𡌺强𦢈𢏐彘𢑱彣鞽𦹮彲鍀𨨶徧嶶㵟𥉐𡽪𧃸𢙨釖𠊞𨨩怱暅𡡷㥣㷇㘹垐𢞴祱㹀悞悤悳𤦂𤦏𧩓璤僡媠慤萤慂慈𦻒憁凴𠙖憇宪𣾷\"],[\"fca1\",\"𢡟懓𨮝𩥝懐㤲𢦀𢣁怣慜攞掋𠄘担𡝰拕𢸍捬𤧟㨗搸揸𡎎𡟼撐澊𢸶頔𤂌𥜝擡擥鑻㩦携㩗敍漖𤨨𤨣斅敭敟𣁾斵𤥀䬷旑䃘𡠩无旣忟𣐀昘𣇷𣇸晄𣆤𣆥晋𠹵晧𥇦晳晴𡸽𣈱𨗴𣇈𥌓矅𢣷馤朂𤎜𤨡㬫槺𣟂杞杧杢𤇍𩃭柗䓩栢湐鈼栁𣏦𦶠桝\"],[\"fd40\",\"𣑯槡樋𨫟楳棃𣗍椁椀㴲㨁𣘼㮀枬楡𨩊䋼椶榘㮡𠏉荣傐槹𣙙𢄪橅𣜃檝㯳枱櫈𩆜㰍欝𠤣惞欵歴𢟍溵𣫛𠎵𡥘㝀吡𣭚毡𣻼毜氷𢒋𤣱𦭑汚舦汹𣶼䓅𣶽𤆤𤤌𤤀\"],[\"fda1\",\"𣳉㛥㳫𠴲鮃𣇹𢒑羏样𦴥𦶡𦷫涖浜湼漄𤥿𤂅𦹲蔳𦽴凇沜渝萮𨬡港𣸯瑓𣾂秌湏媑𣁋濸㜍澝𣸰滺𡒗𤀽䕕鏰潄潜㵎潴𩅰㴻澟𤅄濓𤂑𤅕𤀹𣿰𣾴𤄿凟𤅖𤅗𤅀𦇝灋灾炧炁烌烕烖烟䄄㷨熴熖𤉷焫煅媈煊煮岜𤍥煏鍢𤋁焬𤑚𤨧𤨢熺𨯨炽爎\"],[\"fe40\",\"鑂爕夑鑃爤鍁𥘅爮牀𤥴梽牕牗㹕𣁄栍漽犂猪猫𤠣𨠫䣭𨠄猨献珏玪𠰺𦨮珉瑉𤇢𡛧𤨤昣㛅𤦷𤦍𤧻珷琕椃𤨦琹𠗃㻗瑜𢢭瑠𨺲瑇珤瑶莹瑬㜰瑴鏱樬璂䥓𤪌\"],[\"fea1\",\"𤅟𤩹𨮏孆𨰃𡢞瓈𡦈甎瓩甞𨻙𡩋寗𨺬鎅畍畊畧畮𤾂㼄𤴓疎瑝疞疴瘂瘬癑癏癯癶𦏵皐臯㟸𦤑𦤎皡皥皷盌𦾟葢𥂝𥅽𡸜眞眦着撯𥈠睘𣊬瞯𨥤𨥨𡛁矴砉𡍶𤨒棊碯磇磓隥礮𥗠磗礴碱𧘌辸袄𨬫𦂃𢘜禆褀椂禀𥡗禝𧬹礼禩渪𧄦㺨秆𩄍秔\"]]");
+})), Bm = /* @__PURE__ */ a(((t, n) => {
 	n.exports = {
 		shiftjis: {
 			type: "_dbcs",
 			table: function() {
-				return mm(), e(fm).default;
+				return gm(), e(mm).default;
 			},
 			encodeAdd: {
 				"¥": 92,
@@ -16982,7 +16982,7 @@ var Up = { completion: {
 		eucjp: {
 			type: "_dbcs",
 			table: function() {
-				return _m(), e(hm).default;
+				return ym(), e(_m).default;
 			},
 			encodeAdd: {
 				"¥": 92,
@@ -17001,13 +17001,13 @@ var Up = { completion: {
 		cp936: {
 			type: "_dbcs",
 			table: function() {
-				return bm(), e(vm).default;
+				return Sm(), e(bm).default;
 			}
 		},
 		gbk: {
 			type: "_dbcs",
 			table: function() {
-				return (bm(), e(vm).default).concat((Cm(), e(xm).default));
+				return (Sm(), e(bm).default).concat((Tm(), e(Cm).default));
 			}
 		},
 		xgbk: "gbk",
@@ -17015,10 +17015,10 @@ var Up = { completion: {
 		gb18030: {
 			type: "_dbcs",
 			table: function() {
-				return (bm(), e(vm).default).concat((Cm(), e(xm).default));
+				return (Sm(), e(bm).default).concat((Tm(), e(Cm).default));
 			},
 			gb18030: function() {
-				return Om(), e(wm).default;
+				return Am(), e(Em).default;
 			},
 			encodeSkipVals: [128],
 			encodeAdd: { "€": 41699 }
@@ -17030,7 +17030,7 @@ var Up = { completion: {
 		cp949: {
 			type: "_dbcs",
 			table: function() {
-				return jm(), e(km).default;
+				return Nm(), e(jm).default;
 			}
 		},
 		cseuckr: "cp949",
@@ -17047,14 +17047,14 @@ var Up = { completion: {
 		cp950: {
 			type: "_dbcs",
 			table: function() {
-				return Pm(), e(Mm).default;
+				return Im(), e(Pm).default;
 			}
 		},
 		big5: "big5hkscs",
 		big5hkscs: {
 			type: "_dbcs",
 			table: function() {
-				return (Pm(), e(Mm).default).concat((Lm(), e(Fm).default));
+				return (Im(), e(Pm).default).concat((zm(), e(Lm).default));
 			},
 			encodeSkipVals: [
 				36457,
@@ -17130,23 +17130,23 @@ var Up = { completion: {
 		csbig5: "big5hkscs",
 		xxbig5: "big5hkscs"
 	};
-})), zm = /* @__PURE__ */ a(((e) => {
-	for (var t = rm(), n = [
-		im(),
-		am(),
+})), Vm = /* @__PURE__ */ a(((e) => {
+	for (var t = am(), n = [
 		om(),
 		sm(),
 		cm(),
 		lm(),
 		um(),
 		dm(),
-		Rm()
+		fm(),
+		pm(),
+		Bm()
 	], r = 0; r < n.length; r++) {
 		var i = n[r];
 		t(e, i);
 	}
-})), Bm = /* @__PURE__ */ a(((e, t) => {
-	var n = tm().Buffer;
+})), Hm = /* @__PURE__ */ a(((e, t) => {
+	var n = rm().Buffer;
 	t.exports = function(e) {
 		var t = e.Transform;
 		function r(e, n) {
@@ -17205,8 +17205,8 @@ var Up = { completion: {
 			IconvLiteDecoderStream: i
 		};
 	};
-})), Vm = /* @__PURE__ */ a(((e, n) => {
-	var r = tm().Buffer, i = nm(), a = rm();
+})), Um = /* @__PURE__ */ a(((e, n) => {
+	var r = rm().Buffer, i = im(), a = am();
 	n.exports.encodings = null, n.exports.defaultCharUnicode = "�", n.exports.defaultCharSingleByte = "?", n.exports.encode = function(e, t, i) {
 		e = "" + (e || "");
 		var a = n.exports.getEncoder(t, i), o = a.write(e), s = a.end();
@@ -17223,7 +17223,7 @@ var Up = { completion: {
 		}
 	}, n.exports.toEncoding = n.exports.encode, n.exports.fromEncoding = n.exports.decode, n.exports._codecDataCache = { __proto__: null }, n.exports.getCodec = function(e) {
 		if (!n.exports.encodings) {
-			var t = zm();
+			var t = Vm();
 			n.exports.encodings = { __proto__: null }, a(n.exports.encodings, t);
 		}
 		for (var r = n.exports._canonicalizeEncoding(e), i = {};;) {
@@ -17252,7 +17252,7 @@ var Up = { completion: {
 		return r.bomAware && !(t && t.stripBOM === !1) && (a = new i.StripBOM(a, t)), a;
 	}, n.exports.enableStreamingAPI = function(e) {
 		if (!n.exports.supportsStreams) {
-			var t = Bm()(e);
+			var t = Hm()(e);
 			n.exports.IconvLiteEncoderStream = t.IconvLiteEncoderStream, n.exports.IconvLiteDecoderStream = t.IconvLiteDecoderStream, n.exports.encodeStream = function(e, t) {
 				return new n.exports.IconvLiteEncoderStream(n.exports.getEncoder(e, t), t);
 			}, n.exports.decodeStream = function(e, t) {
@@ -17267,7 +17267,7 @@ var Up = { completion: {
 	o && o.Transform ? n.exports.enableStreamingAPI(o) : n.exports.encodeStream = n.exports.decodeStream = function() {
 		throw Error("iconv-lite Streaming API is not enabled. Use iconv.enableStreamingAPI(require('stream')); to enable it.");
 	};
-})), Hm = /* @__PURE__ */ a(((e, t) => {
+})), Wm = /* @__PURE__ */ a(((e, t) => {
 	t.exports = r;
 	function n(e) {
 		for (var t = e.listeners("data"), n = 0; n < t.length; n++) if (t[n].name === "ondata") return !0;
@@ -17281,8 +17281,8 @@ var Up = { completion: {
 		}
 		if (n(e)) for (var t, r = e.listeners("close"), i = 0; i < r.length; i++) t = r[i], (t.name === "cleanup" || t.name === "onclose") && t.call(e);
 	}
-})), Um = /* @__PURE__ */ a(((e, n) => {
-	var r = p(), i = Wp(), a = em(), o = Vm(), s = Hm();
+})), Gm = /* @__PURE__ */ a(((e, n) => {
+	var r = p(), i = Kp(), a = nm(), o = Um(), s = Wm();
 	n.exports = u;
 	var c = /^Encoding not recognized: /;
 	function l(e) {
@@ -17381,7 +17381,7 @@ var Up = { completion: {
 		var t;
 		return r.AsyncResource && (t = new r.AsyncResource(e.name || "bound-anonymous-fn")), !t || !t.runInAsyncScope ? e : t.runInAsyncScope.bind(t, e, null);
 	}
-})), Wm = /* @__PURE__ */ a(((e) => {
+})), Km = /* @__PURE__ */ a(((e) => {
 	var t = /; *([!#$%&'*+.^_`|~0-9A-Za-z-]+) *= *("(?:[\u000b\u0020\u0021\u0023-\u005b\u005d-\u007e\u0080-\u00ff]|\\[\u000b\u0020-\u00ff])*"|[!#$%&'*+.^_`|~0-9A-Za-z-]+) */g, n = /\\([\u000b\u0020-\u00ff])/g, r = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 	e.parse = i;
 	function i(e) {
@@ -17409,9 +17409,9 @@ var Up = { completion: {
 	function o(e) {
 		this.parameters = Object.create(null), this.type = e;
 	}
-})), Gm = /* @__PURE__ */ r(Um(), 1), Km = /* @__PURE__ */ r(Wm(), 1), qm = "4mb", Jm = class {
+})), qm = /* @__PURE__ */ r(Gm(), 1), Jm = /* @__PURE__ */ r(Km(), 1), Ym = "4mb", Xm = class {
 	constructor(e, t, n) {
-		this._endpoint = e, this.res = t, this._sessionId = re(), this._options = n || { enableDnsRebindingProtection: !1 };
+		this._endpoint = e, this.res = t, this._sessionId = ie(), this._options = n || { enableDnsRebindingProtection: !1 };
 	}
 	validateRequestHeaders(e) {
 		if (this._options.enableDnsRebindingProtection) {
@@ -17432,7 +17432,7 @@ var Up = { completion: {
 			"Cache-Control": "no-cache, no-transform",
 			Connection: "keep-alive"
 		});
-		let e = new m(this._endpoint, "http://localhost");
+		let e = new h(this._endpoint, "http://localhost");
 		e.searchParams.set("sessionId", this._sessionId);
 		let t = e.pathname + e.search + e.hash;
 		this.res.write(`event: endpoint\ndata: ${t}\n\n`), this._sseResponse = this.res, this.res.on("close", () => {
@@ -17449,15 +17449,15 @@ var Up = { completion: {
 			t.writeHead(403).end(r), this.onerror?.(Error(r));
 			return;
 		}
-		let i = e.auth, a = e.headers.host, o = e.socket instanceof ie ? "https" : "http", s = a && e.url ? new m(e.url, `${o}://${a}`) : void 0, c = {
+		let i = e.auth, a = e.headers.host, o = e.socket instanceof ae ? "https" : "http", s = a && e.url ? new h(e.url, `${o}://${a}`) : void 0, c = {
 			headers: e.headers,
 			url: s
 		}, l;
 		try {
-			let t = Km.parse(e.headers["content-type"] ?? "");
+			let t = Jm.parse(e.headers["content-type"] ?? "");
 			if (t.type !== "application/json") throw Error(`Unsupported content-type: ${t.type}`);
-			l = n ?? await (0, Gm.default)(e, {
-				limit: qm,
+			l = n ?? await (0, qm.default)(e, {
+				limit: Ym,
 				encoding: t.parameters.charset ?? "utf-8"
 			});
 		} catch (e) {
@@ -17478,7 +17478,7 @@ var Up = { completion: {
 	async handleMessage(e, t) {
 		let n;
 		try {
-			n = bc.parse(e);
+			n = Sc.parse(e);
 		} catch (e) {
 			throw this.onerror?.(e), e;
 		}
@@ -17494,7 +17494,7 @@ var Up = { completion: {
 	get sessionId() {
 		return this._sessionId;
 	}
-}, Ym = new class {
+}, Zm = new class {
 	activeProcesses = /* @__PURE__ */ new Map();
 	broadcastLog(e, t) {
 		for (let n of o.getAllWindows()) n.isDestroyed() || n.webContents.send("process:logChunk", {
@@ -17506,12 +17506,12 @@ var Up = { completion: {
 		for (let t of o.getAllWindows()) t.isDestroyed() || t.webContents.send("process:statusChanged", e);
 	}
 	async startProcess(e, t, n) {
-		let r = `${p.normalize(e)}::${n}`;
+		let r = `${m.normalize(e)}::${n}`;
 		if (this.activeProcesses.has(r)) {
 			let e = this.activeProcesses.get(r);
 			if (e.info.status === "running") return e.info;
 		}
-		let i = process.platform === "win32", a = y(i ? "powershell.exe" : "/bin/sh", i ? [
+		let i = process.platform === "win32", a = x(i ? "powershell.exe" : "/bin/sh", i ? [
 			"-NoProfile",
 			"-Command",
 			t
@@ -17549,7 +17549,7 @@ var Up = { completion: {
 	async stopProcess(e) {
 		let t = this.activeProcesses.get(e);
 		return t ? !t.info.pid || new Promise((n) => {
-			ae(t.info.pid, "SIGKILL", (r) => {
+			oe(t.info.pid, "SIGKILL", (r) => {
 				r ? (console.error(`Failed to kill process tree for ${e}:`, r), n(!1)) : (t.info.status = "stopped", this.broadcastStatus(t.info), n(!0));
 			});
 		}) : !1;
@@ -17558,11 +17558,11 @@ var Up = { completion: {
 		return this.activeProcesses.get(e)?.logBuffer || [];
 	}
 	async listProcessesForProject(e) {
-		let t = p.normalize(e), n = [];
-		for (let [e, r] of this.activeProcesses.entries()) p.normalize(r.info.cwd) === t && n.push(r.info);
-		let r = p.join(t, ".env-state", "processes.json");
-		if (_(r)) try {
-			let e = await g.readFile(r, "utf-8"), i = JSON.parse(e);
+		let t = m.normalize(e), n = [];
+		for (let [e, r] of this.activeProcesses.entries()) m.normalize(r.info.cwd) === t && n.push(r.info);
+		let r = m.join(t, ".env-state", "processes.json");
+		if (y(r)) try {
+			let e = await _.readFile(r, "utf-8"), i = JSON.parse(e);
 			for (let [e, r] of Object.entries(i)) {
 				let i = `${t}::${e}`;
 				if (!this.activeProcesses.has(i)) {
@@ -17590,11 +17590,11 @@ var Up = { completion: {
 		return n;
 	}
 	async tailProjectLog(e, t, n = 100) {
-		let r = `${p.normalize(e)}::${t}`, i = this.activeProcesses.get(r);
+		let r = `${m.normalize(e)}::${t}`, i = this.activeProcesses.get(r);
 		if (i && i.logBuffer.length > 0) return i.logBuffer.slice(-n).join("");
-		let a = p.join(e, ".env-state", "logs", `${t}.log`);
-		if (_(a)) try {
-			let e = await g.readFile(a, "utf-8");
+		let a = m.join(e, ".env-state", "logs", `${t}.log`);
+		if (y(a)) try {
+			let e = await _.readFile(a, "utf-8");
 			return e.charCodeAt(0) === 65279 && (e = e.slice(1)), e.split("\n").slice(-n).join("\n");
 		} catch (e) {
 			console.error(`Failed to tail log ${a}:`, e);
@@ -17603,12 +17603,12 @@ var Up = { completion: {
 	}
 	cleanupAll() {
 		for (let [e, t] of this.activeProcesses.entries()) if (t.info.pid && t.info.status === "running") try {
-			ae(t.info.pid, "SIGKILL");
+			oe(t.info.pid, "SIGKILL");
 		} catch (t) {
 			console.error(`Cleanup kill failed for ${e}:`, t);
 		}
 	}
-}(), Xm = new class {
+}(), Qm = new class {
 	server = null;
 	mcpServer = null;
 	sseSessions = /* @__PURE__ */ new Map();
@@ -17619,7 +17619,7 @@ var Up = { completion: {
 		activeTab: "kanban"
 	};
 	constructor() {
-		this.token = `ph_mcp_${ne.randomBytes(12).toString("hex")}`;
+		this.token = `ph_mcp_${re.randomBytes(12).toString("hex")}`;
 	}
 	setAppState(e) {
 		e.activeProject !== void 0 && (this.currentAppState.activeProject = e.activeProject), e.activeTab !== void 0 && (this.currentAppState.activeTab = e.activeTab);
@@ -17634,14 +17634,14 @@ var Up = { completion: {
 		};
 	}
 	regenerateToken() {
-		return this.token = `ph_mcp_${ne.randomBytes(12).toString("hex")}`, this.token;
+		return this.token = `ph_mcp_${re.randomBytes(12).toString("hex")}`, this.token;
 	}
 	dispatchToRenderer(e) {
 		for (let t of o.getAllWindows()) t.isDestroyed() || t.webContents.send("mcp:remoteAction", e);
 	}
 	async start(e = 42042) {
 		return this.server && this.server.listening ? !0 : (this.port = e, this.initMcpServer(), new Promise((e) => {
-			let t = te.createServer((e, t) => {
+			let t = ne.createServer((e, t) => {
 				this.handleHttpRequest(e, t);
 			});
 			t.listen(this.port, "127.0.0.1", () => {
@@ -17671,7 +17671,7 @@ var Up = { completion: {
 		});
 	}
 	initMcpServer() {
-		let e = new Pp({
+		let e = new Ip({
 			name: "projecthub-remote-control",
 			version: "2.5.0"
 		});
@@ -17691,7 +17691,7 @@ var Up = { completion: {
 			description: "Возвращает реестр всех добавленных проектов с метаданными и путями на диске.",
 			inputSchema: {}
 		}, async () => {
-			let e = await le.getConfig();
+			let e = await ue.getConfig();
 			return { content: [{
 				type: "text",
 				text: JSON.stringify(e.projects, null, 2)
@@ -17699,7 +17699,7 @@ var Up = { completion: {
 		}), e.registerTool("projecthub_switch_project", {
 			title: "Переключить проект в окне ProjectHub",
 			description: "Выбирает проект и открывает его в графическом интерфейсе приложения.",
-			inputSchema: { projectPath: Xt().describe("Абсолютный путь к каталогу проекта или его имя") }
+			inputSchema: { projectPath: Zt().describe("Абсолютный путь к каталогу проекта или его имя") }
 		}, async ({ projectPath: e }) => (this.dispatchToRenderer({
 			type: "switch_project",
 			payload: { query: e }
@@ -17709,7 +17709,7 @@ var Up = { completion: {
 		}] })), e.registerTool("projecthub_switch_tab", {
 			title: "Переключить вкладку в ProjectHub",
 			description: "Переключает видимую вкладку в приложении (ai, kanban, git, docs, terminal).",
-			inputSchema: { tab: en([
+			inputSchema: { tab: tn([
 				"ai",
 				"kanban",
 				"git",
@@ -17727,8 +17727,8 @@ var Up = { completion: {
 			title: "Отправить промпт в Claude AI Studio",
 			description: "Вставляет или отправляет задачу AI-агенту в Claude Studio открытого проекта.",
 			inputSchema: {
-				prompt: Xt().describe("Текст задачи/промпта для агента"),
-				sendImmediately: Qt().optional().describe("Отправить сразу (true) или только вставить в поле ввода (false)")
+				prompt: Zt().describe("Текст задачи/промпта для агента"),
+				sendImmediately: $t().optional().describe("Отправить сразу (true) или только вставить в поле ввода (false)")
 			}
 		}, async ({ prompt: e, sendImmediately: t = !0 }) => (this.dispatchToRenderer({
 			type: "send_studio_prompt",
@@ -17743,9 +17743,9 @@ var Up = { completion: {
 			title: "Одобрить или отклонить действие агента",
 			description: "Отвечает на активный запрос подтверждения (Human-in-the-Loop) в карточке одобрений.",
 			inputSchema: {
-				requestId: Xt().optional().describe("ID запроса (если опущен, берется первый активный)"),
-				approved: Qt().describe("Одобрить (true) или отклонить (false)"),
-				reason: Xt().optional().describe("Опциональное текстовое пояснение или выбранный вариант")
+				requestId: Zt().optional().describe("ID запроса (если опущен, берется первый активный)"),
+				approved: $t().describe("Одобрить (true) или отклонить (false)"),
+				reason: Zt().optional().describe("Опциональное текстовое пояснение или выбранный вариант")
 			}
 		}, async ({ requestId: e, approved: t, reason: n }) => (this.dispatchToRenderer({
 			type: "approve_action",
@@ -17761,12 +17761,12 @@ var Up = { completion: {
 			title: "Запустить фоновый процесс",
 			description: "Запускает команду (dev-сервер, тесты, сборку) с отслеживанием в Process Manager.",
 			inputSchema: {
-				projectPath: Xt().describe("Абсолютный путь к каталогу проекта"),
-				command: Xt().describe("Строка запускаемой команды"),
-				name: Xt().describe("Уникальное имя процесса (например, \"dev\", \"test\")")
+				projectPath: Zt().describe("Абсолютный путь к каталогу проекта"),
+				command: Zt().describe("Строка запускаемой команды"),
+				name: Zt().describe("Уникальное имя процесса (например, \"dev\", \"test\")")
 			}
 		}, async ({ projectPath: e, command: t, name: n }) => {
-			let r = await Ym.startProcess(e, t, n);
+			let r = await Zm.startProcess(e, t, n);
 			return { content: [{
 				type: "text",
 				text: JSON.stringify(r, null, 2)
@@ -17774,33 +17774,33 @@ var Up = { completion: {
 		}), e.registerTool("projecthub_stop_process", {
 			title: "Остановить фоновый процесс",
 			description: "Останавливает процесс по его ID или имени.",
-			inputSchema: { processId: Xt().describe("ID процесса вида path::name") }
+			inputSchema: { processId: Zt().describe("ID процесса вида path::name") }
 		}, async ({ processId: e }) => ({ content: [{
 			type: "text",
-			text: await Ym.stopProcess(e) ? `Процесс ${e} остановлен.` : `Процесс ${e} не найден.`
+			text: await Zm.stopProcess(e) ? `Процесс ${e} остановлен.` : `Процесс ${e} не найден.`
 		}] })), e.registerTool("projecthub_get_process_logs", {
 			title: "Получить логи процесса",
 			description: "Возвращает буфер последних строк вывода процесса.",
 			inputSchema: {
-				processId: Xt().describe("ID процесса вида path::name"),
-				lines: Zt().optional().describe("Количество последних строк (по умолчанию 50)")
+				processId: Zt().describe("ID процесса вида path::name"),
+				lines: Qt().optional().describe("Количество последних строк (по умолчанию 50)")
 			}
 		}, async ({ processId: e, lines: t = 50 }) => ({ content: [{
 			type: "text",
-			text: Ym.getLogs(e).slice(-t).join("") || "Нет вывода"
+			text: Zm.getLogs(e).slice(-t).join("") || "Нет вывода"
 		}] })), e.registerTool("projecthub_list_tasks", {
 			title: "Список задач бэклога",
 			description: "Возвращает список задач из папки backlog/tasks/ проекта.",
 			inputSchema: {
-				projectPath: Xt().describe("Путь к проекту"),
-				status: Xt().optional().describe("Фильтр по статусу (To Do, In Progress, Review, Done)")
+				projectPath: Zt().describe("Путь к проекту"),
+				status: Zt().optional().describe("Фильтр по статусу (To Do, In Progress, Review, Done)")
 			}
 		}, async ({ projectPath: e, status: t }) => {
-			let n = p.join(e, "backlog", "tasks"), r = [];
-			if (_(n)) {
-				let e = await g.readdir(n);
+			let n = m.join(e, "backlog", "tasks"), r = [];
+			if (y(n)) {
+				let e = await _.readdir(n);
 				for (let i of e) if (i.endsWith(".md")) try {
-					let e = await g.readFile(p.join(n, i), "utf-8"), a = b(e);
+					let e = await _.readFile(m.join(n, i), "utf-8"), a = S(e);
 					(!t || a.data.status?.toLowerCase() === t.toLowerCase()) && r.push({
 						file: i,
 						id: a.data.id || i.split(" - ")[0],
@@ -17855,7 +17855,7 @@ var Up = { completion: {
 				return;
 			}
 			console.log("[MCPServer] New client connected to SSE stream");
-			let e = new Jm("/message", t), n = e.sessionId;
+			let e = new Xm("/message", t), n = e.sessionId;
 			this.sseSessions.set(n, e), e.onclose = () => {
 				console.log(`[MCPServer] SSE Session ${n} closed`), this.sseSessions.delete(n);
 			}, this.mcpServer.connect(e).catch((e) => {
@@ -17883,7 +17883,7 @@ var Up = { completion: {
 		}
 		t.writeHead(404).end("Not found");
 	}
-}(), Zm = /* @__PURE__ */ a(((e) => {
+}(), $m = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.loadNativeModule = e.assign = void 0;
 	function n(e) {
 		return [...arguments].slice(1).forEach(function(t) {
@@ -17912,7 +17912,7 @@ var Up = { completion: {
 		throw Error("Failed to load native module: " + e + ".node, checked: " + n.join(", ") + ": " + i);
 	}
 	e.loadNativeModule = r;
-})), Qm = /* @__PURE__ */ a(((e) => {
+})), eh = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.EventEmitter2 = void 0, e.EventEmitter2 = function() {
 		function e() {
 			this._listeners = [];
@@ -17936,9 +17936,9 @@ var Up = { completion: {
 			for (var n = 0; n < t.length; n++) t[n].call(void 0, e);
 		}, e;
 	}();
-})), $m = /* @__PURE__ */ a(((e) => {
+})), th = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.Terminal = e.DEFAULT_ROWS = e.DEFAULT_COLS = void 0;
-	var n = t("events"), r = Qm();
+	var n = t("events"), r = eh();
 	e.DEFAULT_COLS = 80, e.DEFAULT_ROWS = 24;
 	var i = "", a = "";
 	e.Terminal = function() {
@@ -18042,13 +18042,13 @@ var Up = { completion: {
 			return n;
 		}, e;
 	}();
-})), eh = /* @__PURE__ */ a(((e) => {
+})), nh = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.getWorkerPipeName = void 0;
 	function t(e) {
 		return e + "-worker";
 	}
 	e.getWorkerPipeName = t;
-})), th = /* @__PURE__ */ a(((e) => {
+})), rh = /* @__PURE__ */ a(((e) => {
 	var n = e && e.__awaiter || function(e, t, n, r) {
 		function i(e) {
 			return e instanceof n ? e : new n(function(t) {
@@ -18150,7 +18150,7 @@ var Up = { completion: {
 		}
 	};
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.ConoutConnection = void 0;
-	var i = t("worker_threads"), a = eh(), o = t("path"), s = Qm(), c = 1e3;
+	var i = t("worker_threads"), a = nh(), o = t("path"), s = eh(), c = 1e3;
 	e.ConoutConnection = function() {
 		function e(e, t) {
 			var n = this;
@@ -18191,9 +18191,9 @@ var Up = { completion: {
 			});
 		}, e;
 	}();
-})), nh = /* @__PURE__ */ a(((e) => {
+})), ih = /* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.argsToCommandLine = e.WindowsPtyAgent = void 0;
-	var n = t("fs"), r = t("os"), i = t("path"), a = t("child_process"), o = t("net"), s = th(), c = Zm(), l, u, d = 1e3;
+	var n = t("fs"), r = t("os"), i = t("path"), a = t("child_process"), o = t("net"), s = rh(), c = $m(), l, u, d = 1e3;
 	e.WindowsPtyAgent = function() {
 		function e(e, t, r, a, d, p, m, h, g, _) {
 			var v = this;
@@ -18339,7 +18339,7 @@ var Up = { completion: {
 	function h(e, t) {
 		return e && !t || !e && t;
 	}
-})), rh = /* @__PURE__ */ a(((e) => {
+})), ah = /* @__PURE__ */ a(((e) => {
 	var t = e && e.__extends || (function() {
 		var e = function(t, n) {
 			return e = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(e, t) {
@@ -18357,7 +18357,7 @@ var Up = { completion: {
 		};
 	})();
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.WindowsTerminal = void 0;
-	var n = $m(), r = nh(), i = Zm(), a = "cmd.exe", o = "Windows Shell";
+	var n = th(), r = ih(), i = $m(), a = "cmd.exe", o = "Windows Shell";
 	e.WindowsTerminal = function(e) {
 		t(s, e);
 		function s(t, s, c) {
@@ -18444,7 +18444,7 @@ var Up = { completion: {
 			configurable: !0
 		}), s;
 	}(n.Terminal);
-})), ih = /* @__PURE__ */ a(((e) => {
+})), oh = /* @__PURE__ */ a(((e) => {
 	var n = e && e.__extends || (function() {
 		var e = function(t, n) {
 			return e = Object.setPrototypeOf || { __proto__: [] } instanceof Array && function(e, t) {
@@ -18462,7 +18462,7 @@ var Up = { completion: {
 		};
 	})();
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.UnixTerminal = void 0;
-	var r = t("fs"), i = t("path"), a = t("tty"), o = $m(), s = Zm(), c = s.loadNativeModule("pty"), l = c.module, u = c.dir + "/spawn-helper";
+	var r = t("fs"), i = t("path"), a = t("tty"), o = th(), s = $m(), c = s.loadNativeModule("pty"), l = c.module, u = c.dir + "/spawn-helper";
 	u = i.resolve(__dirname, u), u = u.replace("app.asar", "app.asar.unpacked"), u = u.replace("node_modules.asar", "node_modules.asar.unpacked");
 	var d = "sh", f = "xterm", p = 200;
 	e.UnixTerminal = function(e) {
@@ -18589,9 +18589,9 @@ var Up = { completion: {
 			}
 		}, e;
 	}();
-})), ah = /* @__PURE__ */ r((/* @__PURE__ */ a(((e) => {
+})), sh = /* @__PURE__ */ r((/* @__PURE__ */ a(((e) => {
 	Object.defineProperty(e, "__esModule", { value: !0 }), e.native = e.open = e.createTerminal = e.fork = e.spawn = void 0;
-	var t = Zm(), n = process.platform === "win32" ? rh().WindowsTerminal : ih().UnixTerminal;
+	var t = $m(), n = process.platform === "win32" ? ah().WindowsTerminal : oh().UnixTerminal;
 	function r(e, t, r) {
 		return new n(e, t, r);
 	}
@@ -18608,7 +18608,7 @@ var Up = { completion: {
 		return n.open(e);
 	}
 	e.open = o, e.native = process.platform === "win32" ? null : t.loadNativeModule("pty").module;
-})))(), 1), oh = new class {
+})))(), 1), ch = new class {
 	sessions = /* @__PURE__ */ new Map();
 	broadcastData(e, t) {
 		for (let n of o.getAllWindows()) n.isDestroyed() || n.webContents.send("pty:data", {
@@ -18629,12 +18629,12 @@ var Up = { completion: {
 			"-c",
 			"claude"
 		]) : n ? (a = "powershell.exe", o = ["-NoLogo"]) : (a = process.env.SHELL || "/bin/bash", o = ["-l"]);
-		let s = e.projectName || p.basename(e.projectPath), c = e.title || (e.type === "claude" ? `Claude: ${s}` : `Terminal: ${s}`), l = {
+		let s = e.projectName || m.basename(e.projectPath), c = e.title || (e.type === "claude" ? `Claude: ${s}` : `Terminal: ${s}`), l = {
 			...process.env,
 			TERM: "xterm-256color",
 			COLORTERM: "truecolor",
-			CLAUDE_CONFIG_DIR: _e
-		}, u = _(e.projectPath) ? e.projectPath : process.cwd(), d = ah.spawn(a, o, {
+			CLAUDE_CONFIG_DIR: ve
+		}, u = y(e.projectPath) ? e.projectPath : process.cwd(), d = sh.spawn(a, o, {
 			name: "xterm-256color",
 			cols: r,
 			rows: i,
@@ -18695,7 +18695,7 @@ var Up = { completion: {
 		} catch {}
 		this.sessions.clear();
 	}
-}(), sh = new class {
+}(), lh = new class {
 	watchers = /* @__PURE__ */ new Map();
 	debounceTimers = /* @__PURE__ */ new Map();
 	broadcastGitChanged(e) {
@@ -18708,16 +18708,16 @@ var Up = { completion: {
 		this.debounceTimers.set(e, n);
 	}
 	watchProjectGit(e) {
-		let t = p.normalize(e);
+		let t = m.normalize(e);
 		if (this.watchers.has(t)) return;
-		let n = p.join(t, ".git");
-		if (!_(n)) return;
+		let n = m.join(t, ".git");
+		if (!y(n)) return;
 		let r = [
-			p.join(n, "HEAD"),
-			p.join(n, "index"),
-			p.join(n, "refs"),
+			m.join(n, "HEAD"),
+			m.join(n, "index"),
+			m.join(n, "refs"),
 			t
-		], i = oe.watch(r, {
+		], i = se.watch(r, {
 			ignoreInitial: !0,
 			ignored: (e) => {
 				let t = e.replace(/\\/g, "/");
@@ -18731,7 +18731,7 @@ var Up = { completion: {
 		}), this.watchers.set(t, i);
 	}
 	unwatchProjectGit(e) {
-		let t = p.normalize(e), n = this.watchers.get(t);
+		let t = m.normalize(e), n = this.watchers.get(t);
 		n && (n.close().catch(() => {}), this.watchers.delete(t));
 		let r = this.debounceTimers.get(t);
 		r && (clearTimeout(r), this.debounceTimers.delete(t));
@@ -18745,10 +18745,10 @@ var Up = { completion: {
 		this.debounceTimers.clear();
 	}
 	async getRepoDetails(e) {
-		let t = p.join(e, ".git");
-		if (!_(t)) return null;
+		let t = m.join(e, ".git");
+		if (!y(t)) return null;
 		try {
-			let t = x(e);
+			let t = C(e);
 			this.watchProjectGit(e);
 			let [n, r, i, a, o] = await Promise.all([
 				t.status(),
@@ -18812,7 +18812,7 @@ var Up = { completion: {
 	}
 	async checkoutBranch(e, t, n = !1) {
 		try {
-			let r = x(e);
+			let r = C(e);
 			return n ? await r.checkoutLocalBranch(t) : await r.checkout(t), this.broadcastGitChanged(e), !0;
 		} catch (e) {
 			return console.error(`Failed to checkout ${t}:`, e), !1;
@@ -18820,35 +18820,35 @@ var Up = { completion: {
 	}
 	async createBranch(e, t) {
 		try {
-			return await x(e).checkoutLocalBranch(t), this.broadcastGitChanged(e), !0;
+			return await C(e).checkoutLocalBranch(t), this.broadcastGitChanged(e), !0;
 		} catch (e) {
 			return console.error(`Failed to create branch ${t}:`, e), !1;
 		}
 	}
 	async stageFile(e, t) {
 		try {
-			return await x(e).add(t), this.broadcastGitChanged(e), !0;
+			return await C(e).add(t), this.broadcastGitChanged(e), !0;
 		} catch (e) {
 			return console.error(`Failed to stage ${t}:`, e), !1;
 		}
 	}
 	async unstageFile(e, t) {
 		try {
-			return await x(e).reset(["HEAD", t]), this.broadcastGitChanged(e), !0;
+			return await C(e).reset(["HEAD", t]), this.broadcastGitChanged(e), !0;
 		} catch (e) {
 			return console.error(`Failed to unstage ${t}:`, e), !1;
 		}
 	}
 	async stageAll(e) {
 		try {
-			return await x(e).add("."), this.broadcastGitChanged(e), !0;
+			return await C(e).add("."), this.broadcastGitChanged(e), !0;
 		} catch (e) {
 			return console.error("Failed to stage all:", e), !1;
 		}
 	}
 	async commitChanges(e, t, n = !1) {
 		try {
-			let r = x(e);
+			let r = C(e);
 			return n && await r.add("."), await r.commit(t), this.broadcastGitChanged(e), !0;
 		} catch (e) {
 			return console.error("Failed to commit:", e), !1;
@@ -18856,14 +18856,14 @@ var Up = { completion: {
 	}
 	async deleteBranch(e, t, n = !1) {
 		try {
-			return await x(e).deleteLocalBranch(t, n), this.broadcastGitChanged(e), !0;
+			return await C(e).deleteLocalBranch(t, n), this.broadcastGitChanged(e), !0;
 		} catch (e) {
 			return console.error(`Failed to delete branch ${t}:`, e), !1;
 		}
 	}
 	async mergeBranch(e, t) {
 		try {
-			return await x(e).merge([t]), this.broadcastGitChanged(e), { success: !0 };
+			return await C(e).merge([t]), this.broadcastGitChanged(e), { success: !0 };
 		} catch (e) {
 			return console.error(`Failed to merge ${t}:`, e), {
 				success: !1,
@@ -18873,14 +18873,14 @@ var Up = { completion: {
 	}
 	async fetchRemote(e) {
 		try {
-			return await x(e).fetch(), this.broadcastGitChanged(e), !0;
+			return await C(e).fetch(), this.broadcastGitChanged(e), !0;
 		} catch (t) {
 			return console.error(`Failed to fetch remotes for ${e}:`, t), !1;
 		}
 	}
 	async pullRemote(e) {
 		try {
-			return await x(e).pull(), this.broadcastGitChanged(e), { success: !0 };
+			return await C(e).pull(), this.broadcastGitChanged(e), { success: !0 };
 		} catch (t) {
 			return console.error(`Failed to pull for ${e}:`, t), {
 				success: !1,
@@ -18890,7 +18890,7 @@ var Up = { completion: {
 	}
 	async pushRemote(e) {
 		try {
-			return await x(e).push(), this.broadcastGitChanged(e), { success: !0 };
+			return await C(e).push(), this.broadcastGitChanged(e), { success: !0 };
 		} catch (t) {
 			return console.error(`Failed to push for ${e}:`, t), {
 				success: !1,
@@ -18900,15 +18900,15 @@ var Up = { completion: {
 	}
 	async discardFileChanges(e, t) {
 		try {
-			let n = x(e);
+			let n = C(e);
 			try {
 				await n.reset(["HEAD", t]);
 			} catch {}
 			try {
 				await n.checkout(["--", t]);
 			} catch {
-				let n = p.join(e, t);
-				_(n) && await g.rm(n, {
+				let n = m.join(e, t);
+				y(n) && await _.rm(n, {
 					force: !0,
 					recursive: !0
 				});
@@ -18920,7 +18920,7 @@ var Up = { completion: {
 	}
 	async getDiffBetween(e, t, n, r) {
 		try {
-			let i = x(e), a = [];
+			let i = C(e), a = [];
 			return n ? a.push(`${t}..${n}`) : a.push(t), r && a.push("--", r), await i.diff(a);
 		} catch (e) {
 			return console.error(`Failed to get diff between ${t} and ${n}:`, e), "";
@@ -18928,22 +18928,93 @@ var Up = { completion: {
 	}
 	async getFileDiff(e, t, n = !1) {
 		try {
-			let r = x(e);
+			let r = C(e);
 			return n ? await r.diff(["--cached", t]) : await r.diff([t]);
 		} catch (e) {
 			return console.error(`Failed to get diff for ${t}:`, e), "";
 		}
 	}
-}(), ch = new class {
+}(), uh = {
+	width: 1400,
+	height: 900,
+	isMaximized: !1
+}, dh = new class {
+	configPath;
+	state = { ...uh };
+	debounceTimer = null;
+	constructor() {
+		let e = w.homedir(), t = m.join(e, ".projecthub");
+		this.configPath = m.join(t, "window-state.json"), this.loadState();
+	}
+	loadState() {
+		try {
+			if (v.existsSync(this.configPath)) {
+				let e = v.readFileSync(this.configPath, "utf8"), t = JSON.parse(e);
+				typeof t.width == "number" && typeof t.height == "number" && (this.state = {
+					width: Math.max(1024, t.width),
+					height: Math.max(700, t.height),
+					x: typeof t.x == "number" ? t.x : void 0,
+					y: typeof t.y == "number" ? t.y : void 0,
+					isMaximized: !!t.isMaximized
+				});
+			}
+		} catch (e) {
+			console.warn("[WindowStateService] Failed to load window state:", e), this.state = { ...uh };
+		}
+	}
+	getInitialState() {
+		return this.state.x !== void 0 && this.state.y !== void 0 && !d.getAllDisplays().some((e) => {
+			let t = e.bounds;
+			return this.state.x >= t.x && this.state.x < t.x + t.width && this.state.y >= t.y && this.state.y < t.y + t.height;
+		}) ? {
+			width: this.state.width,
+			height: this.state.height,
+			isMaximized: this.state.isMaximized
+		} : { ...this.state };
+	}
+	saveStateSync(e) {
+		if (!e.isDestroyed()) try {
+			if (e.isMaximized()) this.state.isMaximized = !0;
+			else {
+				let t = e.getNormalBounds ? e.getNormalBounds() : e.getBounds();
+				this.state = {
+					width: t.width,
+					height: t.height,
+					x: t.x,
+					y: t.y,
+					isMaximized: !1
+				};
+			}
+			let t = m.dirname(this.configPath);
+			v.existsSync(t) || v.mkdirSync(t, { recursive: !0 }), v.writeFileSync(this.configPath, JSON.stringify(this.state, null, 2), "utf8");
+		} catch (e) {
+			console.error("[WindowStateService] Failed to save window state:", e);
+		}
+	}
+	trackWindow(e) {
+		let t = () => {
+			this.debounceTimer && clearTimeout(this.debounceTimer), this.debounceTimer = setTimeout(() => {
+				this.saveStateSync(e);
+			}, 300);
+		};
+		e.on("resize", t), e.on("move", t), e.on("maximize", () => {
+			this.state.isMaximized = !0, t();
+		}), e.on("unmaximize", () => {
+			this.state.isMaximized = !1, t();
+		}), e.on("close", () => {
+			this.debounceTimer && clearTimeout(this.debounceTimer), this.saveStateSync(e);
+		});
+	}
+}(), fh = new class {
 	watcher = null;
 	currentPath = null;
 	debounceTimer = null;
 	watch(e, t) {
 		if (this.currentPath === e && this.watcher) return;
 		this.unwatch();
-		let n = p.join(e, "backlog", "tasks");
-		if (!_(n)) return;
-		this.currentPath = e, this.watcher = oe.watch(n, {
+		let n = m.join(e, "backlog", "tasks");
+		if (!y(n)) return;
+		this.currentPath = e, this.watcher = se.watch(n, {
 			ignoreInitial: !0,
 			depth: 1,
 			awaitWriteFinish: {
@@ -18965,7 +19036,7 @@ var Up = { completion: {
 	unwatch() {
 		this.watcher &&= (this.watcher.close(), null), this.currentPath = null;
 	}
-}(), lh = "F:\\ProjectTemplate", uh = /* @__PURE__ */ new Set([
+}(), ph = "F:\\ProjectTemplate", mh = /* @__PURE__ */ new Set([
 	"node_modules",
 	".git",
 	".rag-index",
@@ -18978,62 +19049,62 @@ var Up = { completion: {
 	"dist-electron",
 	"build"
 ]);
-async function dh(e, t) {
-	await g.mkdir(t, { recursive: !0 });
-	let n = await g.readdir(e, { withFileTypes: !0 });
+async function hh(e, t) {
+	await _.mkdir(t, { recursive: !0 });
+	let n = await _.readdir(e, { withFileTypes: !0 });
 	for (let r of n) {
-		let n = p.join(e, r.name), i = p.join(t, r.name), a = r.name.toLowerCase();
-		uh.has(a) || (r.isDirectory() ? await dh(n, i) : r.isFile() && await g.copyFile(n, i));
+		let n = m.join(e, r.name), i = m.join(t, r.name), a = r.name.toLowerCase();
+		mh.has(a) || (r.isDirectory() ? await hh(n, i) : r.isFile() && await _.copyFile(n, i));
 	}
 }
-async function fh(e) {
-	let t = e || lh;
+async function gh(e) {
+	let t = e || ph;
 	return {
-		available: _(t),
+		available: y(t),
 		path: t
 	};
 }
-async function ph(e) {
-	let t = e.templateSource || lh;
-	if (!_(t)) throw Error(`Директория шаблона не найдена: ${t}`);
-	let n = p.normalize(e.targetDir);
-	if (_(n)) {
-		if ((await g.readdir(n)).length > 0) throw Error(`Целевая директория уже существует и не пуста: ${n}`);
-	} else await g.mkdir(n, { recursive: !0 });
-	await dh(t, n);
-	let r = p.join(n, "package.json");
-	if (_(r)) try {
-		let t = await g.readFile(r, "utf-8"), n = JSON.parse(t);
-		n.name = e.name.toLowerCase().replace(/[^a-z0-9-_]/g, "-"), n.version = "0.1.0", n.description = `Проект ${e.name} на базе ProjectTemplate`, await g.writeFile(r, JSON.stringify(n, null, 2), "utf-8");
+async function _h(e) {
+	let t = e.templateSource || ph;
+	if (!y(t)) throw Error(`Директория шаблона не найдена: ${t}`);
+	let n = m.normalize(e.targetDir);
+	if (y(n)) {
+		if ((await _.readdir(n)).length > 0) throw Error(`Целевая директория уже существует и не пуста: ${n}`);
+	} else await _.mkdir(n, { recursive: !0 });
+	await hh(t, n);
+	let r = m.join(n, "package.json");
+	if (y(r)) try {
+		let t = await _.readFile(r, "utf-8"), n = JSON.parse(t);
+		n.name = e.name.toLowerCase().replace(/[^a-z0-9-_]/g, "-"), n.version = "0.1.0", n.description = `Проект ${e.name} на базе ProjectTemplate`, await _.writeFile(r, JSON.stringify(n, null, 2), "utf-8");
 	} catch (e) {
 		console.error("Failed to parametrize package.json:", e);
 	}
-	let i = p.join(n, "infra.config.json");
-	if (_(i)) try {
-		let t = await g.readFile(i, "utf-8"), n = JSON.parse(t);
+	let i = m.join(n, "infra.config.json");
+	if (y(i)) try {
+		let t = await _.readFile(i, "utf-8"), n = JSON.parse(t);
 		n.projectRoot = ".", n.features = {
 			...n.features,
 			...e.features
-		}, await g.writeFile(i, JSON.stringify(n, null, 2), "utf-8");
+		}, await _.writeFile(i, JSON.stringify(n, null, 2), "utf-8");
 	} catch (e) {
 		console.error("Failed to parametrize infra.config.json:", e);
 	}
-	let a = p.join(n, "backlog", "config.yml");
-	if (_(a)) try {
-		let t = await g.readFile(a, "utf-8");
-		t = t.replace(/project_name:\s*["']?([^"'\r\n]+)["']?/, `project_name: "${e.name}"`), await g.writeFile(a, t, "utf-8");
+	let a = m.join(n, "backlog", "config.yml");
+	if (y(a)) try {
+		let t = await _.readFile(a, "utf-8");
+		t = t.replace(/project_name:\s*["']?([^"'\r\n]+)["']?/, `project_name: "${e.name}"`), await _.writeFile(a, t, "utf-8");
 	} catch (e) {
 		console.error("Failed to parametrize backlog/config.yml:", e);
 	}
 	if (e.initGit) try {
-		await x(n).init();
+		await C(n).init();
 	} catch (e) {
 		console.error("Failed to init git:", e);
 	}
-	let o = p.join(n, "scripts", "setup.mjs");
-	if (_(o)) try {
+	let o = m.join(n, "scripts", "setup.mjs");
+	if (y(o)) try {
 		await new Promise((e) => {
-			let t = y(process.execPath, [o], {
+			let t = x(process.execPath, [o], {
 				cwd: n,
 				shell: !0
 			});
@@ -19042,16 +19113,16 @@ async function ph(e) {
 	} catch (e) {
 		console.error("Setup script execution warning:", e);
 	}
-	await le.addProject(n, !0);
-	let s = await de(n);
+	await ue.addProject(n, !0);
+	let s = await fe(n);
 	if (!s) throw Error("Не удалось проинспектировать созданный проект.");
 	return s;
 }
 //#endregion
 //#region electron/services/actionConfigService.ts
-var mh = ".projecthub.json", hh = new class {
+var vh = ".projecthub.json", yh = new class {
 	detectDefaultCommands(e) {
-		let t = _(p.join(e, "package.json")), n = _(p.join(e, "Cargo.toml")), r = _(p.join(e, "pyproject.toml")) || _(p.join(e, "requirements.txt"));
+		let t = y(m.join(e, "package.json")), n = y(m.join(e, "Cargo.toml")), r = y(m.join(e, "pyproject.toml")) || y(m.join(e, "requirements.txt"));
 		return n ? {
 			run: {
 				name: "Cargo Run",
@@ -19102,9 +19173,9 @@ var mh = ".projecthub.json", hh = new class {
 		};
 	}
 	async getConfig(e) {
-		let t = p.join(e, mh);
-		if (_(t)) try {
-			let n = await g.readFile(t, "utf-8"), r = JSON.parse(n);
+		let t = m.join(e, vh);
+		if (y(t)) try {
+			let n = await _.readFile(t, "utf-8"), r = JSON.parse(n);
 			return {
 				...this.detectDefaultCommands(e),
 				...r
@@ -19115,41 +19186,41 @@ var mh = ".projecthub.json", hh = new class {
 		return this.detectDefaultCommands(e);
 	}
 	async saveConfig(e, t) {
-		let n = p.join(e, mh);
+		let n = m.join(e, vh);
 		try {
-			return await g.writeFile(n, JSON.stringify(t, null, 2), "utf-8"), !0;
+			return await _.writeFile(n, JSON.stringify(t, null, 2), "utf-8"), !0;
 		} catch (e) {
 			return console.error(`Failed to save ${n}:`, e), !1;
 		}
 	}
-}(), gh = "Xenova/all-MiniLM-L6-v2", _h = null, vh = null, yh = null;
-async function bh() {
-	if (!vh) try {
-		vh = await import("@lancedb/lancedb");
+}(), bh = "Xenova/all-MiniLM-L6-v2", xh = null, Sh = null, Ch = null;
+async function wh() {
+	if (!Sh) try {
+		Sh = await import("@lancedb/lancedb");
 	} catch (e) {
 		return console.warn("[RAG] LanceDB native module not available, fallback to fulltext search:", e), null;
 	}
-	return vh;
+	return Sh;
 }
-async function xh() {
-	if (!yh) try {
-		yh = await import("./transformers.node-COFdxZ8y.js"), yh.env && (yh.env.cacheDir = p.join(process.cwd(), ".rag-cache"));
+async function Th() {
+	if (!Ch) try {
+		Ch = await import("./transformers.node-COFdxZ8y.js"), Ch.env && (Ch.env.cacheDir = m.join(process.cwd(), ".rag-cache"));
 	} catch (e) {
 		return console.warn("[RAG] Transformers not available:", e), null;
 	}
-	return yh;
+	return Ch;
 }
-async function Sh() {
-	if (!_h) {
-		let e = await xh();
+async function Eh() {
+	if (!xh) {
+		let e = await Th();
 		if (!e) return null;
-		_h = e.pipeline("feature-extraction", gh, { dtype: "fp32" });
+		xh = e.pipeline("feature-extraction", bh, { dtype: "fp32" });
 	}
-	return _h;
+	return xh;
 }
-async function Ch(e) {
+async function Dh(e) {
 	try {
-		let t = await Sh();
+		let t = await Eh();
 		if (!t) return null;
 		let n = await t(e, {
 			pooling: "mean",
@@ -19161,63 +19232,63 @@ async function Ch(e) {
 		return console.warn("[RAG] Embedding failed:", e), null;
 	}
 }
-async function wh(e) {
+async function Oh(e) {
 	let t = [], n = [
 		{
-			dir: p.join(e, "backlog", "docs"),
+			dir: m.join(e, "backlog", "docs"),
 			category: "doc"
 		},
 		{
-			dir: p.join(e, "backlog", "decisions"),
+			dir: m.join(e, "backlog", "decisions"),
 			category: "decision"
 		},
 		{
-			dir: p.join(e, "backlog", "tasks"),
+			dir: m.join(e, "backlog", "tasks"),
 			category: "task"
 		}
 	];
-	for (let { dir: r, category: i } of n) if (_(r)) try {
-		let n = await g.readdir(r);
+	for (let { dir: r, category: i } of n) if (y(r)) try {
+		let n = await _.readdir(r);
 		for (let a of n) if (a.endsWith(".md")) {
-			let n = p.join(r, a);
+			let n = m.join(r, a);
 			t.push({
 				filePath: n,
-				relative: p.relative(e, n),
+				relative: m.relative(e, n),
 				category: i
 			});
 		}
 	} catch (e) {
 		console.error(`Failed to scan dir ${r}:`, e);
 	}
-	let r = p.join(e, "README.md");
-	return _(r) && t.push({
+	let r = m.join(e, "README.md");
+	return y(r) && t.push({
 		filePath: r,
 		relative: "README.md",
 		category: "doc"
 	}), t;
 }
-async function Th(e) {
+async function kh(e) {
 	let t = e.query?.trim();
 	if (!t) return [];
 	let n = e.mode || "all", r = e.limit || 15, i = e.global ?? !1, a = [];
-	a = i || !e.projectPath ? (await le.getProjects()).map((e) => ({
-		name: p.basename(e.path),
+	a = i || !e.projectPath ? (await ue.getProjects()).map((e) => ({
+		name: m.basename(e.path),
 		path: e.path
 	})) : [{
-		name: p.basename(e.projectPath),
+		name: m.basename(e.projectPath),
 		path: e.projectPath
 	}];
 	let o = [];
 	for (let e of a) {
 		let i = e.path;
 		if (n === "vector" || n === "all") {
-			let n = p.join(i, ".rag-index");
-			if (_(n)) try {
-				let a = await bh();
+			let n = m.join(i, ".rag-index");
+			if (y(n)) try {
+				let a = await wh();
 				if (a) {
 					let s = await a.connect(n), c = await s.tableNames(), l = c.includes("docs") ? "docs" : c[0];
 					if (l) {
-						let n = await s.openTable(l), a = await Ch([t]);
+						let n = await s.openTable(l), a = await Dh([t]);
 						if (a && a[0]) {
 							let t = await n.search(a[0]).limit(r).toArray();
 							for (let n of t) {
@@ -19225,7 +19296,7 @@ async function Th(e) {
 								a.includes("decisions") ? s = "decision" : a.includes("tasks") && (s = "task"), o.push({
 									projectName: e.name,
 									projectPath: i,
-									filePath: p.join(i, a),
+									filePath: m.join(i, a),
 									fileRelative: a,
 									heading: n.heading || void 0,
 									snippet: n.text || "",
@@ -19242,9 +19313,9 @@ async function Th(e) {
 			}
 		}
 		if (n === "text" || n === "all") try {
-			let n = await wh(i), r = t.toLowerCase();
+			let n = await Oh(i), r = t.toLowerCase();
 			for (let t of n) {
-				let n = await g.readFile(t.filePath, "utf-8"), a = b(n), s = a.data?.title || p.basename(t.filePath, ".md"), c = a.content, l = s.toLowerCase().includes(r), u = c.toLowerCase().indexOf(r);
+				let n = await _.readFile(t.filePath, "utf-8"), a = S(n), s = a.data?.title || m.basename(t.filePath, ".md"), c = a.content, l = s.toLowerCase().includes(r), u = c.toLowerCase().indexOf(r);
 				if (l || u !== -1) {
 					let n = "";
 					if (u !== -1) {
@@ -19270,20 +19341,20 @@ async function Th(e) {
 	}
 	return o.sort((e, t) => t.score - e.score), o.slice(0, r);
 }
-async function Eh(e) {
-	let t = p.join(e, ".rag-index");
-	if (!_(t)) return {
+async function Ah(e) {
+	let t = m.join(e, ".rag-index");
+	if (!y(t)) return {
 		hasIndex: !1,
 		chunksCount: 0
 	};
 	try {
-		let e = await bh();
+		let e = await wh();
 		if (e) {
 			let n = await e.connect(t), r = await n.tableNames(), i = r.includes("docs") ? "docs" : r[0];
 			if (i) return {
 				hasIndex: !0,
 				chunksCount: await (await n.openTable(i)).countRows(),
-				lastModified: (await g.stat(t)).mtime.toISOString()
+				lastModified: (await _.stat(t)).mtime.toISOString()
 			};
 		}
 	} catch (t) {
@@ -19296,10 +19367,10 @@ async function Eh(e) {
 }
 //#endregion
 //#region electron/services/prService.ts
-var Dh = se(v), Oh = new class {
+var jh = ce(b), Mh = new class {
 	async runGh(e, t) {
 		try {
-			let { stdout: n } = await Dh("gh", e, {
+			let { stdout: n } = await jh("gh", e, {
 				cwd: t,
 				env: {
 					...process.env,
@@ -19313,20 +19384,20 @@ var Dh = se(v), Oh = new class {
 	}
 	async isGhAvailable() {
 		try {
-			return await Dh("gh", ["--version"]), !0;
+			return await jh("gh", ["--version"]), !0;
 		} catch {
 			return !1;
 		}
 	}
 	async getProviderInfo(e) {
 		try {
-			let t = p.join(e, ".git");
-			if (!_(t)) return {
+			let t = m.join(e, ".git");
+			if (!y(t)) return {
 				provider: "none",
 				hasCli: !1,
 				authenticated: !1
 			};
-			let n = await x(e).getRemotes(!0), r = n.find((e) => e.name === "origin") || n[0];
+			let n = await C(e).getRemotes(!0), r = n.find((e) => e.name === "origin") || n[0];
 			if (!r || !r.refs.fetch) return {
 				provider: "none",
 				hasCli: !1,
@@ -19478,17 +19549,17 @@ var Dh = se(v), Oh = new class {
 	}
 	async syncBacklogOnPRCreated(e, t, n) {
 		try {
-			let r = p.join(e, "backlog", "tasks");
-			if (!_(r)) return;
+			let r = m.join(e, "backlog", "tasks");
+			if (!y(r)) return;
 			let i = (t + " " + n).match(/task-(\d+)/i);
 			if (!i) return;
-			let a = `task-${i[1]}`.toLowerCase(), o = await g.readdir(r);
+			let a = `task-${i[1]}`.toLowerCase(), o = await _.readdir(r);
 			for (let e of o) if (e.toLowerCase().startsWith(a) && e.endsWith(".md")) {
-				let t = p.join(r, e), n = await g.readFile(t, "utf-8"), i = b(n);
+				let t = m.join(r, e), n = await _.readFile(t, "utf-8"), i = S(n);
 				if (i.data.status !== "Review" && i.data.status !== "Done") {
 					i.data.status = "Review";
-					let e = b.stringify(i.content, i.data);
-					await g.writeFile(t, e, "utf-8");
+					let e = S.stringify(i.content, i.data);
+					await _.writeFile(t, e, "utf-8");
 				}
 				break;
 			}
@@ -19499,15 +19570,15 @@ var Dh = se(v), Oh = new class {
 }();
 //#endregion
 //#region electron/services/docsService.ts
-function kh(e) {
+function Nh(e) {
 	return e.toLowerCase().trim().replace(/[^\w\sа-яё\-]/gi, "").replace(/[\s_]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
 }
-async function Ah(e) {
-	let t = [], n = p.normalize(e), r = p.join(n, "backlog", "decisions");
-	if (_(r)) try {
-		let e = await g.readdir(r);
+async function Ph(e) {
+	let t = [], n = m.normalize(e), r = m.join(n, "backlog", "decisions");
+	if (y(r)) try {
+		let e = await _.readdir(r);
 		for (let i of e) if (i.endsWith(".md")) {
-			let e = p.join(r, i), a = await g.stat(e), o = await g.readFile(e, "utf-8"), { data: s, content: c } = b(o), l = s.title;
+			let e = m.join(r, i), a = await _.stat(e), o = await _.readFile(e, "utf-8"), { data: s, content: c } = S(o), l = s.title;
 			if (!l) {
 				let e = c.match(/^#\s+(.+)$/m);
 				l = e ? e[1].trim() : i.replace(/\.md$/, "");
@@ -19517,7 +19588,7 @@ async function Ah(e) {
 				title: l,
 				category: "decision",
 				filePath: e,
-				fileRelative: p.relative(n, e).replace(/\\/g, "/"),
+				fileRelative: m.relative(n, e).replace(/\\/g, "/"),
 				tags: Array.isArray(s.tags) ? s.tags : [],
 				status: s.status || "Accepted",
 				date: s.date ? String(s.date) : void 0,
@@ -19528,16 +19599,16 @@ async function Ah(e) {
 	} catch (e) {
 		console.error("Error scanning decisions:", e);
 	}
-	let i = p.join(n, "backlog", "docs");
-	if (_(i)) {
+	let i = m.join(n, "backlog", "docs");
+	if (y(i)) {
 		async function e(r) {
 			try {
-				let i = await g.readdir(r, { withFileTypes: !0 });
+				let i = await _.readdir(r, { withFileTypes: !0 });
 				for (let a of i) {
-					let i = p.join(r, a.name);
+					let i = m.join(r, a.name);
 					if (a.isDirectory()) await e(i);
 					else if (a.isFile() && a.name.endsWith(".md")) {
-						let e = await g.stat(i), r = await g.readFile(i, "utf-8"), { data: o, content: s } = b(r), c = o.title;
+						let e = await _.stat(i), r = await _.readFile(i, "utf-8"), { data: o, content: s } = S(r), c = o.title;
 						if (!c) {
 							let e = s.match(/^#\s+(.+)$/m);
 							c = e ? e[1].trim() : a.name.replace(/\.md$/, "");
@@ -19547,7 +19618,7 @@ async function Ah(e) {
 							title: c,
 							category: "doc",
 							filePath: i,
-							fileRelative: p.relative(n, i).replace(/\\/g, "/"),
+							fileRelative: m.relative(n, i).replace(/\\/g, "/"),
 							tags: Array.isArray(o.tags) ? o.tags : [],
 							status: o.status,
 							date: o.date ? String(o.date) : void 0,
@@ -19564,22 +19635,22 @@ async function Ah(e) {
 	}
 	return t.sort((e, t) => e.title.localeCompare(t.title));
 }
-async function jh(e) {
-	let t = p.normalize(e);
-	if (!_(t)) throw Error(`Файл не найден: ${t}`);
-	return await g.readFile(t, "utf-8");
+async function Fh(e) {
+	let t = m.normalize(e);
+	if (!y(t)) throw Error(`Файл не найден: ${t}`);
+	return await _.readFile(t, "utf-8");
 }
-async function Mh(e, t) {
-	let n = p.normalize(e), r = p.dirname(n);
-	return _(r) || await g.mkdir(r, { recursive: !0 }), await g.writeFile(n, t, "utf-8"), !0;
+async function Ih(e, t) {
+	let n = m.normalize(e), r = m.dirname(n);
+	return y(r) || await _.mkdir(r, { recursive: !0 }), await _.writeFile(n, t, "utf-8"), !0;
 }
-async function Nh(e, t) {
-	let n = p.normalize(e), r = t.type || "doc", i = t.title.trim(), a = kh(i), o, s, c = t.content;
+async function Lh(e, t) {
+	let n = m.normalize(e), r = t.type || "doc", i = t.title.trim(), a = Nh(i), o, s, c = t.content;
 	if (r === "decision") {
-		o = p.join(n, "backlog", "decisions"), await g.mkdir(o, { recursive: !0 });
+		o = m.join(n, "backlog", "decisions"), await _.mkdir(o, { recursive: !0 });
 		let e = 1;
 		try {
-			let t = await g.readdir(o);
+			let t = await _.readdir(o);
 			for (let n of t) {
 				let t = n.match(/^(\d{4})/);
 				if (t) {
@@ -19622,7 +19693,7 @@ date: "${e}"
 - 
 `;
 		}
-	} else if (o = p.join(n, "backlog", "docs"), await g.mkdir(o, { recursive: !0 }), s = `${a}.md`, !c) {
+	} else if (o = m.join(n, "backlog", "docs"), await _.mkdir(o, { recursive: !0 }), s = `${a}.md`, !c) {
 		let e = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
 		c = `---
 title: "${i}"
@@ -19643,15 +19714,15 @@ date: "${e}"
 Детальные спецификации, схемы или примеры использования.
 `;
 	}
-	let l = p.join(o, s);
-	await g.writeFile(l, c, "utf-8");
-	let u = await g.stat(l);
+	let l = m.join(o, s);
+	await _.writeFile(l, c, "utf-8");
+	let u = await _.stat(l);
 	return {
 		id: `${r}-${s}`,
 		title: i,
 		category: r,
 		filePath: l,
-		fileRelative: p.relative(n, l).replace(/\\/g, "/"),
+		fileRelative: m.relative(n, l).replace(/\\/g, "/"),
 		tags: t.tags || [],
 		status: t.status || (r === "decision" ? "Accepted" : void 0),
 		date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
@@ -19661,15 +19732,15 @@ date: "${e}"
 }
 //#endregion
 //#region electron/services/milestoneService.ts
-function Ph(e) {
+function Rh(e) {
 	return e.toLowerCase().trim().replace(/[^\w\sа-яё\-]/gi, "").replace(/[\s_]+/g, "-").replace(/^-+|-+$/g, "") || "milestone";
 }
-async function Fh(e) {
-	let t = [], n = p.normalize(e), r = p.join(n, "backlog", "milestones"), i = p.join(n, "backlog", "tasks"), a = /* @__PURE__ */ new Map();
-	if (_(i)) try {
-		let e = await g.readdir(i);
+async function zh(e) {
+	let t = [], n = m.normalize(e), r = m.join(n, "backlog", "milestones"), i = m.join(n, "backlog", "tasks"), a = /* @__PURE__ */ new Map();
+	if (y(i)) try {
+		let e = await _.readdir(i);
 		for (let t of e) if (t.endsWith(".md")) {
-			let e = await g.readFile(p.join(i, t), "utf-8"), n = b(e), r = n.data.milestone || n.data.milestone_id, o = n.data.status || "To Do";
+			let e = await _.readFile(m.join(i, t), "utf-8"), n = S(e), r = n.data.milestone || n.data.milestone_id, o = n.data.status || "To Do";
 			if (r) {
 				let e = String(r).trim().toLowerCase();
 				a.has(e) || a.set(e, {
@@ -19686,10 +19757,10 @@ async function Fh(e) {
 	} catch (e) {
 		console.error("Error scanning tasks for milestones:", e);
 	}
-	if (_(r)) try {
-		let e = await g.readdir(r);
+	if (y(r)) try {
+		let e = await _.readdir(r);
 		for (let n of e) if (n.endsWith(".md")) {
-			let e = p.join(r, n), i = await g.readFile(e, "utf-8"), { data: o, content: s } = b(i), c = o.id || n.replace(/\.md$/, "").split("-")[0].trim(), l = o.title || n.replace(/\.md$/, ""), u = o.status || "Planning", d = o.target_date || o.targetDate || o.due_date || void 0, f = o.description || s.trim(), m = c.toLowerCase(), h = l.toLowerCase(), _ = a.get(m) || a.get(h) || {
+			let e = m.join(r, n), i = await _.readFile(e, "utf-8"), { data: o, content: s } = S(i), c = o.id || n.replace(/\.md$/, "").split("-")[0].trim(), l = o.title || n.replace(/\.md$/, ""), u = o.status || "Planning", d = o.target_date || o.targetDate || o.due_date || void 0, f = o.description || s.trim(), p = c.toLowerCase(), h = l.toLowerCase(), g = a.get(p) || a.get(h) || {
 				total: 0,
 				done: 0,
 				inProgress: 0,
@@ -19703,7 +19774,7 @@ async function Fh(e) {
 				targetDate: d ? String(d) : void 0,
 				status: u,
 				filePath: e,
-				taskCounts: _
+				taskCounts: g
 			});
 		}
 	} catch (e) {
@@ -19711,12 +19782,12 @@ async function Fh(e) {
 	}
 	return t;
 }
-async function Ih(e, t) {
-	let n = p.normalize(e), r = p.join(n, "backlog", "milestones");
-	await g.mkdir(r, { recursive: !0 });
-	let i = t.title.trim(), a = Ph(i), o = 1;
+async function Bh(e, t) {
+	let n = m.normalize(e), r = m.join(n, "backlog", "milestones");
+	await _.mkdir(r, { recursive: !0 });
+	let i = t.title.trim(), a = Rh(i), o = 1;
 	try {
-		let e = await g.readdir(r);
+		let e = await _.readdir(r);
 		for (let t of e) {
 			let e = t.match(/milestone-(\d+)/i);
 			if (e) {
@@ -19725,15 +19796,15 @@ async function Ih(e, t) {
 			}
 		}
 	} catch {}
-	let s = `milestone-${o}`, c = `${s} - ${a}.md`, l = p.join(r, c), u = {
+	let s = `milestone-${o}`, c = `${s} - ${a}.md`, l = m.join(r, c), u = {
 		id: s,
 		title: i,
 		status: t.status || "Planning",
 		created_date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0]
 	};
 	t.targetDate && (u.target_date = t.targetDate), t.description && (u.description = t.description);
-	let d = `\n# ${i}\n\n${t.description || "Описание майлстоуна"}\n`, f = b.stringify(d, u);
-	return await g.writeFile(l, f, "utf-8"), {
+	let d = `\n# ${i}\n\n${t.description || "Описание майлстоуна"}\n`, f = S.stringify(d, u);
+	return await _.writeFile(l, f, "utf-8"), {
 		id: s,
 		title: i,
 		description: t.description,
@@ -19749,19 +19820,19 @@ async function Ih(e, t) {
 		}
 	};
 }
-async function Lh(e, t) {
-	let n = p.normalize(e);
-	if (!_(n)) return !1;
-	let r = await g.readFile(n, "utf-8"), i = b(r);
+async function Vh(e, t) {
+	let n = m.normalize(e);
+	if (!y(n)) return !1;
+	let r = await _.readFile(n, "utf-8"), i = S(r);
 	t.title && (i.data.title = t.title), t.status && (i.data.status = t.status), t.targetDate !== void 0 && (i.data.target_date = t.targetDate), t.description !== void 0 && (i.data.description = t.description);
-	let a = b.stringify(i.content, i.data);
-	return await g.writeFile(n, a, "utf-8"), !0;
+	let a = S.stringify(i.content, i.data);
+	return await _.writeFile(n, a, "utf-8"), !0;
 }
-async function Rh(e) {
-	let t = p.normalize(e);
-	return _(t) ? (await g.unlink(t), !0) : !1;
+async function Hh(e) {
+	let t = m.normalize(e);
+	return y(t) ? (await _.unlink(t), !0) : !1;
 }
-var zh = new class {
+var Uh = new class {
 	cachedUsage = null;
 	lastFetchTime = 0;
 	CACHE_TTL_MS = 45e3;
@@ -19805,7 +19876,7 @@ var zh = new class {
 	}
 	fetchUsageFromCli() {
 		return new Promise((e, t) => {
-			let n = y("claude", ["-p", "/usage"], {
+			let n = x("claude", ["-p", "/usage"], {
 				shell: !0,
 				stdio: [
 					"pipe",
@@ -19815,7 +19886,7 @@ var zh = new class {
 				env: {
 					...process.env,
 					FORCE_COLOR: "0",
-					CLAUDE_CONFIG_DIR: _e
+					CLAUDE_CONFIG_DIR: ve
 				}
 			});
 			n.stdin.end();
@@ -19836,9 +19907,9 @@ var zh = new class {
 		});
 	}
 	async readStatsCacheFile() {
-		let e = [p.join(S.homedir(), ".claude", "stats-cache.json"), p.join(_e, "stats-cache.json")];
-		for (let t of e) if (_(t)) try {
-			let e = await g.readFile(t, "utf-8");
+		let e = [m.join(w.homedir(), ".claude", "stats-cache.json"), m.join(ve, "stats-cache.json")];
+		for (let t of e) if (y(t)) try {
+			let e = await _.readFile(t, "utf-8");
 			return JSON.parse(e);
 		} catch (e) {
 			console.warn(`Error reading ${t}:`, e);
@@ -19889,7 +19960,7 @@ var zh = new class {
 			last7d: c
 		};
 	}
-}(), Bh = /* @__PURE__ */ new Set([
+}(), Wh = /* @__PURE__ */ new Set([
 	"node_modules",
 	".git",
 	"dist",
@@ -19905,20 +19976,20 @@ var zh = new class {
 	"coverage",
 	".idea",
 	".vscode"
-]), Vh = new class {
+]), Gh = new class {
 	validateSafePath(e, t) {
-		let n = p.resolve(e), r = p.resolve(n, t);
+		let n = m.resolve(e), r = m.resolve(n, t);
 		if (!r.startsWith(n)) throw Error(`Access Denied: Path traversal detected outside project root (${t})`);
 		return r;
 	}
 	async readTree(e, t = "", n = 6, r = 0) {
-		let i = p.resolve(e), a = p.resolve(i, t);
-		if (!a.startsWith(i) || !_(a) || r >= n) return [];
+		let i = m.resolve(e), a = m.resolve(i, t);
+		if (!a.startsWith(i) || !y(a) || r >= n) return [];
 		try {
-			let t = await g.readdir(a, { withFileTypes: !0 }), o = [];
+			let t = await _.readdir(a, { withFileTypes: !0 }), o = [];
 			for (let s of t) {
-				if (Bh.has(s.name)) continue;
-				let t = p.join(a, s.name), c = p.relative(i, t).replace(/\\/g, "/");
+				if (Wh.has(s.name)) continue;
+				let t = m.join(a, s.name), c = m.relative(i, t).replace(/\\/g, "/");
 				if (s.isDirectory()) {
 					let i = await this.readTree(e, c, n, r + 1);
 					o.push({
@@ -19931,7 +20002,7 @@ var zh = new class {
 				} else if (s.isFile()) {
 					let e = 0;
 					try {
-						e = (await g.stat(t)).size;
+						e = (await _.stat(t)).size;
 					} catch {}
 					o.push({
 						name: s.name,
@@ -19939,7 +20010,7 @@ var zh = new class {
 						relativePath: c,
 						isDirectory: !1,
 						size: e,
-						extension: p.extname(s.name).toLowerCase()
+						extension: m.extname(s.name).toLowerCase()
 					});
 				}
 			}
@@ -19953,26 +20024,26 @@ var zh = new class {
 	}
 	async readFileContent(e, t) {
 		let n = this.validateSafePath(e, t);
-		if (!_(n)) throw Error(`File not found: ${t}`);
-		return await g.readFile(n, "utf-8");
+		if (!y(n)) throw Error(`File not found: ${t}`);
+		return await _.readFile(n, "utf-8");
 	}
 	async saveFileContent(e, t, n) {
-		let r = this.validateSafePath(e, t), i = p.dirname(r);
-		return _(i) || await g.mkdir(i, { recursive: !0 }), await g.writeFile(r, n, "utf-8"), !0;
+		let r = this.validateSafePath(e, t), i = m.dirname(r);
+		return y(i) || await _.mkdir(i, { recursive: !0 }), await _.writeFile(r, n, "utf-8"), !0;
 	}
 	async createFileOrFolder(e, t, n) {
 		let r = this.validateSafePath(e, t);
-		if (_(r)) throw Error(`Item already exists: ${t}`);
-		if (n) await g.mkdir(r, { recursive: !0 });
+		if (y(r)) throw Error(`Item already exists: ${t}`);
+		if (n) await _.mkdir(r, { recursive: !0 });
 		else {
-			let e = p.dirname(r);
-			_(e) || await g.mkdir(e, { recursive: !0 }), await g.writeFile(r, "", "utf-8");
+			let e = m.dirname(r);
+			y(e) || await _.mkdir(e, { recursive: !0 }), await _.writeFile(r, "", "utf-8");
 		}
 		return !0;
 	}
 	async deleteFileOrFolder(e, t) {
 		let n = this.validateSafePath(e, t);
-		return _(n) && await g.rm(n, {
+		return y(n) && await _.rm(n, {
 			recursive: !0,
 			force: !0
 		}), !0;
@@ -19981,21 +20052,23 @@ var zh = new class {
 //#endregion
 //#region electron/main.ts
 s.commandLine.appendSwitch("use-fake-ui-for-media-stream");
-var Hh = h(import.meta.url), Uh = p.dirname(Hh);
-process.env.DIST = p.join(Uh, "../dist"), process.env.VITE_PUBLIC = s.isPackaged ? process.env.DIST : p.join(Uh, "../public");
-var Q = null, $ = null, Wh = process.env.VITE_DEV_SERVER_URL;
-xe.on("statusChanged", (e) => {
+var Kh = g(import.meta.url), qh = m.dirname(Kh);
+process.env.DIST = m.join(qh, "../dist"), process.env.VITE_PUBLIC = s.isPackaged ? process.env.DIST : m.join(qh, "../public");
+var Q = null, $ = null, Jh = process.env.VITE_DEV_SERVER_URL;
+Se.on("statusChanged", (e) => {
 	Q && !Q.isDestroyed() && Q.webContents.send("claudeBridge:statusChanged", e);
-}), xe.on("subagentUpdated", (e) => {
+}), Se.on("subagentUpdated", (e) => {
 	Q && !Q.isDestroyed() && Q.webContents.send("claudeBridge:subagentUpdated", e);
 });
-function Gh() {
-	let e = p.join(Uh, "../dist"), t = p.join(e, "index.html"), n = p.join(Uh, "preload.cjs"), r = p.join(Uh, "preload.js"), i = _(n) ? n : r, a = p.join(Uh, "../public/icon.png"), c = p.join(Uh, "../build/icon.png"), l = _(a) ? a : c;
+function Yh() {
+	let e = m.join(qh, "../dist"), t = m.join(e, "index.html"), n = m.join(qh, "preload.cjs"), r = m.join(qh, "preload.js"), i = y(n) ? n : r, a = m.join(qh, "../public/icon.png"), c = m.join(qh, "../build/icon.png"), l = y(a) ? a : c, u = dh.getInitialState();
 	Q = new o({
 		title: "ProjectHub — Панель управления проектами",
 		icon: l,
-		width: 1400,
-		height: 900,
+		width: u.width,
+		height: u.height,
+		x: u.x,
+		y: u.y,
 		minWidth: 1024,
 		minHeight: 700,
 		backgroundColor: "#0f1117",
@@ -20006,14 +20079,14 @@ function Gh() {
 			contextIsolation: !0,
 			sandbox: !1
 		}
-	}), Q.webContents.on("console-message", (e, t, n, r, i) => {
+	}), u.isMaximized && Q.maximize(), dh.trackWindow(Q), Q.webContents.on("console-message", (e, t, n, r, i) => {
 		console.log(`[Renderer Console: ${t}] ${n} (${i}:${r})`);
 	}), Q.webContents.on("before-input-event", (e, t) => {
 		(t.key === "F12" || t.control && t.shift && t.key.toLowerCase() === "i") && (Q?.webContents.toggleDevTools(), e.preventDefault());
 	}), Q.webContents.on("did-fail-load", (e, t, n, r) => {
 		console.error(`[Electron] Failed to load ${r}: [${t}] ${n}`);
-	}), Wh ? Q.loadURL(Wh) : Q.loadFile(t), Q.on("close", (e) => {
-		Jh || (e.preventDefault(), Yh(), setTimeout(() => {
+	}), Jh ? Q.loadURL(Jh) : Q.loadFile(t), Q.on("close", (e) => {
+		Qh || (e.preventDefault(), $h(), setTimeout(() => {
 			s.exit(0), process.exit(0);
 		}, 1500).unref());
 	}), Q.on("closed", () => {
@@ -20025,9 +20098,9 @@ function Gh() {
 		}
 	});
 }
-function Kh() {
+function Xh() {
 	if ($ && !$.isDestroyed()) return $;
-	let e = p.join(Uh, "../dist"), t = p.join(e, "index.html"), n = p.join(Uh, "preload.cjs"), r = p.join(Uh, "preload.js"), i = _(n) ? n : r;
+	let e = m.join(qh, "../dist"), t = m.join(e, "index.html"), n = m.join(qh, "preload.cjs"), r = m.join(qh, "preload.js"), i = y(n) ? n : r;
 	return $ = new o({
 		width: 320,
 		height: 54,
@@ -20048,32 +20121,32 @@ function Kh() {
 			contextIsolation: !0,
 			sandbox: !1
 		}
-	}), $.setAlwaysOnTop(!0, "screen-saver"), Wh ? $.loadURL(`${Wh}#/voice-overlay`) : $.loadFile(t, { hash: "/voice-overlay" }), $.on("closed", () => {
+	}), $.setAlwaysOnTop(!0, "screen-saver"), Jh ? $.loadURL(`${Jh}#/voice-overlay`) : $.loadFile(t, { hash: "/voice-overlay" }), $.on("closed", () => {
 		$ = null;
 	}), $;
 }
 s.on("window-all-closed", () => {
 	process.platform !== "darwin" && (s.quit(), Q = null, $ = null);
 }), s.on("activate", () => {
-	o.getAllWindows().length === 0 && Gh();
+	o.getAllWindows().length === 0 && Yh();
 }), l.on("voice:overlay-sync", (e, t) => {
 	let n = !!(t?.isListening || t?.isPaused);
-	n && (!$ || $.isDestroyed()) && Kh(), $ && !$.isDestroyed() && (n ? $.isVisible() || $.showInactive() : $.isVisible() && $.hide(), $.webContents.isLoading() ? $.webContents.once("did-finish-load", () => {
+	n && (!$ || $.isDestroyed()) && Xh(), $ && !$.isDestroyed() && (n ? $.isVisible() || $.showInactive() : $.isVisible() && $.hide(), $.webContents.isLoading() ? $.webContents.once("did-finish-load", () => {
 		$?.webContents.send("voice:overlay-update", t);
 	}) : $.webContents.send("voice:overlay-update", t));
 }), l.on("voice:overlay-action", (e, t) => {
 	Q && !Q.isDestroyed() && Q.webContents.send("voice:external-control", t);
 }), l.handle("projects:list", async () => {
-	let e = await le.getProjects(), t = [];
+	let e = await ue.getProjects(), t = [];
 	for (let n of e) {
-		let e = await de(n.path);
+		let e = await fe(n.path);
 		e && (e.favorite = !!n.favorite, e.addedAt = n.addedAt, t.push(e));
 	}
 	return t;
-}), l.handle("projects:scan", async (e, t) => await fe(t?.roots && t.roots.length > 0 ? t.roots : await le.getScanRoots(), t?.depth ?? 2)), l.handle("projects:add", async (e, t) => {
-	let n = await de(t);
-	return n ? (await le.addProject(n.path, !1), n) : null;
-}), l.handle("projects:remove", async (e, t) => await le.removeProject(t)), l.handle("projects:refresh", async (e, t) => await de(t)), l.handle("projects:toggleFavorite", async (e, t) => await le.toggleFavorite(t)), l.handle("projects:setVoiceAlias", async (e, { projectPath: t, alias: n }) => await le.setVoiceAlias(t, n)), l.handle("projects:getScanRoots", async () => await le.getScanRoots()), l.handle("projects:setScanRoots", async (e, t) => await le.setScanRoots(t)), l.handle("projects:getDetails", async (e, t) => await de(t)), l.handle("dialog:selectDirectory", async () => {
+}), l.handle("projects:scan", async (e, t) => await pe(t?.roots && t.roots.length > 0 ? t.roots : await ue.getScanRoots(), t?.depth ?? 2)), l.handle("projects:add", async (e, t) => {
+	let n = await fe(t);
+	return n ? (await ue.addProject(n.path, !1), n) : null;
+}), l.handle("projects:remove", async (e, t) => await ue.removeProject(t)), l.handle("projects:refresh", async (e, t) => await fe(t)), l.handle("projects:toggleFavorite", async (e, t) => await ue.toggleFavorite(t)), l.handle("projects:setVoiceAlias", async (e, { projectPath: t, alias: n }) => await ue.setVoiceAlias(t, n)), l.handle("projects:getScanRoots", async () => await ue.getScanRoots()), l.handle("projects:setScanRoots", async (e, t) => await ue.setScanRoots(t)), l.handle("projects:getDetails", async (e, t) => await fe(t)), l.handle("dialog:selectDirectory", async () => {
 	if (!Q) return null;
 	let e = await c.showOpenDialog(Q, {
 		properties: ["openDirectory"],
@@ -20081,15 +20154,15 @@ s.on("window-all-closed", () => {
 	});
 	return e.canceled || e.filePaths.length === 0 ? null : e.filePaths[0];
 }), l.handle("system:openInExplorer", async (e, t) => {
-	await f.openPath(t);
+	await p.openPath(t);
 }), l.handle("system:openInCode", async (e, t) => {
 	let n = process.platform === "win32" ? "code.cmd" : "code";
-	y(n, [t], {
+	x(n, [t], {
 		shell: !0,
 		detached: !0
 	});
 }), l.handle("system:openTerminal", async (e, t) => {
-	process.platform === "win32" ? y("cmd.exe", [
+	process.platform === "win32" ? x("cmd.exe", [
 		"/c",
 		"start",
 		"powershell.exe"
@@ -20097,15 +20170,15 @@ s.on("window-all-closed", () => {
 		cwd: t,
 		shell: !0,
 		detached: !0
-	}) : y("open", [
+	}) : x("open", [
 		"-a",
 		"Terminal",
 		t
 	], { detached: !0 });
 }), l.handle("backlog:watchProject", async (e, t) => {
-	ch.watch(t, Q);
+	fh.watch(t, Q);
 });
-function qh(e) {
+function Zh(e) {
 	let t = [], n = e.split("\n"), r = !1, i = [], a = !1;
 	for (let e of n) {
 		let n = e.trim();
@@ -20131,17 +20204,17 @@ function qh(e) {
 	};
 }
 l.handle("backlog:getTasks", async (e, t) => {
-	let n = p.join(t, "backlog", "tasks");
-	if (!_(n)) return [];
-	ch.watch(t, Q);
+	let n = m.join(t, "backlog", "tasks");
+	if (!y(n)) return [];
+	fh.watch(t, Q);
 	let r = [];
 	try {
-		let e = await g.readdir(n);
+		let e = await _.readdir(n);
 		for (let t of e) if (t.endsWith(".md")) {
-			let e = p.join(n, t), i = await g.readFile(e, "utf-8"), a = b(i), { criteria: o, description: s } = qh(a.content);
+			let e = m.join(n, t), i = await _.readFile(e, "utf-8"), a = S(i), { criteria: o, description: s } = Zh(a.content);
 			r.push({
-				id: a.data.id || p.basename(t, ".md").split("-")[0].trim(),
-				title: a.data.title || p.basename(t, ".md"),
+				id: a.data.id || m.basename(t, ".md").split("-")[0].trim(),
+				title: a.data.title || m.basename(t, ".md"),
 				status: a.data.status || "To Do",
 				labels: a.data.labels || [],
 				milestone: a.data.milestone || a.data.milestone_id || void 0,
@@ -20158,18 +20231,18 @@ l.handle("backlog:getTasks", async (e, t) => {
 	return r;
 }), l.handle("backlog:updateTaskStatus", async (e, t, n) => {
 	try {
-		if (!_(t)) return !1;
-		let e = await g.readFile(t, "utf-8"), r = b(e);
+		if (!y(t)) return !1;
+		let e = await _.readFile(t, "utf-8"), r = S(e);
 		r.data.status = n;
-		let i = b.stringify(r.content, r.data);
-		return await g.writeFile(t, i, "utf-8"), !0;
+		let i = S.stringify(r.content, r.data);
+		return await _.writeFile(t, i, "utf-8"), !0;
 	} catch (e) {
 		return console.error(`Failed to update status for ${t}:`, e), !1;
 	}
 }), l.handle("backlog:toggleCriterion", async (e, t, n, r) => {
 	try {
-		if (!_(t)) return !1;
-		let e = await g.readFile(t, "utf-8"), i = 0, a = e.split("\n"), o = !1;
+		if (!y(t)) return !1;
+		let e = await _.readFile(t, "utf-8"), i = 0, a = e.split("\n"), o = !1;
 		for (let e = 0; e < a.length; e++) {
 			let t = a[e].match(/^(\s*-\s*\[)([ xX])(\]\s*.*)$/);
 			if (t) {
@@ -20180,40 +20253,40 @@ l.handle("backlog:getTasks", async (e, t) => {
 				i++;
 			}
 		}
-		return o ? (await g.writeFile(t, a.join("\n"), "utf-8"), !0) : !1;
+		return o ? (await _.writeFile(t, a.join("\n"), "utf-8"), !0) : !1;
 	} catch (e) {
 		return console.error(`Failed to toggle criterion in ${t}:`, e), !1;
 	}
 }), l.handle("backlog:saveFullTask", async (e, t, n) => {
 	try {
-		if (!_(t)) return !1;
-		let e = await g.readFile(t, "utf-8"), r = b(e);
+		if (!y(t)) return !1;
+		let e = await _.readFile(t, "utf-8"), r = S(e);
 		r.data.title = n.title, r.data.status = n.status, r.data.labels = n.labels, n.milestone ? r.data.milestone = n.milestone : (delete r.data.milestone, delete r.data.milestone_id);
-		let i = `\n# ${r.data.id || p.basename(t, ".md").split("-")[0].trim()}: ${n.title}\n\n## Description\n${n.description || "Описание задачи"}\n\n## Acceptance Criteria\n`;
+		let i = `\n# ${r.data.id || m.basename(t, ".md").split("-")[0].trim()}: ${n.title}\n\n## Description\n${n.description || "Описание задачи"}\n\n## Acceptance Criteria\n`;
 		if (n.criteria && n.criteria.length > 0) for (let e of n.criteria) i += `- [${e.completed ? "x" : " "}] ${e.text}\n`;
 		else i += "- [ ] Критерий 1\n";
-		let a = b.stringify(i, r.data);
-		return await g.writeFile(t, a, "utf-8"), !0;
+		let a = S.stringify(i, r.data);
+		return await _.writeFile(t, a, "utf-8"), !0;
 	} catch (e) {
 		return console.error(`Failed to save full task ${t}:`, e), !1;
 	}
 }), l.handle("backlog:deleteTask", async (e, t) => {
 	try {
-		return _(t) ? (await g.unlink(t), !0) : !1;
+		return y(t) ? (await _.unlink(t), !0) : !1;
 	} catch (e) {
 		return console.error(`Failed to delete task ${t}:`, e), !1;
 	}
 }), l.handle("backlog:saveTask", async (e, t, n) => {
 	try {
-		return await g.writeFile(t, n, "utf-8"), !0;
+		return await _.writeFile(t, n, "utf-8"), !0;
 	} catch (e) {
 		return console.error(`Failed to save task ${t}:`, e), !1;
 	}
 }), l.handle("backlog:createTask", async (e, t, n) => {
 	try {
-		let e = p.join(t, "backlog", "tasks");
-		_(e) || await g.mkdir(e, { recursive: !0 });
-		let r = await g.readdir(e), i = 0;
+		let e = m.join(t, "backlog", "tasks");
+		y(e) || await _.mkdir(e, { recursive: !0 });
+		let r = await _.readdir(e), i = 0;
 		for (let e of r) {
 			let t = e.match(/task-(\d+)/i);
 			if (t) {
@@ -20221,14 +20294,14 @@ l.handle("backlog:getTasks", async (e, t) => {
 				e > i && (i = e);
 			}
 		}
-		let a = `task-${i + 1}`, o = `${a} - ${n.title.replace(/[\\/:*?"<>|]/g, "-").trim()}.md`, s = p.join(e, o), c = (/* @__PURE__ */ new Date()).toISOString().split("T")[0], l = {
+		let a = `task-${i + 1}`, o = `${a} - ${n.title.replace(/[\\/:*?"<>|]/g, "-").trim()}.md`, s = m.join(e, o), c = (/* @__PURE__ */ new Date()).toISOString().split("T")[0], l = {
 			id: a,
 			title: n.title,
 			status: "To Do",
 			labels: n.labels || [],
 			created: c
-		}, u = `\n# ${a}: ${n.title}\n\n## Description\n${n.description || "Описание задачи"}\n\n## Acceptance Criteria\n- [ ] Критерий 1\n`, d = b.stringify(u, l);
-		return await g.writeFile(s, d, "utf-8"), {
+		}, u = `\n# ${a}: ${n.title}\n\n## Description\n${n.description || "Описание задачи"}\n\n## Acceptance Criteria\n- [ ] Критерий 1\n`, d = S.stringify(u, l);
+		return await _.writeFile(s, d, "utf-8"), {
 			id: a,
 			title: n.title,
 			status: "To Do",
@@ -20240,9 +20313,9 @@ l.handle("backlog:getTasks", async (e, t) => {
 	} catch (e) {
 		return console.error("Failed to create task:", e), null;
 	}
-}), l.handle("template:createProject", async (e, t) => await ph(t)), l.handle("template:checkAvailable", async (e, t) => await fh(t)), l.handle("process:start", async (e, t, n, r) => await Ym.startProcess(t, n, r)), l.handle("process:stop", async (e, t) => await Ym.stopProcess(t)), l.handle("process:list", async (e, t) => await Ym.listProcessesForProject(t)), l.handle("process:tailLog", async (e, t, n, r = 100) => await Ym.tailProjectLog(t, n, r)), l.handle("actions:getConfig", async (e, t) => await hh.getConfig(t)), l.handle("actions:saveConfig", async (e, t, n) => await hh.saveConfig(t, n)), l.handle("rag:search", async (e, t) => await Th(t)), l.handle("rag:getStats", async (e, t) => await Eh(t)), l.handle("git:getLog", async (e, t, n = 30) => {
+}), l.handle("template:createProject", async (e, t) => await _h(t)), l.handle("template:checkAvailable", async (e, t) => await gh(t)), l.handle("process:start", async (e, t, n, r) => await Zm.startProcess(t, n, r)), l.handle("process:stop", async (e, t) => await Zm.stopProcess(t)), l.handle("process:list", async (e, t) => await Zm.listProcessesForProject(t)), l.handle("process:tailLog", async (e, t, n, r = 100) => await Zm.tailProjectLog(t, n, r)), l.handle("actions:getConfig", async (e, t) => await yh.getConfig(t)), l.handle("actions:saveConfig", async (e, t, n) => await yh.saveConfig(t, n)), l.handle("rag:search", async (e, t) => await kh(t)), l.handle("rag:getStats", async (e, t) => await Ah(t)), l.handle("git:getLog", async (e, t, n = 30) => {
 	try {
-		return _(p.join(t, ".git")) ? (await x(t).log({ maxCount: n })).all.map((e) => ({
+		return y(m.join(t, ".git")) ? (await C(t).log({ maxCount: n })).all.map((e) => ({
 			hash: e.hash,
 			date: e.date,
 			message: e.message,
@@ -20254,13 +20327,13 @@ l.handle("backlog:getTasks", async (e, t) => {
 	}
 }), l.handle("git:getStatus", async (e, t) => {
 	try {
-		return _(p.join(t, ".git")) ? await x(t).status() : null;
+		return y(m.join(t, ".git")) ? await C(t).status() : null;
 	} catch (e) {
 		return console.error(`Git status error for ${t}:`, e), null;
 	}
-}), l.handle("git:getRepoDetails", async (e, t) => await sh.getRepoDetails(t)), l.handle("git:checkout", async (e, t, n, r = !1) => await sh.checkoutBranch(t, n, r)), l.handle("git:createBranch", async (e, t, n) => await sh.createBranch(t, n)), l.handle("git:stageFile", async (e, t, n) => await sh.stageFile(t, n)), l.handle("git:unstageFile", async (e, t, n) => await sh.unstageFile(t, n)), l.handle("git:stageAll", async (e, t) => await sh.stageAll(t)), l.handle("git:commit", async (e, t, n, r = !1) => await sh.commitChanges(t, n, r)), l.handle("git:getFileDiff", async (e, t, n, r = !1) => await sh.getFileDiff(t, n, r)), l.handle("git:deleteBranch", async (e, t, n, r = !1) => await sh.deleteBranch(t, n, r)), l.handle("git:mergeBranch", async (e, t, n) => await sh.mergeBranch(t, n)), l.handle("git:fetchRemote", async (e, t) => await sh.fetchRemote(t)), l.handle("git:pullRemote", async (e, t) => await sh.pullRemote(t)), l.handle("git:pushRemote", async (e, t) => await sh.pushRemote(t)), l.handle("git:discardFileChanges", async (e, t, n) => await sh.discardFileChanges(t, n)), l.handle("git:getDiffBetween", async (e, t, n, r, i) => await sh.getDiffBetween(t, n, r, i)), l.handle("pr:getProviderInfo", async (e, t) => await Oh.getProviderInfo(t)), l.handle("pr:list", async (e, t, n) => await Oh.listPullRequests(t, n)), l.handle("pr:create", async (e, t, n) => await Oh.createPullRequest(t, n)), l.handle("pr:getDiff", async (e, t, n) => await Oh.getPRDiff(t, n)), l.handle("docs:list", async (e, t) => await Ah(t)), l.handle("docs:read", async (e, t) => await jh(t)), l.handle("docs:save", async (e, t, n) => await Mh(t, n)), l.handle("docs:create", async (e, t, n) => await Nh(t, n)), l.handle("milestones:list", async (e, t) => await Fh(t)), l.handle("milestones:create", async (e, t, n) => await Ih(t, n)), l.handle("milestones:save", async (e, t, n) => await Lh(t, n)), l.handle("milestones:delete", async (e, t) => await Rh(t)), l.handle("pty:create", async (e, t) => await oh.createSession(t)), l.handle("pty:write", async (e, t, n) => oh.write(t, n)), l.handle("pty:resize", async (e, t, n, r) => oh.resize(t, n, r)), l.handle("pty:kill", async (e, t) => oh.kill(t)), l.handle("pty:list", async () => oh.listSessions()), l.handle("ai:getConfig", async () => await ye.getConfig()), l.handle("ai:saveConfig", async (e, t) => await ye.saveConfig(t)), l.handle("ai:getClaudeAuthStatus", async () => await ye.getClaudeAuthStatus()), l.handle("ai:startClaudeLogin", async () => {
+}), l.handle("git:getRepoDetails", async (e, t) => await lh.getRepoDetails(t)), l.handle("git:checkout", async (e, t, n, r = !1) => await lh.checkoutBranch(t, n, r)), l.handle("git:createBranch", async (e, t, n) => await lh.createBranch(t, n)), l.handle("git:stageFile", async (e, t, n) => await lh.stageFile(t, n)), l.handle("git:unstageFile", async (e, t, n) => await lh.unstageFile(t, n)), l.handle("git:stageAll", async (e, t) => await lh.stageAll(t)), l.handle("git:commit", async (e, t, n, r = !1) => await lh.commitChanges(t, n, r)), l.handle("git:getFileDiff", async (e, t, n, r = !1) => await lh.getFileDiff(t, n, r)), l.handle("git:deleteBranch", async (e, t, n, r = !1) => await lh.deleteBranch(t, n, r)), l.handle("git:mergeBranch", async (e, t, n) => await lh.mergeBranch(t, n)), l.handle("git:fetchRemote", async (e, t) => await lh.fetchRemote(t)), l.handle("git:pullRemote", async (e, t) => await lh.pullRemote(t)), l.handle("git:pushRemote", async (e, t) => await lh.pushRemote(t)), l.handle("git:discardFileChanges", async (e, t, n) => await lh.discardFileChanges(t, n)), l.handle("git:getDiffBetween", async (e, t, n, r, i) => await lh.getDiffBetween(t, n, r, i)), l.handle("pr:getProviderInfo", async (e, t) => await Mh.getProviderInfo(t)), l.handle("pr:list", async (e, t, n) => await Mh.listPullRequests(t, n)), l.handle("pr:create", async (e, t, n) => await Mh.createPullRequest(t, n)), l.handle("pr:getDiff", async (e, t, n) => await Mh.getPRDiff(t, n)), l.handle("docs:list", async (e, t) => await Ph(t)), l.handle("docs:read", async (e, t) => await Fh(t)), l.handle("docs:save", async (e, t, n) => await Ih(t, n)), l.handle("docs:create", async (e, t, n) => await Lh(t, n)), l.handle("milestones:list", async (e, t) => await zh(t)), l.handle("milestones:create", async (e, t, n) => await Bh(t, n)), l.handle("milestones:save", async (e, t, n) => await Vh(t, n)), l.handle("milestones:delete", async (e, t) => await Hh(t)), l.handle("pty:create", async (e, t) => await ch.createSession(t)), l.handle("pty:write", async (e, t, n) => ch.write(t, n)), l.handle("pty:resize", async (e, t, n, r) => ch.resize(t, n, r)), l.handle("pty:kill", async (e, t) => ch.kill(t)), l.handle("pty:list", async () => ch.listSessions()), l.handle("ai:getConfig", async () => await be.getConfig()), l.handle("ai:saveConfig", async (e, t) => await be.saveConfig(t)), l.handle("ai:getClaudeAuthStatus", async () => await be.getClaudeAuthStatus()), l.handle("ai:startClaudeLogin", async () => {
 	try {
-		return process.platform === "win32" ? y("cmd.exe", [
+		return process.platform === "win32" ? x("cmd.exe", [
 			"/c",
 			"start",
 			"cmd.exe",
@@ -20271,65 +20344,65 @@ l.handle("backlog:getTasks", async (e, t) => {
 			shell: !0,
 			env: {
 				...process.env,
-				CLAUDE_CONFIG_DIR: _e
+				CLAUDE_CONFIG_DIR: ve
 			}
-		}) : y("claude", ["auth", "login"], {
+		}) : x("claude", ["auth", "login"], {
 			detached: !0,
 			shell: !0,
 			env: {
 				...process.env,
-				CLAUDE_CONFIG_DIR: _e
+				CLAUDE_CONFIG_DIR: ve
 			}
 		}), !0;
 	} catch (e) {
-		return console.error("Failed to start claude auth login process:", e), f.openExternal("https://claude.ai/login"), !1;
+		return console.error("Failed to start claude auth login process:", e), p.openExternal("https://claude.ai/login"), !1;
 	}
-}), l.handle("ai:claudeLogout", async () => await ye.claudeLogout()), l.handle("ai:abortStream", async (e, t) => (ye.abortStream(t), xe.abortSession(t), !0)), l.handle("ai:applyDiff", async (e, t, n, r) => await ye.applyDiff(t, n, r)), l.handle("ai:streamChat", async (e, t) => {
+}), l.handle("ai:claudeLogout", async () => await be.claudeLogout()), l.handle("ai:abortStream", async (e, t) => (be.abortStream(t), Se.abortSession(t), !0)), l.handle("ai:applyDiff", async (e, t, n, r) => await be.applyDiff(t, n, r)), l.handle("ai:streamChat", async (e, t) => {
 	if (!Q) return;
 	let n = Q;
-	xe.runAgentTask(t, (e) => {
+	Se.runAgentTask(t, (e) => {
 		n.isDestroyed() || n.webContents.send(`ai:chunk:${t.sessionId}`, e);
 	}, (e) => {
 		n.isDestroyed() || n.webContents.send(`ai:complete:${t.sessionId}`, e);
 	}, (e) => {
 		n.isDestroyed() || n.webContents.send(`ai:error:${t.sessionId}`, e);
 	});
-}), l.handle("claudeBridge:getAllProjectStatuses", async () => xe.getAllProjectStatuses()), l.handle("claudeBridge:getProjectStatus", async (e, t) => xe.getProjectStatus(t)), l.handle("claudeBridge:sendApprovalResponse", async (e, t, n) => xe.sendApprovalResponse(t, n)), l.handle("claudeBridge:getSubagents", async (e, t) => xe.getSubagents(t)), l.handle("claudeBridge:getAvailableModels", async () => xe.getAvailableModels()), l.handle("claudeBridge:getUsage", async (e, t = !1) => await zh.getUsage(t)), l.handle("files:readTree", async (e, t, n = "", r = 6) => await Vh.readTree(t, n, r)), l.handle("files:readContent", async (e, t, n) => await Vh.readFileContent(t, n)), l.handle("files:saveContent", async (e, t, n, r) => await Vh.saveFileContent(t, n, r)), l.handle("files:create", async (e, t, n, r = !1) => await Vh.createFileOrFolder(t, n, r)), l.handle("files:delete", async (e, t, n) => await Vh.deleteFileOrFolder(t, n)), l.handle("file:readFile", async (e, t, n) => await Vh.readFileContent(t, n)), l.handle("file:writeFile", async (e, t, n, r) => await Vh.saveFileContent(t, n, r)), l.handle("file:listFiles", async (e, t, n) => (await Vh.readTree(t, n || "", 1)).map((e) => ({
+}), l.handle("claudeBridge:getAllProjectStatuses", async () => Se.getAllProjectStatuses()), l.handle("claudeBridge:getProjectStatus", async (e, t) => Se.getProjectStatus(t)), l.handle("claudeBridge:sendApprovalResponse", async (e, t, n) => Se.sendApprovalResponse(t, n)), l.handle("claudeBridge:getSubagents", async (e, t) => Se.getSubagents(t)), l.handle("claudeBridge:getAvailableModels", async () => Se.getAvailableModels()), l.handle("claudeBridge:getUsage", async (e, t = !1) => await Uh.getUsage(t)), l.handle("files:readTree", async (e, t, n = "", r = 6) => await Gh.readTree(t, n, r)), l.handle("files:readContent", async (e, t, n) => await Gh.readFileContent(t, n)), l.handle("files:saveContent", async (e, t, n, r) => await Gh.saveFileContent(t, n, r)), l.handle("files:create", async (e, t, n, r = !1) => await Gh.createFileOrFolder(t, n, r)), l.handle("files:delete", async (e, t, n) => await Gh.deleteFileOrFolder(t, n)), l.handle("file:readFile", async (e, t, n) => await Gh.readFileContent(t, n)), l.handle("file:writeFile", async (e, t, n, r) => await Gh.saveFileContent(t, n, r)), l.handle("file:listFiles", async (e, t, n) => (await Gh.readTree(t, n || "", 1)).map((e) => ({
 	name: e.name,
 	isDirectory: e.isDirectory,
 	relativePath: e.relativePath
-}))), l.handle("voice:transcribeLocal", async (e, { audioData: t, language: n }) => await Se.transcribe(t, n)), l.handle("voice:getLocalWhisperStatus", async () => Se.getState()), l.handle("system:getPlatform", async () => process.platform), l.handle("secrets:isEncryptionAvailable", async () => ge.isEncryptionAvailable()), l.handle("secrets:encrypt", async (e, t) => ge.encrypt(t)), l.handle("secrets:decrypt", async (e, t) => ge.decrypt(t)), l.handle("secrets:setSecret", async (e, { key: t, value: n }) => (await ge.setSecret(t, n), !0)), l.handle("secrets:getSecret", async (e, t) => await ge.getSecret(t)), l.handle("secrets:deleteSecret", async (e, t) => await ge.deleteSecret(t)), l.handle("mcp:getStatus", async () => Xm.getStatus()), l.handle("mcp:toggleServer", async (e, t) => (t ? await Xm.start() : await Xm.stop(), Xm.getStatus())), l.handle("mcp:regenerateToken", async () => Xm.regenerateToken()), l.handle("mcp:setAppState", async (e, t) => (Xm.setAppState(t), !0));
-var Jh = !1;
-async function Yh() {
-	if (!Jh) {
-		if (Jh = !0, console.log("[Main] Performing graceful shutdown of all processes and resources..."), $ && !$.isDestroyed()) {
+}))), l.handle("voice:transcribeLocal", async (e, { audioData: t, language: n }) => await Ce.transcribe(t, n)), l.handle("voice:getLocalWhisperStatus", async () => Ce.getState()), l.handle("system:getPlatform", async () => process.platform), l.handle("secrets:isEncryptionAvailable", async () => _e.isEncryptionAvailable()), l.handle("secrets:encrypt", async (e, t) => _e.encrypt(t)), l.handle("secrets:decrypt", async (e, t) => _e.decrypt(t)), l.handle("secrets:setSecret", async (e, { key: t, value: n }) => (await _e.setSecret(t, n), !0)), l.handle("secrets:getSecret", async (e, t) => await _e.getSecret(t)), l.handle("secrets:deleteSecret", async (e, t) => await _e.deleteSecret(t)), l.handle("mcp:getStatus", async () => Qm.getStatus()), l.handle("mcp:toggleServer", async (e, t) => (t ? await Qm.start() : await Qm.stop(), Qm.getStatus())), l.handle("mcp:regenerateToken", async () => Qm.regenerateToken()), l.handle("mcp:setAppState", async (e, t) => (Qm.setAppState(t), !0));
+var Qh = !1;
+async function $h() {
+	if (!Qh) {
+		if (Qh = !0, console.log("[Main] Performing graceful shutdown of all processes and resources..."), $ && !$.isDestroyed()) {
 			try {
 				$.destroy();
 			} catch {}
 			$ = null;
 		}
 		try {
-			sh.cleanupAll();
+			lh.cleanupAll();
 		} catch (e) {
 			console.warn("[Main] Error cleaning up git watchers:", e);
 		}
 		try {
-			Ym.cleanupAll();
+			Zm.cleanupAll();
 		} catch (e) {
 			console.warn("[Main] Error cleaning up processes:", e);
 		}
 		try {
-			oh.cleanupAll();
+			ch.cleanupAll();
 		} catch (e) {
 			console.warn("[Main] Error cleaning up pty:", e);
 		}
 		try {
-			await Se.dispose();
+			await Ce.dispose();
 		} catch (e) {
 			console.warn("[Main] Error disposing whisper service:", e);
 		}
 		try {
-			await Xm.stop();
+			await Qm.stop();
 		} catch (e) {
 			console.warn("[Main] Error stopping MCP server:", e);
 		}
@@ -20337,13 +20410,13 @@ async function Yh() {
 	}
 }
 s.on("before-quit", (e) => {
-	Jh || (e.preventDefault(), Yh(), setTimeout(() => {
+	Qh || (e.preventDefault(), $h(), setTimeout(() => {
 		console.warn("[Main] Force exiting after 1.5s shutdown timeout."), s.exit(0), process.exit(0);
 	}, 1500).unref());
 }), s.whenReady().then(() => {
-	d.defaultSession.setPermissionRequestHandler((e, t, n) => {
+	f.defaultSession.setPermissionRequestHandler((e, t, n) => {
 		n(!0);
-	}), d.defaultSession.setPermissionCheckHandler((e, t) => !0), Gh(), Se.initBackground(), Xm.start().catch((e) => {
+	}), f.defaultSession.setPermissionCheckHandler((e, t) => !0), Yh(), Ce.initBackground(), Qm.start().catch((e) => {
 		console.error("[Main] Failed to auto-start Remote MCP server:", e);
 	});
 });
