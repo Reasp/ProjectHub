@@ -41,6 +41,7 @@ export const AIStudioView: React.FC = () => {
   const { selectedProject, tasks, gitRepoDetails } = useProjectStore();
   const {
     sessions,
+    sessionsLoaded,
     activeSessionId,
     isStreaming,
     config,
@@ -67,6 +68,7 @@ export const AIStudioView: React.FC = () => {
     dismissRateLimitWarning,
     setMode,
     setIsSettingsOpen,
+    loadSessions,
     createSession,
     switchSession,
     closeSession,
@@ -100,12 +102,21 @@ export const AIStudioView: React.FC = () => {
     }
   }, [fetchConfig, fetchClaudeAuth, fetchSubagents, projectPath]);
 
-  // Ensure at least one session exists
+  // История диалогов читается с диска один раз на проект (TASK-35)
   useEffect(() => {
-    if (projectPath && projectSessions.length === 0) {
+    if (projectPath) {
+      void loadSessions(projectPath);
+    }
+  }, [projectPath, loadSessions]);
+
+  // Ensure at least one session exists — но только после загрузки истории, иначе пустой
+  // диалог создастся раньше, чем придут сохранённые
+  const isLoaded = !!sessionsLoaded[projectPath];
+  useEffect(() => {
+    if (projectPath && isLoaded && projectSessions.length === 0) {
       createSession(projectPath);
     }
-  }, [projectPath, projectSessions.length, createSession]);
+  }, [projectPath, isLoaded, projectSessions.length, createSession]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

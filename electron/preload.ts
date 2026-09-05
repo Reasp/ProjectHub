@@ -196,6 +196,12 @@ const api: IElectronAPI = {
   clearAISession: (sessionId: string) => ipcRenderer.invoke('ai:clearSession', sessionId),
   applyAIDiff: (projectPath: string, relativePath: string, newContent: string) =>
     ipcRenderer.invoke('ai:applyDiff', projectPath, relativePath, newContent),
+  // История диалогов AI Studio в файлах (TASK-35)
+  listAISessions: (projectPath: string) => ipcRenderer.invoke('aiSessions:list', projectPath),
+  saveAISession: (projectPath: string, session: any) => ipcRenderer.invoke('aiSessions:save', projectPath, session),
+  deleteAISession: (projectPath: string, sessionId: string) =>
+    ipcRenderer.invoke('aiSessions:delete', projectPath, sessionId),
+  importAISessions: (sessionsByProject: any) => ipcRenderer.invoke('aiSessions:import', sessionsByProject),
 
   // Claude Bridge Approvals & Statuses
   getAllProjectStatuses: () => ipcRenderer.invoke('claudeBridge:getAllProjectStatuses'),

@@ -374,6 +374,12 @@ export interface IElectronAPI {
   /** Полная очистка сессии в main: одобрения, процессы, resume-id Claude CLI, подагенты (TASK-33). */
   clearAISession: (sessionId: string) => Promise<boolean>;
   applyAIDiff: (projectPath: string, relativePath: string, newContent: string) => Promise<boolean>;
+  /** История диалогов AI Studio в файлах через main (TASK-35). */
+  listAISessions: (projectPath: string) => Promise<AISession[]>;
+  saveAISession: (projectPath: string, session: AISession) => Promise<boolean>;
+  deleteAISession: (projectPath: string, sessionId: string) => Promise<boolean>;
+  /** Одноразовая миграция сессий из localStorage; возвращает число импортированных. */
+  importAISessions: (sessionsByProject: Record<string, AISession[]>) => Promise<number>;
 
   // Claude Bridge Approvals & Statuses
   getAllProjectStatuses: () => Promise<ProjectAgentStatus[]>;
@@ -585,6 +591,8 @@ export interface AIToolCall {
     oldContent: string;
     newContent: string;
     patch: string;
+    /** Содержимое усечено при сохранении на диск (TASK-35); полный текст был доступен только в живой сессии. */
+    truncated?: boolean;
   };
 }
 
@@ -595,6 +603,15 @@ export interface AIMessage {
   thought?: string;
   toolCalls?: AIToolCall[];
   timestamp: string;
+}
+
+/** Диалог AI Studio; хранится файлом `~/.projecthub/sessions/<hash(projectPath)>/<id>.json` (TASK-35). */
+export interface AISession {
+  id: string;
+  title: string;
+  createdAt: number;
+  messages: AIMessage[];
+  claudeCliSessionId?: string;
 }
 
 export interface AIStreamRequest {

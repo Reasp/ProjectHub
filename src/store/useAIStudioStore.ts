@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import {
+  createDebouncedStorage,
+  migrateLegacySessions,
+  SessionPersister
+} from './aiSessionPersistence';
 import type {
+  AISession,
   AIProviderConfig,
   AIMessage,
   AIToolCall,
@@ -13,16 +19,11 @@ import type {
   AutoApproveRules
 } from '../types/electron';
 
-export interface AISession {
-  id: string;
-  title: string;
-  createdAt: number;
-  messages: AIMessage[];
-  claudeCliSessionId?: string;
-}
+export type { AISession };
 
 interface AIStudioState {
-  sessions: Record<string, AISession[]>; // projectPath -> list of sessions
+  sessions: Record<string, AISession[]>; // projectPath -> list of sessions (in-memory, файлы через main — TASK-35)
+  sessionsLoaded: Record<string, boolean>; // projectPath -> история прочитана с диска
   activeSessionId: Record<string, string>; // projectPath -> active sessionId
   lastActiveSessionId: Record<string, string>; // projectPath -> previous active sessionId
   isStreaming: boolean;
@@ -55,6 +56,8 @@ interface AIStudioState {
   claudeLogout: () => Promise<void>;
   setMode: (mode: 'chat' | 'agent' | 'architect') => void;
   setIsSettingsOpen: (open: boolean) => void;
+  /** Прочитать историю диалогов проекта с диска (один раз на проект); мигрирует старый localStorage. */
+  loadSessions: (projectPath: string) => Promise<void>;
   createSession: (projectPath: string, initialTitle?: string) => string;
   switchSession: (projectPath: string, sessionId: string) => void;
   switchSessionByIndex: (projectPath: string, index: number) => void;
@@ -123,6 +126,23 @@ function sessionResetPatch(
   return patch;
 }
 
+/** Запись сессий на диск с дебаунсом; подключается к стору ниже через subscribe. */
+const sessionPersister = new SessionPersister();
+
+/** Одноразовая миграция старого localStorage-блоба; результат кэшируется на время жизни рендерера. */
+let legacyMigration: Promise<Record<string, AISession[]>> | null = null;
+function runLegacyMigration(): Promise<Record<string, AISession[]>> {
+  if (!legacyMigration) {
+    legacyMigration = migrateLegacySessions().catch((e) => {
+      console.error('[AIStudio] Ошибка миграции сессий:', e);
+      return {};
+    });
+  }
+  return legacyMigration;
+}
+
+const loadingProjects = new Set<string>();
+
 function createInitialSession(): AISession {
   const id = `session-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   return {
@@ -137,6 +157,7 @@ export const useAIStudioStore = create<AIStudioState>()(
   persist(
     (set, get) => ({
       sessions: {},
+      sessionsLoaded: {},
       activeSessionId: {},
       lastActiveSessionId: {},
       isStreaming: false,
@@ -272,6 +293,45 @@ export const useAIStudioStore = create<AIStudioState>()(
 
       setMode: (mode) => set({ mode }),
       setIsSettingsOpen: (isSettingsOpen) => set({ isSettingsOpen }),
+
+      loadSessions: async (projectPath: string) => {
+        if (!projectPath || get().sessionsLoaded[projectPath] || loadingProjects.has(projectPath)) return;
+        loadingProjects.add(projectPath);
+        try {
+          const migrated = await runLegacyMigration();
+          let fromDisk: AISession[] = [];
+          if (window.api?.listAISessions) {
+            try {
+              fromDisk = await window.api.listAISessions(projectPath);
+            } catch (e) {
+              console.error('[AIStudio] Не удалось прочитать сессии с диска:', e);
+            }
+          }
+          // Если импорт в файлы не удался, показываем хотя бы то, что было в localStorage.
+          if (fromDisk.length === 0 && migrated[projectPath]?.length) {
+            fromDisk = migrated[projectPath];
+          }
+          sessionPersister.markLoaded(projectPath, fromDisk);
+
+          set((state) => {
+            // Сессии, созданные до завершения загрузки (например, голосовая команда), сохраняем.
+            const inMemory = state.sessions[projectPath] || [];
+            const known = new Set(fromDisk.map((s) => s.id));
+            const merged = [...fromDisk, ...inMemory.filter((s) => !known.has(s.id))];
+            const activeId = state.activeSessionId[projectPath];
+            const activeValid = activeId && merged.some((s) => s.id === activeId);
+            return {
+              sessions: { ...state.sessions, [projectPath]: merged },
+              sessionsLoaded: { ...state.sessionsLoaded, [projectPath]: true },
+              activeSessionId: activeValid || merged.length === 0
+                ? state.activeSessionId
+                : { ...state.activeSessionId, [projectPath]: merged[merged.length - 1].id }
+            };
+          });
+        } finally {
+          loadingProjects.delete(projectPath);
+        }
+      },
 
       createSession: (projectPath: string, initialTitle?: string) => {
         const existing = get().sessions[projectPath] || [];
@@ -626,6 +686,8 @@ export const useAIStudioStore = create<AIStudioState>()(
           });
 
           cleanup();
+          // Ответ завершён — записываем сессию сразу, не дожидаясь дебаунса (TASK-35, AC #1).
+          void sessionPersister.flushNow();
         });
 
         const unsubError = window.api.onAIError(streamId, (err) => {
@@ -659,6 +721,7 @@ export const useAIStudioStore = create<AIStudioState>()(
           });
 
           cleanup();
+          void sessionPersister.flushNow();
         });
 
         const cleanup = () => {
@@ -763,16 +826,39 @@ export const useAIStudioStore = create<AIStudioState>()(
     }),
     {
       name: 'projecthub-ai-studio-storage',
-      storage: createJSONStorage(() => localStorage),
+      version: 2,
+      // В localStorage — только лёгкие настройки, запись с дебаунсом и без повторов одинаковых значений (TASK-35).
+      storage: createJSONStorage(() => createDebouncedStorage(localStorage)),
       partialize: (state) => ({
-        sessions: state.sessions,
         activeSessionId: state.activeSessionId,
         config: {
           ...state.config,
           apiKey: undefined // Не сохраняем API-ключ в открытом виде в localStorage — защищено через safeStorage (DPAPI)
         },
         mode: state.mode
-      })
+      }),
+      // Старый блоб (version 0/1) мог содержать sessions — в состояние их не подмешиваем,
+      // историю поднимает loadSessions() с диска после миграции.
+      migrate: (persisted: any) => {
+        if (persisted && typeof persisted === 'object') {
+          const { sessions: _legacy, ...rest } = persisted;
+          return rest;
+        }
+        return persisted;
+      },
+      merge: (persisted: any, current) => {
+        const { sessions: _legacy, ...rest } = (persisted || {}) as Record<string, unknown>;
+        return { ...current, ...rest };
+      }
     }
   )
 );
+
+// Запись изменившихся сессий на диск: одна подписка покрывает создание, переименование,
+// стриминг (с дебаунсом), очистку и закрытие (удаление файла).
+sessionPersister.setResolver((projectPath, sessionId) =>
+  useAIStudioStore.getState().sessions[projectPath]?.find((s) => s.id === sessionId)
+);
+useAIStudioStore.subscribe((state, prev) => {
+  if (state.sessions !== prev.sessions) sessionPersister.track(prev.sessions, state.sessions);
+});

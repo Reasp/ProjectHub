@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import matter from 'gray-matter';
 import { simpleGit } from 'simple-git';
-import type { ProjectInfo, BacklogTask, GitCommit, ScanOptions } from '../src/types/electron';
+import type { ProjectInfo, BacklogTask, GitCommit, ScanOptions, AISession } from '../src/types/electron';
 import { projectRegistry } from './services/projectRegistry';
 import { inspectProject, scanDirectories } from './services/projectScanner';
 import { claudeBridgeService } from './services/claudeBridgeService';
@@ -17,6 +17,7 @@ import { processManager } from './services/processManager';
 import { ptyService } from './services/ptyService';
 import { gitService } from './services/gitService';
 import { windowStateService } from './services/windowStateService';
+import { aiSessionStore } from './services/aiSessionStore';
 import { assertInsideRegisteredProject, assertRegisteredProject } from './services/projectPathGuard';
 
 // Automatically approve media capture requests in Chromium without blocking UI dialogs
@@ -1027,6 +1028,38 @@ ipcMain.handle('ai:clearSession', async (_event, sessionId: string) => {
 
 ipcMain.handle('ai:applyDiff', async (_event, projectPath: string, relativePath: string, newContent: string) => {
   return await aiAgentService.applyDiff(projectPath, relativePath, newContent);
+});
+
+// История диалогов AI Studio в файлах ~/.projecthub/sessions/<hash(projectPath)>/<id>.json (TASK-35).
+// projectPath не используется как путь на диске (только хэшируется), sessionId проверяется в сервисе.
+ipcMain.handle('aiSessions:list', async (_event, projectPath: string) => {
+  if (typeof projectPath !== 'string' || !projectPath.trim()) return [];
+  return aiSessionStore.list(projectPath);
+});
+
+ipcMain.handle('aiSessions:save', async (_event, projectPath: string, session: AISession) => {
+  if (typeof projectPath !== 'string' || !projectPath.trim()) return false;
+  try {
+    await aiSessionStore.save(projectPath, session);
+    return true;
+  } catch (e) {
+    console.error('[Main] aiSessions:save failed:', e);
+    return false;
+  }
+});
+
+ipcMain.handle('aiSessions:delete', async (_event, projectPath: string, sessionId: string) => {
+  if (typeof projectPath !== 'string' || !projectPath.trim()) return false;
+  return aiSessionStore.delete(projectPath, sessionId);
+});
+
+ipcMain.handle('aiSessions:import', async (_event, sessionsByProject: Record<string, AISession[]>) => {
+  try {
+    return await aiSessionStore.importLegacy(sessionsByProject);
+  } catch (e) {
+    console.error('[Main] aiSessions:import failed:', e);
+    return 0;
+  }
 });
 
 ipcMain.handle('ai:streamChat', async (_event, req: AIStreamRequest) => {
