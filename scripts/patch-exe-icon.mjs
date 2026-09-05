@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as ResEdit from 'resedit';
 
-const releaseDir = 'F:/ProjectHub/release';
-const icoPath = 'F:/ProjectHub/build/icon.ico';
+const rootDir = process.cwd();
+const releaseDir = path.join(rootDir, 'release');
+const icoPath = path.join(rootDir, 'build', 'icon.ico');
 
 if (!fs.existsSync(icoPath)) {
   console.error('❌ build/icon.ico не найден.');

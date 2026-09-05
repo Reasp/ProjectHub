@@ -7,7 +7,7 @@ import type { CreateProjectOptions, ProjectInfo } from '../../src/types/electron
 import { projectRegistry } from './projectRegistry';
 import { inspectProject } from './projectScanner';
 
-const DEFAULT_TEMPLATE_PATH = 'F:\\ProjectTemplate';
+const DEFAULT_TEMPLATE_PATH = process.env.PROJECT_TEMPLATE_PATH || path.resolve(process.cwd(), '..', 'ProjectTemplate');
 
 const IGNORED_COPY_NAMES = new Set([
   'node_modules',

@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-`F:\ProjectTemplate` — репозиторий с базовой локальной инфраструктурой, которую пользователь
+`ProjectTemplate` — репозиторий с базовой локальной инфраструктурой, которую пользователь
 хочет накатывать на любой новый софтверный проект: инструменты, помогающие человеку и
 ИИ-агенту совместно работать (трекинг задач, контекст кода, база знаний, доступ к окружению),
 а не шаблон кода конкретного приложения.
@@ -20,11 +20,10 @@ metadata:
 1. ✅ **Векторный RAG для документации** — реализован: `scripts/rag/index-docs.mjs` +
    `scripts/rag/rag-server.mjs` (MCP-сервер `docs-rag`, инструменты `search_docs`/`list_docs`/
    `get_doc`) + `scripts/rag/search-cli.mjs`. `@lancedb/lancedb` + `@huggingface/transformers`
-   (не `@xenova/transformers`, как в `PlatPhas` — тот deprecated и тащит критическую CVE через
+   (не `@xenova/transformers` — тот deprecated и тащит критическую CVE через
    старый `onnxruntime-web`/`protobufjs`; `@huggingface/transformers` чище, остаётся только high
    severity через `sharp`, который не задействован при чисто текстовых эмбеддингах). Индекс —
-   `.rag-index/*.lance`, коммитится в git (в отличие от `PlatPhas`, где `.rag-index/` в
-   `.gitignore` — пользователь явно попросил делать коммитимым). Кэш весов модели — `.rag-cache/`,
+   `.rag-index/*.lance`, коммитится в git. Кэш весов модели — `.rag-cache/`,
    в `.gitignore`. См. [[feedback-network-node-huggingface]] про особенность скачивания модели.
 2. ✅ **MCP-сервер `env-tools`** — `scripts/env/env-server.mjs` (`start_process`/`stop_process`/
    `list_processes`/`tail_log`/`reindex_docs`). На Windows обычная связка `shell:true +
@@ -37,7 +36,7 @@ metadata:
    dnf, pacman}`). Определяет ОС и доступный пакетный менеджер, ставит недостающее или
    печатает ручную инструкцию.
 4. ✅ **Skill `init-dev-project`** — реализован в `.claude/memory/../skills/init-dev-project/
-   SKILL.md` (канонически в `F:\ProjectTemplate\.claude\skills\init-dev-project\`, и по
+   SKILL.md` (канонически в `.claude/skills/init-dev-project/`, и по
    согласованию с пользователем скопирован в `~/.claude/skills/init-dev-project/`, чтобы
    быть доступным в любом новом проекте на этой машине). Связывает git init → backlog init →
    копирование инфры → npm install → bootstrap → (опц.) gitnexus analyze → index-docs →
@@ -78,11 +77,10 @@ metadata:
    пропускает то, что ещё не проинициализировано. `start-web.bat` (CRLF!) и `start-web.sh` —
    тонкие обёртки для запуска без node-команды в голове.
 
-**Referenced project:** `F:\PlatPhas` — не идеальный, но содержит рабочие прототипы части
-этой инфраструктуры (committable vector RAG через LanceDB, `.mcp.json`/`.roo/mcp.json`
-паттерн MCP-конфигов, `CLAUDE.md`/`GEMINI.md`/`.clinerules` как параллельные файлы правил,
-структура `backlog/` с tasks/milestones/decisions/docs). Стоит смотреть туда за примерами
-при реализации пунктов выше, но не копировать игро-специфичные детали.
+**Referenced architecture:** Архитектура отталкивается от проверенных прототипов
+этой инфраструктуры (committable vector RAG через LanceDB, `.mcp.json`
+паттерн MCP-конфигов, `CLAUDE.md`/`GEMINI.md`/`AGENTS.md` как параллельные файлы правил,
+структура `backlog/` с tasks/milestones/decisions/docs).
 
 **Why:** пользователь хочет один раз довести процесс до предсказуемого состояния и
 переносить между проектами, а не пересобирать инфраструктуру каждый раз с нуля.

@@ -23,7 +23,15 @@ Thumbs.db
 *.log
 npm-debug.log*
 
+# Environment & Secrets
+.env
+.env.*
+*.env
+!.env.example
+
 # Build outputs
+dist/
+dist-electron/
 release/
 release_tmp/
 

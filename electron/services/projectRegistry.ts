@@ -23,7 +23,7 @@ export interface RegistryConfig {
 }
 
 const DEFAULT_SCAN_ROOTS = process.platform === 'win32'
-  ? ['F:\\', 'D:\\', path.join(os.homedir(), 'Projects')]
+  ? [path.parse(process.cwd()).root, path.join(os.homedir(), 'Projects')].filter((p, i, a) => a.indexOf(p) === i)
   : [path.join(os.homedir(), 'Projects'), path.join(os.homedir(), 'Developer')];
 
 const DEFAULT_CONFIG: RegistryConfig = {
