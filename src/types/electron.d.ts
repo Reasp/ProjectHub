@@ -2,6 +2,8 @@ export interface ActionDefinition {
   name: string;
   command: string;
   autoOpenUrl?: string;
+  /** Задержка автооткрытия URL (мс), если сервер не напечатал адрес в лог; 0 — только по логу. */
+  autoOpenDelayMs?: number;
   requiresConfirmation?: boolean;
   env?: Record<string, string>;
   cwd?: string;
@@ -21,6 +23,8 @@ export type ProjectActionKind = 'run' | 'deploy' | 'test';
 export interface StartProcessOptions {
   env?: Record<string, string>;
   cwd?: string;
+  autoOpenUrl?: string;
+  autoOpenDelayMs?: number;
 }
 
 export interface RagStatus {
@@ -193,6 +197,8 @@ export interface ManagedProcess {
   status: 'running' | 'stopped' | 'failed';
   exitCode?: number;
   source: 'hub' | 'env-tools';
+  /** URL, который открывается после старта (только для hub-процессов из ActionDefinition). */
+  autoOpenUrl?: string;
 }
 
 export interface RagSearchOptions {
@@ -340,6 +346,7 @@ export interface IElectronAPI {
     options?: StartProcessOptions
   ) => Promise<ManagedProcess>;
   stopProcess: (processId: string) => Promise<boolean>;
+  restartProcess: (processId: string) => Promise<ManagedProcess>;
   listProcesses: (projectPath: string) => Promise<ManagedProcess[]>;
   tailProcessLog: (projectPath: string, processName: string, lines?: number) => Promise<string>;
   onProcessLogChunk: (callback: (data: { processId: string; text: string }) => void) => () => void;

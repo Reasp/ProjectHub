@@ -43,6 +43,8 @@ const api: IElectronAPI = {
     ipcRenderer.invoke('process:start', projectPath, command, name, options),
   stopProcess: (processId: string) =>
     ipcRenderer.invoke('process:stop', processId),
+  restartProcess: (processId: string) =>
+    ipcRenderer.invoke('process:restart', processId),
   listProcesses: (projectPath: string) =>
     ipcRenderer.invoke('process:list', projectPath),
   tailProcessLog: (projectPath: string, processName: string, lines?: number) =>

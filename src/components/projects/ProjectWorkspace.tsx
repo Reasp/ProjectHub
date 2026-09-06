@@ -35,6 +35,7 @@ import { DocsRagView } from '../docs/DocsRagView';
 import { ProjectAnalyticsView } from '../analytics/ProjectAnalyticsView';
 import { AIStudioView } from '../ai/AIStudioView';
 import { ClaudeCliView } from '../claude/ClaudeCliView';
+import { ProcessesView } from '../processes/ProcessesView';
 import { useWorkspaceTabs, type WorkspaceTabId } from '../../hooks/useWorkspaceTabs';
 import { WorkspaceTabsConfigModal } from './WorkspaceTabsConfigModal';
 import { NewProjectWizardModal } from './NewProjectWizardModal';
@@ -497,13 +498,7 @@ export const ProjectWorkspace: React.FC = () => {
         {activeTab === 'ai' && <AIStudioView />}
         {activeTab === 'claude-cli' && <ClaudeCliView />}
 
-        {activeTab === 'processes' && (
-          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-            <Cpu className="w-12 h-12 text-indigo-400/40 mb-3" />
-            <h3 className="text-sm font-semibold text-white mb-1">{t.terminal.processLogs}</h3>
-            <p className="text-xs text-slate-400 max-w-sm">{t.terminal.welcomeDesc}</p>
-          </div>
-        )}
+        {activeTab === 'processes' && <ProcessesView />}
       </div>
 
       {/* Workspace Tabs Settings Modal */}

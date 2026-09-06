@@ -778,6 +778,10 @@ ipcMain.handle('process:stop', async (_event, processId: string) => {
   return await processManager.stopProcess(processId);
 });
 
+ipcMain.handle('process:restart', async (_event, processId: string) => {
+  return await processManager.restartProcess(processId);
+});
+
 ipcMain.handle('process:list', async (_event, projectPath: string) => {
   return await processManager.listProcessesForProject(projectPath);
 });

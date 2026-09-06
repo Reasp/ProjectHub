@@ -110,6 +110,12 @@ export interface TranslationDictionary {
     startDeploy: string;
     startTest: string;
     confirmDeploy: string;
+    cwdLabel: string;
+    cwdHint: string;
+    envLabel: string;
+    envHint: string;
+    autoOpenDelayLabel: string;
+    autoOpenDelayHint: string;
   };
   voice: {
     listening: string;
@@ -497,6 +503,38 @@ export interface TranslationDictionary {
     running: string;
     stopped: string;
     exited: string;
+  };
+  processes: {
+    title: string;
+    subtitle: string;
+    refresh: string;
+    empty: string;
+    emptyHint: string;
+    quickActions: string;
+    configure: string;
+    colName: string;
+    colCommand: string;
+    colPid: string;
+    colStatus: string;
+    colStarted: string;
+    colSource: string;
+    colActions: string;
+    statusRunning: string;
+    statusStopped: string;
+    statusFailed: string;
+    exitCode: string;
+    sourceHub: string;
+    sourceEnvTools: string;
+    workingDir: string;
+    openLog: string;
+    restart: string;
+    restarting: string;
+    stop: string;
+    stopping: string;
+    openUrl: string;
+    autoOpenHint: string;
+    envToolsHint: string;
+    runningCount: string;
   };
   claudeCli: {
     title: string;

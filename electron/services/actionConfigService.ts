@@ -6,6 +6,8 @@ export interface ActionDefinition {
   name: string;
   command: string;
   autoOpenUrl?: string;
+  /** Задержка автооткрытия URL (мс), если сервер не напечатал адрес в лог; 0 — только по логу. */
+  autoOpenDelayMs?: number;
   requiresConfirmation?: boolean;
   env?: Record<string, string>;
   cwd?: string;

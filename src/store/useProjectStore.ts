@@ -215,6 +215,8 @@ interface ProjectState {
   fetchProcesses: (projectPath: string) => Promise<void>;
   startProcessAction: (command: string, name: string, options?: StartProcessOptions) => Promise<ManagedProcess | null>;
   stopProcessAction: (processId: string) => Promise<boolean>;
+  /** Перезапуск процесса (hub или env-tools) с теми же параметрами. */
+  restartProcessAction: (processId: string) => Promise<ManagedProcess | null>;
 
   // Action Runner (.projecthub.json): единый источник команд run/deploy/test для кнопок,
   // терминала и голосовых команд (аудит 5.9).
@@ -899,7 +901,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   runActionDefinition: async (def: ActionDefinition, options?: RunActionOptions) => {
     if (def.requiresConfirmation && options?.confirm && !options.confirm(def)) return null;
-    return get().startProcessAction(def.command, def.name, { env: def.env, cwd: def.cwd });
+    return get().startProcessAction(def.command, def.name, {
+      env: def.env,
+      cwd: def.cwd,
+      autoOpenUrl: def.autoOpenUrl,
+      autoOpenDelayMs: def.autoOpenDelayMs
+    });
   },
 
   runProjectAction: async (kind: ProjectActionKind, options?: RunActionOptions) => {
@@ -937,6 +944,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     } catch (e) {
       console.error('Failed to stop process:', e);
       return false;
+    }
+  },
+
+  restartProcessAction: async (processId: string) => {
+    if (!window.api?.restartProcess) return null;
+    try {
+      const proc = await window.api.restartProcess(processId);
+      set((state) => ({
+        processes: [...state.processes.filter((p) => p.id !== proc.id), proc],
+        activeProcessId: proc.id
+      }));
+      get().addTerminalLog(`[Process] Перезапущен процесс: ${proc.name} (${proc.command})`);
+      return proc;
+    } catch (e: any) {
+      console.error('Failed to restart process:', e);
+      get().addTerminalLog(`[Process Error] Не удалось перезапустить ${processId}: ${e.message}`);
+      return null;
     }
   },
 
@@ -1145,9 +1169,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
         if (!processStatusCleanup) {
           processStatusCleanup = window.api.onProcessStatusChanged((proc) => {
-            set((state) => ({
-              processes: state.processes.map((p) => (p.id === proc.id ? proc : p))
-            }));
+            set((state) => {
+              // Процесс, запущенный из другого окна/перезапуском, в списке может отсутствовать —
+              // добавляем, если он относится к выбранному проекту.
+              const known = state.processes.some((p) => p.id === proc.id);
+              if (known) {
+                return { processes: state.processes.map((p) => (p.id === proc.id ? { ...p, ...proc } : p)) };
+              }
+              const cur = state.selectedProject?.path;
+              if (cur && proc.cwd.toLowerCase() === cur.toLowerCase()) {
+                return { processes: [...state.processes, proc] };
+              }
+              return {};
+            });
           });
         }
 

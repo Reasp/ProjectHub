@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import treeKill from 'tree-kill';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, shell } from 'electron';
 import type { ManagedProcess } from '../../src/types/electron';
 
 /** Суммарный лимит буфера логов одного процесса (аудит 2.1: было 2000 чанков по 64 КБ ≈ 128 МБ). */
@@ -23,6 +23,79 @@ export interface StartProcessOptions {
   env?: Record<string, string>;
   /** Рабочий каталог: абсолютный либо относительно projectPath. */
   cwd?: string;
+  /** URL, который нужно открыть в браузере после старта (dev-сервер). */
+  autoOpenUrl?: string;
+  /**
+   * Задержка автооткрытия (мс): URL открывается, как только в логе появится строка с URL,
+   * либо по истечении задержки — что случится раньше. `0` — только по строке с URL.
+   * Не задано — `DEFAULT_AUTO_OPEN_DELAY_MS`.
+   */
+  autoOpenDelayMs?: number;
+}
+
+/** Задержка автооткрытия URL по умолчанию, если сервер так и не напечатал адрес в лог. */
+export const DEFAULT_AUTO_OPEN_DELAY_MS = 10_000;
+/** Сколько ждать фактического завершения процесса после tree-kill, прежде чем считать его остановленным. */
+export const STOP_WAIT_MS = 5_000;
+
+const URL_IN_LOG_RE = /https?:\/\/[^\s'"<>)\]]+/i;
+
+/** Есть ли в тексте чанка лога http(s)-URL — сигнал, что dev-сервер поднялся. */
+export function containsUrl(text: string): boolean {
+  return URL_IN_LOG_RE.test(text);
+}
+
+/** Автооткрытие разрешено только для http/https — как и `shell:openExternal` в main. */
+export function isAutoOpenUrlAllowed(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/** Разбор id процесса `${projectPath}::${name}` (в пути на Windows есть `:`, поэтому режем по последнему `::`). */
+export function parseProcessId(id: string): { projectPath: string; name: string } | null {
+  const idx = id.lastIndexOf('::');
+  if (idx <= 0 || idx === id.length - 2) return null;
+  return { projectPath: id.slice(0, idx), name: id.slice(idx + 2) };
+}
+
+/** Запись реестра env-tools (`.env-state/processes.json`). */
+interface EnvToolsRegistryEntry {
+  pid?: number;
+  command?: string;
+  cwd?: string;
+  startedAt?: string;
+}
+
+function isPidAlive(pid: number | undefined): boolean {
+  if (!pid) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function envStateRegistryPath(projectPath: string): string {
+  return path.join(path.normalize(projectPath), '.env-state', 'processes.json');
+}
+
+async function readEnvToolsRegistry(projectPath: string): Promise<Record<string, EnvToolsRegistryEntry>> {
+  const file = envStateRegistryPath(projectPath);
+  if (!existsSync(file)) return {};
+  const raw = await fs.readFile(file, 'utf-8');
+  const parsed = JSON.parse(raw);
+  return parsed && typeof parsed === 'object' ? parsed : {};
+}
+
+function treeKillAsync(pid: number, signal: NodeJS.Signals = 'SIGKILL'): Promise<void> {
+  return new Promise((resolve, reject) => {
+    treeKill(pid, signal, (err) => (err ? reject(err) : resolve()));
+  });
 }
 
 export interface ShellSpawnSpec {
@@ -89,9 +162,16 @@ export function appendLogChunk(state: LogBufferState, text: string, maxBytes = L
 interface ActiveProcessItem extends LogBufferState {
   info: ManagedProcess;
   child: ChildProcessWithoutNullStreams;
+  /** Параметры запуска — нужны для перезапуска с теми же env/cwd/autoOpenUrl. */
+  options: StartProcessOptions;
+  /** Резолвится, когда дочерний процесс фактически закрылся (close/error). */
+  exited: Promise<void>;
   /** Время завершения (мс), нужно для вытеснения самых старых завершённых записей. */
   finishedAt?: number;
   cleanupTimer?: NodeJS.Timeout;
+  /** Таймер отложенного автооткрытия URL. */
+  autoOpenTimer?: NodeJS.Timeout;
+  autoOpened?: boolean;
 }
 
 interface RetentionOptions {
@@ -107,9 +187,53 @@ class HubProcessManager {
     maxFinished: MAX_FINISHED_PROCESSES
   };
 
+  /** Открытие URL в системном браузере; подменяется в тестах. */
+  private openUrl: (url: string) => Promise<void> = (url) => shell.openExternal(url);
+
   /** Настройка удержания завершённых процессов (используется тестами). */
   configureRetention(options: Partial<RetentionOptions>) {
     this.retention = { ...this.retention, ...options };
+  }
+
+  /** Подмена открывалки URL (тесты). */
+  setUrlOpener(opener: (url: string) => Promise<void>) {
+    this.openUrl = opener;
+  }
+
+  private clearAutoOpenTimer(item: ActiveProcessItem) {
+    if (item.autoOpenTimer) {
+      clearTimeout(item.autoOpenTimer);
+      item.autoOpenTimer = undefined;
+    }
+  }
+
+  /**
+   * Автооткрытие `autoOpenUrl` (аудит 6.1): один раз за запуск, только пока процесс жив,
+   * только http/https. Триггер — первая строка лога с URL либо таймер задержки.
+   */
+  private triggerAutoOpen(item: ActiveProcessItem, reason: 'log' | 'delay') {
+    if (item.autoOpened) return;
+    const url = item.options.autoOpenUrl?.trim();
+    if (!url || item.info.status !== 'running') return;
+    item.autoOpened = true;
+    this.clearAutoOpenTimer(item);
+    if (!isAutoOpenUrlAllowed(url)) {
+      console.warn(`[ProcessManager] autoOpenUrl rejected (${reason}): ${url.slice(0, 200)}`);
+      return;
+    }
+    this.openUrl(url).catch((err) => {
+      console.error(`[ProcessManager] autoOpenUrl failed for ${item.info.id}:`, err);
+    });
+  }
+
+  private scheduleAutoOpen(item: ActiveProcessItem) {
+    const url = item.options.autoOpenUrl?.trim();
+    if (!url) return;
+    const delay = item.options.autoOpenDelayMs ?? DEFAULT_AUTO_OPEN_DELAY_MS;
+    if (!Number.isFinite(delay) || delay <= 0) return;
+    const timer = setTimeout(() => this.triggerAutoOpen(item, 'delay'), delay);
+    timer.unref?.();
+    item.autoOpenTimer = timer;
   }
 
   private broadcastLog(processId: string, text: string) {
@@ -144,6 +268,7 @@ class HubProcessManager {
     if (item.finishedAt !== undefined) return;
     item.finishedAt = Date.now();
     this.clearCleanupTimer(item);
+    this.clearAutoOpenTimer(item);
     const timer = setTimeout(() => {
       if (this.activeProcesses.get(id) === item) {
         this.activeProcesses.delete(id);
@@ -220,9 +345,16 @@ class HubProcessManager {
       source: 'hub'
     };
 
+    let resolveExited: () => void = () => {};
+    const exited = new Promise<void>((resolve) => {
+      resolveExited = resolve;
+    });
+
     const item: ActiveProcessItem = {
       info,
       child,
+      options: { ...options },
+      exited,
       logBuffer: [],
       logBytes: 0
     };
@@ -233,10 +365,17 @@ class HubProcessManager {
       const text = data.toString();
       appendLogChunk(item, text);
       this.broadcastLog(id, text);
+      if (!item.autoOpened && item.options.autoOpenUrl && containsUrl(text)) {
+        this.triggerAutoOpen(item, 'log');
+      }
     };
 
     child.stdout.on('data', onData);
     child.stderr.on('data', onData);
+
+    // Если запись уже заменена перезапуском с тем же id, статус старого процесса в рендерер
+    // не шлём — иначе он перетёр бы «running» нового процесса (тот же id).
+    const isCurrent = () => this.activeProcesses.get(id) === item;
 
     child.on('close', (code) => {
       // stopProcess мог уже выставить 'stopped' — не перезаписываем на 'failed' по коду сигнала.
@@ -244,45 +383,146 @@ class HubProcessManager {
         info.status = code === 0 ? 'stopped' : 'failed';
       }
       info.exitCode = code ?? undefined;
-      this.broadcastStatus(info);
-      this.broadcastLog(id, `\r\n[Process exited with code ${code}]\r\n`);
+      if (isCurrent()) {
+        this.broadcastStatus(info);
+        this.broadcastLog(id, `\r\n[Process exited with code ${code}]\r\n`);
+      }
       this.markFinished(id, item);
+      resolveExited();
     });
 
     child.on('error', (err) => {
       info.status = 'failed';
-      this.broadcastStatus(info);
-      this.broadcastLog(id, `\r\n[Process error: ${err.message}]\r\n`);
+      if (isCurrent()) {
+        this.broadcastStatus(info);
+        this.broadcastLog(id, `\r\n[Process error: ${err.message}]\r\n`);
+      }
       this.markFinished(id, item);
+      resolveExited();
     });
 
+    this.scheduleAutoOpen(item);
     this.broadcastStatus(info);
     return info;
   }
 
+  /**
+   * Остановка процесса. Hub-процесс — tree-kill по pid и ожидание фактического закрытия
+   * (до `STOP_WAIT_MS`), чтобы перезапуск не упёрся в занятый порт. Процесс env-tools
+   * (не из этой сессии) — по pid из `.env-state/processes.json`; запись из реестра удаляется,
+   * как это делает `stop_process` самого env-tools (аудит 6.1).
+   */
   async stopProcess(id: string): Promise<boolean> {
     const item = this.activeProcesses.get(id);
     if (!item) {
-      // Check if it's an env-tools process from project
-      return false;
+      return this.stopEnvToolsProcess(id);
     }
+
+    if (item.info.status !== 'running') return true;
+    this.clearAutoOpenTimer(item);
 
     if (item.info.pid) {
-      return new Promise<boolean>((resolve) => {
-        treeKill(item.info.pid!, 'SIGKILL', (err) => {
-          if (err) {
-            console.error(`Failed to kill process tree for ${id}:`, err);
-            resolve(false);
-          } else {
-            item.info.status = 'stopped';
-            this.broadcastStatus(item.info);
-            resolve(true);
-          }
-        });
-      });
+      try {
+        await treeKillAsync(item.info.pid, 'SIGKILL');
+      } catch (err) {
+        // Процесс мог завершиться сам между проверкой статуса и kill — это не ошибка.
+        if (item.info.status === 'running' && isPidAlive(item.info.pid)) {
+          console.error(`Failed to kill process tree for ${id}:`, err);
+          return false;
+        }
+      }
     }
 
+    item.info.status = 'stopped';
+    this.broadcastStatus(item.info);
+
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      item.exited,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, STOP_WAIT_MS);
+        timer.unref?.();
+      })
+    ]);
+    if (timer) clearTimeout(timer);
     return true;
+  }
+
+  private async stopEnvToolsProcess(id: string): Promise<boolean> {
+    const parsed = parseProcessId(id);
+    if (!parsed) return false;
+    const { projectPath, name } = parsed;
+    const registryFile = envStateRegistryPath(projectPath);
+    if (!existsSync(registryFile)) return false;
+
+    let registry: Record<string, EnvToolsRegistryEntry>;
+    try {
+      registry = await readEnvToolsRegistry(projectPath);
+    } catch (err) {
+      console.error(`Failed to read env-tools registry ${registryFile}:`, err);
+      return false;
+    }
+    const entry = registry[name];
+    if (!entry) return false;
+
+    if (entry.pid && isPidAlive(entry.pid)) {
+      try {
+        await treeKillAsync(entry.pid, 'SIGKILL');
+      } catch (err) {
+        if (isPidAlive(entry.pid)) {
+          console.error(`Failed to kill env-tools process ${name} (pid ${entry.pid}):`, err);
+          return false;
+        }
+      }
+    }
+
+    delete registry[name];
+    try {
+      await fs.writeFile(registryFile, JSON.stringify(registry, null, 2), 'utf-8');
+    } catch (err) {
+      console.error(`Failed to update env-tools registry ${registryFile}:`, err);
+    }
+
+    const normalizedProject = path.normalize(projectPath);
+    const entryCwd = entry.cwd ? path.normalize(entry.cwd) : undefined;
+    this.broadcastStatus({
+      id,
+      name,
+      command: entry.command || '',
+      cwd: normalizedProject,
+      workingDir: entryCwd && entryCwd !== normalizedProject ? entryCwd : undefined,
+      pid: entry.pid,
+      startedAt: entry.startedAt || new Date().toISOString(),
+      status: 'stopped',
+      source: 'env-tools'
+    });
+    return true;
+  }
+
+  /**
+   * Перезапуск: hub-процесс — стоп и старт с теми же командой/env/cwd/autoOpenUrl;
+   * процесс env-tools — стоп по реестру и запуск той же команды уже под управлением Hub
+   * (env-tools запускает процессы только из своего MCP-сервера).
+   */
+  async restartProcess(id: string): Promise<ManagedProcess> {
+    const item = this.activeProcesses.get(id);
+    if (item) {
+      if (item.info.status === 'running') {
+        const stopped = await this.stopProcess(id);
+        if (!stopped) throw new Error(`Не удалось остановить процесс ${item.info.name}`);
+      }
+      return this.startProcess(item.info.cwd, item.info.command, item.info.name, item.options);
+    }
+
+    const parsed = parseProcessId(id);
+    if (!parsed) throw new Error(`Некорректный идентификатор процесса: ${id}`);
+    const registry = await readEnvToolsRegistry(parsed.projectPath).catch(
+      () => ({}) as Record<string, EnvToolsRegistryEntry>
+    );
+    const entry = registry[parsed.name];
+    if (!entry?.command) throw new Error(`Процесс ${parsed.name} не найден в реестре env-tools`);
+    await this.stopEnvToolsProcess(id);
+    return this.startProcess(parsed.projectPath, entry.command, parsed.name, { cwd: entry.cwd });
   }
 
   getLogs(id: string): string[] {
@@ -314,7 +554,7 @@ class HubProcessManager {
     // 1. Hub-spawned processes
     for (const item of this.activeProcesses.values()) {
       if (path.normalize(item.info.cwd) === normalized) {
-        result.push(item.info);
+        result.push({ ...item.info, autoOpenUrl: item.options.autoOpenUrl || undefined });
       }
     }
 
@@ -324,25 +564,20 @@ class HubProcessManager {
       try {
         const raw = await fs.readFile(envStateFile, 'utf-8');
         const reg = JSON.parse(raw);
-        for (const [name, entry] of Object.entries<any>(reg)) {
+        for (const [name, entry] of Object.entries<EnvToolsRegistryEntry>(reg)) {
           const envId = `${normalized}::${name}`;
           // If already in hub processes, skip
           if (!this.activeProcesses.has(envId)) {
-            let isAlive = false;
-            if (entry.pid) {
-              try {
-                process.kill(entry.pid, 0);
-                isAlive = true;
-              } catch {
-                isAlive = false;
-              }
-            }
+            const isAlive = isPidAlive(entry.pid);
 
+            const entryCwd = entry.cwd ? path.normalize(entry.cwd) : undefined;
             result.push({
               id: envId,
               name,
               command: entry.command || '',
-              cwd: entry.cwd || normalized,
+              // cwd — корень проекта (как у hub-процессов), фактический каталог — workingDir.
+              cwd: normalized,
+              workingDir: entryCwd && entryCwd !== normalized ? entryCwd : undefined,
               pid: entry.pid,
               startedAt: entry.startedAt || new Date().toISOString(),
               status: isAlive ? 'running' : 'stopped',
@@ -383,6 +618,7 @@ class HubProcessManager {
   cleanupAll() {
     for (const [id, item] of this.activeProcesses.entries()) {
       this.clearCleanupTimer(item);
+      this.clearAutoOpenTimer(item);
       if (item.info.pid && item.info.status === 'running') {
         try {
           treeKill(item.info.pid, 'SIGKILL');
