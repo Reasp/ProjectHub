@@ -6,6 +6,7 @@ import type {
   TaskCriterion,
   CreateProjectOptions,
   ManagedProcess,
+  McpServerStatus,
   RagSearchOptions,
   StartProcessOptions
 } from '../src/types/electron';
@@ -303,6 +304,13 @@ const api: IElectronAPI = {
   toggleMcpServer: (enable: boolean) => ipcRenderer.invoke('mcp:toggleServer', enable),
   regenerateMcpToken: () => ipcRenderer.invoke('mcp:regenerateToken'),
   setMcpAppState: (state: { activeProject?: any; activeTab?: string }) => ipcRenderer.invoke('mcp:setAppState', state),
+  onMcpStatusChanged: (callback: (status: McpServerStatus) => void) => {
+    const handler = (_event: any, status: McpServerStatus) => callback(status);
+    ipcRenderer.on('mcp:statusChanged', handler);
+    return () => {
+      ipcRenderer.removeListener('mcp:statusChanged', handler);
+    };
+  },
   onRemoteAction: (callback: (action: { type: string; payload: any }) => void) => {
     const handler = (_event: any, action: any) => callback(action);
     ipcRenderer.on('mcp:remoteAction', handler);

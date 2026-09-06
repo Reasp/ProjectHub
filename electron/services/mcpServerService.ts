@@ -101,7 +101,21 @@ class McpServerService {
 
   public regenerateToken(): string {
     this.token = `ph_mcp_${crypto.randomBytes(12).toString('hex')}`;
+    this.broadcastStatus();
     return this.token;
+  }
+
+  /**
+   * Push-статус в рендерер (`mcp:statusChanged`) при старте/остановке сервера, смене токена
+   * и подключении/отключении SSE-сессий — вместо опроса `mcp:getStatus` по таймеру (аудит 3.9).
+   */
+  private broadcastStatus() {
+    const status = this.getStatus();
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('mcp:statusChanged', status);
+      }
+    }
   }
 
   /**
@@ -146,6 +160,7 @@ class McpServerService {
         try {
           server.close();
         } catch {}
+        this.broadcastStatus();
         resolve(false);
       };
 
@@ -154,6 +169,7 @@ class McpServerService {
         settled = true;
         console.log(`[MCPServer] ProjectHub Remote MCP Server running at http://127.0.0.1:${this.port}/sse`);
         this.server = server;
+        this.broadcastStatus();
         resolve(true);
       });
 
@@ -205,7 +221,7 @@ class McpServerService {
       } catch {}
     }
 
-    return new Promise((resolve) => {
+    return new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
         resolve();
       }, 500);
@@ -215,7 +231,7 @@ class McpServerService {
         console.log('[MCPServer] Remote MCP Server stopped');
         resolve();
       });
-    });
+    }).then(() => this.broadcastStatus());
   }
 
   /**
@@ -664,10 +680,12 @@ class McpServerService {
       const sessionId = transport.sessionId;
       const mcpServer = this.createMcpServer(hitlSessionId);
       this.sseSessions.set(sessionId, { transport, mcpServer, hitlSessionId });
+      this.broadcastStatus();
 
       transport.onclose = () => {
         console.log(`[MCPServer] SSE Session ${sessionId} closed`);
         this.sseSessions.delete(sessionId);
+        this.broadcastStatus();
       };
 
       // connect() сам вызывает transport.start(); повторный явный start() давал

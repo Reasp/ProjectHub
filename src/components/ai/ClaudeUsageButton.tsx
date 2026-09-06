@@ -18,34 +18,36 @@ export const ClaudeUsageButton: React.FC<ClaudeUsageButtonProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [usage, setUsage] = useState<ClaudeUsageData | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
-    const loadQuickUsage = async () => {
-      try {
-        if (window.api?.getClaudeUsage) {
-          const data = await window.api.getClaudeUsage(false);
-          if (isMounted) setUsage(data);
-        }
-      } catch {
-        // Silent catch for background badge poll
+  // Без фонового опроса (аудит 3.9): бейдж читает usage один раз при монтировании и после
+  // закрытия модалки (там пользователь мог принудительно обновить данные). Сами данные
+  // в main берутся из локального stats-cache.json и rate-limit событий CLI, без спауна claude.
+  const loadQuickUsage = async () => {
+    try {
+      if (window.api?.getClaudeUsage) {
+        const data = await window.api.getClaudeUsage(false);
+        setUsage(data);
       }
-    };
+    } catch {
+      // Бейдж вторичен: ошибка загрузки показывается в модалке
+    }
+  };
 
+  useEffect(() => {
     loadQuickUsage();
 
     const handleOpenEvent = () => {
       setIsModalOpen(true);
     };
     window.addEventListener('projecthub:open-claude-usage', handleOpenEvent);
-
-    // Poll usage every 2 minutes
-    const timer = setInterval(loadQuickUsage, 120000);
     return () => {
-      isMounted = false;
       window.removeEventListener('projecthub:open-claude-usage', handleOpenEvent);
-      clearInterval(timer);
     };
   }, []);
+
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    loadQuickUsage();
+  };
 
   const sessionPercent = usage?.sessionLimit?.percent;
   const weeklyPercent = usage?.weeklyLimit?.percent;
@@ -94,7 +96,7 @@ export const ClaudeUsageButton: React.FC<ClaudeUsageButtonProps> = ({
 
       <ClaudeUsageModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={handleModalClose}
       />
     </>
   );

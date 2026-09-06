@@ -107,14 +107,42 @@ export const DocsRagView: React.FC = () => {
     }
   };
 
+  // Подписка на process:statusChanged для процесса index-docs текущего проекта (аудит 5.8):
+  // индекс считается готовым по завершении процесса, а не по таймеру.
+  const reindexUnsubscribeRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    return () => {
+      reindexUnsubscribeRef.current?.();
+      reindexUnsubscribeRef.current = null;
+    };
+  }, []);
+
   const handleReindex = async () => {
-    if (!selectedProject) return;
+    if (!selectedProject || !window.api) return;
+    const projectPath = selectedProject.path;
+    const samePath = (a: string, b: string) => a.replace(/[\\/]+$/, '').toLowerCase() === b.replace(/[\\/]+$/, '').toLowerCase();
+
+    reindexUnsubscribeRef.current?.();
     setIsReindexing(true);
-    await startProcessAction('npm run index-docs', 'index-docs');
-    setTimeout(() => {
+
+    const finish = () => {
+      reindexUnsubscribeRef.current?.();
+      reindexUnsubscribeRef.current = null;
       setIsReindexing(false);
       fetchStats();
-    }, 4000);
+    };
+
+    reindexUnsubscribeRef.current = window.api.onProcessStatusChanged((proc) => {
+      if (proc.name !== 'index-docs' || !samePath(proc.cwd, projectPath)) return;
+      if (proc.status === 'running') return;
+      finish();
+    });
+
+    const proc = await startProcessAction('npm run index-docs', 'index-docs');
+    // Не запустился (ошибка) или уже завершился до подписки — не ждать событие.
+    if (!proc || proc.status !== 'running') {
+      finish();
+    }
   };
 
   const insertSnippet = (before: string, after: string = '') => {

@@ -32,6 +32,116 @@ export interface InspectProjectOptions {
    * и при обычном обновлении списка (projects:list / projects:refresh).
    */
   skipGit?: boolean;
+  /**
+   * Отдать результат из кэша, если с прошлого полного осмотра не менялись mtime ключевых
+   * путей проекта (см. `computeInspectCacheKey`) и не истёк TTL. Используется в
+   * `projects:list` (аудит 3.4): повторный список без изменений не гоняет git и не
+   * перечитывает файлы задач. `projects:refresh`/`getDetails` вызывают без кэша.
+   */
+  useCache?: boolean;
+}
+
+/** Максимальный возраст записи кэша: изменения рабочего дерева git не видны по mtime. */
+export const INSPECT_CACHE_TTL_MS = 2 * 60 * 1000;
+
+/** Одновременных осмотров проектов в `projects:list` (git status/log + чтение задач). */
+export const INSPECT_CONCURRENCY = 4;
+
+interface InspectCacheEntry {
+  key: string;
+  info: ProjectInfo;
+  at: number;
+}
+
+const inspectCache = new Map<string, InspectCacheEntry>();
+
+function cacheKeyOf(normalizedPath: string): string {
+  return normalizedPath.toLowerCase();
+}
+
+/**
+ * Пути, чей mtime меняется при событиях, влияющих на ProjectInfo: задачи backlog,
+ * служебные файлы git (коммит, checkout, stage, fetch), конфиги, индекс RAG, процессы env-tools.
+ */
+function inspectCacheProbePaths(normalizedPath: string): string[] {
+  return [
+    normalizedPath,
+    path.join(normalizedPath, 'backlog', 'tasks'),
+    path.join(normalizedPath, 'backlog', 'config.yml'),
+    path.join(normalizedPath, '.git'),
+    path.join(normalizedPath, '.git', 'HEAD'),
+    path.join(normalizedPath, '.git', 'index'),
+    path.join(normalizedPath, '.git', 'refs'),
+    path.join(normalizedPath, '.git', 'packed-refs'),
+    path.join(normalizedPath, '.git', 'logs', 'HEAD'),
+    path.join(normalizedPath, 'infra.config.json'),
+    path.join(normalizedPath, 'package.json'),
+    path.join(normalizedPath, '.rag-index', 'meta.json'),
+    path.join(normalizedPath, '.env-state', 'processes.json')
+  ];
+}
+
+/**
+ * Ключ кэша: mtime ключевых путей проекта (0 — путь отсутствует) плюс mtime каждого файла
+ * задачи. Правка статуса задачи меняет файл, но не mtime каталога `backlog/tasks`, поэтому
+ * одного каталога недостаточно. Только stat, без чтения и парсинга.
+ */
+export async function computeInspectCacheKey(folderPath: string): Promise<string> {
+  const normalizedPath = path.normalize(folderPath);
+  const statMtime = (p: string) => fs.stat(p).then((st) => st.mtimeMs, () => 0);
+
+  const tasksDir = path.join(normalizedPath, 'backlog', 'tasks');
+  const taskFiles = await fs.readdir(tasksDir).then(
+    (files) => files.filter((f) => f.endsWith('.md')).sort(),
+    () => [] as string[]
+  );
+
+  const [probeMtimes, taskMtimes] = await Promise.all([
+    Promise.all(inspectCacheProbePaths(normalizedPath).map(statMtime)),
+    Promise.all(taskFiles.map((f) => statMtime(path.join(tasksDir, f))))
+  ]);
+  return `${probeMtimes.join('|')}#${taskFiles.length}:${taskMtimes.join('|')}`;
+}
+
+/** Сбросить кэш осмотра: для одного проекта или целиком (без аргумента). */
+export function invalidateInspectCache(projectPath?: string): void {
+  if (projectPath === undefined) {
+    inspectCache.clear();
+    return;
+  }
+  inspectCache.delete(cacheKeyOf(path.normalize(projectPath)));
+}
+
+/** Размер кэша осмотра (для тестов). */
+export function getInspectCacheSize(): number {
+  return inspectCache.size;
+}
+
+/**
+ * Выполнить `fn` для каждого элемента с ограничением числа одновременных вызовов,
+ * сохраняя порядок результатов. Ошибка одного элемента не роняет остальные — в результат
+ * попадает `undefined`, а ошибка логируется.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<(R | undefined)[]> {
+  const results: (R | undefined)[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      try {
+        results[index] = await fn(items[index], index);
+      } catch (err) {
+        console.error('[Scanner] mapWithConcurrency item failed:', err);
+        results[index] = undefined;
+      }
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 export async function inspectProject(folderPath: string, options: InspectProjectOptions = {}): Promise<ProjectInfo | null> {
@@ -41,6 +151,22 @@ export async function inspectProject(folderPath: string, options: InspectProject
 
     const stat = await fs.stat(normalizedPath);
     if (!stat.isDirectory()) return null;
+
+    let cacheKey: string | null = null;
+    if (!options.skipGit) {
+      cacheKey = await computeInspectCacheKey(normalizedPath);
+      if (options.useCache) {
+        const cached = inspectCache.get(cacheKeyOf(normalizedPath));
+        if (cached && cached.key === cacheKey && Date.now() - cached.at < INSPECT_CACHE_TTL_MS) {
+          // Избранное и голосовой алиас живут в реестре, а не в файлах проекта — берём свежие.
+          const [favorite, voiceAlias] = await Promise.all([
+            projectRegistry.isFavorite(normalizedPath),
+            projectRegistry.getVoiceAlias(normalizedPath)
+          ]);
+          return { ...cached.info, favorite, voiceAlias };
+        }
+      }
+    }
 
     const hasBacklog = existsSync(path.join(normalizedPath, 'backlog'));
     const hasInfraConfig = existsSync(path.join(normalizedPath, 'infra.config.json'));
@@ -213,7 +339,7 @@ export async function inspectProject(folderPath: string, options: InspectProject
     const isFav = await projectRegistry.isFavorite(normalizedPath);
     const voiceAlias = await projectRegistry.getVoiceAlias(normalizedPath);
 
-    return {
+    const info: ProjectInfo = {
       name: projectName,
       path: normalizedPath,
       description: projectDescription,
@@ -235,6 +361,13 @@ export async function inspectProject(folderPath: string, options: InspectProject
       features,
       lastScannedAt: new Date().toISOString()
     };
+
+    // Кэшируем только полный осмотр (с git): результат скана с skipGit неполный.
+    if (cacheKey !== null) {
+      inspectCache.set(cacheKeyOf(normalizedPath), { key: cacheKey, info, at: Date.now() });
+    }
+
+    return info;
   } catch (err) {
     console.error(`Error inspecting project at ${folderPath}:`, err);
     return null;
@@ -295,12 +428,10 @@ export async function scanDirectories(
 
   // Register newly discovered projects into persistent store and compute git status
   // for them once (при добавлении в реестр, а не в каждой папке-кандидате при обходе)
-  const results: ProjectInfo[] = [];
-  for (const proj of discoveredMap.values()) {
+  const discovered = Array.from(discoveredMap.values());
+  for (const proj of discovered) {
     await projectRegistry.addProject(proj.path, Boolean(proj.favorite));
-    const full = await inspectProject(proj.path);
-    results.push(full ?? proj);
   }
-
-  return results;
+  const inspected = await mapWithConcurrency(discovered, INSPECT_CONCURRENCY, (proj) => inspectProject(proj.path));
+  return discovered.map((proj, i) => inspected[i] ?? proj);
 }

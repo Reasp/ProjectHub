@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -55,110 +54,139 @@ export interface ClaudeUsageData {
   isFallback?: boolean;
 }
 
+/**
+ * Сырое событие `rate_limit_event` из stream-json Claude CLI (поля по факту наблюдений,
+ * все опциональны). `utilization` — доля 0..1, `resetsAt` — unix-секунды или ISO-строка.
+ */
+export interface ClaudeRateLimitEventInfo {
+  status?: string;
+  rateLimitType?: string;
+  rate_limit_type?: string;
+  windowType?: string;
+  utilization?: number;
+  resetsAt?: number | string;
+  reset_at?: number | string;
+  unifiedWindows?: ClaudeRateLimitEventInfo[];
+}
+
+/** Окна лимитов, накопленные из rate-limit событий CLI (без запросов к API). */
+export interface ClaudeRateLimitSnapshot {
+  sessionLimit?: ClaudeUsageLimitWindow;
+  weeklyLimit?: ClaudeUsageLimitWindow;
+  fableLimit?: ClaudeUsageLimitWindow;
+  updatedAt: number;
+}
+
+function formatResetsAt(value: number | string | undefined): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const date = typeof value === 'number' ? new Date(value < 1e12 ? value * 1000 : value) : new Date(value);
+  if (Number.isNaN(date.getTime())) return typeof value === 'string' ? value : undefined;
+  return date.toISOString();
+}
+
 class ClaudeUsageService {
   private cachedUsage: ClaudeUsageData | null = null;
   private lastFetchTime = 0;
   private readonly CACHE_TTL_MS = 45 * 1000; // 45 seconds
+  private rateLimits: ClaudeRateLimitSnapshot | null = null;
 
+  /**
+   * Usage без обращения к модели (аудит 3.9, TASK-44). Проверено: `claude -p /usage` в
+   * print-режиме не выполняет встроенную команду, а отправляет строку «/usage» модели как
+   * промпт — каждый вызов тратил квоту. Теперь источники только локальные:
+   * `~/.claude/stats-cache.json` (сессии, сообщения, токены по моделям) и rate-limit события
+   * из stream-json уже идущих сессий Claude CLI (`noteRateLimitEvent`).
+   */
   public async getUsage(forceRefresh = false): Promise<ClaudeUsageData> {
     const now = Date.now();
     if (!forceRefresh && this.cachedUsage && now - this.lastFetchTime < this.CACHE_TTL_MS) {
       return this.cachedUsage;
     }
 
-    try {
-      const cliUsageText = await this.fetchUsageFromCli();
-      const statsCacheData = await this.readStatsCacheFile();
-
-      const parsed = this.parseUsageText(cliUsageText);
-
-      const combined: ClaudeUsageData = {
-        planType: parsed.planType || 'Claude Code Subscription',
-        sessionLimit: parsed.sessionLimit,
-        weeklyLimit: parsed.weeklyLimit,
-        fableLimit: parsed.fableLimit,
-        last24h: parsed.last24h,
-        last7d: parsed.last7d,
-        totalSessions: statsCacheData?.totalSessions,
-        totalMessages: statsCacheData?.totalMessages,
-        modelUsage: statsCacheData?.modelUsage,
-        dailyActivity: statsCacheData?.dailyActivity,
-        rawText: cliUsageText,
-        updatedAt: now,
-        isFallback: false
-      };
-
-      this.cachedUsage = combined;
-      this.lastFetchTime = now;
-      return combined;
-    } catch (err: any) {
-      console.warn('Failed to fetch usage from Claude CLI, falling back to stats-cache.json:', err.message);
-      const statsCacheData = await this.readStatsCacheFile();
-
-      if (statsCacheData) {
-        const fallback: ClaudeUsageData = {
-          planType: 'Claude Code Subscription',
-          totalSessions: statsCacheData.totalSessions,
-          totalMessages: statsCacheData.totalMessages,
-          modelUsage: statsCacheData.modelUsage,
-          dailyActivity: statsCacheData.dailyActivity,
-          rawText: 'Данные получены из локального кэша сессий Claude Code (~/.claude/stats-cache.json)',
-          updatedAt: now,
-          isFallback: true
-        };
-        this.cachedUsage = fallback;
-        this.lastFetchTime = now;
-        return fallback;
-      }
-
-      throw new Error(`Не удалось получить usage данные Claude Code: ${err.message}`);
+    const statsCacheData = await this.readStatsCacheFile();
+    if (!statsCacheData && !this.rateLimits) {
+      throw new Error(
+        'Не удалось получить usage данные Claude Code: нет ~/.claude/stats-cache.json и ещё не было rate-limit событий CLI'
+      );
     }
+
+    const usage: ClaudeUsageData = {
+      planType: 'Claude Code Subscription',
+      sessionLimit: this.rateLimits?.sessionLimit,
+      weeklyLimit: this.rateLimits?.weeklyLimit,
+      fableLimit: this.rateLimits?.fableLimit,
+      totalSessions: statsCacheData?.totalSessions,
+      totalMessages: statsCacheData?.totalMessages,
+      modelUsage: statsCacheData?.modelUsage,
+      dailyActivity: statsCacheData?.dailyActivity,
+      rawText: this.describeSources(statsCacheData !== null),
+      updatedAt: now,
+      isFallback: !this.rateLimits
+    };
+
+    this.cachedUsage = usage;
+    this.lastFetchTime = now;
+    return usage;
   }
 
-  private fetchUsageFromCli(): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const child = spawn('claude', ['-p', '/usage'], {
-        shell: true,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: {
-          ...process.env,
-          FORCE_COLOR: '0',
-          CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR
-        }
-      });
+  private describeSources(hasStatsCache: boolean): string {
+    const lines = [
+      hasStatsCache
+        ? 'Сессии, сообщения и токены: локальный кэш Claude Code (~/.claude/stats-cache.json).'
+        : 'Локальный кэш Claude Code (~/.claude/stats-cache.json) не найден.',
+      this.rateLimits
+        ? `Лимиты: rate-limit события Claude CLI, последнее ${new Date(this.rateLimits.updatedAt).toLocaleString()}.`
+        : 'Лимиты (сессия/неделя) появятся после первого rate-limit события в сессии Claude CLI из AI Studio.',
+      'Запрос `claude -p /usage` не используется: в print-режиме он отправляется модели как промпт и расходует квоту.'
+    ];
+    return lines.join('\n');
+  }
 
-      child.stdin.end();
+  /** Текущие окна лимитов, накопленные из событий CLI (для тестов и диагностики). */
+  public getRateLimitSnapshot(): ClaudeRateLimitSnapshot | null {
+    return this.rateLimits;
+  }
 
-      let stdout = '';
-      let stderr = '';
+  /**
+   * Учесть `rate_limit_event` из stream-json Claude CLI. Окно определяется по типу лимита:
+   * `five_hour` → сессия, `seven_day` → неделя, `seven_day_<model>` → отдельная модельная
+   * квота (в UI — «Fable»). Событие без числовой `utilization` игнорируется.
+   */
+  public noteRateLimitEvent(info: ClaudeRateLimitEventInfo | null | undefined): void {
+    if (!info || typeof info !== 'object') return;
+    const windows = Array.isArray(info.unifiedWindows) && info.unifiedWindows.length > 0 ? info.unifiedWindows : [info];
 
-      child.stdout.on('data', (d) => {
-        stdout += d.toString('utf-8');
-      });
+    let changed = false;
+    const next: ClaudeRateLimitSnapshot = { ...(this.rateLimits ?? { updatedAt: 0 }) };
 
-      child.stderr.on('data', (d) => {
-        stderr += d.toString('utf-8');
-      });
+    for (const win of windows) {
+      if (!win || typeof win.utilization !== 'number' || !Number.isFinite(win.utilization)) continue;
+      const type = String(win.rateLimitType ?? win.rate_limit_type ?? win.windowType ?? info.rateLimitType ?? '').toLowerCase();
+      const window: ClaudeUsageLimitWindow = {
+        percent: Math.max(0, Math.min(100, Math.round(win.utilization * 100))),
+        resetsAt: formatResetsAt(win.resetsAt ?? win.reset_at)
+      };
 
-      const timer = setTimeout(() => {
-        child.kill();
-        reject(new Error('Превышено время ожидания ответа от claude /usage'));
-      }, 12000);
+      if (type.includes('five_hour') || type.includes('session')) {
+        next.sessionLimit = window;
+      } else if (type.includes('seven_day') && /seven_day_[a-z]/.test(type)) {
+        next.fableLimit = window;
+      } else if (type.includes('seven_day') || type.includes('week')) {
+        next.weeklyLimit = window;
+      } else if (!next.sessionLimit) {
+        // Тип неизвестен: считаем окном сессии, но только если оно ещё не заполнено.
+        next.sessionLimit = window;
+      } else {
+        continue;
+      }
+      changed = true;
+    }
 
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        if (code === 0 || stdout.trim().length > 0) {
-          resolve(stdout.trim());
-        } else {
-          reject(new Error(stderr || `claude /usage завершился с кодом ${code}`));
-        }
-      });
-
-      child.on('error', (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-    });
+    if (!changed) return;
+    next.updatedAt = Date.now();
+    this.rateLimits = next;
+    // Сбросить кэш, чтобы следующий getUsage отдал свежие лимиты.
+    this.lastFetchTime = 0;
   }
 
   private async readStatsCacheFile(): Promise<any | null> {

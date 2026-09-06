@@ -15,6 +15,7 @@ import {
 } from './aiAgentService.js';
 import { isInsideProject } from './pathGuard.js';
 import { processManager } from './processManager.js';
+import { claudeUsageService } from './claudeUsageService.js';
 
 export type AgentStatusType = 'idle' | 'running' | 'waiting_approval' | 'done' | 'error';
 
@@ -1504,6 +1505,8 @@ class ClaudeBridgeService extends EventEmitter {
 
           if (event.type === 'rate_limit_event' || event.rate_limit_info) {
             const info = event.rate_limit_info || event;
+            // Единственный бесплатный источник окон лимитов для бейджа Usage (TASK-44).
+            claudeUsageService.noteRateLimitEvent(info);
             const utilization = info.utilization ?? info.unifiedWindows?.[0]?.utilization;
             const resetsAt = info.resetsAt || info.reset_at || info.unifiedWindows?.[0]?.resetsAt;
             const warning: RateLimitWarning = {

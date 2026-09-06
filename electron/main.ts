@@ -8,7 +8,13 @@ import matter from 'gray-matter';
 import { simpleGit } from 'simple-git';
 import type { ProjectInfo, BacklogTask, GitCommit, ScanOptions, AISession } from '../src/types/electron';
 import { projectRegistry } from './services/projectRegistry';
-import { inspectProject, scanDirectories } from './services/projectScanner';
+import {
+  INSPECT_CONCURRENCY,
+  inspectProject,
+  invalidateInspectCache,
+  mapWithConcurrency,
+  scanDirectories
+} from './services/projectScanner';
 import { claudeBridgeService } from './services/claudeBridgeService';
 import { localWhisperService } from './services/localWhisperService';
 import { secretStorageService } from './services/secretStorageService';
@@ -360,19 +366,24 @@ ipcMain.on('voice:overlay-action', (_event, action) => {
 // IPC HANDLERS: PROJECTS & REGISTRY
 // ----------------------------------------------------
 
-// 1. List registered projects with fresh metadata
+// 1. List registered projects with fresh metadata.
+// Осмотр идёт параллельно с лимитом и через кэш по mtime (аудит 3.4): повторный список
+// без изменений в проектах не гоняет git status/log и не перечитывает файлы задач.
 ipcMain.handle('projects:list', async () => {
   const registered = await projectRegistry.getProjects();
-  const results: ProjectInfo[] = [];
+  const inspected = await mapWithConcurrency(registered, INSPECT_CONCURRENCY, (entry) =>
+    inspectProject(entry.path, { useCache: true })
+  );
 
-  for (const entry of registered) {
-    const details = await inspectProject(entry.path);
+  const results: ProjectInfo[] = [];
+  registered.forEach((entry, i) => {
+    const details = inspected[i];
     if (details) {
       details.favorite = Boolean(entry.favorite);
       details.addedAt = entry.addedAt;
       results.push(details);
     }
-  }
+  });
 
   return results;
 });
@@ -402,6 +413,7 @@ ipcMain.handle('projects:add', async (_event, folderPath: string) => {
 ipcMain.handle('projects:remove', async (_event, projectPath: string) => {
   // Удалённый из реестра проект больше не должен держать FS-вотчеры (TASK-34).
   gitService.unwatchProjectGit(projectPath);
+  invalidateInspectCache(projectPath);
   return await projectRegistry.removeProject(projectPath);
 });
 
@@ -1330,6 +1342,10 @@ app.on('before-quit', (event) => {
     }, 1500).unref();
   }
 });
+
+// Изменения рабочего дерева git не видны по mtime служебных файлов — при git:changed сбрасываем
+// кэш осмотра проекта, чтобы projects:list пересчитал uncommittedCount/gitClean (TASK-44).
+gitService.onGitChanged((projectPath) => invalidateInspectCache(projectPath));
 
 app.whenReady().then(() => {
   // Разрешения только для собственных окон и только media/audioCapture (см. isPermissionAllowed)

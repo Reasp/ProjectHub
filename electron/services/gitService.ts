@@ -103,7 +103,28 @@ class GitService {
     return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
   }
 
+  private gitChangedListeners = new Set<(projectPath: string) => void>();
+
+  /**
+   * Подписка main-процесса на `git:changed` (тот же момент, когда уведомляется рендерер).
+   * Используется для сброса кэша осмотра проекта (TASK-44): изменения рабочего дерева не
+   * видны по mtime служебных файлов git. Возвращает функцию отписки.
+   */
+  onGitChanged(listener: (projectPath: string) => void): () => void {
+    this.gitChangedListeners.add(listener);
+    return () => {
+      this.gitChangedListeners.delete(listener);
+    };
+  }
+
   private emitGitChanged(projectPath: string) {
+    for (const listener of this.gitChangedListeners) {
+      try {
+        listener(projectPath);
+      } catch (err) {
+        console.error('[GitService] git:changed listener failed:', err);
+      }
+    }
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
         win.webContents.send('git:changed', { projectPath });

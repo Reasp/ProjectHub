@@ -13,17 +13,10 @@ import {
   X
 } from 'lucide-react';
 
-interface McpStatus {
-  isRunning: boolean;
-  port: number;
-  activeSessions: number;
-  token: string;
-  url: string;
-  lastError?: string | null;
-}
+import type { McpServerStatus } from '../../types/electron';
 
 export const McpServerStatusBadge: React.FC = () => {
-  const [status, setStatus] = useState<McpStatus | null>(null);
+  const [status, setStatus] = useState<McpServerStatus | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -38,10 +31,14 @@ export const McpServerStatusBadge: React.FC = () => {
     }
   };
 
+  // Начальный статус — один запрос; дальше main присылает mcp:statusChanged при старте/остановке
+  // сервера, смене токена и подключении/отключении сессий (аудит 3.9: без опроса каждые 5 с).
   useEffect(() => {
     fetchStatus();
-    const timer = setInterval(fetchStatus, 5000);
-    return () => clearInterval(timer);
+    const unsubscribe = window.api?.onMcpStatusChanged?.((next) => setStatus(next));
+    return () => {
+      unsubscribe?.();
+    };
   }, []);
 
   const handleToggle = async () => {

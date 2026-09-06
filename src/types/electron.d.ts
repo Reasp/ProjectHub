@@ -170,6 +170,16 @@ export interface CreateProjectOptions {
   initGit?: boolean;
 }
 
+/** Статус встроенного MCP HTTP/SSE-сервера (main → renderer через getMcpStatus/onMcpStatusChanged). */
+export interface McpServerStatus {
+  isRunning: boolean;
+  port: number;
+  activeSessions: number;
+  token: string;
+  url: string;
+  lastError: string | null;
+}
+
 export interface ManagedProcess {
   id: string;
   name: string;
@@ -485,10 +495,12 @@ export interface IElectronAPI {
   deleteEncryptedSecret: (key: string) => Promise<boolean>;
 
   // Remote MCP Server
-  getMcpStatus: () => Promise<{ isRunning: boolean; port: number; activeSessions: number; token: string; url: string; lastError: string | null }>;
-  toggleMcpServer: (enable: boolean) => Promise<{ isRunning: boolean; port: number; activeSessions: number; token: string; url: string; lastError: string | null }>;
+  getMcpStatus: () => Promise<McpServerStatus>;
+  toggleMcpServer: (enable: boolean) => Promise<McpServerStatus>;
   regenerateMcpToken: () => Promise<string>;
   setMcpAppState: (state: { activeProject?: any; activeTab?: string }) => Promise<boolean>;
+  /** Push-статус MCP-сервера из main (старт/стоп, токен, SSE-сессии) — вместо опроса по таймеру. */
+  onMcpStatusChanged: (callback: (status: McpServerStatus) => void) => () => void;
   onRemoteAction: (callback: (action: { type: string; payload: any }) => void) => () => void;
 
   // System Voice Overlay
