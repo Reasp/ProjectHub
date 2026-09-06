@@ -3,10 +3,10 @@ id: TASK-35
 title: >-
   Персистентность AI Studio: убрать запись localStorage на каждый чанк, хранить
   историю сессий в файлах через main
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:07'
-updated_date: '2026-09-05 21:50'
+updated_date: '2026-09-05 21:53'
 labels:
   - audit
   - performance
@@ -64,3 +64,9 @@ type: enhancement
 
 **AC #5 (профилирование)** не отмечен: запись localStorage на каждый чанк убрана полностью (сессии не сериализуются в рендерере вообще, настройки — не чаще раза в секунду и только при изменении), но живое измерение пауз ввода в PromptInputArea при стриминге 2000 токенов нужно подтвердить вручную на собранном `release/win-unpacked/ProjectHub.exe`.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Персистентность AI Studio переведена с zustand persist в localStorage на файлы `~/.projecthub/sessions/<hash(projectPath)>/<sessionId>.json` через IPC `aiSessions:*`. Запись сессий дебаунсится (1.5 с) и сбрасывается сразу по завершении ответа; тяжёлые поля усекаются при сохранении; старый блоб localStorage мигрируется при первом запуске. Настройки в localStorage пишутся через дебаунс-обёртку. 22 новых unit-теста. Коммит d28f846. AC #5 (ручное профилирование ввода при стриминге) закрыто по решению пользователя без отдельного замера.
+<!-- SECTION:FINAL_SUMMARY:END -->
