@@ -547,7 +547,8 @@ ipcMain.handle('backlog:getTasks', async (_event, projectPath: string) => {
           milestone: fmString(data.milestone) || fmString(data.milestone_id) || undefined,
           created: fmString(data.created_date) || fmString(data.created) || undefined,
           filePath: fullPath,
-          content,
+          // Сырой текст файла в список не кладём (TASK-38): description уже содержит тело,
+          // а полный markdown TaskDetailModal запрашивает через backlog:getTaskContent.
           description,
           acceptanceCriteria: criteria
         });
@@ -642,6 +643,16 @@ ipcMain.handle('backlog:deleteTask', async (_event, rawFilePath: string) => {
   }
 });
 
+ipcMain.handle('backlog:getTaskContent', async (_event, rawFilePath: string) => {
+  const filePath = await assertInsideRegisteredProject(rawFilePath);
+  try {
+    return await fs.readFile(filePath, 'utf-8');
+  } catch (err) {
+    console.error(`Failed to read task ${filePath}:`, err);
+    return null;
+  }
+});
+
 ipcMain.handle('backlog:saveTask', async (_event, rawFilePath: string, content: string) => {
   const filePath = await assertInsideRegisteredProject(rawFilePath);
   try {
@@ -715,7 +726,6 @@ ipcMain.handle('backlog:createTask', async (_event, projectPath: string, task: {
       milestone: task.milestone,
       created: createdDate,
       filePath: fullPath,
-      content: body,
       description,
       acceptanceCriteria: criteria
     };

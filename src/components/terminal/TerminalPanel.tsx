@@ -46,9 +46,13 @@ export const TerminalPanel: React.FC = () => {
     closePtySessionAction
   } = useProjectStore();
 
+  const panelRef = useRef<HTMLDivElement>(null);
   const processLogContainerRef = useRef<HTMLDivElement>(null);
   const processXtermRef = useRef<XTerm | null>(null);
   const processFitAddonRef = useRef<FitAddon | null>(null);
+  // Сколько строк terminalLogs уже записано в xterm в режиме системного лога (TASK-38):
+  // при новых записях дописываем только хвост, а не перерисовываем всё с нуля.
+  const writtenLogCountRef = useRef(0);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -124,16 +128,19 @@ export const TerminalPanel: React.FC = () => {
     };
   }, [activeProcessId]);
 
-  // When active process tab changes or terminal mode changes, reload logs
+  // Полная перерисовка — только при смене активного процесса / режима / открытии панели.
   useEffect(() => {
     if (!processXtermRef.current || terminalMode !== 'process_logs') return;
 
     if (activeProcessId === null) {
-      processXtermRef.current.clear();
-      processXtermRef.current.writeln('\x1b[38;2;99;102;241m[ProjectHub System Logs]\x1b[0m');
-      for (const line of terminalLogs) {
-        processXtermRef.current.writeln(`\x1b[90m>\x1b[0m ${line}`);
+      const term = processXtermRef.current;
+      term.clear();
+      term.writeln('\x1b[38;2;99;102;241m[ProjectHub System Logs]\x1b[0m');
+      const logs = useProjectStore.getState().terminalLogs;
+      for (const line of logs) {
+        term.writeln(`\x1b[90m>\x1b[0m ${line}`);
       }
+      writtenLogCountRef.current = logs.length;
     } else {
       const proc = processes.find((p) => p.id === activeProcessId);
       if (proc && selectedProject && window.api) {
@@ -155,28 +162,72 @@ export const TerminalPanel: React.FC = () => {
     try {
       processFitAddonRef.current?.fit();
     } catch (e) {}
-  }, [activeProcessId, terminalLogs, terminalMode, isTerminalOpen]);
+    // terminalLogs намеренно не в зависимостях: новые строки дописывает эффект ниже.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProcessId, terminalMode, isTerminalOpen]);
 
-  // Handle panel resize drag
+  // Инкрементальная запись системного лога: дописываем только строки, появившиеся после
+  // последней записи. Если лог стал короче (очистка) — перерисовываем с заголовком.
+  useEffect(() => {
+    const term = processXtermRef.current;
+    if (!term || terminalMode !== 'process_logs' || activeProcessId !== null) return;
+
+    if (terminalLogs.length < writtenLogCountRef.current) {
+      term.clear();
+      term.writeln('\x1b[38;2;99;102;241m[ProjectHub System Logs]\x1b[0m');
+      writtenLogCountRef.current = 0;
+    }
+    for (let i = writtenLogCountRef.current; i < terminalLogs.length; i++) {
+      term.writeln(`\x1b[90m>\x1b[0m ${terminalLogs[i]}`);
+    }
+    writtenLogCountRef.current = terminalLogs.length;
+  }, [terminalLogs, activeProcessId, terminalMode]);
+
+  // Handle panel resize drag. Во время перетаскивания высота меняется напрямую в DOM (без
+  // записи в глобальный стор и перерисовки всех вкладок), в стор пишем один раз на mouseup (TASK-38).
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
+    // В развёрнутом режиме высота задаётся как 65vh — перетаскивание бессмысленно.
+    if (isMaximized) return;
     setIsDragging(true);
 
     const startY = e.clientY;
     const startHeight = terminalHeight;
+    let currentHeight = startHeight;
+    let rafId: number | null = null;
+
+    const applyHeight = () => {
+      rafId = null;
+      if (panelRef.current) {
+        panelRef.current.style.height = `${currentHeight}px`;
+      }
+      try {
+        processFitAddonRef.current?.fit();
+      } catch (err) {}
+    };
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       const delta = startY - moveEvent.clientY;
-      const newHeight = Math.min(Math.max(startHeight + delta, 140), window.innerHeight * 0.75);
-      setTerminalHeight(newHeight);
-      processFitAddonRef.current?.fit();
+      currentHeight = Math.min(Math.max(startHeight + delta, 140), window.innerHeight * 0.75);
+      if (rafId === null) {
+        rafId = requestAnimationFrame(applyHeight);
+      }
     };
 
     const onMouseUp = () => {
-      setIsDragging(false);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
-      setTimeout(() => processFitAddonRef.current?.fit(), 50);
+      setIsDragging(false);
+      setTerminalHeight(Math.round(currentHeight));
+      setTimeout(() => {
+        try {
+          processFitAddonRef.current?.fit();
+        } catch (err) {}
+      }, 50);
     };
 
     window.addEventListener('mousemove', onMouseMove);
@@ -199,8 +250,11 @@ export const TerminalPanel: React.FC = () => {
 
   return (
     <div
+      ref={panelRef}
       style={{ height: heightStyle }}
-      className="w-full bg-[#0a0d14] border-t border-slate-800 flex flex-col shrink-0 z-30 transition-all duration-75 relative select-none shadow-2xl"
+      className={`w-full bg-[#0a0d14] border-t border-slate-800 flex flex-col shrink-0 z-30 relative select-none shadow-2xl ${
+        isDragging ? '' : 'transition-all duration-75'
+      }`}
     >
       {/* Resize Handle Bar */}
       <div

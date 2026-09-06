@@ -57,7 +57,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [newLabelInput, setNewLabelInput] = useState('');
   const [criteria, setCriteria] = useState<TaskCriterion[]>(task?.acceptanceCriteria || []);
   const [newCriterionInput, setNewCriterionInput] = useState('');
-  const [rawContent, setRawContent] = useState(task?.content || '');
+  // Сырой markdown грузится по требованию при открытии вкладки Raw (TASK-38): в списке задач его нет.
+  const [rawContent, setRawContent] = useState<string | null>(null);
+  const [isRawLoading, setIsRawLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
 
@@ -81,11 +83,32 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     setDescription(task.description || '');
     setLabels(task.labels || []);
     setCriteria(task.acceptanceCriteria || []);
-    setRawContent(task.content || '');
+    setRawContent(task.content ?? null);
+    setActiveTab('editor');
     setWarningMessage(null);
     setPreviewMode(true);
     setIsDescriptionExpanded(false);
   }, [task]);
+
+  useEffect(() => {
+    if (activeTab !== 'raw' || rawContent !== null || !task?.filePath || !window.api?.getTaskContent) return;
+    let cancelled = false;
+    setIsRawLoading(true);
+    window.api
+      .getTaskContent(task.filePath)
+      .then((text) => {
+        if (!cancelled) setRawContent(text ?? '');
+      })
+      .catch(() => {
+        if (!cancelled) setRawContent('');
+      })
+      .finally(() => {
+        if (!cancelled) setIsRawLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, rawContent, task?.filePath]);
 
   if (!task) return null;
 
@@ -475,7 +498,11 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             {t.docs.markdownEditor}
           </label>
           <pre className="bg-[#0e111a] p-4 rounded-xl text-xs text-slate-300 font-mono border border-slate-800 leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-[50vh]">
-            {rawContent}
+            {isRawLoading || rawContent === null ? (
+              <span className="text-slate-500 italic">{t.common.loading}</span>
+            ) : (
+              rawContent
+            )}
           </pre>
         </div>
       )}

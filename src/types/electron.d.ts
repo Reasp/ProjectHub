@@ -113,7 +113,8 @@ export interface BacklogTask {
   milestone?: string;
   created?: string;
   filePath: string;
-  content: string;
+  /** Сырой markdown-текст файла. В списке задач НЕ заполняется (TASK-38) — грузится по требованию через getTaskContent. */
+  content?: string;
   description?: string;
   acceptanceCriteria?: TaskCriterion[];
 }
@@ -313,6 +314,8 @@ export interface IElectronAPI {
 
   // Backlog Tasks & Real-time Watcher
   getTasks: (projectPath: string) => Promise<BacklogTask[]>;
+  /** Сырой markdown задачи (frontmatter + тело) по абсолютному пути файла; null, если файл не прочитан. */
+  getTaskContent: (filePath: string) => Promise<string | null>;
   updateTaskStatus: (filePath: string, newStatus: string) => Promise<boolean>;
   saveTask: (filePath: string, content: string) => Promise<boolean>;
   saveFullTask: (

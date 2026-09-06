@@ -29,6 +29,50 @@ export interface ProjectCachedData {
   lastLoadedAt: number;
 }
 
+/** Максимум строк системного лога в сторе (TASK-38): старые записи отбрасываются. */
+export const MAX_TERMINAL_LOGS = 500;
+/** Максимум проектов в in-memory кэше (TASK-38): при превышении вытесняется самый давно использованный. */
+export const MAX_CACHED_PROJECTS = 10;
+
+/**
+ * Возвращает новый projectDataCache с записанным entry для projectPath и LRU-вытеснением
+ * лишних проектов. В первую очередь вытесняются проекты, не открытые во вкладках; текущий
+ * выбранный проект и только что записанный не вытесняются никогда.
+ */
+function putProjectCache(
+  state: Pick<ProjectState, 'projectDataCache' | 'activeProjectPaths' | 'selectedProject'>,
+  projectPath: string,
+  entry: ProjectCachedData
+): Record<string, ProjectCachedData> {
+  const next: Record<string, ProjectCachedData> = { ...state.projectDataCache, [projectPath]: entry };
+  const keys = Object.keys(next);
+  if (keys.length <= MAX_CACHED_PROJECTS) return next;
+
+  const active = new Set(state.activeProjectPaths);
+  const protectedPaths = new Set([projectPath, state.selectedProject?.path].filter(Boolean) as string[]);
+  const candidates = keys
+    .filter((k) => !protectedPaths.has(k))
+    .sort((a, b) => {
+      const aActive = active.has(a) ? 1 : 0;
+      const bActive = active.has(b) ? 1 : 0;
+      if (aActive !== bActive) return aActive - bActive;
+      return next[a].lastLoadedAt - next[b].lastLoadedAt;
+    });
+  let excess = keys.length - MAX_CACHED_PROJECTS;
+  for (const k of candidates) {
+    if (excess <= 0) break;
+    delete next[k];
+    excess--;
+  }
+  return next;
+}
+
+function dropProjectCache(cache: Record<string, ProjectCachedData>, projectPath: string): Record<string, ProjectCachedData> {
+  if (!(projectPath in cache)) return cache;
+  const { [projectPath]: _dropped, ...rest } = cache;
+  return rest;
+}
+
 interface ProjectState {
   projects: ProjectInfo[];
   selectedProject: ProjectInfo | null;
@@ -433,7 +477,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const activePaths = get().activeProjectPaths;
     const next = activePaths.filter((p) => p !== projectPath);
     saveActiveProjects(next);
-    set({ activeProjectPaths: next });
+    // Закрытая вкладка не держит данные в памяти (TASK-38): при повторном открытии они загрузятся заново.
+    set((state) => ({ activeProjectPaths: next, projectDataCache: dropProjectCache(state.projectDataCache, projectPath) }));
 
     // Закрытая вкладка больше не нуждается в git-вотчере в main (TASK-34).
     // При повторном выборе проекта getRepoDetails снова поднимет вотчер.
@@ -587,15 +632,17 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     if (cached) {
       // Instant synchronous UI update without any lag or spinner!
-      set({
+      set((state) => ({
         selectedProject,
         tasks: cached.tasks,
         gitLogs: cached.gitLogs,
         gitRepoDetails: cached.gitRepoDetails,
         docsList: cached.docsList,
         milestones: cached.milestones,
-        processes: cached.processes
-      });
+        processes: cached.processes,
+        // Отмечаем запись как недавно использованную для LRU-вытеснения (TASK-38).
+        projectDataCache: { ...state.projectDataCache, [selectedProject.path]: { ...cached, lastLoadedAt: Date.now() } }
+      }));
 
       // Background silent revalidation to keep data fresh without resetting UI
       get().loadProjectData(selectedProject, { silent: true });
@@ -681,7 +728,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setHotkeysHelpOpen: (isHotkeysHelpOpen) => set({ isHotkeysHelpOpen }),
   setActiveProcessId: (activeProcessId) => set({ activeProcessId }),
   setTerminalHeight: (terminalHeight) => set({ terminalHeight }),
-  addTerminalLog: (log) => set((s) => ({ terminalLogs: [...s.terminalLogs, log] })),
+  addTerminalLog: (log) =>
+    set((s) => {
+      const logs = s.terminalLogs.length >= MAX_TERMINAL_LOGS
+        ? s.terminalLogs.slice(s.terminalLogs.length - MAX_TERMINAL_LOGS + 1)
+        : s.terminalLogs;
+      return { terminalLogs: [...logs, log] };
+    }),
   clearTerminalLogs: () => set({ terminalLogs: [] }),
 
   ptySessions: [],
@@ -946,7 +999,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const ok = await window.api.removeProject(projectPath);
       if (ok) {
         const updated = get().projects.filter((p) => p.path !== projectPath);
-        set({ projects: updated });
+        set((state) => ({ projects: updated, projectDataCache: dropProjectCache(state.projectDataCache, projectPath) }));
         if (get().selectedProject?.path === projectPath) {
           get().selectProject(null);
           set({ removedProjectNotice: projectPath });
@@ -1006,20 +1059,17 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
               const freshTasks = await window.api.getTasks(curProject.path);
               set((state) => ({
                 tasks: freshTasks,
-                projectDataCache: {
-                  ...state.projectDataCache,
-                  [curProject.path]: {
-                    ...(state.projectDataCache[curProject.path] || {
-                      gitLogs: state.gitLogs,
-                      gitRepoDetails: state.gitRepoDetails,
-                      docsList: state.docsList,
-                      milestones: state.milestones,
-                      processes: state.processes
-                    }),
-                    tasks: freshTasks,
-                    lastLoadedAt: Date.now()
-                  }
-                }
+                projectDataCache: putProjectCache(state, curProject.path, {
+                  ...(state.projectDataCache[curProject.path] || {
+                    gitLogs: state.gitLogs,
+                    gitRepoDetails: state.gitRepoDetails,
+                    docsList: state.docsList,
+                    milestones: state.milestones,
+                    processes: state.processes
+                  }),
+                  tasks: freshTasks,
+                  lastLoadedAt: Date.now()
+                })
               }));
               get().addTerminalLog(`[Backlog] Автосинхронизация задач: событие ${data.event} (${data.filePath})`);
             }
@@ -1060,20 +1110,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
         // Update in-memory cache for instant switching
         set((state) => {
+          // Проект успели закрыть, пока шла загрузка — не воскрешаем его запись в кэше (TASK-38).
+          const stillOpen = state.selectedProject?.path === project.path || state.activeProjectPaths.includes(project.path);
+          if (!stillOpen) return state;
           const prevCached = state.projectDataCache[project.path];
           return {
-            projectDataCache: {
-              ...state.projectDataCache,
-              [project.path]: {
-                tasks,
-                gitLogs: logs,
-                gitRepoDetails: isCurrent ? state.gitRepoDetails : (prevCached?.gitRepoDetails || null),
-                docsList: isCurrent ? state.docsList : (prevCached?.docsList || []),
-                milestones: isCurrent ? state.milestones : (prevCached?.milestones || []),
-                processes: isCurrent ? state.processes : (prevCached?.processes || []),
-                lastLoadedAt: Date.now()
-              }
-            }
+            projectDataCache: putProjectCache(state, project.path, {
+              tasks,
+              gitLogs: logs,
+              gitRepoDetails: isCurrent ? state.gitRepoDetails : (prevCached?.gitRepoDetails || null),
+              docsList: isCurrent ? state.docsList : (prevCached?.docsList || []),
+              milestones: isCurrent ? state.milestones : (prevCached?.milestones || []),
+              processes: isCurrent ? state.processes : (prevCached?.processes || []),
+              lastLoadedAt: Date.now()
+            })
           };
         });
 
