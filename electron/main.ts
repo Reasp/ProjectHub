@@ -1333,6 +1333,10 @@ app.whenReady().then(() => {
   createWindow();
   // Initialize Local Whisper in non-blocking background task
   localWhisperService.initBackground();
+  // Human-in-the-loop для Claude CLI: разрешения запрашиваются через встроенный MCP-сервер (TASK-42)
+  claudeBridgeService.setCliPermissionBroker({
+    ensureEndpoint: () => mcpServerService.ensurePermissionEndpoint()
+  });
   // Start Built-in Remote Control MCP Server on 127.0.0.1:42042
   mcpServerService.start().catch((err) => {
     console.error('[Main] Failed to auto-start Remote MCP server:', err);

@@ -212,6 +212,108 @@ export interface SubprocessResult {
   truncated: boolean;
 }
 
+// ─────────────────────────────────────────────────────────────
+// Human-in-the-loop для режима Claude CLI (TASK-42, аудит 5.3)
+//
+// CLI запускается без --dangerously-skip-permissions; всё, что потребовало бы
+// подтверждения, Claude Code отправляет во встроенный MCP-сервер ProjectHub
+// (--permission-prompt-tool), а тот — в handleCliPermissionRequest. Решение
+// принимается ДО выполнения инструмента: карточка одобрения в AI Studio или
+// авто-ответ по правилам autoApproveRules.
+// ─────────────────────────────────────────────────────────────
+
+/** Запрос разрешения от Claude CLI: имя встроенного инструмента и его вход. */
+export interface CliPermissionRequest {
+  tool_name: string;
+  input: Record<string, any>;
+  tool_use_id?: string;
+}
+
+/** Ответ инструмента разрешений в формате, который ожидает Claude Code. */
+export type CliPermissionDecision =
+  | { behavior: 'allow'; updatedInput: Record<string, any> }
+  | { behavior: 'deny'; message: string };
+
+/** Адрес встроенного MCP-сервера ProjectHub, через который CLI запрашивает разрешения. */
+export interface CliPermissionEndpoint {
+  url: string;
+  token: string;
+}
+
+export interface CliPermissionBroker {
+  /** Гарантирует, что MCP-сервер запущен, и возвращает его адрес; null — сервер поднять не удалось. */
+  ensureEndpoint(): Promise<CliPermissionEndpoint | null>;
+}
+
+/** Имя MCP-сервера в конфиге CLI; флаг --permission-prompt-tool = mcp__<server>__<tool>. */
+export const CLI_HITL_MCP_SERVER_NAME = 'projecthub-hitl';
+export const CLI_HITL_PERMISSION_TOOL = 'permission_prompt';
+/** Query-параметр SSE-URL, по которому MCP-сервер привязывает подключение CLI к сессии AI Studio. */
+export const CLI_HITL_QUERY_PARAM = 'phSession';
+/** Таймаут MCP-инструмента для CLI: одобрение может ждать человека часами. */
+const CLI_MCP_TOOL_TIMEOUT_MS = 24 * 60 * 60_000;
+/** Инструменты Claude Code, изменяющие файлы. */
+const CLI_WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
+
+interface CliPermissionContext {
+  projectPath: string;
+  config: AIProviderConfig;
+  onChunk: (chunk: ClaudeBridgeMessageChunk) => void;
+}
+
+/**
+ * Шаблон исключений ProjectHub → правила путей Claude Code (gitignore-подобный синтаксис).
+ * Шаблон без префикса (`.env*`, `*.key`) Claude Code трактует относительно cwd, поэтому
+ * дублируем его формой `**\/<pattern>`, чтобы правило срабатывало на любой глубине.
+ */
+function toCliPathRulePatterns(pattern: string): string[] {
+  const p = pattern.trim().replace(/\\/g, '/');
+  if (!p) return [];
+  if (/^(\/\/|~\/|\/|\.\/|\*\*\/)/.test(p)) return [p];
+  return [`./${p}`, `**/${p}`];
+}
+
+/**
+ * Настройки `--settings` для Claude CLI: правила `permissions.ask`, которые заставляют CLI
+ * спросить ProjectHub даже там, где allow-правила из `.claude/settings*.json` проекта
+ * разрешили бы инструмент молча (ask имеет приоритет над allow). Решение по каждому
+ * запросу всё равно принимает handleCliPermissionRequest; правила лишь гарантируют, что
+ * запрос до него дойдёт. Возвращает null, если ни одного правила не требуется.
+ */
+export function buildCliPermissionSettings(config: AIProviderConfig): { permissions: { ask: string[] } } | null {
+  const rules = config.autoApproveRules;
+  const manual = !config.autoApprove;
+  const ask = new Set<string>();
+
+  if (manual || rules?.allowCommands === false) ask.add('Bash');
+  if (manual || rules?.allowFileWrite === false) CLI_WRITE_TOOLS.forEach((t) => ask.add(t));
+  if (rules?.allowFileRead === false) ask.add('Read');
+  if (rules?.allowSubagents === false) {
+    ask.add('Agent');
+    ask.add('Task');
+  }
+  for (const denied of rules?.commandDenyList ?? []) {
+    const d = denied.trim();
+    if (d) ask.add(`Bash(${d}*)`);
+  }
+  for (const pattern of rules?.writeExcludePatterns ?? []) {
+    for (const r of toCliPathRulePatterns(pattern)) {
+      ask.add(`Edit(${r})`);
+      ask.add(`Write(${r})`);
+    }
+  }
+  for (const pattern of rules?.readExcludePatterns ?? []) {
+    for (const r of toCliPathRulePatterns(pattern)) ask.add(`Read(${r})`);
+  }
+
+  return ask.size > 0 ? { permissions: { ask: Array.from(ask) } } : null;
+}
+
+/** Аргумент командной строки для spawn с `shell: true` (пути с пробелами). */
+function quoteShellArg(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
 /** Убивает дерево процессов: при `shell: true` `child.kill()` убил бы только оболочку, а не сам claude/npm. */
 function killProcessTree(child: ChildProcess): void {
   if (child.exitCode !== null || child.signalCode !== null) return;
@@ -241,9 +343,235 @@ class ClaudeBridgeService extends EventEmitter {
   private sessionClaudeCliIds = new Map<string, string>();
   private claudeCliCheck: (ClaudeCliAvailability & { checkedAt: number }) | null = null;
   private claudeCliCheckPromise: Promise<ClaudeCliAvailability> | null = null;
+  /** Поставщик адреса встроенного MCP-сервера для --permission-prompt-tool (внедряется из main.ts). */
+  private cliPermissionBroker: CliPermissionBroker | null = null;
+  /** Контексты сессий Claude CLI, ожидающих запросов разрешений: sessionId → правила и канал чанков. */
+  private cliPermissionContexts = new Map<string, CliPermissionContext>();
 
   constructor() {
     super();
+  }
+
+  public setCliPermissionBroker(broker: CliPermissionBroker | null): void {
+    this.cliPermissionBroker = broker;
+  }
+
+  /** Регистрирует сессию CLI как получателя запросов разрешений (публично ради unit-тестов). */
+  public registerCliPermissionContext(
+    sessionId: string,
+    projectPath: string,
+    config: AIProviderConfig,
+    onChunk: (chunk: ClaudeBridgeMessageChunk) => void
+  ): void {
+    this.cliPermissionContexts.set(sessionId, { projectPath, config, onChunk });
+  }
+
+  public unregisterCliPermissionContext(sessionId: string): void {
+    this.cliPermissionContexts.delete(sessionId);
+  }
+
+  public hasCliPermissionContext(sessionId: string): boolean {
+    return this.cliPermissionContexts.has(sessionId);
+  }
+
+  /**
+   * Обработчик --permission-prompt-tool: вызывается MCP-сервером ProjectHub до выполнения
+   * инструмента Claude Code. Применяет autoApproveRules и при необходимости показывает
+   * карточку одобрения (requestApproval), возвращая CLI решение пользователя.
+   */
+  public async handleCliPermissionRequest(sessionId: string, request: CliPermissionRequest): Promise<CliPermissionDecision> {
+    const ctx = this.cliPermissionContexts.get(sessionId);
+    if (!ctx) {
+      return { behavior: 'deny', message: 'ProjectHub: сессия AI Studio не найдена или уже завершена — запрос разрешения отклонён.' };
+    }
+    const { projectPath, config, onChunk } = ctx;
+    const rules = config.autoApproveRules;
+    const auto = Boolean(config.autoApprove);
+    const toolName = String(request.tool_name || '');
+    const input: Record<string, any> = request.input && typeof request.input === 'object' ? request.input : {};
+
+    const allow = (updatedInput: Record<string, any> = input): CliPermissionDecision => ({ behavior: 'allow', updatedInput });
+    const deny = (message: string): CliPermissionDecision => ({ behavior: 'deny', message });
+    const newId = () => `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    /** Показывает карточку и ждёт ответа; null — ожидание отменено (abortSession/killAll). */
+    const ask = async (approvalReq: ApprovalRequest): Promise<ApprovalResponse | null> => {
+      onChunk({ approvalRequest: approvalReq });
+      try {
+        return await this.requestApproval(approvalReq);
+      } catch (err) {
+        if (err instanceof ApprovalCancelledError) return null;
+        throw err;
+      } finally {
+        if (this.activeSessions.has(sessionId) && this.getPendingApprovalIds(sessionId).length === 0) {
+          this.setProjectStatus(projectPath, 'running', 'Claude Code продолжает работу...');
+        }
+      }
+    };
+    const decide = (res: ApprovalResponse | null, what: string): CliPermissionDecision => {
+      if (res === null) return deny('Сессия прервана пользователем');
+      if (res.approved) return allow();
+      return deny(`Пользователь отклонил ${what}${res.text ? `: ${res.text}` : ''}`);
+    };
+    const filePathOf = () => String(input.file_path || input.notebook_path || input.path || '');
+
+    if (toolName === 'AskUserQuestion') {
+      const questions: any[] = Array.isArray(input.questions) ? input.questions : [];
+      const answers: Record<string, string> = {};
+      if (questions.length === 0) {
+        const qData = this.parseQuestionData(input);
+        const res = await ask({
+          id: newId(), sessionId, projectPath, type: 'question',
+          title: qData.title || 'Вопрос от Claude Code', details: qData.subtitle, questionData: qData, createdAt: Date.now()
+        });
+        if (!res || !res.approved) return deny(res ? 'Пользователь закрыл вопрос без ответа' : 'Сессия прервана пользователем');
+        answers[qData.subtitle || qData.title] = this.normalizeQuestionAnswer(res.text);
+        return allow({ ...input, answers });
+      }
+      for (const q of questions) {
+        const questionText = String(q?.question || q?.header || 'Вопрос');
+        const options: QuestionOption[] = (Array.isArray(q?.options) ? q.options : []).map((opt: any, idx: number) => ({
+          id: `opt-${idx}`,
+          label: String(opt?.label ?? opt),
+          description: opt?.description ? String(opt.description) : undefined
+        }));
+        const res = await ask({
+          id: newId(), sessionId, projectPath, type: 'question',
+          title: String(q?.header || 'Вопрос от Claude Code'),
+          details: questionText,
+          questionData: { title: String(q?.header || 'Вопрос от Claude Code'), subtitle: questionText, options, isMultiSelect: Boolean(q?.multiSelect), allowOther: true },
+          createdAt: Date.now()
+        });
+        if (!res || !res.approved) return deny(res ? 'Пользователь закрыл вопрос без ответа' : 'Сессия прервана пользователем');
+        answers[questionText] = this.normalizeQuestionAnswer(res.text);
+      }
+      return allow({ ...input, questions, answers });
+    }
+
+    if (toolName === 'Read' || toolName === 'NotebookRead') {
+      const filePath = filePathOf();
+      const isExcluded = Boolean(rules?.readExcludePatterns && this.isPathExcluded(filePath, rules.readExcludePatterns));
+      const outside = Boolean(filePath) && !isInsideProject(projectPath, filePath);
+      if (!isExcluded && !outside && rules?.allowFileRead !== false) return allow();
+      const reason = isExcluded
+        ? `Файл ${filePath} находится в списке исключений для чтения.`
+        : outside ? `Файл ${filePath} находится вне корня проекта.` : 'Чтение файлов требует подтверждения по настройкам.';
+      const res = await ask({
+        id: newId(), sessionId, projectPath, type: 'question',
+        title: 'Чтение защищенного файла',
+        details: `${reason} Разрешить Claude Code доступ?`,
+        questionData: {
+          title: 'Чтение защищенного файла',
+          subtitle: `Разрешить Claude Code прочитать ${filePath}?`,
+          options: [
+            { id: 'allow', label: 'Разрешить чтение', description: 'Предоставить доступ к файлу' },
+            { id: 'deny', label: 'Запретить чтение', description: 'Заблокировать чтение' }
+          ],
+          isMultiSelect: false,
+          allowOther: false
+        },
+        createdAt: Date.now()
+      });
+      if (res === null) return deny('Сессия прервана пользователем');
+      if (!res.approved || res.text?.includes('deny') || res.text?.includes('Запретить')) {
+        return deny(`Пользователь запретил чтение файла ${filePath}`);
+      }
+      return allow();
+    }
+
+    if (CLI_WRITE_TOOLS.includes(toolName)) {
+      const filePath = filePathOf();
+      if (filePath && !isInsideProject(projectPath, filePath)) {
+        // Как в API-режиме (TASK-32): пути вне корня проекта отклоняются без карточки даже при auto-approve.
+        return deny(`Запись отклонена: путь "${filePath}" находится вне корня проекта "${projectPath}". `
+          + 'Разрешены только пути внутри проекта — укажи путь относительно его корня без выхода через "..".');
+      }
+      const isExcluded = Boolean(rules?.writeExcludePatterns && this.isPathExcluded(filePath, rules.writeExcludePatterns));
+      if (auto && !isExcluded && rules?.allowFileWrite !== false) return allow();
+
+      const diff = await this.buildCliWriteDiff(projectPath, toolName, filePath, input);
+      const res = await ask({
+        id: newId(), sessionId, projectPath, type: 'file_write',
+        title: isExcluded ? `⚠️ Файл в списке исключений: ${filePath}` : `Разрешение на запись файла: ${filePath}`,
+        filePath,
+        details: isExcluded ? 'Файл защищен списком исключений авто-одобрения' : `Claude Code (${toolName}) запрашивает изменение файла`,
+        diff,
+        createdAt: Date.now()
+      });
+      return decide(res, `запись файла ${filePath}`);
+    }
+
+    if (toolName === 'Bash' || toolName === 'PowerShell') {
+      const cmd = String(input.command || input.cmd || '');
+      const isDenied = Boolean(rules?.commandDenyList && this.isCommandDenied(cmd, rules.commandDenyList));
+      if (auto && !isDenied && rules?.allowCommands !== false) return allow();
+      const res = await ask({
+        id: newId(), sessionId, projectPath, type: 'command',
+        title: isDenied ? `⚠️ Заблокированная команда требует подтверждения: ${cmd}` : `Разрешение на запуск команды: ${cmd}`,
+        command: cmd,
+        details: input.description || (isDenied ? 'Команда находится в списке запрещенных для авто-запуска' : 'Выполнение команды терминала'),
+        createdAt: Date.now()
+      });
+      return decide(res, 'запуск команды');
+    }
+
+    if (toolName === 'Agent' || toolName === 'Task') {
+      if (rules?.allowSubagents !== false) return allow();
+      const description = String(input.description || input.prompt || 'Подзадача').slice(0, 200);
+      const res = await ask({
+        id: newId(), sessionId, projectPath, type: 'subagent_dispatch',
+        title: `Запуск подагента: ${description}`,
+        details: String(input.prompt || '').slice(0, 1000) || 'Claude Code запрашивает запуск подагента',
+        createdAt: Date.now()
+      });
+      return decide(res, 'запуск подагента');
+    }
+
+    // Прочие инструменты (WebFetch, WebSearch, MCP-инструменты и т.п.).
+    if (auto) return allow();
+    let inputPreview = '';
+    try {
+      inputPreview = JSON.stringify(input);
+    } catch {
+      inputPreview = String(input);
+    }
+    const res = await ask({
+      id: newId(), sessionId, projectPath, type: 'command',
+      title: `Инструмент Claude Code: ${toolName}`,
+      details: inputPreview.length > 600 ? `${inputPreview.slice(0, 600)}…` : inputPreview,
+      createdAt: Date.now()
+    });
+    return decide(res, `инструмент ${toolName}`);
+  }
+
+  /** Ответ карточки → значение для AskUserQuestion: свободный текст вместо «Other: …». */
+  private normalizeQuestionAnswer(text?: string): string {
+    const t = (text || '').trim();
+    const m = /^Other:\s*(.*)$/i.exec(t);
+    return m ? m[1].trim() : t || 'Approved';
+  }
+
+  /** Диф для карточки одобрения записи: Write — файл целиком, Edit — заменяемый фрагмент. */
+  private async buildCliWriteDiff(
+    projectPath: string,
+    toolName: string,
+    filePath: string,
+    input: Record<string, any>
+  ): Promise<ApprovalRequest['diff'] | undefined> {
+    try {
+      if (toolName === 'Write' && typeof input.content === 'string') {
+        let oldContent = '';
+        const fullPath = path.resolve(projectPath, filePath);
+        if (existsSync(fullPath)) oldContent = await fs.readFile(fullPath, 'utf-8');
+        return { filePath, oldContent, newContent: input.content, patch: aiAgentService.generateDiff(oldContent, input.content, filePath) };
+      }
+      if (toolName === 'Edit' && typeof input.old_string === 'string' && typeof input.new_string === 'string') {
+        return { filePath, oldContent: input.old_string, newContent: input.new_string, patch: aiAgentService.generateDiff(input.old_string, input.new_string, filePath) };
+      }
+    } catch {
+      /* диф — только подсказка для пользователя */
+    }
+    return undefined;
   }
 
   public getProjectStatus(projectPath: string): ProjectAgentStatus {
@@ -543,6 +871,80 @@ class ClaudeBridgeService extends EventEmitter {
     this.abortedSessions.clear();
     this.activeSubagents.clear();
     this.sessionClaudeCliIds.clear();
+    this.cliPermissionContexts.clear();
+  }
+
+  /**
+   * Готовит запуск Claude CLI с Human-in-the-loop: MCP-конфиг встроенного сервера (с привязкой
+   * подключения к sessionId через query-параметр) и файл настроек с правилами `permissions.ask`.
+   * Файлы пишутся в ~/.projecthub/claude_config/hitl и удаляются по завершении процесса.
+   * null — брокер не задан или сервер поднять не удалось.
+   */
+  private async prepareCliPermissions(
+    sessionId: string,
+    projectPath: string,
+    config: AIProviderConfig,
+    onChunk: (chunk: ClaudeBridgeMessageChunk) => void
+  ): Promise<{ args: string[]; cleanup: () => void } | null> {
+    if (!this.cliPermissionBroker) return null;
+    let endpoint: CliPermissionEndpoint | null = null;
+    try {
+      endpoint = await this.cliPermissionBroker.ensureEndpoint();
+    } catch (err) {
+      console.error('[ClaudeBridge] Не удалось получить адрес MCP-сервера для HITL:', err);
+    }
+    if (!endpoint) return null;
+
+    const files: string[] = [];
+    const cleanup = () => {
+      for (const f of files) {
+        fs.unlink(f).catch(() => { /* файл мог быть уже удалён */ });
+      }
+    };
+
+    try {
+      const dir = path.join(PROJECT_HUB_CLAUDE_DIR, 'hitl');
+      await fs.mkdir(dir, { recursive: true });
+      const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+      const sseUrl = new URL(endpoint.url);
+      sseUrl.searchParams.set(CLI_HITL_QUERY_PARAM, sessionId);
+      const mcpConfigPath = path.join(dir, `${safeId}.mcp.json`);
+      await fs.writeFile(
+        mcpConfigPath,
+        JSON.stringify({
+          mcpServers: {
+            [CLI_HITL_MCP_SERVER_NAME]: {
+              type: 'sse',
+              url: sseUrl.toString(),
+              headers: { Authorization: `Bearer ${endpoint.token}` }
+            }
+          }
+        }),
+        { encoding: 'utf-8', mode: 0o600 }
+      );
+      files.push(mcpConfigPath);
+
+      const args = [
+        '--mcp-config', quoteShellArg(mcpConfigPath),
+        '--permission-prompt-tool', `mcp__${CLI_HITL_MCP_SERVER_NAME}__${CLI_HITL_PERMISSION_TOOL}`
+      ];
+
+      const settings = buildCliPermissionSettings(config);
+      if (settings) {
+        const settingsPath = path.join(dir, `${safeId}.settings.json`);
+        await fs.writeFile(settingsPath, JSON.stringify(settings), { encoding: 'utf-8', mode: 0o600 });
+        files.push(settingsPath);
+        args.push('--settings', quoteShellArg(settingsPath));
+      }
+
+      this.registerCliPermissionContext(sessionId, projectPath, config, onChunk);
+      return { args, cleanup };
+    } catch (err) {
+      console.error('[ClaudeBridge] Не удалось подготовить файлы HITL для Claude CLI:', err);
+      cleanup();
+      return null;
+    }
   }
 
   public getActiveProcessCount(): number {
@@ -610,10 +1012,17 @@ class ClaudeBridgeService extends EventEmitter {
     const normalized = filePath.replace(/\\/g, '/').toLowerCase();
     const baseName = path.basename(normalized);
 
-    return patterns.some((rawPattern) => {
-      const pattern = rawPattern.trim().replace(/\\/g, '/').toLowerCase();
+    const matches = (pattern: string): boolean => {
       if (!pattern) return false;
 
+      if (pattern.startsWith('**/')) {
+        // `**/<sub>`: на любой глубине — сводим к проверке <sub> (в т.ч. `**/*.key`, `**/.env*`)
+        const sub = pattern.slice(3);
+        return matches(sub) || normalized.endsWith('/' + sub);
+      }
+      if (pattern.startsWith('./')) {
+        return matches(pattern.slice(2));
+      }
       if (pattern.startsWith('*') && pattern.endsWith('*')) {
         const sub = pattern.slice(1, -1);
         return normalized.includes(sub);
@@ -626,12 +1035,10 @@ class ClaudeBridgeService extends EventEmitter {
         const prefix = pattern.slice(0, -1);
         return normalized.startsWith(prefix) || baseName.startsWith(prefix);
       }
-      if (pattern.startsWith('**/')) {
-        const sub = pattern.slice(3);
-        return normalized.endsWith(sub) || baseName === sub;
-      }
       return normalized === pattern || baseName === pattern || normalized.endsWith('/' + pattern);
-    });
+    };
+
+    return patterns.some((rawPattern) => matches(rawPattern.trim().replace(/\\/g, '/').toLowerCase()));
   }
 
   public isCommandDenied(command: string, denyList: string[] = []): boolean {
@@ -994,8 +1401,32 @@ class ClaudeBridgeService extends EventEmitter {
     if (req.config.model && req.config.model !== 'default') {
       cliArgs.push('--model', req.config.model);
     }
-    cliArgs.push('--dangerously-skip-permissions');
+
+    // Human-in-the-loop (TASK-42): разрешения запрашиваются через встроенный MCP-сервер
+    // до выполнения инструмента. --dangerously-skip-permissions — только как запасной
+    // вариант при auto-approve, если сервер поднять не удалось.
+    const hitl = await this.prepareCliPermissions(sessionId, projectPath, req.config, onChunk);
+    let hitlWarning = '';
+    if (hitl) {
+      cliArgs.push(...hitl.args);
+    } else if (req.config.autoApprove) {
+      cliArgs.push('--dangerously-skip-permissions');
+      hitlWarning = '> ⚠️ Встроенный MCP-сервер ProjectHub недоступен: Claude Code запущен без проверки разрешений, '
+        + 'списки исключений и запрещённых команд в этом ответе не применяются.\n\n';
+      console.warn(`[ClaudeBridge] HITL недоступен для сессии ${sessionId}, запуск с --dangerously-skip-permissions`);
+    } else {
+      const message = 'Не удалось запустить встроенный MCP-сервер ProjectHub, через который Claude Code запрашивает '
+        + 'подтверждения действий. Включите сервер в настройках MCP (или освободите его порт) либо включите авто-одобрение в настройках AI Studio.';
+      this.finishSession(sessionId, projectPath, 'error', message);
+      onError(message);
+      return;
+    }
     cliArgs.push('--output-format', 'stream-json', '--verbose');
+
+    const cleanupHitl = () => {
+      this.cliPermissionContexts.delete(sessionId);
+      hitl?.cleanup();
+    };
 
     let child: ChildProcessWithoutNullStreams;
     try {
@@ -1009,11 +1440,14 @@ class ClaudeBridgeService extends EventEmitter {
           env: {
             ...process.env,
             FORCE_COLOR: '0',
-            CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR
+            CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR,
+            // Инструмент разрешений ждёт человека — стандартный таймаут MCP-инструмента слишком мал.
+            MCP_TOOL_TIMEOUT: String(CLI_MCP_TOOL_TIMEOUT_MS)
           }
         }
       );
     } catch (err: any) {
+      cleanupHitl();
       const message = `Не удалось запустить Claude CLI: ${err?.message || String(err)}`;
       this.finishSession(sessionId, projectPath, 'error', message);
       onError(message);
@@ -1021,6 +1455,7 @@ class ClaudeBridgeService extends EventEmitter {
     }
 
     this.activeProcesses.set(sessionId, child);
+    if (hitlWarning) onChunk({ text: hitlWarning });
 
     // Гарантируем, что onComplete/onError для сессии вызываются ровно один раз:
     // события 'error' и 'close' у ChildProcess могут прийти оба.
@@ -1030,6 +1465,7 @@ class ClaudeBridgeService extends EventEmitter {
       if (finished) return;
       finished = true;
       this.activeProcesses.delete(sessionId);
+      cleanupHitl();
       this.finishSession(sessionId, projectPath, 'error', message);
       onError(message);
     };
@@ -1044,7 +1480,7 @@ class ClaudeBridgeService extends EventEmitter {
     child.stdout.on('error', (err) => failSession(`Ошибка чтения вывода Claude CLI: ${err.message}`));
     child.stderr.on('error', (err) => failSession(`Ошибка чтения stderr Claude CLI: ${err.message}`));
 
-    let accumulatedText = '';
+    let accumulatedText = hitlWarning;
     let accumulatedThought = '';
     const toolCalls: AIToolCall[] = [];
     let buffer = '';
@@ -1113,88 +1549,10 @@ class ClaudeBridgeService extends EventEmitter {
                   args: item.input || {}
                 };
                 toolCalls.push(tc);
+                // Карточки одобрения здесь больше не создаются: событие tool_use приходит уже
+                // после решения о разрешении. Одобрение запрашивается до выполнения инструмента
+                // через --permission-prompt-tool → handleCliPermissionRequest (TASK-42).
                 onChunk({ toolCall: tc });
-
-                // Detect interactive questions or tool approvals
-                if (item.name === 'AskUserQuestion' || item.name === 'ask_question' || item.name === 'ask_user') {
-                  const qData = this.parseQuestionData(item.input || {});
-                  const approvalReq: ApprovalRequest = {
-                    id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                    sessionId,
-                    projectPath,
-                    type: 'question',
-                    title: qData.title || 'Вопрос от Claude Code',
-                    details: qData.subtitle,
-                    questionData: qData,
-                    createdAt: Date.now()
-                  };
-                  onChunk({ approvalRequest: approvalReq });
-                } else if (item.name === 'Write' || item.name === 'Edit') {
-                  const filePath = item.input?.file_path || item.input?.path || item.input?.target || '';
-                  const rules = req.config.autoApproveRules;
-                  const isExcluded = rules?.writeExcludePatterns && this.isPathExcluded(filePath, rules.writeExcludePatterns);
-                  const shouldPrompt = !req.config.autoApprove || isExcluded || (rules && rules.allowFileWrite === false);
-
-                  if (shouldPrompt) {
-                    const approvalReq: ApprovalRequest = {
-                      id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                      sessionId,
-                      projectPath,
-                      type: 'file_write',
-                      title: isExcluded ? `⚠️ Файл в списке исключений: ${filePath}` : `Запись в файл: ${filePath}`,
-                      filePath,
-                      details: isExcluded ? 'Файл защищен списком исключений авто-одобрения' : `Claude Code запрашивает запись в файл ${filePath}`,
-                      createdAt: Date.now()
-                    };
-                    onChunk({ approvalRequest: approvalReq });
-                  }
-                } else if (item.name === 'Read' || item.name === 'read_file') {
-                  const filePath = item.input?.file_path || item.input?.path || item.input?.target || '';
-                  const rules = req.config.autoApproveRules;
-                  const isExcluded = rules?.readExcludePatterns && this.isPathExcluded(filePath, rules.readExcludePatterns);
-
-                  if (isExcluded) {
-                    const approvalReq: ApprovalRequest = {
-                      id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                      sessionId,
-                      projectPath,
-                      type: 'question',
-                      title: `Чтение защищенного файла`,
-                      details: `Файл ${filePath} находится в списке исключений для чтения. Разрешить Claude Code доступ?`,
-                      questionData: {
-                        title: 'Чтение защищенного файла',
-                        subtitle: `Разрешить Claude Code прочитать ${filePath}?`,
-                        options: [
-                          { id: 'allow', label: 'Разрешить чтение', description: 'Предоставить доступ к файлу' },
-                          { id: 'deny', label: 'Запретить чтение', description: 'Заблокировать чтение' }
-                        ],
-                        isMultiSelect: false,
-                        allowOther: false
-                      },
-                      createdAt: Date.now()
-                    };
-                    onChunk({ approvalRequest: approvalReq });
-                  }
-                } else if (item.name === 'Bash' || item.name === 'bash') {
-                  const cmd = item.input?.command || item.input?.cmd || '';
-                  const rules = req.config.autoApproveRules;
-                  const isDenied = rules?.commandDenyList && this.isCommandDenied(cmd, rules.commandDenyList);
-                  const shouldPrompt = !req.config.autoApprove || isDenied || (rules && rules.allowCommands === false);
-
-                  if (shouldPrompt) {
-                    const approvalReq: ApprovalRequest = {
-                      id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                      sessionId,
-                      projectPath,
-                      type: 'command',
-                      title: isDenied ? `⚠️ Заблокированная команда: ${cmd}` : `Команда терминала: ${cmd}`,
-                      command: cmd,
-                      details: isDenied ? 'Команда находится в списке запрещенных для авто-запуска' : `Claude Code выполняет команду ${cmd}`,
-                      createdAt: Date.now()
-                    };
-                    onChunk({ approvalRequest: approvalReq });
-                  }
-                }
               }
             }
           } else if (event.type === 'result') {
@@ -1240,6 +1598,7 @@ class ClaudeBridgeService extends EventEmitter {
       if (finished) return;
       finished = true;
       this.activeProcesses.delete(sessionId);
+      cleanupHitl();
       const aborted = this.abortedSessions.has(sessionId);
       if (code === 0 || accumulatedText || aborted) {
         const completeMsg: AIMessage = {

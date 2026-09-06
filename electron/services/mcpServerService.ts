@@ -9,6 +9,13 @@ import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { z } from 'zod';
 import { projectRegistry } from './projectRegistry.js';
 import { processManager } from './processManager.js';
+import {
+  claudeBridgeService,
+  CLI_HITL_PERMISSION_TOOL,
+  CLI_HITL_QUERY_PARAM,
+  type CliPermissionDecision,
+  type CliPermissionEndpoint
+} from './claudeBridgeService.js';
 import matter from 'gray-matter';
 
 export interface McpServerStatus {
@@ -47,10 +54,17 @@ export interface RemoteActionPayload {
   payload: any;
 }
 
+interface SseSession {
+  transport: SSEServerTransport;
+  /** Свой McpServer на подключение: SDK привязывает ответы к последнему подключённому транспорту. */
+  mcpServer: McpServer;
+  /** Сессия AI Studio, для которой Claude CLI запрашивает разрешения (query-параметр SSE-URL). */
+  hitlSessionId?: string;
+}
+
 class McpServerService {
   private server: http.Server | null = null;
-  private mcpServer: McpServer | null = null;
-  private sseSessions = new Map<string, SSEServerTransport>();
+  private sseSessions = new Map<string, SseSession>();
   private port = 42042;
   private token: string;
   private lastError: string | null = null;
@@ -90,6 +104,18 @@ class McpServerService {
     return this.token;
   }
 
+  /**
+   * Адрес для --permission-prompt-tool Claude CLI (TASK-42): поднимает сервер, если он не
+   * запущен. null — запустить не удалось (см. lastError).
+   */
+  public async ensurePermissionEndpoint(): Promise<CliPermissionEndpoint | null> {
+    if (!(this.server && this.server.listening)) {
+      const ok = await this.start(this.port);
+      if (!ok) return null;
+    }
+    return { url: `http://127.0.0.1:${this.port}/sse`, token: this.token };
+  }
+
   private dispatchToRenderer(action: RemoteActionPayload) {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
@@ -103,7 +129,6 @@ class McpServerService {
 
     this.port = customPort;
     this.lastError = null;
-    this.initMcpServer();
 
     return new Promise((resolve) => {
       const server = http.createServer((req, res) => {
@@ -161,9 +186,12 @@ class McpServerService {
   public async stop(): Promise<void> {
     if (!this.server) return;
 
-    for (const [id, session] of this.sseSessions.entries()) {
+    for (const session of this.sseSessions.values()) {
       try {
-        await session.close();
+        await session.mcpServer.close();
+      } catch {}
+      try {
+        await session.transport.close();
       } catch {}
     }
     this.sseSessions.clear();
@@ -190,11 +218,55 @@ class McpServerService {
     });
   }
 
-  private initMcpServer() {
+  /**
+   * Создаёт McpServer для одного SSE-подключения. `hitlSessionId` задан, если подключился
+   * Claude CLI сессии AI Studio (URL /sse?phSession=...): тогда инструмент разрешений
+   * отвечает от имени именно этой сессии.
+   */
+  private createMcpServer(hitlSessionId?: string): McpServer {
     const server = new McpServer({
       name: 'projecthub-remote-control',
       version: '2.5.0'
     });
+
+    // ─────────────────────────────────────────────────────────────
+    // 0. Permission prompt tool для Claude CLI (--permission-prompt-tool, TASK-42)
+    // ─────────────────────────────────────────────────────────────
+    server.registerTool(
+      CLI_HITL_PERMISSION_TOOL,
+      {
+        title: 'Запрос разрешения Claude Code (Human-in-the-Loop)',
+        description:
+          'Служебный инструмент для флага --permission-prompt-tool Claude CLI: показывает карточку одобрения '
+          + 'в AI Studio ProjectHub и возвращает решение пользователя. Не предназначен для вызова моделью.',
+        inputSchema: {
+          tool_name: z.string().describe('Имя инструмента Claude Code (Bash, Edit, Write, AskUserQuestion …)'),
+          input: z.record(z.any()).optional().describe('Вход инструмента'),
+          tool_use_id: z.string().optional()
+        }
+      },
+      async ({ tool_name, input, tool_use_id }) => {
+        let decision: CliPermissionDecision;
+        if (!hitlSessionId) {
+          decision = {
+            behavior: 'deny',
+            message: `ProjectHub: подключение не привязано к сессии AI Studio (нет параметра ${CLI_HITL_QUERY_PARAM} в URL SSE).`
+          };
+        } else {
+          try {
+            decision = await claudeBridgeService.handleCliPermissionRequest(hitlSessionId, {
+              tool_name,
+              input: input ?? {},
+              tool_use_id
+            });
+          } catch (err: any) {
+            console.error('[MCPServer] permission_prompt failed:', err);
+            decision = { behavior: 'deny', message: `ProjectHub: ошибка обработки запроса разрешения: ${err?.message || String(err)}` };
+          }
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(decision) }] };
+      }
+    );
 
     // ─────────────────────────────────────────────────────────────
     // 1. Get Application & GUI State
@@ -491,7 +563,7 @@ class McpServerService {
       }
     );
 
-    this.mcpServer = server;
+    return server;
   }
 
   /**
@@ -586,15 +658,12 @@ class McpServerService {
 
     // 4. SSE Stream: GET /sse
     if (pathname === '/sse' && req.method === 'GET') {
-      if (!this.mcpServer) {
-        res.writeHead(500).end('MCP Server not initialized');
-        return;
-      }
-
-      console.log('[MCPServer] New client connected to SSE stream');
+      const hitlSessionId = parsedUrl.searchParams.get(CLI_HITL_QUERY_PARAM) || undefined;
+      console.log(`[MCPServer] New client connected to SSE stream${hitlSessionId ? ` (HITL для сессии ${hitlSessionId})` : ''}`);
       const transport = new SSEServerTransport('/message', res);
       const sessionId = transport.sessionId;
-      this.sseSessions.set(sessionId, transport);
+      const mcpServer = this.createMcpServer(hitlSessionId);
+      this.sseSessions.set(sessionId, { transport, mcpServer, hitlSessionId });
 
       transport.onclose = () => {
         console.log(`[MCPServer] SSE Session ${sessionId} closed`);
@@ -603,7 +672,7 @@ class McpServerService {
 
       // connect() сам вызывает transport.start(); повторный явный start() давал
       // ошибку "SSEServerTransport already started" в логе на каждое подключение.
-      this.mcpServer.connect(transport).catch((err) => {
+      mcpServer.connect(transport).catch((err) => {
         console.error('[MCPServer] Error connecting transport to MCP server:', err);
       });
       return;
@@ -617,13 +686,13 @@ class McpServerService {
         return;
       }
 
-      const transport = this.sseSessions.get(sessionId);
-      if (!transport) {
+      const session = this.sseSessions.get(sessionId);
+      if (!session) {
         res.writeHead(404).end(`Session ${sessionId} not found`);
         return;
       }
 
-      transport.handlePostMessage(req as any, res).catch((err) => {
+      session.transport.handlePostMessage(req as any, res).catch((err) => {
         console.error('[MCPServer] Error handling POST message:', err);
         if (!res.headersSent) {
           res.writeHead(500).end(err.message);

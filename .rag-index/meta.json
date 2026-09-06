@@ -8,8 +8,9 @@
     "backlog/docs/doc-5 - RAG-Guide.md",
     "backlog/docs/doc-6 - Comprehensive-Review-Security-And-Feature-Roadmap.md",
     "backlog/docs/doc-7 - Технический-аудит-ProjectHub-стабильность-утечки-производительность-безопасность.md",
+    "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md"
   ],
-  "chunks": 1082,
-  "builtAt": "2026-09-05T09:12:48.219Z"
+  "chunks": 1094,
+  "builtAt": "2026-09-06T02:04:26.278Z"
 }
