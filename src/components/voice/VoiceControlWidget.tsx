@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Radio,
   Zap,
@@ -8,8 +8,7 @@ import {
 } from 'lucide-react';
 import {
   voiceService,
-  type VoiceState,
-  type VoiceConfig
+  type VoiceState
 } from '../../services/voiceService';
 import { parseVoiceCommand } from '../../services/voiceCommandParser';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -17,46 +16,12 @@ import { useAIStudioStore } from '../../store/useAIStudioStore';
 import { getDictionary } from '../../i18n';
 
 export const VoiceControlWidget: React.FC = () => {
-  const {
-    projects,
-    selectedProject,
-    selectProject,
-    activeProjectPaths,
-    switchProjectByIndex,
-    switchToNextProject,
-    switchToPrevProject,
-    switchToLastActiveProject,
-    closeCurrentProject,
-    activeTab,
-    setActiveTab,
-    toggleTerminal,
-    isSidebarOpen,
-    toggleSidebar,
-    setSidebarOpen,
-    setHotkeysHelpOpen,
-    loadProjectData,
-    refreshSingleProject,
-    startProcessAction,
-    stopProcessAction,
-    processes,
-    tasks,
-    language
-  } = useProjectStore();
-
-  const {
-    sessions,
-    activeSessionId,
-    createSession,
-    switchSession,
-    switchSessionByIndex,
-    switchToNextSession,
-    switchToPrevSession,
-    switchToLastActiveSession,
-    closeCurrentSession,
-    sendMessage,
-    pendingApprovals,
-    sendApprovalResponse
-  } = useAIStudioStore();
+  // Единственное значение стора, на которое компонент подписан реактивно:
+  // язык нужен для синхронизации с voiceService. Всё остальное (проекты, сессии,
+  // approvals, процессы) читается через getState() в момент выполнения команды,
+  // чтобы стриминговые обновления sessions не перерисовывали виджет и не
+  // пересоздавали подписки на voiceService.
+  const language = useProjectStore((s) => s.language);
 
   const [voiceState, setVoiceState] = useState<VoiceState>(voiceService.currentState);
   const [audioLevel, setAudioLevel] = useState<number>(0);
@@ -68,6 +33,7 @@ export const VoiceControlWidget: React.FC = () => {
   const transcriptRef = useRef(transcript);
   const audioLevelRef = useRef(audioLevel);
   const lastAudioSyncRef = useRef<number>(0);
+  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   useEffect(() => {
     transcriptRef.current = transcript;
@@ -77,94 +43,58 @@ export const VoiceControlWidget: React.FC = () => {
     audioLevelRef.current = audioLevel;
   }, [audioLevel]);
 
+  // Таймеры, которые должны быть отменены при размонтировании компонента
+  const scheduleTimeout = useCallback((fn: () => void, ms: number) => {
+    const id = setTimeout(() => {
+      timersRef.current.delete(id);
+      fn();
+    }, ms);
+    timersRef.current.add(id);
+    return id;
+  }, []);
+
+  // Язык voiceService синхронизируется только при фактическом изменении language
   useEffect(() => {
     voiceService.setLanguage(language === 'ru' ? 'ru' : 'en');
+  }, [language]);
 
-    const syncToOverlay = (partial?: Partial<{ state: string; transcript: string; audioLevel: number }>) => {
-      if (window.api?.syncVoiceOverlay) {
-        window.api.syncVoiceOverlay({
-          isListening: voiceService.isListening,
-          isPaused: voiceService.isPausedActive,
-          state: partial?.state ?? voiceService.currentState,
-          transcript: partial?.transcript ?? transcriptRef.current,
-          audioLevel: partial?.audioLevel ?? audioLevelRef.current
-        });
-      }
-    };
+  const executeCommand = useCallback(async (rawText: string) => {
+    const {
+      projects,
+      selectedProject,
+      selectProject,
+      activeProjectPaths,
+      switchToNextProject,
+      switchToPrevProject,
+      switchToLastActiveProject,
+      closeCurrentProject,
+      setActiveTab,
+      toggleTerminal,
+      toggleSidebar,
+      setSidebarOpen,
+      setHotkeysHelpOpen,
+      loadProjectData,
+      refreshSingleProject,
+      startProcessAction,
+      stopProcessAction,
+      processes,
+      tasks,
+      language
+    } = useProjectStore.getState();
 
-    const unsubState = voiceService.onStateChange((state: VoiceState) => {
-      setVoiceState(state);
-      syncToOverlay({ state });
-    });
+    const {
+      sessions,
+      createSession,
+      switchSession,
+      switchToNextSession,
+      switchToPrevSession,
+      switchToLastActiveSession,
+      closeCurrentSession,
+      sendMessage,
+      pendingApprovals,
+      sendApprovalResponse
+    } = useAIStudioStore.getState();
 
-    const unsubPause = voiceService.onPauseChange(() => {
-      syncToOverlay();
-    });
-
-    const unsubAudio = voiceService.onAudioLevel((level: number, speaking: boolean) => {
-      setAudioLevel(level);
-      setIsSpeakingDetected(speaking);
-      const now = Date.now();
-      // Throttle audio level IPC updates to max once every 120ms
-      if (now - lastAudioSyncRef.current >= 120) {
-        lastAudioSyncRef.current = now;
-        syncToOverlay({ audioLevel: level });
-      }
-    });
-
-    const unsubResult = voiceService.onResult((text: string, isFinal: boolean) => {
-      setTranscript(text);
-      syncToOverlay({ transcript: text });
-
-      if (isFinal && text.trim()) {
-        executeCommand(text.trim());
-      }
-    });
-
-    const unsubError = voiceService.onError((msg: string) => {
-      setErrorMessage(msg);
-      syncToOverlay();
-    });
-
-    const unsubExternal = window.api?.onVoiceExternalControl?.((action: 'toggle-pause' | 'stop') => {
-      if (action === 'stop') {
-        voiceService.stopListening();
-      } else if (action === 'toggle-pause') {
-        voiceService.togglePause();
-      }
-    });
-
-    const unsubDeviceNotice = voiceService.onDeviceNotice((notice) => {
-      setLastFeedback(notice.message);
-      setTimeout(() => {
-        setLastFeedback((prev) => (prev === notice.message ? null : prev));
-      }, 5000);
-    });
-
-    // Global Hotkey: Ctrl + Shift + V for Talon Voice Hands-Free Toggle
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
-        e.preventDefault();
-        voiceService.toggleHandsFree();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    syncToOverlay();
-
-    return () => {
-      unsubState();
-      unsubPause();
-      unsubAudio();
-      unsubResult();
-      unsubError();
-      unsubExternal?.();
-      unsubDeviceNotice();
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [language, selectedProject, projects, sessions, activeSessionId, pendingApprovals]);
-
-  const executeCommand = async (rawText: string) => {
     const cmd = parseVoiceCommand(rawText, voiceService.getCommandPhrases());
     setLastFeedback(cmd.feedbackText);
 
@@ -508,12 +438,101 @@ export const VoiceControlWidget: React.FC = () => {
       }
     }
 
-    setTimeout(() => {
+    scheduleTimeout(() => {
       setTranscript('');
       setLastFeedback(null);
     }, 4500);
-  };
+  }, [scheduleTimeout]);
 
+  // Подписки на voiceService и внешние события создаются один раз при монтировании.
+  // executeCommand стабилен (все данные читаются через getState()), поэтому эффект
+  // не пересоздаётся при изменении сторов.
+  useEffect(() => {
+    const syncToOverlay = (partial?: Partial<{ state: string; transcript: string; audioLevel: number }>) => {
+      if (window.api?.syncVoiceOverlay) {
+        window.api.syncVoiceOverlay({
+          isListening: voiceService.isListening,
+          isPaused: voiceService.isPausedActive,
+          state: partial?.state ?? voiceService.currentState,
+          transcript: partial?.transcript ?? transcriptRef.current,
+          audioLevel: partial?.audioLevel ?? audioLevelRef.current
+        });
+      }
+    };
+
+    const unsubState = voiceService.onStateChange((state: VoiceState) => {
+      setVoiceState(state);
+      syncToOverlay({ state });
+    });
+
+    const unsubPause = voiceService.onPauseChange(() => {
+      syncToOverlay();
+    });
+
+    const unsubAudio = voiceService.onAudioLevel((level: number, speaking: boolean) => {
+      setAudioLevel(level);
+      setIsSpeakingDetected(speaking);
+      const now = Date.now();
+      // Throttle audio level IPC updates to max once every 120ms
+      if (now - lastAudioSyncRef.current >= 120) {
+        lastAudioSyncRef.current = now;
+        syncToOverlay({ audioLevel: level });
+      }
+    });
+
+    const unsubResult = voiceService.onResult((text: string, isFinal: boolean) => {
+      setTranscript(text);
+      syncToOverlay({ transcript: text });
+
+      if (isFinal && text.trim()) {
+        void executeCommand(text.trim());
+      }
+    });
+
+    const unsubError = voiceService.onError((msg: string) => {
+      setErrorMessage(msg);
+      syncToOverlay();
+    });
+
+    const unsubExternal = window.api?.onVoiceExternalControl?.((action: 'toggle-pause' | 'stop') => {
+      if (action === 'stop') {
+        voiceService.stopListening();
+      } else if (action === 'toggle-pause') {
+        voiceService.togglePause();
+      }
+    });
+
+    const unsubDeviceNotice = voiceService.onDeviceNotice((notice) => {
+      setLastFeedback(notice.message);
+      scheduleTimeout(() => {
+        setLastFeedback((prev) => (prev === notice.message ? null : prev));
+      }, 5000);
+    });
+
+    // Global Hotkey: Ctrl + Shift + V for Talon Voice Hands-Free Toggle
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
+        e.preventDefault();
+        voiceService.toggleHandsFree();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    syncToOverlay();
+
+    return () => {
+      unsubState();
+      unsubPause();
+      unsubAudio();
+      unsubResult();
+      unsubError();
+      unsubExternal?.();
+      unsubDeviceNotice();
+      window.removeEventListener('keydown', handleKeyDown);
+      timersRef.current.forEach((id) => clearTimeout(id));
+      timersRef.current.clear();
+    };
+  }, [executeCommand, scheduleTimeout]);
   useEffect(() => {
     if (errorMessage) {
       const timer = setTimeout(() => setErrorMessage(null), 10000);

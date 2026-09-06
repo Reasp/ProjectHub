@@ -305,6 +305,8 @@ class VoiceService {
   }
 
   setLanguage(lang: 'ru' | 'en') {
+    // Не трогаем localStorage и recognition.lang, если язык не изменился
+    if (this.config.language === lang) return;
     this.saveConfig({ language: lang });
   }
 
