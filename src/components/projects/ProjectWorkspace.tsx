@@ -109,7 +109,7 @@ export const ProjectWorkspace: React.FC = () => {
 
   const tabDefs: Record<
     WorkspaceTabId,
-    { label: string; shortLabel: string; hotkey: string; icon: React.ComponentType<{ className?: string }> }
+    { label: string; shortLabel: string; hotkey?: string; icon: React.ComponentType<{ className?: string }> }
   > = {
     kanban: { label: t.tabs.tasks, shortLabel: t.tabs.tasks.split(' ')[0], hotkey: 'Ctrl+B', icon: Kanban },
     milestones: { label: t.tabs.milestones, shortLabel: t.tabs.milestones.split(' ')[0], hotkey: 'Ctrl+M', icon: Target },
@@ -120,7 +120,7 @@ export const ProjectWorkspace: React.FC = () => {
     analytics: { label: t.tabs.analytics, shortLabel: 'Analytics', hotkey: 'Ctrl+A', icon: BarChart2 },
     ai: { label: t.tabs.ai, shortLabel: 'Claude Studio', hotkey: 'Ctrl+I', icon: Sparkles },
     'claude-cli': { label: t.tabs.claudeCli, shortLabel: 'Claude CLI', hotkey: 'Ctrl+T', icon: Bot },
-    processes: { label: t.tabs.processes, shortLabel: 'Processes', hotkey: 'Ctrl+\\', icon: Cpu }
+    processes: { label: t.tabs.processes, shortLabel: 'Processes', icon: Cpu }
   };
 
   const voiceCommandMap: Record<WorkspaceTabId, string> = {
@@ -338,7 +338,7 @@ export const ProjectWorkspace: React.FC = () => {
                 onDrop={(e) => handleDrop(e, tabItem.id)}
                 onContextMenu={(e) => handleContextMenu(e, tabItem.id)}
                 onClick={() => setActiveTab(tabItem.id as any)}
-                title={`${def.label} (${def.hotkey}) · ${t.tabs.dragHint}`}
+                title={`${def.label}${def.hotkey ? ` (${def.hotkey})` : ''} · ${t.tabs.dragHint}`}
                 className={`flex items-center gap-2 px-3.5 py-3 text-xs font-medium border-b-2 transition relative shrink-0 whitespace-nowrap select-none group cursor-pointer ${
                   isActive
                     ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'

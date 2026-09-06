@@ -64,7 +64,7 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
 
   const tabMetadata: Record<
     WorkspaceTabId,
-    { label: string; icon: React.ComponentType<{ className?: string }>; hotkey: string }
+    { label: string; icon: React.ComponentType<{ className?: string }>; hotkey?: string }
   > = {
     kanban: { label: t.tabs.tasks, icon: Kanban, hotkey: 'Ctrl+B' },
     milestones: { label: t.tabs.milestones, icon: Target, hotkey: 'Ctrl+M' },
@@ -75,7 +75,7 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
     analytics: { label: t.tabs.analytics, icon: BarChart2, hotkey: 'Ctrl+A' },
     ai: { label: t.tabs.ai, icon: Sparkles, hotkey: 'Ctrl+I' },
     'claude-cli': { label: t.tabs.claudeCli, icon: Bot, hotkey: 'Ctrl+T' },
-    processes: { label: t.tabs.processes, icon: Cpu, hotkey: 'Ctrl+\\' }
+    processes: { label: t.tabs.processes, icon: Cpu }
   };
 
   const visibleCount = tabsConfig.filter((t) => t.visible).length;
@@ -191,9 +191,11 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
                         {meta.label}
                       </span>
                     </div>
-                    <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                      {t.tabs.hotkey}: {meta.hotkey}
-                    </div>
+                    {meta.hotkey && (
+                      <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+                        {t.tabs.hotkey}: {meta.hotkey}
+                      </div>
+                    )}
                   </div>
                 </div>
 

@@ -12,15 +12,22 @@ export const HotkeysHelpModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const shortcutGroups = [
+  const shortcutGroups: Array<{
+    title: string;
+    icon: React.ComponentType<{ className?: string }>;
+    note?: string;
+    items: Array<{ keys: string[]; description: string }>;
+  }> = [
     {
       title: t.hotkeys.navigation,
       icon: Navigation,
+      note: t.hotkeys.navigationNote,
       items: [
         { keys: ['Ctrl', '['], description: t.hotkeys.toggleSidebar },
         { keys: ['Ctrl', 'B'], description: t.hotkeys.tasksTab },
         { keys: ['Ctrl', 'M'], description: t.hotkeys.milestonesTab },
         { keys: ['Ctrl', 'G'], description: t.hotkeys.gitTab },
+        { keys: ['Ctrl', 'E'], description: t.hotkeys.filesTab },
         { keys: ['Ctrl', 'P'], description: t.hotkeys.prsTab },
         { keys: ['Ctrl', 'D'], description: t.hotkeys.docsTab },
         { keys: ['Ctrl', 'A'], description: t.hotkeys.analyticsTab },
@@ -33,8 +40,6 @@ export const HotkeysHelpModal: React.FC<Props> = ({ isOpen, onClose }) => {
       icon: Zap,
       items: [
         { keys: ['Ctrl', 'K'], description: t.hotkeys.omniSearch },
-        { keys: ['Ctrl', 'N'], description: t.hotkeys.newTask },
-        { keys: ['Ctrl', 'Shift', 'P'], description: t.hotkeys.templateWizard },
         { keys: ['Ctrl', 'R'], description: t.hotkeys.refreshData }
       ]
     },
@@ -84,6 +89,7 @@ export const HotkeysHelpModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   <GroupIcon className="w-3.5 h-3.5 text-indigo-400" />
                   <span>{group.title}</span>
                 </div>
+                {group.note && <p className="text-[11px] text-slate-500 -mt-1">{group.note}</p>}
 
                 <div className="grid grid-cols-1 gap-2">
                   {group.items.map((item, idx) => (

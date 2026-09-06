@@ -11,6 +11,17 @@ import { useProjectStore } from './store/useProjectStore';
 import { useAIStudioStore } from './store/useAIStudioStore';
 import { Bot } from 'lucide-react';
 
+
+/** Фокус в элементе, где пользователь вводит текст: input/textarea/contentEditable или терминал xterm. */
+const isEditableTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+    return true;
+  }
+  if (target.isContentEditable) return true;
+  return !!target.closest('.xterm, [contenteditable="true"]');
+};
+
 export const App: React.FC = () => {
   const {
     projects,
@@ -111,10 +122,9 @@ export const App: React.FC = () => {
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isInput =
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement ||
-        (e.target as HTMLElement)?.isContentEditable;
+      // Фокус в поле ввода / редакторе / xterm: навигационные хоткеи не должны
+      // перехватывать Ctrl+A/B/D/E/... (выделение, удаление слова, конец строки и т.п.).
+      const isInput = isEditableTarget(e.target);
 
       // 1. Help modal with '?' or F1 (when not typing in an input)
       if (!isInput && (e.key === '?' || e.key === 'F1')) {
@@ -123,7 +133,7 @@ export const App: React.FC = () => {
         return;
       }
 
-      // 2. Escape: close modals
+      // 2. Escape: close modals (глобально)
       if (e.key === 'Escape') {
         if (isHotkeysHelpOpen) {
           setHotkeysHelpOpen(false);
@@ -135,62 +145,67 @@ export const App: React.FC = () => {
         }
       }
 
-      // 3. Ctrl / Cmd Hotkeys
-      if (e.ctrlKey || e.metaKey) {
-        const key = e.key.toLowerCase();
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
 
-        // Ctrl + K: Search
-        if (key === 'k') {
+      // 3. Глобальные Ctrl-хоткеи — работают и при фокусе в полях ввода
+      // Ctrl + K: Search
+      if (key === 'k') {
+        e.preventDefault();
+        setIsOmniSearchOpen((prev) => !prev);
+        return;
+      }
+      // Ctrl + \ or Ctrl + `: Toggle Terminal
+      if (key === '\\' || key === '`') {
+        e.preventDefault();
+        toggleTerminal();
+        return;
+      }
+
+      // 4. Навигационные Ctrl-хоткеи — только вне полей ввода
+      if (isInput) return;
+
+      // Navigation: Ctrl + B, Ctrl + M, Ctrl + G, Ctrl + E, Ctrl + P, Ctrl + D, Ctrl + A, Ctrl + I, Ctrl + T
+      if (key === 'b' && !e.shiftKey) {
+        e.preventDefault();
+        setActiveTab('kanban');
+      } else if (key === 'm') {
+        e.preventDefault();
+        setActiveTab('milestones');
+      } else if (key === 'g') {
+        e.preventDefault();
+        setActiveTab('git');
+      } else if (key === 'e') {
+        e.preventDefault();
+        setActiveTab('files');
+      } else if (key === 'p' && !e.shiftKey) {
+        e.preventDefault();
+        setActiveTab('prs');
+      } else if (key === 'd') {
+        e.preventDefault();
+        setActiveTab('docs');
+      } else if (key === 'a') {
+        e.preventDefault();
+        setActiveTab('analytics');
+      } else if (key === 'i') {
+        e.preventDefault();
+        setActiveTab('ai');
+      } else if (key === 't' && !e.shiftKey) {
+        e.preventDefault();
+        setActiveTab('claude-cli');
+      }
+      // Ctrl + R: Refresh project
+      else if (key === 'r') {
+        if (selectedProject) {
           e.preventDefault();
-          setIsOmniSearchOpen((prev) => !prev);
+          loadProjectData(selectedProject);
+          refreshSingleProject(selectedProject.path);
         }
-        // Ctrl + \ or Ctrl + `: Toggle Terminal
-        else if (key === '\\' || key === '`') {
-          e.preventDefault();
-          toggleTerminal();
-        }
-        // Navigation: Ctrl + B, Ctrl + M, Ctrl + G, Ctrl + P, Ctrl + D
-        else if (key === 'b') {
-          e.preventDefault();
-          setActiveTab('kanban');
-        } else if (key === 'm') {
-          e.preventDefault();
-          setActiveTab('milestones');
-        } else if (key === 'g') {
-          e.preventDefault();
-          setActiveTab('git');
-        } else if (key === 'e') {
-          e.preventDefault();
-          setActiveTab('files');
-        } else if (key === 'p' && !e.shiftKey) {
-          e.preventDefault();
-          setActiveTab('prs');
-        } else if (key === 'd') {
-          e.preventDefault();
-          setActiveTab('docs');
-        } else if (key === 'a') {
-          e.preventDefault();
-          setActiveTab('analytics');
-        } else if (key === 'i') {
-          e.preventDefault();
-          setActiveTab('ai');
-        } else if (key === 't' && !e.shiftKey) {
-          e.preventDefault();
-          setActiveTab('claude-cli');
-        }
-        // Ctrl + R: Refresh project
-        else if (key === 'r') {
-          if (selectedProject) {
-            e.preventDefault();
-            loadProjectData(selectedProject);
-            refreshSingleProject(selectedProject.path);
-          }
-        }
-        // Ctrl + [ or Ctrl + Shift + B: Toggle Project Sidebar Menu
-        else if (key === '[' || (key === 'b' && e.shiftKey)) {
-          e.preventDefault();
-          toggleSidebar();
-        }
+      }
+      // Ctrl + [ or Ctrl + Shift + B: Toggle Project Sidebar Menu (в xterm Ctrl+[ — это Esc)
+      else if (key === '[' || (key === 'b' && e.shiftKey)) {
+        e.preventDefault();
+        toggleSidebar();
       }
     };
 
