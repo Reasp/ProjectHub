@@ -3,11 +3,11 @@ id: TASK-33
 title: >-
   Жизненный цикл агента: отмена ожидающих одобрений, таймаут executeSubprocess,
   очистка subagents и CLI-сессий
-status: Review
+status: Done
 assignee:
   - Claude
 created_date: '2026-09-05 09:07'
-updated_date: '2026-09-05 21:21'
+updated_date: '2026-09-06 00:19'
 labels:
   - audit
   - memory-leak

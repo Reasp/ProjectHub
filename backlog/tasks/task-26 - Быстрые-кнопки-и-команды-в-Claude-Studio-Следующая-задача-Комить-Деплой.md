@@ -1,10 +1,10 @@
 ---
 id: TASK-26
 title: 'Быстрые кнопки и команды в Claude Studio (Следующая задача, Комить, Деплой)'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 01:51'
-updated_date: '2026-09-05 01:51'
+updated_date: '2026-09-06 00:19'
 labels: []
 dependencies: []
 priority: medium

@@ -3,10 +3,10 @@ id: TASK-29
 title: >-
   Аутентификация и CORS для встроенного HTTP/SSE MCP-сервера (RCE с любой
   веб-страницы)
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:06'
-updated_date: '2026-09-05 11:20'
+updated_date: '2026-09-06 00:19'
 labels:
   - audit
   - security

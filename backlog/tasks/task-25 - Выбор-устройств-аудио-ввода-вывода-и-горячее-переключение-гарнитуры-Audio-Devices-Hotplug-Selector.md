@@ -3,10 +3,10 @@ id: TASK-25
 title: >-
   Выбор устройств аудио ввода/вывода и горячее переключение гарнитуры (Audio
   Devices Hotplug & Selector)
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 01:44'
-updated_date: '2026-09-05 01:51'
+updated_date: '2026-09-06 00:19'
 labels: []
 dependencies: []
 priority: high

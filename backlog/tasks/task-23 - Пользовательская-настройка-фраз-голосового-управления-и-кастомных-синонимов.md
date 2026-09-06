@@ -1,10 +1,10 @@
 ---
 id: TASK-23
 title: Пользовательская настройка фраз голосового управления и кастомных синонимов
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-04 01:42'
-updated_date: '2026-09-04 01:45'
+updated_date: '2026-09-06 00:19'
 labels: []
 dependencies: []
 priority: high

@@ -3,10 +3,10 @@ id: TASK-27
 title: >-
   Сохранение геометрии окна, активных вкладок и фильтров, заглушка удаленного
   проекта
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 02:40'
-updated_date: '2026-09-05 02:44'
+updated_date: '2026-09-06 00:19'
 labels: []
 dependencies: []
 priority: high

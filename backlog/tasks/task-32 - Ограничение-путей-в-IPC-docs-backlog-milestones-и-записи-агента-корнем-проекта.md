@@ -3,10 +3,10 @@ id: TASK-32
 title: >-
   Ограничение путей в IPC (docs, backlog, milestones) и записи агента корнем
   проекта
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:07'
-updated_date: '2026-09-05 21:10'
+updated_date: '2026-09-06 00:19'
 labels:
   - audit
   - security

@@ -3,11 +3,11 @@ id: TASK-28
 title: >-
   Краш main-процесса при недоступном Claude CLI и необработанные промисы в
   ai:streamChat
-status: Review
+status: Done
 assignee:
   - claude
 created_date: '2026-09-05 09:06'
-updated_date: '2026-09-05 09:40'
+updated_date: '2026-09-06 00:19'
 labels:
   - audit
   - electron
