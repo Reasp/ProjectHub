@@ -13,6 +13,8 @@ import {
   X,
   Cpu,
   RefreshCw,
+  Rocket,
+  FlaskConical,
   Plus,
   Radio,
   FileCode,
@@ -31,7 +33,8 @@ export const TerminalPanel: React.FC = () => {
     processes,
     activeProcessId,
     setActiveProcessId,
-    startProcessAction,
+    runActionDefinition,
+    actionConfig,
     stopProcessAction,
     selectedProject,
     terminalHeight,
@@ -55,6 +58,45 @@ export const TerminalPanel: React.FC = () => {
   const writtenLogCountRef = useRef(0);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Кнопки быстрого запуска строятся из конфига действий проекта.
+  const quickActions = actionConfig
+    ? [
+        {
+          key: 'run',
+          def: actionConfig.run,
+          icon: Play,
+          className: 'bg-emerald-950/50 hover:bg-emerald-900/60 text-emerald-400 border-emerald-800/40'
+        },
+        {
+          key: 'deploy',
+          def: actionConfig.deploy,
+          icon: Rocket,
+          className: 'bg-indigo-950/50 hover:bg-indigo-900/60 text-indigo-300 border-indigo-800/40'
+        },
+        {
+          key: 'test',
+          def: actionConfig.test,
+          icon: FlaskConical,
+          className: 'bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 border-amber-800/40'
+        },
+        ...(actionConfig.customActions ?? []).map((def) => ({
+          key: `custom:${def.id}`,
+          def,
+          icon: Cpu,
+          className: 'bg-slate-800/60 hover:bg-slate-700/60 text-slate-300 border-slate-700/60'
+        }))
+      ]
+    : [];
+
+  const confirmAction = (def: { command: string }) =>
+    selectedProject
+      ? confirm(
+          t.actions.confirmDeploy
+            .replace('{name}', selectedProject.name)
+            .replace('{command}', def.command)
+        )
+      : false;
 
   // Initialize process logs xterm instance
   useEffect(() => {
@@ -397,35 +439,20 @@ export const TerminalPanel: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-1 shrink-0 text-slate-400">
-          {/* Quick Script Launchers for Process Mode */}
-          {selectedProject && (
+          {/* Quick launchers: действия из .projecthub.json (run/deploy/test + customActions), не хардкод (аудит 5.9) */}
+          {selectedProject && actionConfig && (
             <div className="flex items-center gap-1 pr-2 border-r border-slate-800">
-              <button
-                onClick={() => startProcessAction('npm run dev', 'dev')}
-                className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/50 hover:bg-emerald-900/60 text-[11px] font-medium text-emerald-400 border border-emerald-800/40 transition"
-                title={t.header.startDev}
-              >
-                <Play className="w-2.5 h-2.5" />
-                dev
-              </button>
-
-              <button
-                onClick={() => startProcessAction('npm run build', 'build')}
-                className="flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-950/50 hover:bg-indigo-900/60 text-[11px] font-medium text-indigo-300 border border-indigo-800/40 transition"
-                title={t.terminal.buildProject}
-              >
-                <Cpu className="w-2.5 h-2.5" />
-                build
-              </button>
-
-              <button
-                onClick={() => startProcessAction('npm run index-docs', 'index-docs')}
-                className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-950/40 hover:bg-amber-900/50 text-[11px] font-medium text-amber-300 border border-amber-800/40 transition"
-                title={t.terminal.indexDocs}
-              >
-                <RefreshCw className="w-2.5 h-2.5" />
-                docs
-              </button>
+              {quickActions.map(({ key, def, icon: Icon, className }) => (
+                <button
+                  key={key}
+                  onClick={() => void runActionDefinition(def, { confirm: confirmAction })}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border transition ${className}`}
+                  title={t.actions.startProcess.replace('{name}', def.name).replace('{command}', def.command)}
+                >
+                  <Icon className="w-2.5 h-2.5" />
+                  <span className="max-w-[90px] truncate">{def.name}</span>
+                </button>
+              ))}
             </div>
           )}
 

@@ -35,7 +35,6 @@ export const Header: React.FC = () => {
     setTerminalOpen,
     toggleTerminal,
     setHotkeysHelpOpen,
-    processes,
     startProcessAction,
     stopProcessAction,
     createPtySessionAction,
@@ -99,7 +98,6 @@ export const Header: React.FC = () => {
     );
   }
 
-  const devProcess = processes.find((p) => p.name === 'dev' && p.status === 'running');
   const agentStatus = projectAgentStatuses[selectedProject.path];
 
   const handleOpenCode = () => {

@@ -492,9 +492,6 @@ export const en: TranslationDictionary = {
     maximize: 'Maximize',
     restore: 'Restore',
     close: 'Close Terminal',
-    devServer: 'npm run dev',
-    buildProject: 'npm run build',
-    indexDocs: 'npm run index-docs',
     running: 'Running',
     stopped: 'Stopped',
     exited: 'Exited'

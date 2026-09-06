@@ -75,9 +75,9 @@ export const VoiceControlWidget: React.FC = () => {
       setHotkeysHelpOpen,
       loadProjectData,
       refreshSingleProject,
-      startProcessAction,
+      runProjectAction,
+      findActionProcess,
       stopProcessAction,
-      processes,
       tasks,
       language
     } = useProjectStore.getState();
@@ -427,14 +427,23 @@ export const VoiceControlWidget: React.FC = () => {
         loadProjectData(selectedProject);
         refreshSingleProject(selectedProject.path);
       } else if (cmd.intent === 'run_dev') {
-        await startProcessAction('npm run dev', 'dev');
+        // Команды берутся из .projecthub.json (actionConfigService), не из хардкода.
+        await runProjectAction('run');
       } else if (cmd.intent === 'stop_dev') {
-        const p = processes.find((proc) => proc.status === 'running' && proc.name === 'dev');
+        const p = findActionProcess('run');
         if (p) await stopProcessAction(p.id);
       } else if (cmd.intent === 'run_deploy') {
-        await startProcessAction('npm run deploy', 'deploy');
+        const dict = getDictionary(language);
+        await runProjectAction('deploy', {
+          confirm: (def) =>
+            confirm(
+              dict.actions.confirmDeploy
+                .replace('{name}', selectedProject.name)
+                .replace('{command}', def.command)
+            )
+        });
       } else if (cmd.intent === 'run_tests') {
-        await startProcessAction('npm test', 'test');
+        await runProjectAction('test');
       }
     }
 

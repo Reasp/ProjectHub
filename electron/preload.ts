@@ -6,7 +6,8 @@ import type {
   TaskCriterion,
   CreateProjectOptions,
   ManagedProcess,
-  RagSearchOptions
+  RagSearchOptions,
+  StartProcessOptions
 } from '../src/types/electron';
 
 const api: IElectronAPI = {
@@ -36,8 +37,8 @@ const api: IElectronAPI = {
     ipcRenderer.invoke('template:checkAvailable', customSource),
 
   // Background Processes & Terminal
-  startProcess: (projectPath: string, command: string, name: string) =>
-    ipcRenderer.invoke('process:start', projectPath, command, name),
+  startProcess: (projectPath: string, command: string, name: string, options?: StartProcessOptions) =>
+    ipcRenderer.invoke('process:start', projectPath, command, name, options),
   stopProcess: (processId: string) =>
     ipcRenderer.invoke('process:stop', processId),
   listProcesses: (projectPath: string) =>

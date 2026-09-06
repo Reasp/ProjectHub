@@ -18,6 +18,51 @@ export interface LogBufferState {
   logBytes: number;
 }
 
+/** Параметры запуска из `ActionDefinition` (.projecthub.json): переменные окружения и рабочий каталог. */
+export interface StartProcessOptions {
+  env?: Record<string, string>;
+  /** Рабочий каталог: абсолютный либо относительно projectPath. */
+  cwd?: string;
+}
+
+export interface ShellSpawnSpec {
+  file: string;
+  args: string[];
+  windowsVerbatimArguments: boolean;
+}
+
+/**
+ * Как выполнять командную строку действия в оболочке (аудит 5.5).
+ * На Windows — `cmd.exe /d /s /c "command"`: в отличие от Windows PowerShell 5.1
+ * cmd.exe понимает `&&`/`||`, а `npm` там резолвится в `npm.cmd` без обёрток.
+ * Строка команды передаётся как есть (`windowsVerbatimArguments`), чтобы Node не
+ * переэкранировал кавычки внутри неё — ровно так поступает и `spawn(..., { shell: true })`.
+ * На остальных платформах — `/bin/sh -c`.
+ */
+export function resolveShellSpawn(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+  comspec: string | undefined = process.env.COMSPEC
+): ShellSpawnSpec {
+  if (platform === 'win32') {
+    return {
+      file: comspec || 'cmd.exe',
+      args: ['/d', '/s', '/c', `"${command}"`],
+      windowsVerbatimArguments: true
+    };
+  }
+  return { file: '/bin/sh', args: ['-c', command], windowsVerbatimArguments: false };
+}
+
+/**
+ * Рабочий каталог процесса: `cwd` из ActionDefinition относительно корня проекта.
+ * Пустое значение — сам корень проекта.
+ */
+export function resolveWorkingDir(projectPath: string, cwd?: string): string {
+  const trimmed = cwd?.trim();
+  return trimmed ? path.resolve(projectPath, trimmed) : path.normalize(projectPath);
+}
+
 /**
  * Добавляет чанк в буфер логов, удерживая суммарный объём в пределах `maxBytes`.
  * Старые чанки вытесняются целиком; одиночный чанк больше лимита усекается до хвоста.
@@ -126,9 +171,14 @@ class HubProcessManager {
   async startProcess(
     projectPath: string,
     command: string,
-    name: string
+    name: string,
+    options: StartProcessOptions = {}
   ): Promise<ManagedProcess> {
     const id = `${path.normalize(projectPath)}::${name}`;
+    const workingDir = resolveWorkingDir(projectPath, options.cwd);
+    if (!existsSync(workingDir)) {
+      throw new Error(`Рабочий каталог не найден: ${workingDir}`);
+    }
 
     // If already running in Hub, return or fail
     const existing = this.activeProcesses.get(id);
@@ -141,20 +191,29 @@ class HubProcessManager {
       this.activeProcesses.delete(id);
     }
 
-    const isWindows = process.platform === 'win32';
-    const shell = isWindows ? 'powershell.exe' : '/bin/sh';
-    const shellArgs = isWindows ? ['-NoProfile', '-Command', command] : ['-c', command];
+    const shellSpec = resolveShellSpawn(command);
+    // env из ActionDefinition накладывается поверх окружения приложения; значения приводим к строкам,
+    // чтобы число/boolean из JSON не превратились в `[object Object]`/undefined.
+    const actionEnv: Record<string, string> = {};
+    for (const [key, value] of Object.entries(options.env ?? {})) {
+      if (value === undefined || value === null) continue;
+      actionEnv[key] = String(value);
+    }
 
-    const child = spawn(shell, shellArgs, {
-      cwd: projectPath,
-      env: { ...process.env, FORCE_COLOR: '1' }
+    const child = spawn(shellSpec.file, shellSpec.args, {
+      cwd: workingDir,
+      env: { ...process.env, FORCE_COLOR: '1', ...actionEnv },
+      windowsVerbatimArguments: shellSpec.windowsVerbatimArguments
     });
 
     const info: ManagedProcess = {
       id,
       name,
       command,
+      // cwd — привязка к проекту (по нему процесс ищут UI и listProcessesForProject),
+      // фактический рабочий каталог — workingDir.
       cwd: projectPath,
+      workingDir: workingDir !== path.normalize(projectPath) ? workingDir : undefined,
       pid: child.pid,
       startedAt: new Date().toISOString(),
       status: 'running',

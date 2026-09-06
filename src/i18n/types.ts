@@ -492,9 +492,6 @@ export interface TranslationDictionary {
     maximize: string;
     restore: string;
     close: string;
-    devServer: string;
-    buildProject: string;
-    indexDocs: string;
     running: string;
     stopped: string;
     exited: string;

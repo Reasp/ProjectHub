@@ -15,9 +15,25 @@ import type {
   Milestone,
   CreateMilestoneParams,
   PtySession,
-  ProjectAgentStatus
+  ProjectAgentStatus,
+  ProjectActionConfig,
+  ProjectActionKind,
+  ActionDefinition,
+  StartProcessOptions
 } from '../types/electron';
+
+/**
+ * Процесс относится к действию из .projecthub.json, если он привязан к тому же проекту
+ * и совпадает по имени действия либо по командной строке.
+ */
+export function isProcessOfAction(p: ManagedProcess, projectPath: string, def: ActionDefinition): boolean {
+  return p.cwd === projectPath && (p.name === def.name || p.command === def.command);
+}
 import type { Language } from '../i18n';
+
+export interface RunActionOptions {
+  confirm?: (def: ActionDefinition) => boolean;
+}
 
 export interface ProjectCachedData {
   tasks: BacklogTask[];
@@ -197,8 +213,19 @@ interface ProjectState {
 
   // Process Actions
   fetchProcesses: (projectPath: string) => Promise<void>;
-  startProcessAction: (command: string, name: string) => Promise<ManagedProcess | null>;
+  startProcessAction: (command: string, name: string, options?: StartProcessOptions) => Promise<ManagedProcess | null>;
   stopProcessAction: (processId: string) => Promise<boolean>;
+
+  // Action Runner (.projecthub.json): единый источник команд run/deploy/test для кнопок,
+  // терминала и голосовых команд (аудит 5.9).
+  actionConfig: ProjectActionConfig | null;
+  loadActionConfig: (projectPath: string) => Promise<ProjectActionConfig | null>;
+  /** Запустить произвольное действие с его env/cwd; `confirm` спрашивается, если действие требует подтверждения. */
+  runActionDefinition: (def: ActionDefinition, options?: RunActionOptions) => Promise<ManagedProcess | null>;
+  /** Запустить стандартное действие (run/deploy/test), перечитав конфиг проекта. */
+  runProjectAction: (kind: ProjectActionKind, options?: RunActionOptions) => Promise<ManagedProcess | null>;
+  /** Запущенный процесс стандартного действия текущего проекта, если есть. */
+  findActionProcess: (kind: ProjectActionKind) => ManagedProcess | undefined;
 
   // Async Thunks
   fetchProjects: () => Promise<void>;
@@ -409,6 +436,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   terminalLogs: ['[ProjectHub] Система инициализирована.', '[ProjectHub] Реестр проектов загружен.'],
   processes: [],
   activeProcessId: null,
+  actionConfig: null,
   terminalHeight: 220,
   isHotkeysHelpOpen: false,
 
@@ -600,7 +628,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (typeof window !== 'undefined') {
         try { localStorage.removeItem(SELECTED_PROJECT_KEY); } catch {}
       }
-      set({ selectedProject: null, selectedMilestoneFilter: null });
+      set({ selectedProject: null, selectedMilestoneFilter: null, actionConfig: null });
       return;
     }
 
@@ -615,7 +643,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     const cur = get().selectedProject;
     if (cur && cur.path !== selectedProject.path) {
-      set({ lastSelectedProjectPath: cur.path });
+      // Конфиг действий принадлежит проекту — до загрузки нового не показывать чужой.
+      set({ lastSelectedProjectPath: cur.path, actionConfig: null });
     }
 
     // Automatically make the selected project active in the session
@@ -835,13 +864,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  startProcessAction: async (command: string, name: string) => {
+  startProcessAction: async (command: string, name: string, options?: StartProcessOptions) => {
     const curProject = get().selectedProject;
     if (!curProject || !window.api) return null;
 
     try {
       set({ isTerminalOpen: true });
-      const proc = await window.api.startProcess(curProject.path, command, name);
+      const proc = await window.api.startProcess(curProject.path, command, name, options);
       set((state) => ({
         processes: [...state.processes.filter((p) => p.id !== proc.id), proc],
         activeProcessId: proc.id
@@ -853,6 +882,43 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       get().addTerminalLog(`[Process Error] Не удалось запустить ${name}: ${e.message}`);
       return null;
     }
+  },
+
+  loadActionConfig: async (projectPath: string) => {
+    if (!window.api?.getActionConfig) return null;
+    try {
+      const cfg = await window.api.getActionConfig(projectPath);
+      // Пока конфиг читался, проект могли переключить — чужой конфиг в стор не кладём.
+      if (get().selectedProject?.path === projectPath) set({ actionConfig: cfg });
+      return cfg;
+    } catch (e) {
+      console.error('Failed to load action config:', e);
+      return null;
+    }
+  },
+
+  runActionDefinition: async (def: ActionDefinition, options?: RunActionOptions) => {
+    if (def.requiresConfirmation && options?.confirm && !options.confirm(def)) return null;
+    return get().startProcessAction(def.command, def.name, { env: def.env, cwd: def.cwd });
+  },
+
+  runProjectAction: async (kind: ProjectActionKind, options?: RunActionOptions) => {
+    const curProject = get().selectedProject;
+    if (!curProject) return null;
+    // Перечитываем .projecthub.json при каждом запуске: файл могли поправить снаружи.
+    const cfg = (await get().loadActionConfig(curProject.path)) ?? get().actionConfig;
+    if (!cfg) {
+      get().addTerminalLog(`[Process Error] Не удалось прочитать конфигурацию действий проекта (${kind})`);
+      return null;
+    }
+    return get().runActionDefinition(cfg[kind], options);
+  },
+
+  findActionProcess: (kind: ProjectActionKind) => {
+    const { selectedProject, actionConfig, processes } = get();
+    if (!selectedProject || !actionConfig) return undefined;
+    const def = actionConfig[kind];
+    return processes.find((p) => p.status === 'running' && isProcessOfAction(p, selectedProject.path, def));
   },
 
   stopProcessAction: async (processId: string) => {
@@ -1051,6 +1117,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   loadProjectData: async (project: ProjectInfo, options?: { silent?: boolean }) => {
     try {
       if (window.api) {
+        void get().loadActionConfig(project.path);
         // Setup chokidar watcher listener if not setup
         if (!watcherCleanup) {
           watcherCleanup = window.api.onTasksChanged(async (data) => {

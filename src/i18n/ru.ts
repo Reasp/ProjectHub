@@ -492,9 +492,6 @@ export const ru: TranslationDictionary = {
     maximize: 'Развернуть',
     restore: 'Восстановить',
     close: 'Закрыть терминал',
-    devServer: 'npm run dev',
-    buildProject: 'npm run build',
-    indexDocs: 'npm run index-docs',
     running: 'Работает',
     stopped: 'Остановлен',
     exited: 'Завершен'

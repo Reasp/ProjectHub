@@ -10,54 +10,51 @@ import {
   CheckCircle2,
   AlertTriangle
 } from 'lucide-react';
-import { useProjectStore } from '../../store/useProjectStore';
+import { useProjectStore, isProcessOfAction } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { ActionConfigModal } from './ActionConfigModal';
 import { VoiceBadge } from '../voice/VoiceBadge';
-import type { ProjectActionConfig } from '../../types/electron';
 
 export const ActionRunnerBar: React.FC = () => {
   const { t } = useTranslation();
   const {
     selectedProject,
     processes,
-    startProcessAction,
+    actionConfig: config,
+    loadActionConfig,
+    runProjectAction,
     stopProcessAction,
     setTerminalOpen
   } = useProjectStore();
 
-  const [config, setConfig] = useState<ProjectActionConfig | null>(null);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isStartingRun, setIsStartingRun] = useState(false);
   const [isStartingDeploy, setIsStartingDeploy] = useState(false);
   const [isStartingTest, setIsStartingTest] = useState(false);
 
-  const loadConfig = async () => {
-    if (selectedProject && window.api?.getActionConfig) {
-      try {
-        const cfg = await window.api.getActionConfig(selectedProject.path);
-        setConfig(cfg);
-      } catch (e) {
-        console.error('Failed to load action config:', e);
-      }
-    }
-  };
-
+  const projectPath = selectedProject?.path;
   useEffect(() => {
-    loadConfig();
-  }, [selectedProject?.path]);
+    if (projectPath) void loadActionConfig(projectPath);
+  }, [projectPath, loadActionConfig]);
 
   if (!selectedProject || !config) return null;
 
   // Check if Run process is currently active
   const runningDevProcess = processes.find(
-    p => p.status === 'running' && p.cwd === selectedProject.path && (p.name === config.run.name || p.command.includes(config.run.command))
+    (p) => p.status === 'running' && isProcessOfAction(p, selectedProject.path, config.run)
   );
 
   // Check if Deploy process is active
   const runningDeployProcess = processes.find(
-    p => p.status === 'running' && p.cwd === selectedProject.path && (p.name === config.deploy.name || p.command.includes(config.deploy.command))
+    (p) => p.status === 'running' && isProcessOfAction(p, selectedProject.path, config.deploy)
   );
+
+  const confirmDeploy = (def: { command: string }) =>
+    confirm(
+      t.actions.confirmDeploy
+        .replace('{name}', selectedProject.name)
+        .replace('{command}', def.command)
+    );
 
   const handleToggleRun = async () => {
     if (runningDevProcess) {
@@ -65,30 +62,22 @@ export const ActionRunnerBar: React.FC = () => {
     } else {
       setIsStartingRun(true);
       setTerminalOpen(true);
-      await startProcessAction(config.run.command, config.run.name);
+      await runProjectAction('run');
       setIsStartingRun(false);
     }
   };
 
   const handleRunDeploy = async () => {
-    if (config.deploy.requiresConfirmation) {
-      const confirmMsg = t.actions.confirmDeploy
-        .replace('{name}', selectedProject.name)
-        .replace('{command}', config.deploy.command);
-      if (!confirm(confirmMsg)) {
-        return;
-      }
-    }
     setIsStartingDeploy(true);
     setTerminalOpen(true);
-    await startProcessAction(config.deploy.command, config.deploy.name);
+    await runProjectAction('deploy', { confirm: confirmDeploy });
     setIsStartingDeploy(false);
   };
 
   const handleRunTest = async () => {
     setIsStartingTest(true);
     setTerminalOpen(true);
-    await startProcessAction(config.test.command, config.test.name);
+    await runProjectAction('test');
     setIsStartingTest(false);
   };
 
@@ -187,7 +176,7 @@ export const ActionRunnerBar: React.FC = () => {
         onClose={() => setIsConfigOpen(false)}
         projectPath={selectedProject.path}
         initialConfig={config}
-        onSaved={loadConfig}
+        onSaved={() => void loadActionConfig(selectedProject.path)}
       />
     </div>
   );

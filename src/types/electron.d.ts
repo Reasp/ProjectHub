@@ -14,6 +14,15 @@ export interface ProjectActionConfig {
   customActions?: Array<ActionDefinition & { id: string }>;
 }
 
+/** Стандартные действия из .projecthub.json. */
+export type ProjectActionKind = 'run' | 'deploy' | 'test';
+
+/** Параметры запуска процесса, берутся из `ActionDefinition` (env, cwd). */
+export interface StartProcessOptions {
+  env?: Record<string, string>;
+  cwd?: string;
+}
+
 export interface RagStatus {
   ready: boolean;
   chunksCount?: number;
@@ -155,7 +164,10 @@ export interface ManagedProcess {
   id: string;
   name: string;
   command: string;
+  /** Корень проекта, к которому привязан процесс (ключ для поиска в UI). */
   cwd: string;
+  /** Фактический рабочий каталог, если `ActionDefinition.cwd` отличается от корня проекта. */
+  workingDir?: string;
   pid?: number;
   startedAt: string;
   status: 'running' | 'stopped' | 'failed';
@@ -291,7 +303,12 @@ export interface IElectronAPI {
   checkTemplateAvailable: (customSource?: string) => Promise<{ available: boolean; path: string }>;
 
   // Background Processes & Terminal
-  startProcess: (projectPath: string, command: string, name: string) => Promise<ManagedProcess>;
+  startProcess: (
+    projectPath: string,
+    command: string,
+    name: string,
+    options?: StartProcessOptions
+  ) => Promise<ManagedProcess>;
   stopProcess: (processId: string) => Promise<boolean>;
   listProcesses: (projectPath: string) => Promise<ManagedProcess[]>;
   tailProcessLog: (projectPath: string, processName: string, lines?: number) => Promise<string>;

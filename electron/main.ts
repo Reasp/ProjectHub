@@ -13,7 +13,7 @@ import { claudeBridgeService } from './services/claudeBridgeService';
 import { localWhisperService } from './services/localWhisperService';
 import { secretStorageService } from './services/secretStorageService';
 import { mcpServerService } from './services/mcpServerService';
-import { processManager } from './services/processManager';
+import { processManager, type StartProcessOptions } from './services/processManager';
 import { ptyService } from './services/ptyService';
 import { gitService } from './services/gitService';
 import { windowStateService } from './services/windowStateService';
@@ -749,9 +749,12 @@ ipcMain.handle('template:checkAvailable', async (_event, customSource?: string) 
 });
 
 // 4. Background Processes & Terminal
-ipcMain.handle('process:start', async (_event, projectPath: string, command: string, name: string) => {
-  return await processManager.startProcess(projectPath, command, name);
-});
+ipcMain.handle(
+  'process:start',
+  async (_event, projectPath: string, command: string, name: string, options?: StartProcessOptions) => {
+    return await processManager.startProcess(projectPath, command, name, options);
+  }
+);
 
 ipcMain.handle('process:stop', async (_event, processId: string) => {
   return await processManager.stopProcess(processId);
