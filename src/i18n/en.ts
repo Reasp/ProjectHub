@@ -693,10 +693,18 @@ export const en: TranslationDictionary = {
     depthLevel1: 'level (direct subfolders only)',
     depthLevel2: 'levels (recommended)',
     depthLevel3: 'levels (deep search)',
-    scanNow: 'Scan Now'
+    scanNow: 'Scan Now',
+    driveRootWarning: 'Drive roots are skipped during scan — add a projects folder instead'
   },
   wizard: {
     title: 'Project Creation Wizard',
+    templatePath: 'ProjectTemplate Source',
+    templateChecking: 'Checking template...',
+    templateAvailable: 'Template found',
+    templateMissing: 'Template directory not found. Pick the ProjectTemplate folder via "Browse".',
+    templateNotSet: 'Template path is not set. Pick the ProjectTemplate folder — it will be saved in ProjectHub settings.',
+    templateHint: 'Stored in ~/.projecthub/projects.json and used for every new project.',
+    templateNameRequired: 'Please enter a project name.',
     step: 'Step',
     projectName: 'Project Name',
     projectNamePlaceholder: 'e.g. MyAIApp, GameEngine, WebDashboard',

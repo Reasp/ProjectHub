@@ -1,4 +1,4 @@
-import { parentPort } from 'node:worker_threads';
+import { parentPort, workerData } from 'node:worker_threads';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs/promises';
@@ -7,8 +7,10 @@ if (!parentPort) {
   throw new Error('whisperWorker.mjs must be run in a Worker thread');
 }
 
-const MODEL_NAME = 'Xenova/whisper-base';
-const CACHE_DIR = path.join(os.homedir(), '.cache', 'projecthub', 'whisper');
+// Модель и каталог кэша передаёт main-процесс (единый userData/models, TASK-43);
+// fallback на старое расположение — только если воркер запущен без workerData.
+const MODEL_NAME = workerData?.modelName || 'Xenova/whisper-base';
+const CACHE_DIR = workerData?.cacheDir || path.join(os.homedir(), '.cache', 'projecthub', 'whisper');
 
 let asrPipeline = null;
 let isInitializing = false;

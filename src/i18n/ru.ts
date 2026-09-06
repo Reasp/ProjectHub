@@ -693,10 +693,18 @@ export const ru: TranslationDictionary = {
     depthLevel1: 'уровень (только прямые подпапки)',
     depthLevel2: 'уровня (рекомендуется)',
     depthLevel3: 'уровня (глубокий поиск)',
-    scanNow: 'Сканировать'
+    scanNow: 'Сканировать',
+    driveRootWarning: 'Корень диска при сканировании пропускается — укажите папку с проектами'
   },
   wizard: {
     title: 'Мастер создания проекта',
+    templatePath: 'Шаблон ProjectTemplate',
+    templateChecking: 'Проверка шаблона...',
+    templateAvailable: 'Шаблон найден',
+    templateMissing: 'Каталог шаблона не найден. Выберите папку ProjectTemplate через «Обзор».',
+    templateNotSet: 'Путь к шаблону не задан. Выберите каталог ProjectTemplate — он будет сохранён в настройках ProjectHub.',
+    templateHint: 'Путь хранится в ~/.projecthub/projects.json и используется при каждом создании проекта.',
+    templateNameRequired: 'Введите название проекта.',
     step: 'Шаг',
     projectName: 'Название проекта',
     projectNamePlaceholder: 'Например: MyAIApp, GameEngine, WebDashboard',

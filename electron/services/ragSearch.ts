@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import matter from 'gray-matter';
 import type { RagSearchOptions, RagSearchResult } from '../../src/types/electron';
 import { projectRegistry } from './projectRegistry';
+import { ensureModelsCacheDir } from './appPaths';
 
 const MODEL_ID = 'Xenova/all-MiniLM-L6-v2';
 let embedderPromise: any = null;
@@ -27,7 +28,9 @@ async function getTransformers() {
     try {
       transformersModule = await import('@huggingface/transformers');
       if (transformersModule.env) {
-        transformersModule.env.cacheDir = path.join(process.cwd(), '.rag-cache');
+        // Единый кэш моделей приложения (userData/models), а не cwd/.rag-cache (TASK-43)
+        transformersModule.env.cacheDir = await ensureModelsCacheDir();
+        transformersModule.env.allowLocalModels = true;
       }
     } catch (err) {
       console.warn('[RAG] Transformers not available:', err);

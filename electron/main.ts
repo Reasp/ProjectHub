@@ -748,6 +748,12 @@ ipcMain.handle('template:checkAvailable', async (_event, customSource?: string) 
   return await checkTemplateAvailable(customSource);
 });
 
+// Путь к шаблону хранится в реестре (~/.projecthub/projects.json → settings.templatePath), TASK-43
+ipcMain.handle('template:setPath', async (_event, templatePath: string | null) => {
+  if (templatePath !== null && typeof templatePath !== 'string') return false;
+  return await projectRegistry.setTemplatePath(templatePath);
+});
+
 // 4. Background Processes & Terminal
 ipcMain.handle(
   'process:start',

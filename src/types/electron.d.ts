@@ -144,6 +144,16 @@ export interface ScanOptions {
 export interface RegistrySettings {
   autoScanOnStartup: boolean;
   scanDepth: number;
+  /** Путь к шаблону ProjectTemplate для мастера создания проектов. */
+  templatePath?: string;
+}
+
+export type TemplateSource = 'custom' | 'registry' | 'env' | 'dev-default' | 'none';
+
+export interface TemplateAvailability {
+  available: boolean;
+  path: string;
+  source: TemplateSource;
 }
 
 export interface CreateProjectOptions {
@@ -309,7 +319,8 @@ export interface IElectronAPI {
 
   // Project Template Wizard
   createProjectFromTemplate: (options: CreateProjectOptions) => Promise<ProjectInfo>;
-  checkTemplateAvailable: (customSource?: string) => Promise<{ available: boolean; path: string }>;
+  checkTemplateAvailable: (customSource?: string) => Promise<TemplateAvailability>;
+  setTemplatePath: (templatePath: string | null) => Promise<boolean>;
 
   // Background Processes & Terminal
   startProcess: (

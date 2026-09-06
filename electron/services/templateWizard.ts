@@ -6,8 +6,42 @@ import { simpleGit } from 'simple-git';
 import type { CreateProjectOptions, ProjectInfo } from '../../src/types/electron';
 import { projectRegistry } from './projectRegistry';
 import { inspectProject } from './projectScanner';
+import { getDevRepoRoot } from './appPaths';
 
-const DEFAULT_TEMPLATE_PATH = process.env.PROJECT_TEMPLATE_PATH || path.resolve(process.cwd(), '..', 'ProjectTemplate');
+export type TemplateSource = 'custom' | 'registry' | 'env' | 'dev-default' | 'none';
+
+export interface TemplateAvailability {
+  available: boolean;
+  /** Путь, который будет использован (пустая строка, если источник не определён). */
+  path: string;
+  /** Откуда взят путь: явный аргумент, реестр, переменная окружения, dev-соседний каталог. */
+  source: TemplateSource;
+}
+
+/**
+ * Разрешение пути к шаблону ProjectTemplate (TASK-43). `process.cwd()` не используется:
+ * в упакованном приложении он произволен. Приоритет: явный путь → настройка реестра
+ * (`settings.templatePath`, задаётся в UI мастера) → `PROJECT_TEMPLATE_PATH` →
+ * в dev-режиме соседний с репозиторием каталог `../ProjectTemplate`.
+ */
+export async function resolveTemplatePath(customSource?: string): Promise<{ path: string; source: TemplateSource }> {
+  const custom = customSource?.trim();
+  if (custom) return { path: path.normalize(custom), source: 'custom' };
+
+  const fromRegistry = (await projectRegistry.getTemplatePath())?.trim();
+  if (fromRegistry) return { path: fromRegistry, source: 'registry' };
+
+  const fromEnv = process.env.PROJECT_TEMPLATE_PATH?.trim();
+  if (fromEnv) return { path: path.normalize(fromEnv), source: 'env' };
+
+  const devRoot = getDevRepoRoot();
+  if (devRoot) {
+    const sibling = path.resolve(devRoot, '..', 'ProjectTemplate');
+    if (existsSync(sibling)) return { path: sibling, source: 'dev-default' };
+  }
+
+  return { path: '', source: 'none' };
+}
 
 const IGNORED_COPY_NAMES = new Set([
   'node_modules',
@@ -44,17 +78,22 @@ async function copyDirectoryRecursive(src: string, dest: string) {
   }
 }
 
-export async function checkTemplateAvailable(customSource?: string): Promise<{ available: boolean; path: string }> {
-  const source = customSource || DEFAULT_TEMPLATE_PATH;
-  const isAvailable = existsSync(source);
-  return { available: isAvailable, path: source };
+export async function checkTemplateAvailable(customSource?: string): Promise<TemplateAvailability> {
+  const resolved = await resolveTemplatePath(customSource);
+  const available = Boolean(resolved.path) && existsSync(resolved.path);
+  return { available, path: resolved.path, source: resolved.source };
 }
 
 export async function createProjectFromTemplate(options: CreateProjectOptions): Promise<ProjectInfo> {
-  const templateSource = options.templateSource || DEFAULT_TEMPLATE_PATH;
+  const { path: templateSource, source } = await resolveTemplatePath(options.templateSource);
 
+  if (!templateSource) {
+    throw new Error(
+      'Путь к шаблону ProjectTemplate не задан. Укажите каталог шаблона в мастере создания проекта (поле «Шаблон ProjectTemplate»).'
+    );
+  }
   if (!existsSync(templateSource)) {
-    throw new Error(`Директория шаблона не найдена: ${templateSource}`);
+    throw new Error(`Директория шаблона не найдена: ${templateSource} (источник: ${source})`);
   }
 
   const targetDir = path.normalize(options.targetDir);
@@ -130,9 +169,12 @@ export async function createProjectFromTemplate(options: CreateProjectOptions): 
   if (existsSync(setupScriptPath)) {
     try {
       await new Promise<void>((resolve) => {
+        // process.execPath — это бинарник Electron (ProjectHub.exe); ELECTRON_RUN_AS_NODE
+        // заставляет его выполнить скрипт как обычный Node, иначе откроется второе окно приложения
         const proc = spawn(process.execPath, [setupScriptPath], {
           cwd: targetDir,
-          shell: true
+          shell: true,
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
         });
         proc.on('close', () => resolve());
         proc.on('error', () => resolve());

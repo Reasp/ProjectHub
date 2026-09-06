@@ -694,9 +694,17 @@ export interface TranslationDictionary {
     depthLevel2: string;
     depthLevel3: string;
     scanNow: string;
+    driveRootWarning: string;
   };
   wizard: {
     title: string;
+    templatePath: string;
+    templateChecking: string;
+    templateAvailable: string;
+    templateMissing: string;
+    templateNotSet: string;
+    templateHint: string;
+    templateNameRequired: string;
     step: string;
     projectName: string;
     projectNamePlaceholder: string;

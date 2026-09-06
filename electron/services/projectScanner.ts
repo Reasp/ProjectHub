@@ -5,6 +5,7 @@ import matter from 'gray-matter';
 import { simpleGit } from 'simple-git';
 import type { ProjectInfo, RagStatus, ProcessStatus, RunningProcess, GitLastCommit } from '../../src/types/electron';
 import { projectRegistry } from './projectRegistry';
+import { isFilesystemRoot } from './appPaths';
 
 const IGNORED_FOLDERS = new Set([
   'node_modules',
@@ -23,7 +24,17 @@ const IGNORED_FOLDERS = new Set([
   'windows'
 ]);
 
-export async function inspectProject(folderPath: string): Promise<ProjectInfo | null> {
+export interface InspectProjectOptions {
+  /**
+   * Не запускать git-команды (status/log) — только проверка маркеров и чтение файлов.
+   * Используется при сканировании каталогов: git в каждой папке-кандидате делал скан
+   * многоминутным (аудит 5.10). Git-статус вычисляется при добавлении проекта в реестр
+   * и при обычном обновлении списка (projects:list / projects:refresh).
+   */
+  skipGit?: boolean;
+}
+
+export async function inspectProject(folderPath: string, options: InspectProjectOptions = {}): Promise<ProjectInfo | null> {
   try {
     const normalizedPath = path.normalize(folderPath);
     if (!existsSync(normalizedPath)) return null;
@@ -117,7 +128,7 @@ export async function inspectProject(folderPath: string): Promise<ProjectInfo | 
     let gitBehind = 0;
     let lastCommit: GitLastCommit | undefined;
 
-    if (hasGit) {
+    if (hasGit && !options.skipGit) {
       try {
         const git = simpleGit(normalizedPath);
         const status = await git.status();
@@ -231,7 +242,10 @@ export async function inspectProject(folderPath: string): Promise<ProjectInfo | 
 }
 
 /**
- * Recursively scans directories up to the given maxDepth
+ * Recursively scans directories up to the given maxDepth.
+ *
+ * Корни-диски (`C:\`, `/`) пропускаются: обход диска с глубиной 2 задевает Program Files,
+ * Windows и AppData и длится минуты; корни автопоиска должны указывать на каталоги с проектами.
  */
 export async function scanDirectories(
   rootDirs: string[],
@@ -246,8 +260,8 @@ export async function scanDirectories(
       const stat = await fs.stat(currentDir);
       if (!stat.isDirectory()) return;
 
-      // 1. Check if currentDir itself is a project
-      const info = await inspectProject(currentDir);
+      // 1. Check if currentDir itself is a project (только маркеры, без git — TASK-43)
+      const info = await inspectProject(currentDir, { skipGit: true });
       if (info) {
         discoveredMap.set(path.normalize(info.path).toLowerCase(), info);
         // If it's a project root, we typically don't scan deep inside it (e.g. sub-repos)
@@ -272,13 +286,21 @@ export async function scanDirectories(
   }
 
   for (const root of rootDirs) {
+    if (isFilesystemRoot(root)) {
+      console.warn(`[Scanner] Skipping filesystem root "${root}": add a projects folder instead of a whole drive`);
+      continue;
+    }
     await scanLevel(path.normalize(root), 0);
   }
 
-  // Register newly discovered projects into persistent store
+  // Register newly discovered projects into persistent store and compute git status
+  // for them once (при добавлении в реестр, а не в каждой папке-кандидате при обходе)
+  const results: ProjectInfo[] = [];
   for (const proj of discoveredMap.values()) {
     await projectRegistry.addProject(proj.path, Boolean(proj.favorite));
+    const full = await inspectProject(proj.path);
+    results.push(full ?? proj);
   }
 
-  return Array.from(discoveredMap.values());
+  return results;
 }

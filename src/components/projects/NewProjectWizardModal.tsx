@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
-import type { CreateProjectOptions } from '../../types/electron';
+import type { CreateProjectOptions, TemplateAvailability } from '../../types/electron';
 
 interface NewProjectWizardModalProps {
   isOpen: boolean;
@@ -50,6 +50,23 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
   const [currentCreationStep, setCurrentCreationStep] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Путь к шаблону ProjectTemplate разрешается в main-процессе (реестр → env → dev-fallback), TASK-43
+  const [template, setTemplate] = useState<TemplateAvailability | null>(null);
+  const [isCheckingTemplate, setIsCheckingTemplate] = useState(false);
+
+  const refreshTemplate = async () => {
+    if (!window.api) return;
+    setIsCheckingTemplate(true);
+    try {
+      setTemplate(await window.api.checkTemplateAvailable());
+    } catch (e) {
+      console.error('Template check failed:', e);
+      setTemplate({ available: false, path: '', source: 'none' });
+    } finally {
+      setIsCheckingTemplate(false);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       setStep(1);
@@ -57,10 +74,22 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
       setErrorMessage(null);
       setIsCreating(false);
       setCurrentCreationStep('');
+      void refreshTemplate();
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const templateReady = Boolean(template?.available);
+
+  const handleSelectTemplateDir = async () => {
+    if (!window.api) return;
+    const selected = await window.api.selectDirectory();
+    if (selected) {
+      await window.api.setTemplatePath(selected);
+      await refreshTemplate();
+    }
+  };
 
   const targetPath = parentDir
     ? `${parentDir.replace(/[\\/]+$/, '')}\\${projectName.trim()}`
@@ -192,6 +221,56 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
                   <span className="font-mono text-indigo-300 break-all">{targetPath}</span>
                 </div>
               )}
+
+              <div>
+                <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] block mb-1.5">
+                  {t.wizard.templatePath}
+                </label>
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`flex-1 min-w-0 rounded-xl px-3.5 py-2 text-xs font-mono border truncate ${
+                      templateReady
+                        ? 'bg-[#171a29] border-slate-800 text-slate-300'
+                        : 'bg-amber-950/20 border-amber-800/40 text-amber-200'
+                    }`}
+                    title={template?.path || ''}
+                  >
+                    {isCheckingTemplate
+                      ? t.wizard.templateChecking
+                      : template?.path || t.wizard.templateNotSet}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSelectTemplateDir}
+                    className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium transition flex items-center gap-1.5 border border-slate-700 shrink-0"
+                  >
+                    <Folder className="w-3.5 h-3.5 text-indigo-400" />
+                    {t.wizard.selectFolder}
+                  </button>
+                </div>
+                {!isCheckingTemplate && template && (
+                  <div
+                    className={`mt-1.5 flex items-start gap-1.5 text-[11px] ${
+                      templateReady ? 'text-emerald-400' : 'text-amber-300'
+                    }`}
+                  >
+                    {templateReady ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-px" />
+                    ) : (
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" />
+                    )}
+                    <span>
+                      {templateReady
+                        ? t.wizard.templateAvailable
+                        : template.path
+                          ? t.wizard.templateMissing
+                          : t.wizard.templateNotSet}
+                      {' '}
+                      <span className="text-slate-500">{t.wizard.templateHint}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
 
               <div className="pt-2">
                 <label className="flex items-center gap-2.5 cursor-pointer select-none">
@@ -419,12 +498,15 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
               <button
                 onClick={() => {
                   if (!projectName.trim()) {
-                    alert('Please enter a project name.');
+                    setErrorMessage(t.wizard.templateNameRequired);
                     return;
                   }
+                  setErrorMessage(null);
                   setStep(2);
                 }}
-                className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-md shadow-indigo-600/20 transition flex items-center gap-1 text-xs"
+                disabled={!templateReady || isCheckingTemplate}
+                title={templateReady ? undefined : t.wizard.templateMissing}
+                className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-md shadow-indigo-600/20 transition flex items-center gap-1 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {t.wizard.next}
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -434,8 +516,8 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
             {step === 2 && (
               <button
                 onClick={handleCreate}
-                disabled={isCreating}
-                className="px-5 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium shadow-lg shadow-indigo-600/30 transition flex items-center gap-1.5 text-xs"
+                disabled={isCreating || !templateReady}
+                className="px-5 py-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium shadow-lg shadow-indigo-600/30 transition flex items-center gap-1.5 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                 {t.wizard.createButton}

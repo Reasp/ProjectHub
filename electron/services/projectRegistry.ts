@@ -1,8 +1,7 @@
 import path from 'node:path';
-import os from 'node:os';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { app } from 'electron';
+import { getDevRepoRoot, getHomeDir, getUserDataDir } from './appPaths';
 
 export interface ProjectRegistryEntry {
   path: string;
@@ -19,38 +18,66 @@ export interface RegistryConfig {
   settings: {
     autoScanOnStartup: boolean;
     scanDepth: number;
+    /** Путь к шаблону ProjectTemplate для мастера создания проектов (TASK-43). */
+    templatePath?: string;
   };
 }
 
-const DEFAULT_SCAN_ROOTS = process.platform === 'win32'
-  ? [path.parse(process.cwd()).root, path.join(os.homedir(), 'Projects')].filter((p, i, a) => a.indexOf(p) === i)
-  : [path.join(os.homedir(), 'Projects'), path.join(os.homedir(), 'Developer')];
+/**
+ * Корни автопоиска по умолчанию — только типичные каталоги с проектами в домашней папке.
+ * Корень диска (`C:\`) намеренно не включается: скан с глубиной 2 по всему диску
+ * обходил Program Files/Windows/AppData и запускал git в каждой папке-кандидате (аудит 5.10).
+ */
+function getDefaultScanRoots(): string[] {
+  const home = getHomeDir();
+  const candidates = process.platform === 'win32'
+    ? [
+        path.join(home, 'Projects'),
+        path.join(home, 'source', 'repos'),
+        path.join(home, 'Developer'),
+        path.join(home, 'Documents', 'Projects')
+      ]
+    : [path.join(home, 'Projects'), path.join(home, 'Developer'), path.join(home, 'src')];
+  return Array.from(new Set(candidates.map((p) => path.normalize(p)))).filter((p) => existsSync(p));
+}
 
-const DEFAULT_CONFIG: RegistryConfig = {
-  version: 1,
-  scanRoots: DEFAULT_SCAN_ROOTS.filter((p) => existsSync(p)),
-  projects: [
-    {
-      path: process.cwd(),
+/**
+ * Конфиг по умолчанию. Реестр не добавляет `process.cwd()`: в упакованном приложении cwd произволен.
+ * В dev-режиме (app.isPackaged=false) текущий репозиторий ProjectHub добавляется явно как «hub».
+ */
+function buildDefaultConfig(): RegistryConfig {
+  const projects: ProjectRegistryEntry[] = [];
+  const devRoot = getDevRepoRoot();
+  if (devRoot) {
+    projects.push({
+      path: devRoot,
       addedAt: new Date().toISOString(),
       favorite: true,
       tags: ['hub', 'core']
-    }
-  ],
-  settings: {
-    autoScanOnStartup: true,
-    scanDepth: 2
+    });
   }
-};
+  return {
+    version: 1,
+    scanRoots: getDefaultScanRoots(),
+    projects,
+    settings: {
+      autoScanOnStartup: true,
+      scanDepth: 2
+    }
+  };
+}
 
 class ProjectRegistry {
   private configPath: string;
   private cachedConfig: RegistryConfig | null = null;
 
   constructor() {
-    const homeDir = os.homedir();
-    const hubDir = path.join(homeDir, '.projecthub');
+    const hubDir = path.join(getHomeDir(), '.projecthub');
     this.configPath = path.join(hubDir, 'projects.json');
+  }
+
+  private async writeDefaultConfig(): Promise<void> {
+    await fs.writeFile(this.configPath, JSON.stringify(buildDefaultConfig(), null, 2), 'utf-8');
   }
 
   private async ensureConfigFile(): Promise<string> {
@@ -60,18 +87,18 @@ class ProjectRegistry {
         await fs.mkdir(dir, { recursive: true });
       }
       if (!existsSync(this.configPath)) {
-        await fs.writeFile(this.configPath, JSON.stringify(DEFAULT_CONFIG, null, 2), 'utf-8');
+        await this.writeDefaultConfig();
       }
       return this.configPath;
     } catch (e) {
       // Fallback to app userData if home dir fails
-      const fallbackDir = app ? app.getPath('userData') : path.join(os.tmpdir(), '.projecthub');
+      const fallbackDir = getUserDataDir();
       if (!existsSync(fallbackDir)) {
         await fs.mkdir(fallbackDir, { recursive: true });
       }
       this.configPath = path.join(fallbackDir, 'projects.json');
       if (!existsSync(this.configPath)) {
-        await fs.writeFile(this.configPath, JSON.stringify(DEFAULT_CONFIG, null, 2), 'utf-8');
+        await this.writeDefaultConfig();
       }
       return this.configPath;
     }
@@ -80,20 +107,21 @@ class ProjectRegistry {
   async getConfig(): Promise<RegistryConfig> {
     if (this.cachedConfig) return this.cachedConfig;
     await this.ensureConfigFile();
+    const defaults = buildDefaultConfig();
     try {
       const raw = await fs.readFile(this.configPath, 'utf-8');
       const parsed: RegistryConfig = JSON.parse(raw);
       this.cachedConfig = {
-        ...DEFAULT_CONFIG,
+        ...defaults,
         ...parsed,
         projects: parsed.projects || [],
-        scanRoots: parsed.scanRoots || DEFAULT_CONFIG.scanRoots,
-        settings: { ...DEFAULT_CONFIG.settings, ...parsed.settings }
+        scanRoots: parsed.scanRoots || defaults.scanRoots,
+        settings: { ...defaults.settings, ...parsed.settings }
       };
       return this.cachedConfig;
     } catch (e) {
       console.error('Failed to parse projects.json, restoring default config:', e);
-      this.cachedConfig = DEFAULT_CONFIG;
+      this.cachedConfig = defaults;
       await this.saveConfig(this.cachedConfig);
       return this.cachedConfig;
     }
@@ -117,6 +145,19 @@ class ProjectRegistry {
   async setScanRoots(roots: string[]): Promise<boolean> {
     const config = await this.getConfig();
     config.scanRoots = Array.from(new Set(roots.map((r) => path.normalize(r))));
+    await this.saveConfig(config);
+    return true;
+  }
+
+  async getTemplatePath(): Promise<string | undefined> {
+    const config = await this.getConfig();
+    return config.settings.templatePath;
+  }
+
+  async setTemplatePath(templatePath: string | null): Promise<boolean> {
+    const config = await this.getConfig();
+    const trimmed = templatePath?.trim();
+    config.settings.templatePath = trimmed ? path.normalize(trimmed) : undefined;
     await this.saveConfig(config);
     return true;
   }

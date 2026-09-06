@@ -1,5 +1,6 @@
 import * as pty from 'node-pty';
 import path from 'node:path';
+import os from 'node:os';
 import { existsSync } from 'node:fs';
 import { BrowserWindow } from 'electron';
 import { PROJECT_HUB_CLAUDE_DIR } from './aiAgentService.js';
@@ -68,7 +69,8 @@ class PtyService {
       CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR
     };
 
-    const cwd = existsSync(options.projectPath) ? options.projectPath : process.cwd();
+    // Fallback — домашний каталог, а не process.cwd(): в упакованном приложении cwd произволен (TASK-43)
+    const cwd = existsSync(options.projectPath) ? options.projectPath : os.homedir();
 
     const ptyProcess = pty.spawn(shell, args, {
       name: 'xterm-256color',

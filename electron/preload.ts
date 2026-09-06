@@ -35,6 +35,7 @@ const api: IElectronAPI = {
     ipcRenderer.invoke('template:createProject', options),
   checkTemplateAvailable: (customSource?: string) =>
     ipcRenderer.invoke('template:checkAvailable', customSource),
+  setTemplatePath: (templatePath: string | null) => ipcRenderer.invoke('template:setPath', templatePath),
 
   // Background Processes & Terminal
   startProcess: (projectPath: string, command: string, name: string, options?: StartProcessOptions) =>

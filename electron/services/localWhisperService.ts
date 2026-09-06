@@ -1,9 +1,6 @@
-import path from 'node:path';
-import os from 'node:os';
-import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { Worker } from 'node:worker_threads';
-import { fileURLToPath } from 'node:url';
+import { ensureModelsCacheDir, getModelsCacheDir, getWorkerScriptCandidates } from './appPaths';
 
 export type LocalWhisperStatus = 'unloaded' | 'loading' | 'ready' | 'error';
 
@@ -53,7 +50,8 @@ class LocalWhisperService {
   private readyWaiters: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
 
   constructor() {
-    this.cacheDir = path.join(os.homedir(), '.cache', 'projecthub', 'whisper');
+    // Единый кэш моделей приложения (userData/models) — общий с RAG-эмбеддингами (TASK-43)
+    this.cacheDir = getModelsCacheDir();
   }
 
   getState(): LocalWhisperState {
@@ -88,31 +86,43 @@ class LocalWhisperService {
   }
 
   private resolveWorkerPath(): string | null {
-    const candidates = [
-      path.join(process.cwd(), 'dist-electron', 'workers', 'whisperWorker.mjs'),
-      path.join(process.cwd(), 'electron', 'workers', 'whisperWorker.mjs'),
-      path.join(path.dirname(fileURLToPath(import.meta.url)), '../workers/whisperWorker.mjs'),
-      path.join(path.dirname(fileURLToPath(import.meta.url)), 'workers/whisperWorker.mjs')
-    ];
-
+    // Кандидаты вычисляются от каталога бандла и app.getAppPath(), не от process.cwd() (TASK-43)
+    const candidates = getWorkerScriptCandidates('whisperWorker.mjs');
     for (const p of candidates) {
       if (existsSync(p)) return p;
     }
-
-    return candidates[1];
+    console.warn('[LocalWhisper] Worker script not found, checked:', candidates);
+    return null;
   }
 
   private spawnWorker() {
-    try {
-      const workerPath = this.resolveWorkerPath();
-      if (!workerPath || !existsSync(workerPath)) {
-        console.warn(`[LocalWhisper] Worker script not found at ${workerPath}, using in-process fallback`);
-        this.initInProcessFallback();
-        return;
-      }
+    const workerPath = this.resolveWorkerPath();
+    if (!workerPath) {
+      console.warn('[LocalWhisper] Worker script not found, using in-process fallback');
+      this.initInProcessFallback();
+      return;
+    }
 
+    ensureModelsCacheDir()
+      .then((cacheDir) => {
+        this.cacheDir = cacheDir;
+        if (this.disposing) return;
+        this.startWorker(workerPath);
+      })
+      .catch((err) => {
+        console.error('[LocalWhisper] Failed to prepare models cache dir:', err);
+        this.status = 'error';
+        this.errorMessage = err instanceof Error ? err.message : String(err);
+        this.rejectReadyWaiters(err instanceof Error ? err : new Error(String(err)));
+      });
+  }
+
+  private startWorker(workerPath: string) {
+    try {
       console.log(`[LocalWhisper] Spawning Worker thread at ${workerPath}`);
-      const worker = new Worker(workerPath);
+      const worker = new Worker(workerPath, {
+        workerData: { cacheDir: this.cacheDir, modelName: this.modelName }
+      });
       this.worker = worker;
 
       worker.on('message', (msg) => {
@@ -260,7 +270,7 @@ class LocalWhisperService {
   private async initInProcessFallback() {
     try {
       console.log('[LocalWhisper] Initializing in-process Transformers fallback...');
-      await fs.mkdir(this.cacheDir, { recursive: true });
+      this.cacheDir = await ensureModelsCacheDir();
       const transformers = await import('@huggingface/transformers');
       if (transformers.env) {
         transformers.env.cacheDir = this.cacheDir;

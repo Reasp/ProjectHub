@@ -44,6 +44,9 @@ export const ScanSettingsModal: React.FC<ScanSettingsModalProps> = ({ isOpen, on
 
   if (!isOpen) return null;
 
+  // Корни дисков (`C:\`, `/`) main-процесс при сканировании пропускает (TASK-43) — подсвечиваем их в списке
+  const isDriveRoot = (p: string) => /^[A-Za-z]:[\\/]?$/.test(p.trim()) || p.trim() === '/';
+
   const handleAddFolder = async () => {
     if (window.api) {
       const selected = await window.api.selectDirectory();
@@ -121,8 +124,18 @@ export const ScanSettingsModal: React.FC<ScanSettingsModalProps> = ({ isOpen, on
                     className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-[#181b2b] border border-slate-800/80 group hover:border-slate-700 transition"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <Folder className="w-4 h-4 text-slate-400 shrink-0" />
-                      <span className="font-mono text-xs text-slate-300 truncate" title={rootPath}>
+                      {isDriveRoot(rootPath) ? (
+                        <AlertCircle
+                          className="w-4 h-4 text-amber-400 shrink-0"
+                          aria-label={t.scanSettings.driveRootWarning}
+                        />
+                      ) : (
+                        <Folder className="w-4 h-4 text-slate-400 shrink-0" />
+                      )}
+                      <span
+                        className={`font-mono text-xs truncate ${isDriveRoot(rootPath) ? 'text-amber-300' : 'text-slate-300'}`}
+                        title={isDriveRoot(rootPath) ? t.scanSettings.driveRootWarning : rootPath}
+                      >
                         {rootPath}
                       </span>
                     </div>
