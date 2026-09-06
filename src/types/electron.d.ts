@@ -271,11 +271,20 @@ export interface DocItem {
   size: number;
 }
 
+/** Тип документа во frontmatter Backlog.md (`type:`), правило 13 CLAUDE.md. */
+export type DocFileType = 'guide' | 'readme' | 'specification' | 'other';
+/** Статус ADR во frontmatter Backlog.md (`status:`), правило 13 CLAUDE.md. */
+export type DecisionStatus = 'accepted' | 'proposed' | 'rejected' | 'deprecated';
+
 export interface CreateDocParams {
   type: 'doc' | 'decision';
   title: string;
+  /** Для decision: accepted | proposed | rejected | deprecated (регистр не важен). */
   status?: string;
+  /** Для doc: guide | readme | specification | other. По умолчанию other. */
+  docType?: DocFileType;
   tags?: string[];
+  /** Тело документа. Если содержит свой frontmatter — берётся только тело, frontmatter генерируется по стандарту. */
   content?: string;
 }
 

@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { X, BookOpen, ShieldCheck, Tag, FileText, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import type { DocFileType } from '../../types/electron';
+
+const DOC_FILE_TYPES: DocFileType[] = ['guide', 'readme', 'specification', 'other'];
 
 interface CreateDocModalProps {
   isOpen: boolean;
@@ -15,6 +18,7 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
   const [type, setType] = useState<'doc' | 'decision'>('decision');
   const [title, setTitle] = useState('');
   const [status, setStatus] = useState<'Proposed' | 'Accepted' | 'Rejected'>('Accepted');
+  const [docType, setDocType] = useState<DocFileType>('guide');
   const [tagsInput, setTagsInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +45,7 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
         type,
         title: title.trim(),
         status: type === 'decision' ? status : undefined,
+        docType: type === 'doc' ? docType : undefined,
         tags: tags.length > 0 ? tags : undefined
       });
 
@@ -89,7 +94,7 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
 
           {/* Type Selector */}
           <div className="space-y-2">
-            <label className="text-xs font-medium text-slate-300">{t.docs.docType}</label>
+            <label className="text-xs font-medium text-slate-300">{t.docs.docCategory}</label>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
@@ -168,6 +173,30 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
                   </button>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Doc type (frontmatter `type`) */}
+          {type === 'doc' && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-300">{t.docs.docType}</label>
+              <div className="grid grid-cols-4 gap-2">
+                {DOC_FILE_TYPES.map((dt) => (
+                  <button
+                    key={dt}
+                    type="button"
+                    onClick={() => setDocType(dt)}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-mono border transition ${
+                      docType === dt
+                        ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-200'
+                        : 'bg-[#10121d] border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {dt}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-500">{t.docs.docTypeHint}</p>
             </div>
           )}
 

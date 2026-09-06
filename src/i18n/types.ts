@@ -413,7 +413,9 @@ export interface TranslationDictionary {
     createModalTitle: string;
     createDocTitle: string;
     docTitlePlaceholder: string;
+    docCategory: string;
     docType: string;
+    docTypeHint: string;
     docStatus: string;
     typeDecision: string;
     typeDoc: string;

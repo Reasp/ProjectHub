@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import matter from 'gray-matter';
-import type { DocItem, CreateDocParams } from '../../src/types/electron';
+import type { DocItem, CreateDocParams, DocFileType, DecisionStatus } from '../../src/types/electron';
 
 /**
  * YAML в frontmatter превращает незакавыченные значения вида `2026-09-03` в объекты Date,
@@ -20,97 +20,197 @@ function toStringList(value: unknown): string[] {
   return value.map((v) => toOptionalString(v)).filter((v): v is string => v !== undefined);
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
+// ─── Формат Backlog.md (правило 13 CLAUDE.md) ────────────────────────────────
+//
+// backlog/docs/doc-<N> - <Title-Slug>.md
+//   id: doc-<N>, title, type: guide|readme|specification|other, created_date: "YYYY-MM-DD HH:mm"
+// backlog/decisions/decision-<N> - <Title-Slug>.md
+//   id: decision-<N>, title, date: "YYYY-MM-DD HH:mm", status: accepted|proposed|rejected|deprecated
+
+const DOC_FILE_TYPES: DocFileType[] = ['guide', 'readme', 'specification', 'other'];
+const DECISION_STATUSES: DecisionStatus[] = ['accepted', 'proposed', 'rejected', 'deprecated'];
+
+type DocCategory = DocItem['category'];
+
+function idPrefix(category: DocCategory): 'doc' | 'decision' {
+  return category === 'decision' ? 'decision' : 'doc';
+}
+
+/**
+ * Slug для имени файла в стиле Backlog.md: регистр и кириллица сохраняются,
+ * пробелы → `-`, запрещённые для файловой системы символы убираются.
+ */
+function titleSlug(text: string): string {
+  const slug = text
     .trim()
-    .replace(/[^\w\sа-яё\-]/gi, '')
-    .replace(/[\s_]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'untitled';
+    // eslint-disable-next-line no-control-regex
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120)
+    .replace(/-+$/g, '');
+  return slug || 'untitled';
+}
+
+/** Номер из id вида `doc-12` / `decision-3` (только для указанного префикса). */
+function idNumber(value: unknown, prefix: 'doc' | 'decision'): number | null {
+  const str = toOptionalString(value);
+  if (!str) return null;
+  const match = str.trim().match(new RegExp(`^${prefix}-(\\d+)$`, 'i'));
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/** Номер из имени файла `doc-12 - Title.md` / `decision-3 - Title.md`. */
+function fileNameNumber(fileName: string, prefix: 'doc' | 'decision'): number | null {
+  const match = fileName.match(new RegExp(`^${prefix}-(\\d+)(?:\\s|\\.|$)`, 'i'));
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/**
+ * id документа: из frontmatter, если он там есть; иначе из имени файла `doc-N - ...`;
+ * иначе — старая схема `doc-<имя файла>`, чтобы файлы без id всё же попадали в список.
+ */
+function resolveDocId(data: Record<string, unknown>, fileName: string, category: DocCategory): string {
+  const prefix = idPrefix(category);
+  const fmId = toOptionalString(data.id)?.trim();
+  if (fmId) return fmId;
+  const num = fileNameNumber(fileName, prefix);
+  if (num !== null) return `${prefix}-${num}`;
+  return `${prefix}-${fileName}`;
+}
+
+async function collectMarkdownFiles(dir: string, maxDepth = 3): Promise<string[]> {
+  const result: string[] = [];
+  async function walk(current: string, depth: number) {
+    let entries;
+    try {
+      entries = await fs.readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (depth < maxDepth) await walk(fullPath, depth + 1);
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
+        result.push(fullPath);
+      }
+    }
+  }
+  await walk(dir, 0);
+  return result;
+}
+
+/**
+ * Следующий свободный номер: максимум по id из frontmatter и по номерам в именах файлов + 1.
+ * Смотрим и на frontmatter, и на имя файла, чтобы не столкнуться ни с документами Backlog.md CLI,
+ * ни с файлами, где id прописан только в одном из мест.
+ */
+async function nextFreeNumber(dir: string, prefix: 'doc' | 'decision'): Promise<number> {
+  let max = 0;
+  if (!existsSync(dir)) return 1;
+  const files = await collectMarkdownFiles(dir);
+  for (const filePath of files) {
+    const fromName = fileNameNumber(path.basename(filePath), prefix);
+    if (fromName !== null && fromName > max) max = fromName;
+    try {
+      const raw = await fs.readFile(filePath, 'utf-8');
+      const fromFm = idNumber(matter(raw).data?.id, prefix);
+      if (fromFm !== null && fromFm > max) max = fromFm;
+    } catch {
+      // битый frontmatter — номер берём только из имени файла
+    }
+  }
+  return max + 1;
+}
+
+function normalizeDocFileType(value: unknown): DocFileType {
+  const str = toOptionalString(value)?.trim().toLowerCase();
+  return (DOC_FILE_TYPES as string[]).includes(str || '') ? (str as DocFileType) : 'other';
+}
+
+function normalizeDecisionStatus(value: unknown): DecisionStatus {
+  const str = toOptionalString(value)?.trim().toLowerCase();
+  return (DECISION_STATUSES as string[]).includes(str || '') ? (str as DecisionStatus) : 'accepted';
+}
+
+/** "YYYY-MM-DD HH:mm" в локальном времени — как пишет Backlog.md CLI. */
+function nowStamp(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** Скалярная строка YAML: всегда в двойных кавычках (правило 16 — даты и числа только строками). */
+function yamlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function yamlStringList(values: string[]): string {
+  return `[${values.map((v) => yamlString(v)).join(', ')}]`;
+}
+
+async function readDocItem(filePath: string, projectRoot: string, category: DocCategory): Promise<DocItem> {
+  const fileName = path.basename(filePath);
+  const stat = await fs.stat(filePath);
+  const raw = await fs.readFile(filePath, 'utf-8');
+  let data: Record<string, unknown> = {};
+  let content = raw;
+  try {
+    const parsed = matter(raw);
+    data = parsed.data ?? {};
+    content = parsed.content;
+  } catch (e) {
+    console.error(`Frontmatter не парсится: ${filePath}`, e);
+  }
+
+  let title = toOptionalString(data.title);
+  if (!title) {
+    const h1Match = content.match(/^#\s+(.+)$/m);
+    title = h1Match ? h1Match[1].trim() : fileName.replace(/\.md$/i, '');
+  }
+
+  const status =
+    category === 'decision'
+      ? toOptionalString(data.status) || 'accepted'
+      : toOptionalString(data.status);
+  // У документов дата создания хранится в created_date, у решений — в date.
+  const date = toOptionalString(data.date) ?? toOptionalString(data.created_date);
+
+  return {
+    id: resolveDocId(data, fileName, category),
+    title,
+    category,
+    filePath,
+    fileRelative: path.relative(projectRoot, filePath).replace(/\\/g, '/'),
+    tags: toStringList(data.tags),
+    status,
+    date,
+    updatedAt: stat.mtime.toISOString(),
+    size: stat.size
+  };
 }
 
 export async function listProjectDocs(projectPath: string): Promise<DocItem[]> {
   const items: DocItem[] = [];
   const normalizedProject = path.normalize(projectPath);
 
-  // 1. Scan backlog/decisions
-  const decisionsDir = path.join(normalizedProject, 'backlog', 'decisions');
-  if (existsSync(decisionsDir)) {
-    try {
-      const files = await fs.readdir(decisionsDir);
-      for (const file of files) {
-        if (file.endsWith('.md')) {
-          const filePath = path.join(decisionsDir, file);
-          const stat = await fs.stat(filePath);
-          const raw = await fs.readFile(filePath, 'utf-8');
-          const { data, content } = matter(raw);
+  const sources: Array<{ dir: string; category: DocCategory }> = [
+    { dir: path.join(normalizedProject, 'backlog', 'decisions'), category: 'decision' },
+    { dir: path.join(normalizedProject, 'backlog', 'docs'), category: 'doc' }
+  ];
 
-          let title = data.title;
-          if (!title) {
-            const h1Match = content.match(/^#\s+(.+)$/m);
-            title = h1Match ? h1Match[1].trim() : file.replace(/\.md$/, '');
-          }
-
-          items.push({
-            id: `decision-${file}`,
-            title,
-            category: 'decision',
-            filePath,
-            fileRelative: path.relative(normalizedProject, filePath).replace(/\\/g, '/'),
-            tags: toStringList(data.tags),
-            status: toOptionalString(data.status) || 'Accepted',
-            date: toOptionalString(data.date),
-            updatedAt: stat.mtime.toISOString(),
-            size: stat.size
-          });
-        }
-      }
-    } catch (e) {
-      console.error('Error scanning decisions:', e);
-    }
-  }
-
-  // 2. Scan backlog/docs (including subdirectories up to 2 levels)
-  const docsDir = path.join(normalizedProject, 'backlog', 'docs');
-  if (existsSync(docsDir)) {
-    async function scanDocsDir(currentDir: string) {
+  for (const { dir, category } of sources) {
+    if (!existsSync(dir)) continue;
+    const files = await collectMarkdownFiles(dir);
+    for (const filePath of files) {
       try {
-        const entries = await fs.readdir(currentDir, { withFileTypes: true });
-        for (const entry of entries) {
-          const fullPath = path.join(currentDir, entry.name);
-          if (entry.isDirectory()) {
-            await scanDocsDir(fullPath);
-          } else if (entry.isFile() && entry.name.endsWith('.md')) {
-            const stat = await fs.stat(fullPath);
-            const raw = await fs.readFile(fullPath, 'utf-8');
-            const { data, content } = matter(raw);
-
-            let title = data.title;
-            if (!title) {
-              const h1Match = content.match(/^#\s+(.+)$/m);
-              title = h1Match ? h1Match[1].trim() : entry.name.replace(/\.md$/, '');
-            }
-
-            items.push({
-              id: `doc-${entry.name}`,
-              title,
-              category: 'doc',
-              filePath: fullPath,
-              fileRelative: path.relative(normalizedProject, fullPath).replace(/\\/g, '/'),
-              tags: toStringList(data.tags),
-              status: toOptionalString(data.status),
-              date: toOptionalString(data.date),
-              updatedAt: stat.mtime.toISOString(),
-              size: stat.size
-            });
-          }
-        }
+        items.push(await readDocItem(filePath, normalizedProject, category));
       } catch (e) {
-        console.error('Error scanning docs:', e);
+        console.error(`Error reading ${category}:`, filePath, e);
       }
     }
-
-    await scanDocsDir(docsDir);
   }
 
   return items.sort((a, b) => a.title.localeCompare(b.title));
@@ -134,55 +234,8 @@ export async function saveDocFile(filePath: string, content: string): Promise<bo
   return true;
 }
 
-export async function createProjectDoc(
-  projectPath: string,
-  params: CreateDocParams
-): Promise<DocItem> {
-  const normalizedProject = path.normalize(projectPath);
-  const type = params.type || 'doc';
-  const cleanTitle = params.title.trim();
-  const slug = slugify(cleanTitle);
-
-  let targetDir: string;
-  let filename: string;
-  let initialContent = params.content;
-
-  if (type === 'decision') {
-    targetDir = path.join(normalizedProject, 'backlog', 'decisions');
-    await fs.mkdir(targetDir, { recursive: true });
-
-    // Find next index
-    let nextNum = 1;
-    try {
-      const existingFiles = await fs.readdir(targetDir);
-      for (const f of existingFiles) {
-        const match = f.match(/^(\d{4})/);
-        if (match) {
-          const n = parseInt(match[1], 10);
-          if (n >= nextNum) nextNum = n + 1;
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
-
-    const paddedNum = String(nextNum).padStart(4, '0');
-    filename = `${paddedNum}-${slug}.md`;
-
-    if (!initialContent) {
-      const dateStr = new Date().toISOString().split('T')[0];
-      const tagsYaml = params.tags && params.tags.length > 0 
-        ? JSON.stringify(params.tags) 
-        : JSON.stringify(['adr', 'decision', slug]);
-
-      initialContent = `---
-title: "${cleanTitle}"
-tags: ${tagsYaml}
-status: "${params.status || 'Accepted'}"
-date: "${dateStr}"
----
-
-# ${paddedNum}. ${cleanTitle}
+function decisionTemplate(title: string): string {
+  return `# ${title}
 
 ## Контекст и проблематика
 Опишите контекст проблемы, технические ограничения и требования, которые привели к необходимости принятия этого архитектурного решения.
@@ -196,30 +249,15 @@ date: "${dateStr}"
 
 ## Последствия
 ### Положительные
-- 
+-
 
 ### Отрицательные / Риски
-- 
+-
 `;
-    }
-  } else {
-    targetDir = path.join(normalizedProject, 'backlog', 'docs');
-    await fs.mkdir(targetDir, { recursive: true });
-    filename = `${slug}.md`;
+}
 
-    if (!initialContent) {
-      const dateStr = new Date().toISOString().split('T')[0];
-      const tagsYaml = params.tags && params.tags.length > 0 
-        ? JSON.stringify(params.tags) 
-        : JSON.stringify(['documentation', slug]);
-
-      initialContent = `---
-title: "${cleanTitle}"
-tags: ${tagsYaml}
-date: "${dateStr}"
----
-
-# ${cleanTitle}
+function docTemplate(title: string): string {
+  return `# ${title}
 
 ## Обзор
 Краткое описание назначения и содержания данного документа.
@@ -231,22 +269,87 @@ date: "${dateStr}"
 ### 2. Спецификация
 Детальные спецификации, схемы или примеры использования.
 `;
-    }
+}
+
+/**
+ * Тело из пользовательского content: если он уже содержит frontmatter, берём только тело,
+ * а его frontmatter-поля (tags/status/type) учитываем как значения по умолчанию —
+ * сам frontmatter всегда генерируется по стандарту Backlog.md, чтобы id и имя файла совпадали.
+ */
+function splitUserContent(content: string | undefined): { body?: string; data: Record<string, unknown> } {
+  if (!content || !content.trim()) return { data: {} };
+  try {
+    const parsed = matter(content);
+    return { body: parsed.content.replace(/^\r?\n/, ''), data: parsed.data ?? {} };
+  } catch {
+    return { body: content, data: {} };
+  }
+}
+
+export async function createProjectDoc(
+  projectPath: string,
+  params: CreateDocParams
+): Promise<DocItem> {
+  const normalizedProject = path.normalize(projectPath);
+  const category: DocCategory = params.type === 'decision' ? 'decision' : 'doc';
+  const prefix = idPrefix(category);
+  const cleanTitle = params.title.trim();
+  if (!cleanTitle) {
+    throw new Error('Название документа не может быть пустым');
   }
 
-  const fullPath = path.join(targetDir, filename);
-  await fs.writeFile(fullPath, initialContent, 'utf-8');
+  const targetDir = path.join(normalizedProject, 'backlog', category === 'decision' ? 'decisions' : 'docs');
+  await fs.mkdir(targetDir, { recursive: true });
+
+  const user = splitUserContent(params.content);
+  const tags = (params.tags && params.tags.length > 0 ? params.tags : toStringList(user.data.tags))
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const stamp = nowStamp();
+  const lines: string[] = ['---'];
+  let status: string | undefined;
+
+  // Номер выбираем непосредственно перед записью, чтобы не поймать гонку с CLI/другой сессией;
+  // если файл с таким id уже успел появиться — берём следующий.
+  let num = await nextFreeNumber(targetDir, prefix);
+  let id = `${prefix}-${num}`;
+  let fullPath = path.join(targetDir, `${id} - ${titleSlug(cleanTitle)}.md`);
+  while (existsSync(fullPath)) {
+    num += 1;
+    id = `${prefix}-${num}`;
+    fullPath = path.join(targetDir, `${id} - ${titleSlug(cleanTitle)}.md`);
+  }
+
+  lines.push(`id: ${id}`);
+  lines.push(`title: ${yamlString(cleanTitle)}`);
+  if (category === 'decision') {
+    status = normalizeDecisionStatus(params.status ?? user.data.status);
+    lines.push(`date: ${yamlString(stamp)}`);
+    lines.push(`status: ${status}`);
+  } else {
+    lines.push(`type: ${normalizeDocFileType(params.docType ?? user.data.type)}`);
+    lines.push(`created_date: ${yamlString(stamp)}`);
+  }
+  if (tags.length > 0) lines.push(`tags: ${yamlStringList(tags)}`);
+  lines.push('---', '');
+
+  const body = user.body ?? (category === 'decision' ? decisionTemplate(cleanTitle) : docTemplate(cleanTitle));
+  const fileContent = lines.join('\n') + '\n' + body;
+
+  // 'wx' — не перезаписывать, если файл появился между проверкой и записью.
+  await fs.writeFile(fullPath, fileContent, { encoding: 'utf-8', flag: 'wx' });
 
   const stat = await fs.stat(fullPath);
   return {
-    id: `${type}-${filename}`,
+    id,
     title: cleanTitle,
-    category: type,
+    category,
     filePath: fullPath,
     fileRelative: path.relative(normalizedProject, fullPath).replace(/\\/g, '/'),
-    tags: params.tags || [],
-    status: params.status || (type === 'decision' ? 'Accepted' : undefined),
-    date: new Date().toISOString().split('T')[0],
+    tags,
+    status,
+    date: stamp,
     updatedAt: stat.mtime.toISOString(),
     size: stat.size
   };
