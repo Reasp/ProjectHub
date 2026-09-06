@@ -182,6 +182,17 @@ export interface RagSearchResult {
   category: 'doc' | 'decision' | 'task';
 }
 
+export interface LocalWhisperStatusInfo {
+  status: 'unloaded' | 'loading' | 'ready' | 'error';
+  model: string;
+  cacheDir?: string;
+  workerActive?: boolean;
+  queueLength?: number;
+  error?: string;
+  loadTimeMs?: number;
+  respawnAttempts?: number;
+}
+
 export interface GitFileStatus {
   path: string;
   index: string; // 'M', 'A', 'D', '?'
@@ -419,7 +430,8 @@ export interface IElectronAPI {
 
   // Local Whisper STT Engine
   transcribeLocalWhisper: (audioData: number[] | Float32Array, language?: 'ru' | 'en') => Promise<{ text: string; timeMs: number }>;
-  getLocalWhisperStatus: () => Promise<{ status: 'unloaded' | 'loading' | 'ready' | 'error'; model: string; error?: string; loadTimeMs?: number }>;
+  getLocalWhisperStatus: () => Promise<LocalWhisperStatusInfo>;
+  warmupLocalWhisper: () => Promise<LocalWhisperStatusInfo>;
 
   // System
   getPlatform: () => Promise<string>;

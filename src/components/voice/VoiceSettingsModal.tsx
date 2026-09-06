@@ -24,9 +24,11 @@ import {
 import {
   voiceService,
   type VoiceConfig,
+  type VoiceEngine,
   type WhisperProvider,
   type AudioDeviceInfo
 } from '../../services/voiceService';
+import type { LocalWhisperStatusInfo } from '../../types/electron';
 import { CONFIGURABLE_COMMANDS, type CommandPhraseDefinition } from '../../services/voiceCommandPhrases';
 import { useTranslation } from '../../i18n/useTranslation';
 
@@ -57,6 +59,44 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
   const [deviceNotice, setDeviceNotice] = useState<string | null>(null);
   const [activeMicLabel, setActiveMicLabel] = useState<string | null>(null);
   const [isLoadingDevices, setIsLoadingDevices] = useState(false);
+
+  // Local Whisper model status (ленивая загрузка: модель грузится только по прогреву/первому hands-free)
+  const [whisperStatus, setWhisperStatus] = useState<LocalWhisperStatusInfo | null>(null);
+  const [isWarmingUp, setIsWarmingUp] = useState(false);
+
+  const refreshWhisperStatus = async () => {
+    const st = await voiceService.getLocalWhisperStatus();
+    setWhisperStatus(st);
+    return st;
+  };
+
+  const handleWarmupWhisper = async () => {
+    setIsWarmingUp(true);
+    try {
+      const st = await voiceService.warmupLocalWhisper();
+      setWhisperStatus(st);
+    } finally {
+      setIsWarmingUp(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'recognition') return;
+    if (voiceConfig.engine !== 'whisper' || voiceConfig.whisperProvider !== 'local') return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
+      const st = await refreshWhisperStatus();
+      if (cancelled) return;
+      // Пока модель грузится — опрашиваем чаще, иначе редко
+      timer = setTimeout(tick, st?.status === 'loading' ? 1500 : 5000);
+    };
+    void tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [isOpen, activeTab, voiceConfig.engine, voiceConfig.whisperProvider]);
 
   const loadDevices = async () => {
     setIsLoadingDevices(true);
@@ -684,11 +724,52 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                 </div>
               </div>
 
+              {/* Recognition Engine: Whisper pipeline vs browser Web Speech API */}
+              <div className="space-y-2 p-4 rounded-xl bg-slate-950/60 border border-slate-800">
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  {language === 'ru' ? 'Движок распознавания речи' : 'Speech Recognition Engine'}
+                </label>
+                <select
+                  value={voiceConfig.engine}
+                  onChange={(e) => {
+                    const engine = e.target.value as VoiceEngine;
+                    const wasListening = voiceService.isListening;
+                    if (wasListening) voiceService.stopListening();
+                    voiceService.saveConfig({ engine });
+                    setVoiceConfig((c) => ({ ...c, engine }));
+                    if (wasListening) void voiceService.startHandsFreeListening();
+                  }}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="whisper">
+                    {language === 'ru'
+                      ? 'Whisper (VAD + локальная модель или облако)'
+                      : 'Whisper (VAD + local model or cloud)'}
+                  </option>
+                  <option value="webspeech" disabled={!voiceService.isWebSpeechAvailable}>
+                    {language === 'ru'
+                      ? `Web Speech API (браузерное распознавание${voiceService.isWebSpeechAvailable ? '' : ' — недоступно'})`
+                      : `Web Speech API (browser recognition${voiceService.isWebSpeechAvailable ? '' : ' — unavailable'})`}
+                  </option>
+                </select>
+                {voiceConfig.engine === 'webspeech' && (
+                  <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-[11px] text-amber-200 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <span>
+                      {language === 'ru'
+                        ? 'Распознавание выполняется встроенным движком Chromium (SpeechRecognition). В Electron без ключа Google Speech API он может вернуть ошибку «network» — тогда переключитесь на Whisper.'
+                        : 'Recognition runs on the built-in Chromium engine (SpeechRecognition). In Electron without a Google Speech API key it may fail with a "network" error — switch back to Whisper in that case.'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
               {/* Whisper Provider */}
+              {voiceConfig.engine === 'whisper' && (
               <div className="space-y-3 p-4 rounded-xl bg-slate-950/60 border border-slate-800">
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1.5">
-                    {language === 'ru' ? 'Движок распознавания речи' : 'Speech Recognition Engine'}
+                    {language === 'ru' ? 'Провайдер Whisper' : 'Whisper Provider'}
                   </label>
                   <select
                     value={voiceConfig.whisperProvider}
@@ -716,13 +797,53 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                 </div>
 
                 {voiceConfig.whisperProvider === 'local' && (
-                  <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-[11px] text-indigo-300 flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>
-                      {language === 'ru'
-                        ? 'Инференс локальной модели выполняется в фоновом потоке worker_threads без нагрузки на UI.'
-                        : 'Local model inference runs in background worker thread with 0 UI latency.'}
-                    </span>
+                  <div className="space-y-2">
+                    <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-[11px] text-indigo-300 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>
+                        {language === 'ru'
+                          ? 'Инференс локальной модели выполняется в фоновом потоке worker_threads без нагрузки на UI. Модель не грузится на старте приложения — только при первом включении Hands-Free или по кнопке прогрева.'
+                          : 'Local model inference runs in a background worker thread with 0 UI latency. The model is not loaded at app start — only on first Hands-Free activation or via the warm-up button.'}
+                      </span>
+                    </div>
+
+                    {/* Model status + warm-up */}
+                    <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between gap-3 text-[11px]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {whisperStatus?.status === 'ready' ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : whisperStatus?.status === 'loading' ? (
+                          <RefreshCw className="w-4 h-4 text-indigo-400 shrink-0 animate-spin" />
+                        ) : whisperStatus?.status === 'error' ? (
+                          <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                        ) : (
+                          <Radio className="w-4 h-4 text-slate-500 shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <div className="text-slate-200 font-semibold truncate">
+                            {language === 'ru' ? 'Модель' : 'Model'}: {whisperStatus?.model || voiceConfig.whisperModel}
+                          </div>
+                          <div className="text-slate-400 truncate">
+                            {whisperStatus?.status === 'ready'
+                              ? (language === 'ru' ? 'Готова' : 'Ready') +
+                                (whisperStatus.loadTimeMs ? ` (${(whisperStatus.loadTimeMs / 1000).toFixed(1)} s)` : '')
+                              : whisperStatus?.status === 'loading'
+                              ? language === 'ru' ? 'Загружается…' : 'Loading…'
+                              : whisperStatus?.status === 'error'
+                              ? (language === 'ru' ? 'Ошибка: ' : 'Error: ') + (whisperStatus.error || '')
+                              : language === 'ru' ? 'Не загружена' : 'Not loaded'}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void handleWarmupWhisper()}
+                        disabled={isWarmingUp || whisperStatus?.status === 'loading' || whisperStatus?.status === 'ready'}
+                        className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-semibold shrink-0 transition"
+                      >
+                        {language === 'ru' ? 'Прогреть модель' : 'Warm up model'}
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -740,7 +861,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                         voiceService.saveConfig({ whisperApiKey: val });
                         setVoiceConfig((c) => ({ ...c, whisperApiKey: val }));
                       }}
-                      placeholder="Автоматически из настроек AI Studio или введите ключ"
+                      placeholder={language === 'ru' ? 'Введите API-ключ провайдера' : 'Enter provider API key'}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                     />
                     <div className="mt-1 flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
@@ -750,6 +871,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
 

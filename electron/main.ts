@@ -1165,6 +1165,11 @@ ipcMain.handle('voice:getLocalWhisperStatus', async () => {
   return localWhisperService.getState();
 });
 
+ipcMain.handle('voice:warmupLocalWhisper', async () => {
+  localWhisperService.initBackground();
+  return localWhisperService.getState();
+});
+
 ipcMain.handle('system:getPlatform', async () => {
   return process.platform;
 });
@@ -1331,8 +1336,8 @@ app.whenReady().then(() => {
   });
 
   createWindow();
-  // Initialize Local Whisper in non-blocking background task
-  localWhisperService.initBackground();
+  // Локальный Whisper не грузится на старте: модель поднимается лениво при первом
+  // включении hands-free (voice:transcribeLocal) или по явному прогреву voice:warmupLocalWhisper (TASK-36)
   // Human-in-the-loop для Claude CLI: разрешения запрашиваются через встроенный MCP-сервер (TASK-42)
   claudeBridgeService.setCliPermissionBroker({
     ensureEndpoint: () => mcpServerService.ensurePermissionEndpoint()

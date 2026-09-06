@@ -14,6 +14,7 @@ export type VoiceEngine = 'whisper' | 'webspeech';
 export type WhisperProvider = 'local' | 'groq' | 'openai';
 
 import { getDefaultCommandPhrases } from './voiceCommandPhrases';
+import type { LocalWhisperStatusInfo } from '../types/electron';
 
 export interface AudioDeviceInfo {
   deviceId: string;
@@ -64,6 +65,13 @@ class VoiceService {
   private audioContext: AudioContext | null = null;
   private mediaStream: MediaStream | null = null;
   private audioProcessor: ScriptProcessorNode | null = null;
+  private workletNode: AudioWorkletNode | null = null;
+  private muteGain: GainNode | null = null;
+  private captureBackend: 'worklet' | 'script-processor' | 'webspeech' | null = null;
+
+  // Переиспользуемый буфер ресемплера (16 кГц): не аллоцируем на каждый чанк
+  private resampleScratch: Float32Array = new Float32Array(0);
+  private static readonly WORKLET_URL = './voice-capture-worklet.js';
 
   // VAD & Pre-roll Ring Buffer (250ms at 16kHz = 4000 samples)
   private readonly PRE_ROLL_SIZE = 4000;
@@ -78,9 +86,11 @@ class VoiceService {
   private currentPhraseChunks: Float32Array[] = [];
   private noiseFloor = 0.005;
 
-  // Web Speech API fallback
+  // Web Speech API (engine: 'webspeech')
   private recognition: any = null;
   private isWebSpeechSupported = false;
+  private webSpeechActive = false;
+  private webSpeechRestartTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Callbacks
   private onResultCallbacks: Set<(transcript: string, isFinal: boolean) => void> = new Set();
@@ -412,8 +422,42 @@ class VoiceService {
 
   async restartAudioCapture(isFallback: boolean = false): Promise<boolean> {
     if (!this.isListening) return false;
+    // Web Speech API сам управляет устройством захвата — перезапуск нашего графа не нужен
+    if (this.captureBackend === 'webspeech') return true;
     this.cleanupAudio();
     return await this.startHandsFreeListening(isFallback);
+  }
+
+  /** Какой backend захвата активен сейчас (для диагностики в настройках). */
+  get activeCaptureBackend(): 'worklet' | 'script-processor' | 'webspeech' | null {
+    return this.captureBackend;
+  }
+
+  get isWebSpeechAvailable(): boolean {
+    return this.isWebSpeechSupported;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Local Whisper warmup (ленивая загрузка модели в main-процессе)
+  // ─────────────────────────────────────────────────────────────────
+  async warmupLocalWhisper(): Promise<LocalWhisperStatusInfo | null> {
+    if (typeof window === 'undefined' || !window.api?.warmupLocalWhisper) return null;
+    try {
+      return await window.api.warmupLocalWhisper();
+    } catch (e) {
+      console.warn('[VoiceService] warmupLocalWhisper failed:', e);
+      return null;
+    }
+  }
+
+  async getLocalWhisperStatus(): Promise<LocalWhisperStatusInfo | null> {
+    if (typeof window === 'undefined' || !window.api?.getLocalWhisperStatus) return null;
+    try {
+      return await window.api.getLocalWhisperStatus();
+    } catch (e) {
+      console.warn('[VoiceService] getLocalWhisperStatus failed:', e);
+      return null;
+    }
   }
 
   private initDeviceChangeWatcher() {
@@ -532,11 +576,37 @@ class VoiceService {
         };
 
         this.recognition.onerror = (event: any) => {
-          console.warn('[VoiceService] WebSpeech error:', event.error);
-          this.setState('error');
+          const code = event?.error || 'unknown';
+          console.warn('[VoiceService] WebSpeech error:', code);
+          // 'no-speech' и 'aborted' — штатные события непрерывного режима, не ошибки
+          if (code === 'no-speech' || code === 'aborted') return;
+          const msg = this.config.language === 'ru'
+            ? `Ошибка Web Speech API: ${code}`
+            : `Web Speech API error: ${code}`;
+          this.notifyError(msg);
+          if (code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture') {
+            // Фатально: останавливаем, иначе onend уйдёт в бесконечный рестарт
+            this.webSpeechActive = false;
+            this.captureBackend = null;
+            this.setState('error');
+          }
         };
 
         this.recognition.onend = () => {
+          // Continuous-режим Chrome всё равно завершает сессию — перезапускаем, пока слушаем
+          if (this.webSpeechActive && this.isListening) {
+            if (this.webSpeechRestartTimer) clearTimeout(this.webSpeechRestartTimer);
+            this.webSpeechRestartTimer = setTimeout(() => {
+              this.webSpeechRestartTimer = null;
+              if (!this.webSpeechActive) return;
+              try {
+                this.recognition.start();
+              } catch (e) {
+                console.warn('[VoiceService] WebSpeech restart failed:', e);
+              }
+            }, 250);
+            return;
+          }
           if (this.isListening) {
             this.setState('idle');
           }
@@ -545,11 +615,59 @@ class VoiceService {
     }
   }
 
+  /** engine: 'webspeech' — реальный запуск SpeechRecognition вместо Whisper-конвейера. */
+  private startWebSpeechListening(): boolean {
+    if (!this.isWebSpeechSupported || !this.recognition) {
+      const msg = this.config.language === 'ru'
+        ? 'Web Speech API недоступен в этой среде. Выберите движок Whisper в настройках голоса.'
+        : 'Web Speech API is not available in this environment. Select the Whisper engine in voice settings.';
+      this.notifyError(msg);
+      this.setState('error');
+      return false;
+    }
+    try {
+      this.lastError = null;
+      this.updateLanguage();
+      this.webSpeechActive = true;
+      this.captureBackend = 'webspeech';
+      this.recognition.start();
+      this.setState('listening_handsfree');
+      console.log('[VoiceService] Web Speech API continuous recognition started');
+      return true;
+    } catch (err: any) {
+      console.error('[VoiceService] Failed to start Web Speech API:', err);
+      this.webSpeechActive = false;
+      this.captureBackend = null;
+      this.notifyError(err?.message || 'Web Speech API start failed');
+      this.setState('error');
+      return false;
+    }
+  }
+
+  private stopWebSpeech() {
+    this.webSpeechActive = false;
+    if (this.webSpeechRestartTimer) {
+      clearTimeout(this.webSpeechRestartTimer);
+      this.webSpeechRestartTimer = null;
+    }
+    if (this.recognition) {
+      try {
+        this.recognition.stop();
+      } catch {}
+    }
+    if (this.captureBackend === 'webspeech') this.captureBackend = null;
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // 2. Continuous Hands-Free Audio Stream (Talon Voice style)
   // ─────────────────────────────────────────────────────────────────
   async startHandsFreeListening(isFallback: boolean = false): Promise<boolean> {
     if (this.isListening) return true;
+
+    // Движок Web Speech API: браузерное распознавание, Whisper-конвейер не запускается
+    if (this.config.engine === 'webspeech') {
+      return this.startWebSpeechListening();
+    }
 
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       const msg = this.config.language === 'ru'
@@ -563,6 +681,12 @@ class VoiceService {
     try {
       this.lastError = null;
       this.resetVAD();
+
+      // Первое включение hands-free с локальным Whisper — прогреваем модель в main-процессе
+      // параллельно с запросом микрофона (на старте приложения она не грузится)
+      if (this.config.whisperProvider === 'local') {
+        void this.warmupLocalWhisper();
+      }
 
       let stream: MediaStream;
       const audioConstraints: MediaTrackConstraints = {
@@ -627,26 +751,39 @@ class VoiceService {
       this.audioContext = ctx;
 
       const source = ctx.createMediaStreamSource(stream);
-      // Process 4096 frames at a time
-      const processor = ctx.createScriptProcessor(4096, 1, 1);
-      this.audioProcessor = processor;
-
-      processor.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        const resampled16k = this.resampleTo16k(inputData, ctx.sampleRate);
-        this.processAudioChunkVAD(resampled16k);
-      };
 
       // Mute local output to prevent feedback echo loop while keeping processing active
       const muteGain = ctx.createGain();
       muteGain.gain.value = 0;
+      this.muteGain = muteGain;
 
-      source.connect(processor);
-      processor.connect(muteGain);
+      const onChunk = (samples: Float32Array) => {
+        const resampled16k = this.resampleTo16k(samples, ctx.sampleRate);
+        this.processAudioChunkVAD(resampled16k);
+      };
+
+      const workletNode = await this.createCaptureWorklet(ctx, onChunk);
+      if (workletNode) {
+        // AudioWorklet: захват в отдельном аудиопотоке, чанки 4096 кадров приходят по transferList
+        this.workletNode = workletNode;
+        this.captureBackend = 'worklet';
+        source.connect(workletNode);
+        workletNode.connect(muteGain);
+      } else {
+        // Фолбэк для окружений без AudioWorklet: устаревший ScriptProcessorNode на главном потоке
+        const processor = ctx.createScriptProcessor(4096, 1, 1);
+        this.audioProcessor = processor;
+        this.captureBackend = 'script-processor';
+        processor.onaudioprocess = (e) => {
+          onChunk(e.inputBuffer.getChannelData(0));
+        };
+        source.connect(processor);
+        processor.connect(muteGain);
+      }
       muteGain.connect(ctx.destination);
 
       this.setState('listening_handsfree');
-      console.log('[VoiceService] Continuous Hands-Free listening active (Talon Voice style)');
+      console.log(`[VoiceService] Continuous Hands-Free listening active (Talon Voice style, backend: ${this.captureBackend})`);
       return true;
     } catch (err: any) {
       console.error('[VoiceService] Failed to start hands-free listening:', err);
@@ -675,6 +812,41 @@ class VoiceService {
       this.cleanupAudio();
       this.setState('error');
       return false;
+    }
+  }
+
+  /**
+   * Пытается поднять AudioWorklet-процессор захвата. Возвращает null, если
+   * AudioWorklet недоступен или модуль не загрузился (тогда используется ScriptProcessorNode).
+   */
+  private async createCaptureWorklet(
+    ctx: AudioContext,
+    onChunk: (samples: Float32Array) => void
+  ): Promise<AudioWorkletNode | null> {
+    if (!ctx.audioWorklet || typeof AudioWorkletNode === 'undefined') {
+      console.warn('[VoiceService] AudioWorklet is not available, falling back to ScriptProcessorNode');
+      return null;
+    }
+    try {
+      // Модуль лежит в public/ и грузится как 'self' (CSP script-src не пропускает blob:)
+      const moduleUrl = new URL(VoiceService.WORKLET_URL, document.baseURI).href;
+      await ctx.audioWorklet.addModule(moduleUrl);
+      const node = new AudioWorkletNode(ctx, 'voice-capture-processor', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+        channelCount: 1
+      });
+      node.port.onmessage = (event: MessageEvent) => {
+        const data = event.data;
+        if (data && data.type === 'chunk' && data.samples instanceof Float32Array) {
+          onChunk(data.samples);
+        }
+      };
+      return node;
+    } catch (err) {
+      console.warn('[VoiceService] AudioWorklet module failed to load, falling back to ScriptProcessorNode:', err);
+      return null;
     }
   }
 
@@ -847,17 +1019,14 @@ class VoiceService {
   private async transcribePcmWithCloud(pcmSamples: Float32Array): Promise<string> {
     const { whisperProvider, whisperApiKey, whisperEndpoint, whisperModel, language } = this.config;
 
-    let apiKey = whisperApiKey?.trim();
-    if (!apiKey && typeof window !== 'undefined') {
-      try {
-        const aiStudioStorage = localStorage.getItem('projecthub-ai-studio-storage');
-        if (aiStudioStorage) {
-          const parsed = JSON.parse(aiStudioStorage);
-          if (parsed?.state?.config?.apiKey) {
-            apiKey = parsed.state.config.apiKey;
-          }
-        }
-      } catch {}
+    // Только whisperApiKey: ключ AI Studio (Anthropic/DeepSeek) к Groq/OpenAI не подходит
+    const apiKey = whisperApiKey?.trim();
+    if (!apiKey && whisperProvider !== 'local') {
+      throw new Error(
+        this.config.language === 'ru'
+          ? `Не задан API-ключ для ${whisperProvider === 'groq' ? 'Groq' : 'OpenAI'} Whisper. Укажите его в настройках голоса.`
+          : `API key for ${whisperProvider === 'groq' ? 'Groq' : 'OpenAI'} Whisper is not set. Enter it in voice settings.`
+      );
     }
 
     let endpoint = 'https://api.groq.com/openai/v1/audio/transcriptions';
@@ -933,11 +1102,19 @@ class VoiceService {
     return new Blob([buffer], { type: 'audio/wav' });
   }
 
+  /**
+   * Децимация в 16 кГц усреднением. Пишет в переиспользуемый scratch-буфер и
+   * возвращает view на него — результат валиден только до следующего вызова
+   * (processAudioChunkVAD копирует данные, когда накапливает фразу).
+   */
   private resampleTo16k(audioData: Float32Array, origSampleRate: number): Float32Array {
     if (origSampleRate === 16000) return audioData;
     const ratio = origSampleRate / 16000;
     const newLength = Math.round(audioData.length / ratio);
-    const result = new Float32Array(newLength);
+    if (this.resampleScratch.length < newLength) {
+      this.resampleScratch = new Float32Array(newLength);
+    }
+    const result = this.resampleScratch.subarray(0, newLength);
     let offsetResult = 0;
     let offsetBuffer = 0;
     while (offsetResult < result.length) {
@@ -959,19 +1136,29 @@ class VoiceService {
     this.isPaused = false;
     this.notifyPauseChange();
     this.cleanupAudio();
-    if (this.recognition) {
-      try {
-        this.recognition.stop();
-      } catch {}
-    }
+    this.stopWebSpeech();
     this.setState('idle');
   }
 
   private cleanupAudio() {
+    if (this.workletNode) {
+      try {
+        this.workletNode.port.postMessage({ type: 'stop' });
+        this.workletNode.port.onmessage = null;
+        this.workletNode.disconnect();
+      } catch {}
+      this.workletNode = null;
+    }
     if (this.audioProcessor) {
+      this.audioProcessor.onaudioprocess = null;
       this.audioProcessor.disconnect();
       this.audioProcessor = null;
     }
+    if (this.muteGain) {
+      try { this.muteGain.disconnect(); } catch {}
+      this.muteGain = null;
+    }
+    if (this.captureBackend !== 'webspeech') this.captureBackend = null;
     if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close().catch(() => {});
       this.audioContext = null;
