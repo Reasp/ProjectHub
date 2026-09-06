@@ -49,7 +49,8 @@ export const ClaudeUsageButton: React.FC<ClaudeUsageButtonProps> = ({
 
   const sessionPercent = usage?.sessionLimit?.percent;
   const weeklyPercent = usage?.weeklyLimit?.percent;
-  const highestPercent = Math.max(sessionPercent ?? 0, weeklyPercent ?? 0);
+  const fablePercent = usage?.fableLimit?.percent;
+  const highestPercent = Math.max(sessionPercent ?? 0, weeklyPercent ?? 0, fablePercent ?? 0);
 
   const getBadgeStyle = () => {
     if (highestPercent >= 85) {
@@ -61,16 +62,24 @@ export const ClaudeUsageButton: React.FC<ClaudeUsageButtonProps> = ({
     return 'bg-slate-800/80 text-slate-300 border-slate-700/60 hover:bg-slate-700 hover:text-white';
   };
 
+  const getTooltip = () => {
+    if (!usage) return t.claudeUsage?.modalDesc || 'Показать расход токенов и лимиты Claude Code (/usage)';
+    const parts = [
+      `Сессия ${sessionPercent ?? 0}%`,
+      `Неделя ${weeklyPercent ?? 0}%`
+    ];
+    if (fablePercent !== undefined) {
+      parts.push(`Fable ${fablePercent}%`);
+    }
+    return `Claude Code Usage: ${parts.join(', ')}. Кликните для подробностей.`;
+  };
+
   return (
     <>
       <button
         type="button"
         onClick={() => setIsModalOpen(true)}
-        title={
-          usage
-            ? `Claude Code Usage: Сессия ${sessionPercent ?? 0}%, Неделя ${weeklyPercent ?? 0}%. Кликните для подробностей.`
-            : 'Показать расход токенов и лимиты Claude Code (/usage)'
-        }
+        title={getTooltip()}
         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition shrink-0 ${getBadgeStyle()} ${className}`}
       >
         <Gauge className="w-3.5 h-3.5 text-amber-400 shrink-0" />

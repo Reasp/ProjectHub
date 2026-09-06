@@ -71,6 +71,8 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
 
   const sessionPercent = usageData?.sessionLimit?.percent ?? 0;
   const weeklyPercent = usageData?.weeklyLimit?.percent ?? 0;
+  const fablePercent = usageData?.fableLimit?.percent ?? 0;
+  const hasFable = !!usageData?.fableLimit;
   const currentBreakdown = breakdownPeriod === '24h' ? usageData?.last24h : usageData?.last7d;
 
   const getProgressColor = (percent: number) => {
@@ -100,7 +102,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
       }}
       className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150 select-none"
     >
-      <div className="w-full max-w-2xl bg-[#10131f] border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] text-slate-200 font-sans">
+      <div className={`w-full ${hasFable ? 'max-w-4xl' : 'max-w-2xl'} bg-[#10131f] border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] text-slate-200 font-sans transition-all duration-200`}>
         {/* Modal Header */}
         <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-[#141827]/90">
           <div className="flex items-center gap-3">
@@ -195,14 +197,14 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
           {/* TAB 1: LIMITS & FACTORS */}
           {activeTab === 'limits' && usageData && (
             <div className="space-y-5">
-              {/* Top Row: Two Limit Cards (Session + Weekly) */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Top Row: Limit Cards (Session + Weekly + Fable) */}
+              <div className={`grid grid-cols-1 ${hasFable ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4`}>
                 {/* Session Limit Card */}
                 <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                      Текущая сессия
+                      {t.claudeUsage.sessionLimit}
                     </span>
                     <span
                       className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold border ${getBadgeColor(
@@ -222,9 +224,9 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                   </div>
 
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Сброс квоты сессии:</span>
+                    <span>{t.claudeUsage.sessionResetLabel}</span>
                     <span className="font-medium text-slate-300">
-                      {usageData.sessionLimit?.resetsAt || 'Через несколько часов'}
+                      {usageData.sessionLimit?.resetsAt || t.claudeUsage.resetsInHours}
                     </span>
                   </div>
                 </div>
@@ -234,7 +236,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5 text-amber-400" />
-                      Недельная квота (все модели)
+                      {t.claudeUsage.weeklyLimit}
                     </span>
                     <span
                       className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold border ${getBadgeColor(
@@ -254,12 +256,47 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                   </div>
 
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Сброс недельной квоты:</span>
+                    <span>{t.claudeUsage.weeklyResetLabel}</span>
                     <span className="font-medium text-slate-300">
-                      {usageData.weeklyLimit?.resetsAt || 'Через неделю'}
+                      {usageData.weeklyLimit?.resetsAt || t.claudeUsage.resetsInWeek}
                     </span>
                   </div>
                 </div>
+
+                {/* Fable Limit Card */}
+                {hasFable && (
+                  <div className="p-4 rounded-xl bg-slate-900/60 border border-purple-500/30 space-y-3 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl pointer-events-none" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-purple-200 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                        {t.claudeUsage.fableLimit}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold border ${getBadgeColor(
+                          fablePercent
+                        )}`}
+                      >
+                        {fablePercent}% used
+                      </span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-slate-800/80 rounded-full h-2.5 overflow-hidden p-0.5">
+                      <div
+                        className={`h-full rounded-full bg-gradient-to-r ${getProgressColor(fablePercent)} transition-all duration-500`}
+                        style={{ width: `${Math.min(100, Math.max(2, fablePercent))}%` }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>{t.claudeUsage.fableResetLabel}</span>
+                      <span className="font-medium text-purple-300">
+                        {usageData.fableLimit?.resetsAt || t.claudeUsage.resetsInWeek}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Contributing Factors Section */}

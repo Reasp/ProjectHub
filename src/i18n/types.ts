@@ -187,10 +187,12 @@ export interface TranslationDictionary {
     tabRaw: string;
     sessionLimit: string;
     weeklyLimit: string;
+    fableLimit: string;
     resetsInHours: string;
     resetsInWeek: string;
     sessionResetLabel: string;
     weeklyResetLabel: string;
+    fableResetLabel: string;
     factorsTitle: string;
     factorsDesc: string;
     period24h: string;

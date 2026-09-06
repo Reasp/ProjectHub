@@ -38,6 +38,7 @@ export interface ClaudeUsageData {
   planType: string;
   sessionLimit?: ClaudeUsageLimitWindow;
   weeklyLimit?: ClaudeUsageLimitWindow;
+  fableLimit?: ClaudeUsageLimitWindow;
   last24h?: ClaudeUsageBreakdown;
   last7d?: ClaudeUsageBreakdown;
   totalSessions?: number;
@@ -75,6 +76,7 @@ class ClaudeUsageService {
         planType: parsed.planType || 'Claude Code Subscription',
         sessionLimit: parsed.sessionLimit,
         weeklyLimit: parsed.weeklyLimit,
+        fableLimit: parsed.fableLimit,
         last24h: parsed.last24h,
         last7d: parsed.last7d,
         totalSessions: statsCacheData?.totalSessions,
@@ -182,6 +184,7 @@ class ClaudeUsageService {
     planType: string;
     sessionLimit?: ClaudeUsageLimitWindow;
     weeklyLimit?: ClaudeUsageLimitWindow;
+    fableLimit?: ClaudeUsageLimitWindow;
     last24h?: ClaudeUsageBreakdown;
     last7d?: ClaudeUsageBreakdown;
   } {
@@ -193,7 +196,7 @@ class ClaudeUsageService {
     }
 
     let sessionLimit: ClaudeUsageLimitWindow | undefined;
-    const sessionMatch = text.match(/Current session:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^ \n\r]+(?:\s+[^ \n\r]+)*))?/i);
+    const sessionMatch = text.match(/Current session:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^\r\n]+))?/i);
     if (sessionMatch) {
       sessionLimit = {
         percent: parseInt(sessionMatch[1], 10),
@@ -202,11 +205,33 @@ class ClaudeUsageService {
     }
 
     let weeklyLimit: ClaudeUsageLimitWindow | undefined;
-    const weeklyMatch = text.match(/Current week(?:\s*\([^\)]+\))?:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^ \n\r]+(?:\s+[^ \n\r]+)*))?/i);
-    if (weeklyMatch) {
+    // Сначала ищем общее "Current week (all models):" или явное "Current week:"
+    const allModelsMatch = text.match(/Current week\s*\((?:all models|all)\):\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^\r\n]+))?/i);
+    const plainWeeklyMatch = text.match(/Current week:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^\r\n]+))?/i);
+    const matchedWeekly = allModelsMatch || plainWeeklyMatch;
+    if (matchedWeekly) {
       weeklyLimit = {
-        percent: parseInt(weeklyMatch[1], 10),
-        resetsAt: weeklyMatch[2]?.trim()
+        percent: parseInt(matchedWeekly[1], 10),
+        resetsAt: matchedWeekly[2]?.trim()
+      };
+    } else {
+      // Запасной вариант: если есть "Current week (...)" и это не Fable
+      const genericWeeklyMatch = text.match(/Current week(?:\s*\((?!fable)[^\)]+\))?:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^\r\n]+))?/i);
+      if (genericWeeklyMatch) {
+        weeklyLimit = {
+          percent: parseInt(genericWeeklyMatch[1], 10),
+          resetsAt: genericWeeklyMatch[2]?.trim()
+        };
+      }
+    }
+
+    let fableLimit: ClaudeUsageLimitWindow | undefined;
+    // Отдельный лимит для модели Fable (Claude 3.7 Sonnet / hybrid reasoning): "Current week (Fable): XX% used"
+    const fableMatch = text.match(/Current week\s*\((?:fable)\):\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^\r\n]+))?/i);
+    if (fableMatch) {
+      fableLimit = {
+        percent: parseInt(fableMatch[1], 10),
+        resetsAt: fableMatch[2]?.trim()
       };
     }
 
@@ -270,6 +295,7 @@ class ClaudeUsageService {
       planType,
       sessionLimit,
       weeklyLimit,
+      fableLimit,
       last24h,
       last7d
     };

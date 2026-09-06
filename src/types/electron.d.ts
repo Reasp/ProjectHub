@@ -677,6 +677,7 @@ export interface ClaudeUsageData {
   planType: string;
   sessionLimit?: ClaudeUsageLimitWindow;
   weeklyLimit?: ClaudeUsageLimitWindow;
+  fableLimit?: ClaudeUsageLimitWindow;
   last24h?: ClaudeUsageBreakdown;
   last7d?: ClaudeUsageBreakdown;
   totalSessions?: number;
