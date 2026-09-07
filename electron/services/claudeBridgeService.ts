@@ -530,9 +530,9 @@ class ClaudeBridgeService extends EventEmitter {
 
     // Прочие инструменты (WebFetch, WebSearch, MCP-инструменты и т.п.).
     if (auto) return allow();
-    let inputPreview = '';
+    let inputPreview: string;
     try {
-      inputPreview = JSON.stringify(input);
+      inputPreview = JSON.stringify(input) ?? '';
     } catch {
       inputPreview = String(input);
     }
@@ -766,6 +766,7 @@ class ClaudeBridgeService extends EventEmitter {
 
     this.claudeCliCheckPromise = new Promise<ClaudeCliAvailability>((resolve) => {
       let settled = false;
+      // eslint-disable-next-line prefer-const -- присваивается ниже; finish() может сработать раньше (с const — TDZ)
       let timer: NodeJS.Timeout | undefined;
       const finish = (result: ClaudeCliAvailability) => {
         if (settled) return;
@@ -955,7 +956,7 @@ class ClaudeBridgeService extends EventEmitter {
   }
 
   public parseQuestionData(args: Record<string, any>): QuestionData {
-    let title = args.title || 'Вопрос от ассистента';
+    const title = args.title || 'Вопрос от ассистента';
     let subtitle = args.question || args.prompt || args.subtitle || args.description || '';
     let isMultiSelect = Boolean(args.is_multi_select || args.isMultiSelect || args.multiple);
     let rawOptions: any[] = [];

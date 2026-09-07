@@ -83,7 +83,7 @@ export function createDebouncedStorage(
  */
 export async function migrateLegacySessions(storage: Storage | undefined = safeLocalStorage()): Promise<SessionsMap> {
   if (!storage) return {};
-  let raw: string | null = null;
+  let raw: string | null;
   try {
     raw = storage.getItem(LEGACY_STORAGE_KEY);
   } catch {

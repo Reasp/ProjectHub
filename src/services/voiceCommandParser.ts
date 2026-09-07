@@ -6,23 +6,38 @@ export interface ParsedVoiceCommand {
 }
 
 // Helper to convert Russian/English ordinal and number words to numeric index (0-based)
+// `\b` в JS — только ASCII-граница слова, для кириллицы не работает («\bдва\b» никогда не совпадёт),
+// поэтому границы проверяем lookaround'ами по Unicode-буквам/цифрам.
+function hasWord(text: string, alternatives: string): boolean {
+  return new RegExp(`(?<![\\p{L}\\p{N}])(?:${alternatives})(?![\\p{L}\\p{N}])`, 'iu').test(text);
+}
+
+// Порядок важен: «10» проверяется раньше «1», иначе «вариант 10» ловится проверкой ` 1`.
+const NUMBER_WORDS: Array<[index: number, digit: string, words: string]> = [
+  [9, '10', 'десят\\p{L}*|tenth|ten'],
+  [0, '1', 'один|одну|перв\\p{L}*|first|one'],
+  [1, '2', 'два|две|втор\\p{L}*|second|two'],
+  [2, '3', 'три|трет\\p{L}*|third|three'],
+  [3, '4', 'четыр\\p{L}*|четверт\\p{L}*|fourth|four'],
+  [4, '5', 'пят\\p{L}*|fifth|five'],
+  [5, '6', 'шест\\p{L}*|sixth|six'],
+  [6, '7', 'семь|сед\\p{L}*|seventh|seven'],
+  [7, '8', 'восем\\p{L}*|eighth|eight'],
+  [8, '9', 'девят\\p{L}*|ninth|nine']
+];
+
 function parseNumberWord(text: string): number | null {
   const normalized = text.toLowerCase().trim();
 
-  // Words or digits 1..9 & ordinals
-  if (/\b(1|один|одну|перв\w*|first|one)\b/i.test(normalized) || normalized.includes(' 1') || normalized.endsWith('1')) return 0;
-  if (/\b(2|два|две|втор\w*|second|two)\b/i.test(normalized) || normalized.includes(' 2') || normalized.endsWith('2')) return 1;
-  if (/\b(3|три|трет\w*|third|three)\b/i.test(normalized) || normalized.includes(' 3') || normalized.endsWith('3')) return 2;
-  if (/\b(4|четыр\w*|четверт\w*|fourth|four)\b/i.test(normalized) || normalized.includes(' 4') || normalized.endsWith('4')) return 3;
-  if (/\b(5|пят\w*|fifth|five)\b/i.test(normalized) || normalized.includes(' 5') || normalized.endsWith('5')) return 4;
-  if (/\b(6|шест\w*|sixth|six)\b/i.test(normalized) || normalized.includes(' 6') || normalized.endsWith('6')) return 5;
-  if (/\b(7|семь|сед\w*|seventh|seven)\b/i.test(normalized) || normalized.includes(' 7') || normalized.endsWith('7')) return 6;
-  if (/\b(8|восем\w*|eighth|eight)\b/i.test(normalized) || normalized.includes(' 8') || normalized.endsWith('8')) return 7;
-  if (/\b(9|девят\w*|ninth|nine)\b/i.test(normalized) || normalized.includes(' 9') || normalized.endsWith('9')) return 8;
-  if (/\b(10|десят\w*|tenth|ten)\b/i.test(normalized) || normalized.includes(' 10') || normalized.endsWith('10')) return 9;
+  // Words or digits 1..10 & ordinals
+  for (const [index, digit, words] of NUMBER_WORDS) {
+    if (hasWord(normalized, `${digit}|${words}`) || normalized.includes(` ${digit}`) || normalized.endsWith(digit)) {
+      return index;
+    }
+  }
 
   // Last / Последний
-  if (/\b(последн\w*|last)\b/i.test(normalized)) return -1;
+  if (hasWord(normalized, 'последн\\p{L}*|last')) return -1;
 
   return null;
 }

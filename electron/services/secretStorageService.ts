@@ -125,7 +125,7 @@ export class SecretStorageService {
     const all = await this.loadSecretsFile();
     all[key] = encrypted;
     await this.saveSecretsFile(all);
-    console.log(`[SecretStorage] Secret "${key}" encrypted & saved successfully (DPAPI: ${this.isEncryptionAvailable()})`);
+    console.log(`[SecretStorage] Secret saved (DPAPI: ${this.isEncryptionAvailable()})`);
   }
 
   /**

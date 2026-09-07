@@ -244,7 +244,7 @@ class ClaudeUsageService {
       };
     } else {
       // Запасной вариант: если есть "Current week (...)" и это не Fable
-      const genericWeeklyMatch = text.match(/Current week(?:\s*\((?!fable)[^\)]+\))?:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^\r\n]+))?/i);
+      const genericWeeklyMatch = text.match(/Current week(?:\s*\((?!fable)[^)]+\))?:\s*(\d+)%\s*used(?:\s*·\s*resets\s*([^\r\n]+))?/i);
       if (genericWeeklyMatch) {
         weeklyLimit = {
           percent: parseInt(genericWeeklyMatch[1], 10),

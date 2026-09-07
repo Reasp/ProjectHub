@@ -18,7 +18,7 @@ class PRService {
       });
       return stdout.trim();
     } catch (err: any) {
-      throw new Error(err.stderr || err.message || 'Ошибка выполнения GitHub CLI');
+      throw new Error(err.stderr || err.message || 'Ошибка выполнения GitHub CLI', { cause: err });
     }
   }
 

@@ -221,7 +221,7 @@ export async function inspectProject(folderPath: string, options: InspectProject
     }
 
     // 4. Calculate Backlog task counts
-    let taskCounts = { total: 0, todo: 0, inProgress: 0, review: 0, done: 0 };
+    const taskCounts = { total: 0, todo: 0, inProgress: 0, review: 0, done: 0 };
     if (hasBacklog && existsSync(path.join(normalizedPath, 'backlog', 'tasks'))) {
       try {
         const taskFiles = await fs.readdir(path.join(normalizedPath, 'backlog', 'tasks'));

@@ -36,8 +36,8 @@ class PtyService {
     const cols = options.cols || 100;
     const rows = options.rows || 30;
 
-    let shell = '';
-    let args: string[] = [];
+    let shell: string;
+    let args: string[];
 
     if (options.type === 'claude') {
       if (isWin) {

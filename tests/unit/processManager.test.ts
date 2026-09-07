@@ -176,8 +176,8 @@ describe('resolveShellSpawn / resolveWorkingDir (аудит 5.5: && на Windows
   });
 
   it('на Windows уважает COMSPEC', () => {
-    const spec = resolveShellSpawn('echo x', 'win32', 'C:\Windows\System32\cmd.exe');
-    expect(spec.file).toBe('C:\Windows\System32\cmd.exe');
+    const spec = resolveShellSpawn('echo x', 'win32', 'C:\\Windows\\System32\\cmd.exe');
+    expect(spec.file).toBe('C:\\Windows\\System32\\cmd.exe');
   });
 
   it('вне Windows — /bin/sh -c', () => {

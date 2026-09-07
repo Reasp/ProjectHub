@@ -3,9 +3,10 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "44a142327dbeadd44cb6dc9d7be7609eb518414d68bd79e1dedc218d145ccd0f",
+  "docsHash": "cbc77441c68e4097874fdc6b273cec83105a531d65c0feadebd82cc2bf55141a",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
+    "backlog/decisions/decision-2 - TypeScript-6-для-инструментов-качества-ESLint-файловый-логгер-main-процесса-и-проверка-externals-бандла.md",
     "backlog/docs/doc-1 - App-Icon-Concepts.md",
     "backlog/docs/doc-2 - Architecture-Concept.md",
     "backlog/docs/doc-3 - Tech-Stack-Analysis.md",
@@ -15,6 +16,6 @@
     "backlog/docs/doc-7 - Технический-аудит-ProjectHub-стабильность-утечки-производительность-безопасность.md",
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md"
   ],
-  "chunks": 123,
-  "builtAt": "2026-09-06T23:55:57.750Z"
+  "chunks": 129,
+  "builtAt": "2026-09-07T00:44:58.717Z"
 }

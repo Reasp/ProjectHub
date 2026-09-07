@@ -223,7 +223,7 @@ class ProjectRegistry {
   async setVoiceAlias(projectPath: string, alias: string): Promise<boolean> {
     const normalized = path.normalize(projectPath).toLowerCase();
     const config = await this.getConfig();
-    let target = config.projects.find((p) => path.normalize(p.path).toLowerCase() === normalized);
+    const target = config.projects.find((p) => path.normalize(p.path).toLowerCase() === normalized);
 
     if (target) {
       target.voiceAlias = alias.trim() || undefined;

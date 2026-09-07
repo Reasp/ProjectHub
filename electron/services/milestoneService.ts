@@ -14,7 +14,7 @@ function slugify(text: string): string {
   return text
     .toLowerCase()
     .trim()
-    .replace(/[^\w\sа-яё\-]/gi, '')
+    .replace(/[^\w\sа-яё-]/gi, '')
     .replace(/[\s_]+/g, '-')
     .replace(/^-+|-+$/g, '') || 'milestone';
 }

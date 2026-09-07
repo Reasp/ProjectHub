@@ -465,7 +465,7 @@ class AIAgentService {
     onError: (err: string) => void
   ): Promise<void> {
     let endpoint = 'https://openrouter.ai/api/v1/chat/completions';
-    let headers: Record<string, string> = {
+    const headers: Record<string, string> = {
       'content-type': 'application/json'
     };
 

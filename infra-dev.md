@@ -123,11 +123,30 @@ Antigravity свой каталог скиллов, `.claude/skills/` он не 
     - **Проверка обязательна и автоматизирована**: `npm run lint:docs` парсит frontmatter тем же `gray-matter`, что и приложение, и падает с ошибкой, если в любом поле (рекурсивно, включая списки) найден объект `Date`. Проверка покрывает `backlog/docs/`, `backlog/decisions/`, `backlog/tasks/`, `backlog/milestones/` и выполняется перед каждым коммитом и сборкой (см. правило 15).
     - Код main-процесса, который читает frontmatter для рендерера (`docsService`, `backlog:getTasks` в `main.ts`, `milestoneService`), обязан приводить значения к строкам (`fmString`/`toOptionalString`, `fmStringList`/`toStringList`) — это вторая линия защиты для чужих проектов, где линтер не запускается.
 
+17. **Линт, тесты и логи (TASK-49)**:
+    - `npm run lint` (ESLint: typescript-eslint + react-hooks) и `npm test` (vitest, `tests/unit/`) входят в
+      `npm run build`, а значит и в `pack:win`. Ошибок ESLint быть не должно; предупреждения
+      (`no-explicit-any`, `no-unused-vars`, `exhaustive-deps`) — зафиксированный baseline техдолга, его
+      можно только уменьшать. Отключать правило точечно — только с комментарием-обоснованием.
+    - Новые чистые функции (парсеры, форматтеры, валидаторы путей) выносить из компонентов/сервисов
+      в отдельные модули без Electron/React и покрывать unit-тестами.
+    - Корневой `typescript` — 6.x, а не 7.x: у TypeScript 7 (нативный компилятор) нет JS API, который нужен
+      typescript-eslint. См. decision-2.
+    - Логи main-процесса: `console.*` дублируются в `<userData>/logs/main.log` (ротация 5 МБ × 3);
+      уровень — `PROJECTHUB_LOG_LEVEL=debug|info|warn|error`. Для новых сообщений можно использовать
+      `logger` из `electron/services/logger.ts`. Имена секретов и содержимое файлов в лог не писать.
+    - `npm run check-bundle` (запускается в конце `build`) проверяет, что нативные и тяжёлые зависимости
+      (`node-pty`, `@lancedb/lancedb`, `@huggingface/transformers`, `zod`, MCP SDK) не вбандлены в
+      `dist-electron/main.js` — все runtime-зависимости из `package.json` объявлены external в `vite.config.ts`.
+
 ## Быстрые команды
 
 ```bash
 node scripts/setup.mjs               # настроить/переконфигурировать: корень проекта, включённые фичи
 npm run lint:docs                    # валидация frontmatter, таблиц и картинок документации
+npm run lint                         # ESLint (0 ошибок обязательно; предупреждения — baseline)
+npm test                             # unit-тесты vitest (tests/unit/)
+npm run check-bundle                 # тяжёлые/нативные зависимости не вбандлены в dist-electron/main.js
 npm run index-docs                   # пересобрать векторный индекс документации
 npm run check-index                  # проверить, что .rag-index актуален относительно backlog/docs, backlog/decisions
 npm run rag-search -- "запрос"       # поиск по докам из терминала (для человека)

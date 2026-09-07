@@ -143,7 +143,7 @@ export async function searchProjectDocs(options: RagSearchOptions): Promise<RagS
   const limit = options.limit || 15;
   const isGlobal = options.global ?? false;
 
-  let targetProjects: Array<{ name: string; path: string }> = [];
+  let targetProjects: Array<{ name: string; path: string }>;
 
   if (isGlobal || !options.projectPath) {
     const all = await projectRegistry.getProjects();

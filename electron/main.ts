@@ -25,6 +25,16 @@ import { gitService } from './services/gitService';
 import { windowStateService } from './services/windowStateService';
 import { aiSessionStore } from './services/aiSessionStore';
 import { assertInsideRegisteredProject, assertRegisteredProject } from './services/projectPathGuard';
+import { logger, parseLogLevel } from './services/logger';
+import { getUserDataDir } from './services/appPaths';
+
+// Логи main-процесса: stdout как раньше + файл userData/logs/main.log с ротацией (TASK-49).
+// Инициализируем до любого другого кода, чтобы ранний вывод не терялся.
+logger.init({
+  dir: path.join(getUserDataDir(), 'logs'),
+  minLevel: parseLogLevel(process.env.PROJECTHUB_LOG_LEVEL, app.isPackaged ? 'info' : 'debug')
+});
+logger.captureConsole();
 
 // Automatically approve media capture requests in Chromium without blocking UI dialogs
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
@@ -214,9 +224,14 @@ function createWindow() {
   windowStateService.trackWindow(win);
   hardenWebContents(win.webContents);
 
-  // Log renderer console messages to stdout
-  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-    console.log(`[Renderer Console: ${level}] ${message} (${sourceId}:${line})`);
+  // Консоль рендерера — в лог main-процесса. В Electron 44 параметры приходят в объекте события
+  // (старые позиционные level/message/line устарели и не заполняются).
+  win.webContents.on('console-message', (event) => {
+    const { level, message, lineNumber, sourceId } = event;
+    const text = `[Renderer] ${message} (${sourceId || '?'}:${lineNumber})`;
+    if (level === 'error') logger.error(text);
+    else if (level === 'warning') logger.warn(text);
+    else logger.debug(text);
   });
 
   // Toggle DevTools with F12 or Ctrl+Shift+I

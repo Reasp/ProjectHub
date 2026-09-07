@@ -88,7 +88,7 @@ server.registerTool(
   },
   async ({ projectPath, filePath, staged, targetA, targetB }) => {
     const git = simpleGit(projectPath);
-    let diff = '';
+    let diff;
     if (targetA) {
       const args = targetB ? [`${targetA}..${targetB}`] : [targetA];
       if (filePath) args.push('--', filePath);

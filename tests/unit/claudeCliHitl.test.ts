@@ -285,7 +285,7 @@ describe('isPathExcluded (шаблоны списков исключений)', 
     expect(ex('.env.local', defaults)).toBe(true);
     expect(ex('config/.env', defaults)).toBe(true);
     expect(ex('certs/server.pem', defaults)).toBe(true);
-    expect(ex('F:\proj\keys\id.key', defaults)).toBe(true);
+    expect(ex('F:\\proj\\keys\\id.key', defaults)).toBe(true);
     expect(ex('infra.config.json', defaults)).toBe(true);
     expect(ex('src/infra.config.json', defaults)).toBe(true);
     expect(ex('src/index.ts', defaults)).toBe(false);
