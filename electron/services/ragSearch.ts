@@ -6,10 +6,39 @@ import type { RagSearchOptions, RagSearchResult } from '../../src/types/electron
 import { projectRegistry } from './projectRegistry';
 import { ensureModelsCacheDir } from './appPaths';
 
-const MODEL_ID = 'Xenova/all-MiniLM-L6-v2';
-let embedderPromise: any = null;
+// Реестр моделей эмбеддингов — зеркало scripts/rag/embed.mjs (TASK-47). Запрос должен
+// кодироваться той же моделью и с тем же префиксом, что и индекс конкретного проекта, поэтому
+// модель берётся из .rag-index/meta.json этого проекта, а реестр — лишь fallback для dtype/префиксов.
+interface EmbeddingModel {
+  id: string;
+  dtype: 'q8' | 'fp32';
+  queryPrefix: string;
+}
+
+const KNOWN_MODELS: Record<string, Omit<EmbeddingModel, 'id'>> = {
+  'Xenova/multilingual-e5-small': { dtype: 'q8', queryPrefix: 'query: ' },
+  'Xenova/paraphrase-multilingual-MiniLM-L12-v2': { dtype: 'q8', queryPrefix: '' },
+  'Xenova/all-MiniLM-L6-v2': { dtype: 'fp32', queryPrefix: '' }
+};
+const DEFAULT_MODEL_ID = 'Xenova/multilingual-e5-small';
+
+const embedders = new Map<string, Promise<any>>();
 let lancedbModule: any = null;
 let transformersModule: any = null;
+
+async function readIndexModel(indexDir: string): Promise<EmbeddingModel> {
+  let modelId = DEFAULT_MODEL_ID;
+  let queryPrefix: string | undefined;
+  try {
+    const meta = JSON.parse(await fs.readFile(path.join(indexDir, 'meta.json'), 'utf-8'));
+    if (typeof meta.model === 'string' && meta.model) modelId = meta.model;
+    if (typeof meta.queryPrefix === 'string') queryPrefix = meta.queryPrefix;
+  } catch {
+    // meta.json отсутствует или битый — работаем с моделью по умолчанию
+  }
+  const known = KNOWN_MODELS[modelId] ?? { dtype: 'fp32' as const, queryPrefix: '' };
+  return { id: modelId, dtype: known.dtype, queryPrefix: queryPrefix ?? known.queryPrefix };
+}
 
 async function getLanceDb() {
   if (!lancedbModule) {
@@ -40,29 +69,26 @@ async function getTransformers() {
   return transformersModule;
 }
 
-async function getEmbedder() {
-  if (!embedderPromise) {
-    const tf = await getTransformers();
-    if (!tf) return null;
-    embedderPromise = tf.pipeline('feature-extraction', MODEL_ID, { dtype: 'fp32' });
-  }
-  return embedderPromise;
+async function getEmbedder(model: EmbeddingModel) {
+  const tf = await getTransformers();
+  if (!tf) return null;
+  const cached = embedders.get(model.id);
+  if (cached) return cached;
+  const promise: Promise<any> = tf.pipeline('feature-extraction', model.id, { dtype: model.dtype });
+  embedders.set(model.id, promise);
+  promise.catch(() => embedders.delete(model.id));
+  return promise;
 }
 
-async function embed(texts: string[]): Promise<number[][] | null> {
+async function embedQuery(query: string, model: EmbeddingModel): Promise<number[] | null> {
   try {
-    const embedder = await getEmbedder();
+    const embedder = await getEmbedder(model);
     if (!embedder) return null;
-    const output = await embedder(texts, { pooling: 'mean', normalize: true });
+    const output = await embedder([model.queryPrefix + query], { pooling: 'mean', normalize: true });
     const dim = output.dims[output.dims.length - 1];
-    const data = output.data;
-    const vectors: number[][] = [];
-    for (let i = 0; i < texts.length; i++) {
-      vectors.push(Array.from(data.slice(i * dim, (i + 1) * dim)));
-    }
-    return vectors;
+    return Array.from(output.data.slice(0, dim)) as number[];
   } catch (e) {
-    console.warn('[RAG] Embedding failed:', e);
+    console.warn(`[RAG] Embedding failed (model ${model.id}):`, e);
     return null;
   }
 }
@@ -144,9 +170,9 @@ export async function searchProjectDocs(options: RagSearchOptions): Promise<RagS
             const targetTable = tableNames.includes('docs') ? 'docs' : tableNames[0];
             if (targetTable) {
               const table = await db.openTable(targetTable);
-              const vectors = await embed([query]);
-              if (vectors && vectors[0]) {
-                const vectorResults = await table.search(vectors[0]).limit(limit).toArray();
+              const vector = await embedQuery(query, await readIndexModel(indexDir));
+              if (vector) {
+                const vectorResults = await table.search(vector).limit(limit).toArray();
 
                 for (const r of vectorResults) {
                   const distance = typeof r._distance === 'number' ? r._distance : 0.5;

@@ -7,9 +7,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "lint:docs": "node scripts/validate-docs.mjs",
+    "lint:docs": "node scripts/validate-docs.mjs && node scripts/rag/check-index.mjs",
+    "check-index": "node scripts/rag/check-index.mjs",
     "test": "vitest run",
-    "build": "node scripts/validate-docs.mjs && tsc && vite build",
+    "build": "node scripts/validate-docs.mjs && node scripts/rag/check-index.mjs --warn && tsc && vite build",
     "preview": "vite preview",
     "pack:win": "node scripts/pack-win.mjs",
     "pack:mac": "node scripts/pack-mac.mjs",

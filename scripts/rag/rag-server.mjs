@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { connect } from '@lancedb/lancedb';
-import { embed } from './embed.mjs';
+import { embedQuery, readIndexModel } from './embed.mjs';
 import { PROJECT_ROOT, requireFeature } from '../config.mjs';
 
 requireFeature('docsRag');
@@ -19,6 +19,13 @@ async function openTable() {
   }
   const db = await connect(INDEX_DIR);
   return db.openTable(TABLE_NAME);
+}
+
+// Запрос кодируем той же моделью (и с тем же префиксом), которой собран индекс — см. meta.json.
+function indexModel() {
+  const model = readIndexModel(INDEX_DIR);
+  if (!model) throw new Error('В .rag-index/meta.json нет модели. Пересобери индекс: npm run index-docs');
+  return model;
 }
 
 const server = new McpServer({ name: 'docs-rag', version: '0.1.0' });
@@ -39,7 +46,7 @@ server.registerTool(
   },
   async ({ query, topK }) => {
     const table = await openTable();
-    const [vector] = await embed([query]);
+    const vector = await embedQuery(query, indexModel());
     const results = await table.search(vector).limit(topK ?? 5).toArray();
 
     if (results.length === 0) {

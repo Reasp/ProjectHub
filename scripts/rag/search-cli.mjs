@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { connect } from '@lancedb/lancedb';
-import { embed } from './embed.mjs';
+import { embedQuery, readIndexModel } from './embed.mjs';
 import { PROJECT_ROOT, requireFeature } from '../config.mjs';
 
 requireFeature('docsRag');
@@ -16,7 +16,12 @@ if (!query) {
 
 const db = await connect(INDEX_DIR);
 const table = await db.openTable(TABLE_NAME);
-const [vector] = await embed([query]);
+const model = readIndexModel(INDEX_DIR);
+if (!model) {
+  console.error('Индекс не найден или без meta.json. Сначала выполните: npm run index-docs');
+  process.exit(1);
+}
+const vector = await embedQuery(query, model);
 const results = await table.search(vector).limit(5).toArray();
 
 if (results.length === 0) {

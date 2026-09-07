@@ -47,6 +47,12 @@ Antigravity свой каталог скиллов, `.claude/skills/` он не 
    `backlog/decisions/`), рядом с задачами. Если правишь `backlog/docs/**/*.md` или
    `backlog/decisions/**/*.md` — после значимых изменений запусти
    `npm run index-docs`, чтобы обновить векторный индекс. Индекс (`.rag-index/`) коммитится в git.
+   Актуальность индекса проверяется автоматически: `npm run lint:docs` (обязателен перед коммитом)
+   падает, если хэш документов в `.rag-index/meta.json` не совпадает с текущим содержимым
+   `backlog/docs/` и `backlog/decisions/`; `npm run build` при этом лишь предупреждает.
+   Отдельно: `npm run check-index`. Модель эмбеддингов — многоязычная
+   `Xenova/multilingual-e5-small` (документация на русском); запросы кодируются той моделью,
+   что записана в `meta.json` индекса, поэтому индекс и поиск не расходятся.
 2. **Перед ответом про архитектуру/устройство подсистемы — вызови `search_docs`** (MCP
    `docs-rag`), а не отвечай только из контекста разговора или обучающих данных.
 3. **Перед рефакторингом/удалением — проверь impact через GitNexus**, а не только через grep.
@@ -127,6 +133,7 @@ Antigravity свой каталог скиллов, `.claude/skills/` он не 
 node scripts/setup.mjs               # настроить/переконфигурировать: корень проекта, включённые фичи
 npm run lint:docs                    # валидация frontmatter, таблиц и картинок документации
 npm run index-docs                   # пересобрать векторный индекс документации
+npm run check-index                  # проверить, что .rag-index актуален относительно backlog/docs, backlog/decisions
 npm run rag-search -- "запрос"       # поиск по докам из терминала (для человека)
 npm run rag-server                   # MCP-сервер docs-rag (обычно запускается агентом через .mcp.json)
 npm run env-server                   # MCP-сервер env-tools (обычно через .mcp.json)

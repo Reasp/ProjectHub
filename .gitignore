@@ -33,7 +33,8 @@ npm-debug.log*
 dist/
 dist-electron/
 release/
-release_tmp/
+# pack-win.mjs при EBUSY собирает во временный каталог release_tmp_<timestamp>/ — тоже не коммитим
+release_tmp*/
 
 # IDE
 .vscode/
