@@ -236,7 +236,31 @@ class HubProcessManager {
     item.autoOpenTimer = timer;
   }
 
+  private logListeners: Array<(data: { processId: string; text: string }) => void> = [];
+  private statusListeners: Array<(process: ManagedProcess) => void> = [];
+
+  public onLog(listener: (data: { processId: string; text: string }) => void): () => void {
+    this.logListeners.push(listener);
+    return () => {
+      this.logListeners = this.logListeners.filter((l) => l !== listener);
+    };
+  }
+
+  public onStatusChanged(listener: (process: ManagedProcess) => void): () => void {
+    this.statusListeners.push(listener);
+    return () => {
+      this.statusListeners = this.statusListeners.filter((l) => l !== listener);
+    };
+  }
+
   private broadcastLog(processId: string, text: string) {
+    for (const listener of this.logListeners) {
+      try {
+        listener({ processId, text });
+      } catch {
+        // ignore
+      }
+    }
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
         win.webContents.send('process:logChunk', { processId, text });
@@ -245,6 +269,13 @@ class HubProcessManager {
   }
 
   private broadcastStatus(process: ManagedProcess) {
+    for (const listener of this.statusListeners) {
+      try {
+        listener(process);
+      } catch {
+        // ignore
+      }
+    }
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
         win.webContents.send('process:statusChanged', process);

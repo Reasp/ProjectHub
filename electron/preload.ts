@@ -344,6 +344,28 @@ const api: IElectronAPI = {
     return () => {
       ipcRenderer.removeListener('voice:external-control', handler);
     };
+  },
+
+  // Remote Control (TASK-51)
+  getRemoteStatus: () => ipcRenderer.invoke('remote:getStatus'),
+  toggleRemoteControl: (enable?: boolean) => ipcRenderer.invoke('remote:toggle', enable),
+  updateRemoteConfig: (config: any) => ipcRenderer.invoke('remote:updateConfig', config),
+  regenerateRemoteToken: () => ipcRenderer.invoke('remote:regenerateToken'),
+  disconnectRemoteDevice: (deviceId: string) => ipcRenderer.invoke('remote:disconnectDevice', deviceId),
+  approveRemoteDevice: (deviceId: string) => ipcRenderer.invoke('remote:approveDevice', deviceId),
+  onRemoteControlStatusChanged: (callback: (status: any) => void) => {
+    const handler = (_event: any, status: any) => callback(status);
+    ipcRenderer.on('remote:statusChanged', handler);
+    return () => {
+      ipcRenderer.removeListener('remote:statusChanged', handler);
+    };
+  },
+  onRemoteHitlDecisionMade: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('remote:hitlDecisionMade', handler);
+    return () => {
+      ipcRenderer.removeListener('remote:hitlDecisionMade', handler);
+    };
   }
 };
 

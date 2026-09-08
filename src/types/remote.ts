@@ -1,0 +1,94 @@
+export type RemoteConnectionMode = 'lan' | 'webrtc' | 'relay';
+
+export interface RemoteDevice {
+  id: string;
+  name: string;
+  ip: string;
+  mode: RemoteConnectionMode;
+  connectedAt: number;
+  lastSeenAt: number;
+  userAgent: string;
+  isApproved: boolean;
+}
+
+export interface RemoteControlConfig {
+  enabled: boolean;
+  port: number;
+  mode: RemoteConnectionMode;
+  relayServerUrl: string;
+  requireApproval: boolean;
+  readOnly: boolean;
+}
+
+export interface RemoteControlStatus {
+  enabled: boolean;
+  port: number;
+  mode: RemoteConnectionMode;
+  relayServerUrl: string;
+  relayConnected: boolean;
+  hostId: string;
+  pairingPin: string;
+  secretKey: string;
+  localIps: string[];
+  connectedDevices: RemoteDevice[];
+  requireApproval: boolean;
+  readOnly: boolean;
+  lastError: string | null;
+}
+
+export interface EncryptedPacket {
+  e2ee: true;
+  iv: string; // hex
+  tag: string; // hex
+  data: string; // hex
+}
+
+export interface PlainPacket {
+  e2ee?: false;
+  type: 'rpc_req' | 'rpc_res' | 'event' | 'handshake' | 'handshake_ack' | 'ping' | 'pong';
+  id?: string;
+  method?: string;
+  params?: any;
+  result?: any;
+  error?: string;
+  event?: string;
+  data?: any;
+}
+
+export type RemotePacket = PlainPacket | EncryptedPacket;
+
+export type RemoteRpcMethod =
+  | 'get_status'
+  | 'get_projects'
+  | 'select_project'
+  | 'get_processes'
+  | 'start_process'
+  | 'stop_process'
+  | 'restart_process'
+  | 'get_process_logs'
+  | 'get_tasks'
+  | 'update_task_status'
+  | 'toggle_task_criterion'
+  | 'create_task'
+  | 'get_git_status'
+  | 'git_commit'
+  | 'git_pull'
+  | 'git_push'
+  | 'send_ai_prompt'
+  | 'hitl_decision'
+  | 'run_action';
+
+export interface RemoteEventPayloads {
+  'process:logChunk': { processId: string; text: string };
+  'process:statusChanged': any;
+  'ai:chunk': { text: string };
+  'ai:hitl': {
+    sessionId: string;
+    tool: string;
+    description: string;
+    diff?: string;
+    params?: any;
+  };
+  'projects:changed': void;
+  'backlog:changed': { projectPath: string };
+}

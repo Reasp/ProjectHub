@@ -19,6 +19,7 @@ import { claudeBridgeService } from './services/claudeBridgeService';
 import { localWhisperService } from './services/localWhisperService';
 import { secretStorageService } from './services/secretStorageService';
 import { mcpServerService } from './services/mcpServerService';
+import { remoteControlService } from './services/remoteControlService';
 import { processManager, type StartProcessOptions } from './services/processManager';
 import { ptyService } from './services/ptyService';
 import { gitService } from './services/gitService';
@@ -1288,6 +1289,31 @@ ipcMain.handle('mcp:setAppState', async (_event, state: { activeProject?: any; a
   return true;
 });
 
+// ───────────────────────────── Remote Control IPC Handlers (TASK-51) ─────────────────────────────
+ipcMain.handle('remote:getStatus', async () => {
+  return remoteControlService.getStatus();
+});
+
+ipcMain.handle('remote:toggle', async (_event, enable?: boolean) => {
+  return await remoteControlService.toggle(enable);
+});
+
+ipcMain.handle('remote:updateConfig', async (_event, config) => {
+  return await remoteControlService.updateConfig(config);
+});
+
+ipcMain.handle('remote:regenerateToken', async () => {
+  return remoteControlService.regenerateToken();
+});
+
+ipcMain.handle('remote:disconnectDevice', async (_event, deviceId: string) => {
+  return remoteControlService.disconnectDevice(deviceId);
+});
+
+ipcMain.handle('remote:approveDevice', async (_event, deviceId: string) => {
+  return remoteControlService.approveDevice(deviceId);
+});
+
 let isCleaningUp = false;
 
 async function performGracefulShutdown() {
@@ -1342,6 +1368,13 @@ async function performGracefulShutdown() {
     await mcpServerService.stop();
   } catch (e) {
     console.warn('[Main] Error stopping MCP server:', e);
+  }
+
+  // 6. Stop Remote Control Server (TASK-51)
+  try {
+    await remoteControlService.stop();
+  } catch (e) {
+    console.warn('[Main] Error stopping Remote Control service:', e);
   }
 
   console.log('[Main] Graceful shutdown completed successfully.');

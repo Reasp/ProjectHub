@@ -153,7 +153,7 @@ describe('удаление завершённых процессов из active
     const first = await processManager.startProcess(CWD, 'echo first', 'restart');
     await waitFor(() => finished(first.id));
 
-    const second = await processManager.startProcess(CWD, 'sleep 2', 'restart');
+    const second = await processManager.startProcess(CWD, longRunningCommand(2000), 'restart');
     expect(second.id).toBe(first.id);
     expect(processManager.hasRunningProcess(CWD)).toBe(true);
 

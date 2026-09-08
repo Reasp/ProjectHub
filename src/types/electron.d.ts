@@ -184,6 +184,47 @@ export interface McpServerStatus {
   lastError: string | null;
 }
 
+/** Статус встроенного сервиса удаленного управления (TASK-51). */
+export interface RemoteControlStatus {
+  enabled: boolean;
+  port: number;
+  relayConnected: boolean;
+  relayUrl: string;
+  useRelay: boolean;
+  useP2P: boolean;
+  hostId: string;
+  secretToken: string;
+  localAddresses: string[];
+  connectedDevices: RemoteDevice[];
+  qrPayload: string;
+  webUrl: string;
+  lastError: string | null;
+}
+
+export interface RemoteDevice {
+  id: string;
+  name: string;
+  platform: string;
+  clientType: 'mobile' | 'desktop' | 'web';
+  ip?: string;
+  connectedAt: string;
+  lastSeen: string;
+  isApproved: boolean;
+  connectionMode: 'lan' | 'relay' | 'p2p';
+}
+
+export interface RemoteConfig {
+  enabled?: boolean;
+  port?: number;
+  readOnly?: boolean;
+  requireApproval?: boolean;
+  secretToken?: string;
+  relayUrl?: string;
+  useRelay?: boolean;
+  useP2P?: boolean;
+  stunServers?: string[];
+}
+
 export interface ManagedProcess {
   id: string;
   name: string;
@@ -530,6 +571,16 @@ export interface IElectronAPI {
 
   // Внешние ссылки (http/https/mailto) — открываются в системном браузере, а не в окне Electron
   openExternal: (url: string) => Promise<boolean>;
+
+  // Remote Control (TASK-51)
+  getRemoteStatus: () => Promise<RemoteControlStatus>;
+  toggleRemoteControl: (enable?: boolean) => Promise<RemoteControlStatus>;
+  updateRemoteConfig: (config: RemoteConfig) => Promise<RemoteControlStatus>;
+  regenerateRemoteToken: () => Promise<string>;
+  disconnectRemoteDevice: (deviceId: string) => Promise<boolean>;
+  approveRemoteDevice: (deviceId: string) => Promise<boolean>;
+  onRemoteControlStatusChanged: (callback: (status: RemoteControlStatus) => void) => () => void;
+  onRemoteHitlDecisionMade: (callback: (data: { sessionId: string; approved: boolean; byDevice: string }) => void) => () => void;
 }
 
 export interface FileTreeNode {
