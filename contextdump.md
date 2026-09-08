@@ -52,6 +52,11 @@ tags: ["context", "architecture", "project-hub", "status", "git", "pull-requests
     - **Интерактивный File Explorer с Git-индикацией**: Дерево файлов с цветными бейджами `[M]`, `[A]`, `[D]`, `[?]`, счетчиками изменений в папках, быстрым редактором кода и встроенным Diff.
     - **ProjectHub Native MCP Server**: Встроенный сервер MCP (`scripts/mcp-server.mjs`, `npm run mcp-server`), экспортирующий API ProjectHub для внешних AI-агентов (Claude Code, Antigravity, Cursor, Windsurf).
     - **Голосовое управление (Voice Control STT/TTS)**: Распознавание русской и английской речи, голосовые команды навигации и запуска действий, синтез речи (TTS) и плавающий виджет `VoiceControlWidget` (`Ctrl+Shift+V`).
+21. **Модуль удаленного управления (Remote Control: Server Relay & WebRTC P2P)** (`task-51`):
+    - Сквозное шифрование E2EE (AES-256-GCM) для всех управляющих команд и потоков логов.
+    - Поддержка двух режимов связи: WebRTC DataChannel (Peer-to-Peer) и WebSocket Relay Server (`scripts/remote-relay-server.mjs`) для удаленного доступа через мобильный интернет и сложные корпоративные сети/NAT.
+    - Встроенный мобильный веб-клиент SPA (`src/remote-client/`) с адаптивным интерфейсом для управления проектами, задачами, процессами, живым терминалом и AI-ассистентом.
+    - Десктопный виджет и модальное окно `RemoteControlBadge` с генерацией QR-кода, одобрением подключенных устройств и режимом Read-Only.
 
 ---
 
@@ -64,3 +69,5 @@ tags: ["context", "architecture", "project-hub", "status", "git", "pull-requests
 - **RAG & AI**: **LanceDB** + локальный коннектор **Ollama** (`http://127.0.0.1:11434/api/generate`) + Claude AI Studio (Anthropic, OpenRouter, DeepSeek).
 - **Voice & Multimodal (v2.0)**: **Web Speech API** (STT) + **SpeechSynthesis** (TTS) с парсером команд.
 - **Ecosystem & Interoperability (v2.0)**: **ProjectHub Native MCP Server** (`@modelcontextprotocol/sdk`).
+- **Remote Control & P2P**: **WebRTC DataChannel**, **WebSocket Relay** (`ws`), **E2EE (AES-256-GCM / Web Crypto)**.
+
