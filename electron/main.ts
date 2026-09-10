@@ -1204,6 +1204,43 @@ ipcMain.handle('claudeBridge:getUsage', async (_event, forceRefresh = false) => 
   return await claudeUsageService.getUsage(forceRefresh);
 });
 
+// 11.1 Multi-Agent Swarm & Fleet Orchestration (TASK-54)
+import { agentFleetService, type StartFanOutOptions, type StartHandoffOptions } from './services/agentFleetService';
+
+agentFleetService.on('swarmEvent', (event) => {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('swarm:event', event);
+  }
+});
+
+ipcMain.handle('swarm:startFanOut', async (_event, options: StartFanOutOptions) => {
+  const safeProject = await assertRegisteredProject(options.projectPath);
+  return await agentFleetService.startFanOut({ ...options, projectPath: safeProject });
+});
+
+ipcMain.handle('swarm:startHandoff', async (_event, options: StartHandoffOptions) => {
+  const safeProject = await assertRegisteredProject(options.projectPath);
+  return await agentFleetService.startHandoff({ ...options, projectPath: safeProject });
+});
+
+ipcMain.handle('swarm:stop', async (_event, swarmId: string) => {
+  return agentFleetService.stopSwarm(swarmId);
+});
+
+ipcMain.handle('swarm:pickWinner', async (_event, swarmId: string, winnerAgentId: string, mergeIntoBase = true) => {
+  return await agentFleetService.pickWinner(swarmId, winnerAgentId, mergeIntoBase);
+});
+
+ipcMain.handle('swarm:get', async (_event, swarmId: string) => {
+  return agentFleetService.getSwarm(swarmId);
+});
+
+ipcMain.handle('swarm:list', async (_event, projectPath?: string) => {
+  const safeProject = projectPath ? await assertRegisteredProject(projectPath) : undefined;
+  return agentFleetService.listSwarms(safeProject);
+});
+
+
 // 12. File System Helpers for AI & Explorer
 import { fileService } from './services/fileService';
 
@@ -1400,6 +1437,13 @@ async function performGracefulShutdown() {
   } catch (e) {
     console.warn('[Main] Error cleaning up agent sessions:', e);
   }
+
+  try {
+    agentFleetService.killAll();
+  } catch (e) {
+    console.warn('[Main] Error cleaning up swarm sessions:', e);
+  }
+
 
   try {
     ptyService.cleanupAll();

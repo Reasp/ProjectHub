@@ -554,6 +554,15 @@ export interface IElectronAPI {
   onAIComplete: (sessionId: string, callback: (message: AIMessage) => void) => () => void;
   onAIError: (sessionId: string, callback: (error: string) => void) => () => void;
 
+  // Multi-Agent Swarm & Fleet Orchestration (TASK-54)
+  startSwarmFanOut: (options: StartFanOutOptions) => Promise<SwarmSession>;
+  startSwarmHandoff: (options: StartHandoffOptions) => Promise<SwarmSession>;
+  stopSwarm: (swarmId: string) => Promise<boolean>;
+  pickSwarmWinner: (swarmId: string, winnerAgentId: string, mergeIntoBase?: boolean) => Promise<{ success: boolean; error?: string; mergedBranch?: string }>;
+  getSwarm: (swarmId: string) => Promise<SwarmSession | undefined>;
+  listSwarms: (projectPath?: string) => Promise<SwarmSession[]>;
+  onSwarmEvent: (callback: (event: SwarmEventPayload) => void) => () => void;
+
   // File Explorer & Helpers
   readDirectoryTree: (projectPath: string, subDir?: string, maxDepth?: number) => Promise<FileTreeNode[]>;
   readFileContent: (projectPath: string, relativePath: string) => Promise<string>;
@@ -886,6 +895,115 @@ declare global {
     api: IElectronAPI;
   }
 }
+
+// Multi-Agent Swarm & Fleet Orchestration Types (TASK-54)
+export type SwarmMode = 'fan_out' | 'handoff';
+export type SwarmStatus = 'idle' | 'preparing' | 'running' | 'completed' | 'failed' | 'stopped';
+export type AgentSlotStatus = 'pending' | 'preparing' | 'running' | 'completed' | 'failed' | 'stopped';
+
+export interface AgentSlotConfig {
+  id: string;
+  name: string;
+  engine: 'claude-cli' | 'codex-cli' | 'api';
+  role?: string;
+  providerConfig?: AIProviderConfig;
+  systemPromptAddon?: string;
+  cliCommand?: string;
+}
+
+export interface AgentSlotDiffSummary {
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+  patch: string;
+}
+
+export interface AgentSlotMetrics {
+  startTime: number;
+  endTime?: number;
+  durationMs?: number;
+  charsGenerated?: number;
+  tokensEstimated?: number;
+  speedCharsPerSec?: number;
+}
+
+export interface AgentSlotState {
+  id: string;
+  config: AgentSlotConfig;
+  status: AgentSlotStatus;
+  worktreePath?: string;
+  worktreeBranch?: string;
+  logs: string[];
+  liveOutput: string;
+  finalOutput?: string;
+  diffSummary?: AgentSlotDiffSummary;
+  metrics: AgentSlotMetrics;
+  winner?: boolean;
+  error?: string;
+}
+
+export interface HandoffStageState {
+  stageIndex: number;
+  role: string;
+  agentId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  inputPrompt: string;
+  outputResult?: string;
+  durationMs?: number;
+}
+
+export interface SwarmSession {
+  id: string;
+  projectPath: string;
+  taskId?: string;
+  taskTitle?: string;
+  mode: SwarmMode;
+  prompt: string;
+  baseBranch: string;
+  useWorktrees: boolean;
+  status: SwarmStatus;
+  createdAt: number;
+  completedAt?: number;
+  agents: AgentSlotState[];
+  handoffStages?: HandoffStageState[];
+  currentHandoffStageIndex?: number;
+  winnerAgentId?: string;
+  error?: string;
+}
+
+export interface StartFanOutOptions {
+  projectPath: string;
+  prompt: string;
+  taskId?: string;
+  taskTitle?: string;
+  baseBranch?: string;
+  useWorktrees?: boolean;
+  agents: AgentSlotConfig[];
+}
+
+export interface StartHandoffOptions {
+  projectPath: string;
+  prompt: string;
+  taskId?: string;
+  taskTitle?: string;
+  baseBranch?: string;
+  useWorktrees?: boolean;
+  stages: {
+    role: string;
+    agent: AgentSlotConfig;
+    instructions?: string;
+  }[];
+}
+
+export interface SwarmEventPayload {
+  type: 'swarm_updated' | 'agent_updated' | 'agent_chunk' | 'swarm_completed' | 'error';
+  swarmId: string;
+  agentId?: string;
+  session?: SwarmSession;
+  chunk?: string;
+  error?: string;
+}
+
 
 
 

@@ -232,6 +232,22 @@ const api: IElectronAPI = {
   getAvailableModels: () => ipcRenderer.invoke('claudeBridge:getAvailableModels'),
   getClaudeUsage: (forceRefresh?: boolean) => ipcRenderer.invoke('claudeBridge:getUsage', forceRefresh),
 
+  // Multi-Agent Swarm & Fleet Orchestration (TASK-54)
+  startSwarmFanOut: (options: any) => ipcRenderer.invoke('swarm:startFanOut', options),
+  startSwarmHandoff: (options: any) => ipcRenderer.invoke('swarm:startHandoff', options),
+  stopSwarm: (swarmId: string) => ipcRenderer.invoke('swarm:stop', swarmId),
+  pickSwarmWinner: (swarmId: string, winnerAgentId: string, mergeIntoBase?: boolean) =>
+    ipcRenderer.invoke('swarm:pickWinner', swarmId, winnerAgentId, mergeIntoBase),
+  getSwarm: (swarmId: string) => ipcRenderer.invoke('swarm:get', swarmId),
+  listSwarms: (projectPath?: string) => ipcRenderer.invoke('swarm:list', projectPath),
+  onSwarmEvent: (callback: (event: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('swarm:event', handler);
+    return () => {
+      ipcRenderer.removeListener('swarm:event', handler);
+    };
+  },
+
   onProjectAgentStatusChanged: (callback: (status: any) => void) => {
     const handler = (_event: any, data: any) => callback(data);
     ipcRenderer.on('claudeBridge:statusChanged', handler);

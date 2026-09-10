@@ -57,17 +57,24 @@ tags: ["context", "architecture", "project-hub", "status", "git", "pull-requests
     - Поддержка двух режимов связи: WebRTC DataChannel (Peer-to-Peer) и WebSocket Relay Server (`scripts/remote-relay-server.mjs`) для удаленного доступа через мобильный интернет и сложные корпоративные сети/NAT.
     - Встроенный мобильный веб-клиент SPA (`src/remote-client/`) с адаптивным интерфейсом для управления проектами, задачами, процессами, живым терминалом и AI-ассистентом.
     - Десктопный виджет и модальное окно `RemoteControlBadge` с генерацией QR-кода, одобрением подключенных устройств и режимом Read-Only.
+22. **Оркестрация параллельной работы разнородных AI-агентов (Multi-Agent Swarm, Fan-Out, Arena и Handoff)** (`task-54`):
+    - `AgentFleetService` (`electron/services/agentFleetService.ts`) — координатор параллельного (Fan-Out) и конвейерного (Handoff) выполнения задач CLI (Claude Code, Codex/Aider) и API-агентами (DeepSeek, OpenRouter, Ollama).
+    - Автоматическая изоляция каждого агента в выделенном Git Worktree (`.worktrees/swarm-<id>-<slotId>`, ветка `swarm/<id>/<agentSlug>`) без взаимных коллизий файлов.
+    - Состязательный экран Side-by-Side Swarm Arena (`SwarmArenaView.tsx`): параллельный просмотр статусов, метрик (токены, скорость, время), потоковых логов, Markdown-ответов и цветных git-диффов.
+    - Функция Pick Winner в 1 клик: автоматическое слияние ветки победителя (`worktreeService.mergeWorktree`), остановка сессий остальных агентов и очистка временных worktree-директорий.
+    - Интеграция с Канбан-доской Backlog: кнопка «⚡ В Swarm Arena» в `TaskDetailModal` с автоподстановкой описания задачи и пресетами дуэлей и конвейеров.
 
 ---
 
 ## 3. Выбранный технологический стек
 
 - **Платформа десктопа**: **Electron + Vite + React 19 + TypeScript**
-- **Git & Diff Движок**: **simple-git** + кастомный синтаксический Split/Unified diff-парсер.
+- **Git & Diff Движок**: **simple-git** + кастомный синтаксический Split/Unified diff-парсер + **Git Worktrees**.
 - **Стилизация и UI-система**: **Tailwind CSS v4 + Lucide React Icons** (премиальный темный интерфейс).
-- **Управление состоянием**: **Zustand** (хранилище проектов, задач, майлстоунов, PR, процессов и логов).
-- **RAG & AI**: **LanceDB** + локальный коннектор **Ollama** (`http://127.0.0.1:11434/api/generate`) + Claude AI Studio (Anthropic, OpenRouter, DeepSeek).
+- **Управление состоянием**: **Zustand** (хранилище проектов, задач, майлстоунов, PR, процессов, логов и мульти-агентных роев `useSwarmStore`).
+- **RAG & AI**: **LanceDB** + локальный коннектор **Ollama** (`http://127.0.0.1:11434/api/generate`) + Claude AI Studio (Anthropic, OpenRouter, DeepSeek) + **Agent Fleet Swarm Orchestrator**.
 - **Voice & Multimodal (v2.0)**: **Web Speech API** (STT) + **SpeechSynthesis** (TTS) с парсером команд.
 - **Ecosystem & Interoperability (v2.0)**: **ProjectHub Native MCP Server** (`@modelcontextprotocol/sdk`).
 - **Remote Control & P2P**: **WebRTC DataChannel**, **WebSocket Relay** (`ws`), **E2EE (AES-256-GCM / Web Crypto)**.
+
 

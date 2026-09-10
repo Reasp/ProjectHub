@@ -19,7 +19,8 @@ import {
   Pencil,
   ListTodo,
   Rocket,
-  GitCommit
+  GitCommit,
+  Zap
 } from 'lucide-react';
 import { useAIStudioStore, type AISession } from '../../store/useAIStudioStore';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -35,6 +36,7 @@ import { AgentStepsAccordion } from './AgentStepsAccordion';
 import { LiveActivitySidebar } from './LiveActivitySidebar';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 import { VoiceBadge } from '../voice/VoiceBadge';
+import { SwarmArenaView } from './swarm/SwarmArenaView';
 
 export const AIStudioView: React.FC = () => {
   const { t, language } = useTranslation();
@@ -81,6 +83,7 @@ export const AIStudioView: React.FC = () => {
   } = useAIStudioStore();
 
   const [expandedThoughts, setExpandedThoughts] = useState<Record<string, boolean>>({});
+  const [aiViewMode, setAiViewMode] = useState<'studio' | 'swarm'>('studio');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const projectPath = selectedProject?.path || '';
@@ -138,6 +141,35 @@ export const AIStudioView: React.FC = () => {
       [msgId]: !prev[msgId]
     }));
   };
+
+  if (aiViewMode === 'swarm') {
+    return (
+      <div className="flex-1 flex flex-col h-full bg-[#0d0f17] overflow-hidden">
+        <div className="bg-[#12141f] border-b border-slate-800/90 flex items-center justify-between px-4 py-2 shrink-0 select-none">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setAiViewMode('studio')}
+                className="px-3 py-1 rounded text-xs font-semibold text-slate-400 hover:text-slate-200 transition"
+              >
+                Одиночный агент (Студия)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAiViewMode('swarm')}
+                className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-xs transition"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                <span>Swarm Arena & Fleet</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <SwarmArenaView />
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#0d0f17] overflow-hidden">
@@ -242,6 +274,26 @@ export const AIStudioView: React.FC = () => {
 
         {/* Studio Controls Header Right */}
         <div className="flex items-center gap-2 pb-1 pr-2">
+          {/* Studio vs Swarm Mode Switcher (TASK-54) */}
+          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setAiViewMode('studio')}
+              className="px-2.5 py-1 rounded text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-xs transition"
+            >
+              Студия
+            </button>
+            <button
+              type="button"
+              onClick={() => setAiViewMode('swarm')}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold text-slate-400 hover:text-amber-300 transition"
+              title="Открыть Swarm Arena для параллельного запуска агентов"
+            >
+              <Zap className="w-3 h-3 text-amber-400" />
+              <span>Swarm Arena</span>
+            </button>
+          </div>
+
           {/* Claude.ai Auth Status & Logout Button Group */}
           {claudeAuth?.isLoggedIn ? (
             <div className="flex items-center bg-amber-500/10 border border-amber-500/30 rounded-lg p-0.5 shrink-0">

@@ -20,10 +20,12 @@ import {
   Sparkles,
   Maximize2,
   Minimize2,
-  FolderGit2
+  FolderGit2,
+  Zap
 } from 'lucide-react';
 import type { BacklogTask, TaskCriterion } from '../../types/electron';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useSwarmStore } from '../../store/useSwarmStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { generateTaskDraft } from '../../services/aiAssistantService';
 import { MarkdownViewer } from '../common/MarkdownViewer';
@@ -50,8 +52,10 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     createWorktreeAction,
     createPtySessionAction,
     selectedProject,
-    updateTaskStatusLocal
+    updateTaskStatusLocal,
+    setActiveTab: setMainTab
   } = useProjectStore();
+  const { openNewSwarmModal } = useSwarmStore();
 
   const [activeTab, setActiveTab] = useState<'editor' | 'raw'>('editor');
   const [previewMode, setPreviewMode] = useState(true);
@@ -621,6 +625,25 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 </button>
               )
             )}
+
+            {/* Swarm Arena Action (TASK-54) */}
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                openNewSwarmModal({
+                  taskId: task.id,
+                  taskTitle: task.title,
+                  prompt: `[Задача ${task.id}]: ${task.title}\n\n${task.description || ''}`
+                });
+                setMainTab('ai');
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-700/50 text-xs font-semibold shadow-sm transition"
+              title="Запустить соревновательную генерацию нескольких AI-агентов в Swarm Arena"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <span>В Swarm Arena</span>
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
