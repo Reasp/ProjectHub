@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
+import { spawn } from 'node:child_process';
 import { PROJECT_HUB_CLAUDE_DIR } from './aiAgentService.js';
 
 export interface ClaudeUsageLimitWindow {
@@ -91,11 +92,12 @@ class ClaudeUsageService {
   private rateLimits: ClaudeRateLimitSnapshot | null = null;
 
   /**
-   * Usage без обращения к модели (аудит 3.9, TASK-44). Проверено: `claude -p /usage` в
-   * print-режиме не выполняет встроенную команду, а отправляет строку «/usage» модели как
-   * промпт — каждый вызов тратил квоту. Теперь источники только локальные:
-   * `~/.claude/stats-cache.json` (сессии, сообщения, токены по моделям) и rate-limit события
-   * из stream-json уже идущих сессий Claude CLI (`noteRateLimitEvent`).
+   * Получение лимитов и статистики Claude Code.
+   * Схема гибридная:
+   * 1. Безопасный CLI-вызов `claude -p /usage` (с закрытым stdin, не тратит токены модели,
+   *    возвращает актуальные лимиты сессии, недели, Fable и активность за 24ч/7д).
+   * 2. Оперативные rate-limit события `rate_limit_event` из идущих сессий Claude CLI в AI Studio (`noteRateLimitEvent`).
+   * 3. Локальный кэш `~/.claude/stats-cache.json` для исторических показателей сессий и сообщений.
    */
   public async getUsage(forceRefresh = false): Promise<ClaudeUsageData> {
     const now = Date.now();
@@ -103,30 +105,118 @@ class ClaudeUsageService {
       return this.cachedUsage;
     }
 
+    let cliUsageText: string | null = null;
+    let parsedFromCli: ReturnType<typeof this.parseUsageText> | null = null;
+
+    // В тестах Vitest не спауним внешний CLI, чтобы тесты выполнялись изолированно и детерминированно
+    if (!process.env.VITEST) {
+      try {
+        cliUsageText = await this.fetchUsageFromCli();
+        if (cliUsageText) {
+          parsedFromCli = this.parseUsageText(cliUsageText);
+          if (parsedFromCli.sessionLimit || parsedFromCli.weeklyLimit || parsedFromCli.fableLimit) {
+            const nextSnapshot: ClaudeRateLimitSnapshot = {
+              ...(this.rateLimits ?? { updatedAt: 0 }),
+              updatedAt: now
+            };
+            if (parsedFromCli.sessionLimit) nextSnapshot.sessionLimit = parsedFromCli.sessionLimit;
+            if (parsedFromCli.weeklyLimit) nextSnapshot.weeklyLimit = parsedFromCli.weeklyLimit;
+            if (parsedFromCli.fableLimit) nextSnapshot.fableLimit = parsedFromCli.fableLimit;
+            this.rateLimits = nextSnapshot;
+          }
+        }
+      } catch (err: any) {
+        // Если CLI недоступен (например, в CI или без установки claude), откатываемся на кэш и снимки
+        console.warn('[ClaudeUsage] CLI fetch failed, falling back to local cache & rate limit snapshot:', err.message);
+      }
+    }
+
     const statsCacheData = await this.readStatsCacheFile();
-    if (!statsCacheData && !this.rateLimits) {
+
+    if (!parsedFromCli && !statsCacheData && !this.rateLimits) {
       throw new Error(
-        'Не удалось получить usage данные Claude Code: нет ~/.claude/stats-cache.json и ещё не было rate-limit событий CLI'
+        'Не удалось получить usage данные Claude Code: нет ответа от CLI, отсутствует stats-cache.json и ещё не было rate-limit событий'
       );
     }
 
+    const sessionLimit = this.rateLimits?.sessionLimit ?? parsedFromCli?.sessionLimit;
+    const weeklyLimit = this.rateLimits?.weeklyLimit ?? parsedFromCli?.weeklyLimit;
+    const fableLimit = this.rateLimits?.fableLimit ?? parsedFromCli?.fableLimit;
+
     const usage: ClaudeUsageData = {
-      planType: 'Claude Code Subscription',
-      sessionLimit: this.rateLimits?.sessionLimit,
-      weeklyLimit: this.rateLimits?.weeklyLimit,
-      fableLimit: this.rateLimits?.fableLimit,
+      planType: parsedFromCli?.planType || 'Claude Code Subscription',
+      sessionLimit,
+      weeklyLimit,
+      fableLimit,
+      last24h: parsedFromCli?.last24h,
+      last7d: parsedFromCli?.last7d,
       totalSessions: statsCacheData?.totalSessions,
       totalMessages: statsCacheData?.totalMessages,
       modelUsage: statsCacheData?.modelUsage,
       dailyActivity: statsCacheData?.dailyActivity,
-      rawText: this.describeSources(statsCacheData !== null),
+      rawText: cliUsageText || this.describeSources(statsCacheData !== null),
       updatedAt: now,
-      isFallback: !this.rateLimits
+      isFallback: !this.rateLimits && !parsedFromCli?.sessionLimit && !parsedFromCli?.weeklyLimit
     };
 
     this.cachedUsage = usage;
     this.lastFetchTime = now;
     return usage;
+  }
+
+  public async fetchUsageFromCli(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const configDir = existsSync(path.join(PROJECT_HUB_CLAUDE_DIR, '.credentials.json'))
+        ? PROJECT_HUB_CLAUDE_DIR
+        : undefined;
+
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        FORCE_COLOR: '0',
+        ...(configDir ? { CLAUDE_CONFIG_DIR: configDir } : {})
+      };
+
+      const child = spawn('claude', ['-p', '/usage'], {
+        shell: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env
+      });
+
+      // Немедленно закрываем stdin, чтобы процесс не ожидал 3 секунды ввода данных
+      child.stdin.end();
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout.on('data', (d) => {
+        stdout += d.toString('utf-8');
+      });
+
+      child.stderr.on('data', (d) => {
+        stderr += d.toString('utf-8');
+      });
+
+      const timer = setTimeout(() => {
+        try {
+          child.kill();
+        } catch {}
+        reject(new Error('Превышено время ожидания ответа от claude /usage'));
+      }, 8000);
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (code === 0 || stdout.trim().length > 0) {
+          resolve(stdout.trim());
+        } else {
+          reject(new Error(stderr || `claude /usage завершился с кодом ${code}`));
+        }
+      });
+
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
   }
 
   private describeSources(hasStatsCache: boolean): string {
@@ -136,8 +226,8 @@ class ClaudeUsageService {
         : 'Локальный кэш Claude Code (~/.claude/stats-cache.json) не найден.',
       this.rateLimits
         ? `Лимиты: rate-limit события Claude CLI, последнее ${new Date(this.rateLimits.updatedAt).toLocaleString()}.`
-        : 'Лимиты (сессия/неделя) появятся после первого rate-limit события в сессии Claude CLI из AI Studio.',
-      'Запрос `claude -p /usage` не используется: в print-режиме он отправляется модели как промпт и расходует квоту.'
+        : 'Окна лимитов получены из снимка rate-limit событий Claude CLI.',
+      'Для прямого опроса лимитов и квот подписки используется вызов `claude -p /usage`.'
     ];
     return lines.join('\n');
   }

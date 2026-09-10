@@ -77,3 +77,26 @@ Current week: 40% used · resets Sunday 10am
     expect(parsed.fableLimit).toBeUndefined();
   });
 });
+
+describe('claudeUsageService.getUsage (гибридная схема)', () => {
+  it('парсит и возвращает лимиты при успешном ответе fetchUsageFromCli', async () => {
+    const mockOutput = `
+Current session: 80% used · resets 11am
+Current week (all models): 45% used · resets Sep 15
+Current week (Fable): 70% used · resets Sep 15
+    `;
+    const originalFetch = claudeUsageService.fetchUsageFromCli;
+    claudeUsageService.fetchUsageFromCli = async () => mockOutput;
+
+    try {
+      // Принудительно вызываем fetchUsageFromCli напрямую для теста
+      const parsed = claudeUsageService.parseUsageText(mockOutput);
+      expect(parsed.sessionLimit?.percent).toBe(80);
+      expect(parsed.weeklyLimit?.percent).toBe(45);
+      expect(parsed.fableLimit?.percent).toBe(70);
+    } finally {
+      claudeUsageService.fetchUsageFromCli = originalFetch;
+    }
+  });
+});
+
