@@ -52,28 +52,47 @@ export const ClaudeUsageButton: React.FC<ClaudeUsageButtonProps> = ({
   const sessionPercent = usage?.sessionLimit?.percent;
   const weeklyPercent = usage?.weeklyLimit?.percent;
   const fablePercent = usage?.fableLimit?.percent;
-  const highestPercent = Math.max(sessionPercent ?? 0, weeklyPercent ?? 0, fablePercent ?? 0);
 
   const getBadgeStyle = () => {
-    if (highestPercent >= 85) {
+    const percent = sessionPercent ?? 0;
+    if (percent >= 85) {
       return 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse';
     }
-    if (highestPercent >= 60) {
+    if (percent >= 60) {
       return 'bg-amber-500/20 text-amber-300 border-amber-500/40';
     }
     return 'bg-slate-800/80 text-slate-300 border-slate-700/60 hover:bg-slate-700 hover:text-white';
   };
 
+  const getPercentColor = () => {
+    if (sessionPercent === undefined) return 'text-amber-300';
+    if (sessionPercent >= 85) return 'text-rose-300';
+    if (sessionPercent >= 60) return 'text-amber-300';
+    return 'text-emerald-400';
+  };
+
+  const getGaugeColor = () => {
+    if (sessionPercent === undefined) return 'text-amber-400';
+    if (sessionPercent >= 85) return 'text-rose-400';
+    if (sessionPercent >= 60) return 'text-amber-400';
+    return 'text-emerald-400';
+  };
+
   const getTooltip = () => {
     if (!usage) return t.claudeUsage?.modalDesc || 'Показать расход токенов и лимиты Claude Code (/usage)';
+    const sessionLabel = t.claudeUsage?.sessionLimit || 'Сессия';
+    const sessionText = typeof sessionPercent === 'number' ? `${sessionPercent}%` : '—';
+    const weeklyLabel = t.claudeUsage?.weeklyLimit || 'Неделя';
+    const weeklyText = typeof weeklyPercent === 'number' ? `${weeklyPercent}%` : '—';
     const parts = [
-      `Сессия ${sessionPercent ?? 0}%`,
-      `Неделя ${weeklyPercent ?? 0}%`
+      `${sessionLabel}: ${sessionText}`,
+      `${weeklyLabel}: ${weeklyText}`
     ];
-    if (fablePercent !== undefined) {
-      parts.push(`Fable ${fablePercent}%`);
+    if (typeof fablePercent === 'number') {
+      const fableLabel = t.claudeUsage?.fableLimit || 'Fable';
+      parts.push(`${fableLabel}: ${fablePercent}%`);
     }
-    return `Claude Code Usage: ${parts.join(', ')}. Кликните для подробностей.`;
+    return `Claude Code Usage (${sessionLabel}: ${sessionText}). ${parts.join(', ')}.`;
   };
 
   return (
@@ -84,11 +103,11 @@ export const ClaudeUsageButton: React.FC<ClaudeUsageButtonProps> = ({
         title={getTooltip()}
         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium transition shrink-0 ${getBadgeStyle()} ${className}`}
       >
-        <Gauge className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+        <Gauge className={`w-3.5 h-3.5 shrink-0 ${getGaugeColor()}`} />
         {showText && <span>Usage</span>}
-        {highestPercent > 0 && (
-          <span className="font-mono font-bold text-[10px] text-amber-300">
-            {highestPercent}%
+        {typeof sessionPercent === 'number' && (
+          <span className={`font-mono font-bold text-[10px] ${getPercentColor()}`}>
+            {sessionPercent}%
           </span>
         )}
         <VoiceBadge command={t.voice.voiceBadges.limits} />

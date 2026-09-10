@@ -3,10 +3,10 @@ id: TASK-37
 title: >-
   VoiceControlWidget: переподписка на все события voiceService на каждый
   стриминговый чанк
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:08'
-updated_date: '2026-09-10 02:03'
+updated_date: '2026-09-10 02:22'
 labels:
   - audit
   - performance
@@ -39,7 +39,7 @@ type: bug
 - [x] #1 Подписки на voiceService и onVoiceExternalControl создаются один раз при монтировании, изменяемые данные (projects, sessions, approvals, language) читаются через useRef или useProjectStore.getState()/useAIStudioStore.getState() в момент команды
 - [x] #2 voiceService.setLanguage вызывается только при фактическом изменении language
 - [x] #3 Таймеры setTimeout в executeCommand и onDeviceNotice очищаются при размонтировании
-- [ ] #4 Проверено React Profiler: во время стриминга VoiceControlWidget не выполняет cleanup/setup эффекта подписок
+- [x] #4 Проверено React Profiler: во время стриминга VoiceControlWidget не выполняет cleanup/setup эффекта подписок
 <!-- AC:END -->
 
 ## Implementation Plan
