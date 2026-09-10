@@ -491,13 +491,13 @@ export const DocsRagView: React.FC = () => {
               <div className="flex-1 flex overflow-hidden">
                 {/* Editor Pane */}
                 {(viewMode === 'edit' || viewMode === 'split') && (
-                  <div className={`flex-1 flex flex-col h-full ${viewMode === 'split' ? 'border-r border-slate-800' : ''}`}>
+                  <div className={`flex-1 flex flex-col h-full select-text ${viewMode === 'split' ? 'border-r border-slate-800' : ''}`}>
                     <textarea
                       ref={textareaRef}
                       value={docContent}
                       onChange={(e) => setDocContent(e.target.value)}
                       placeholder="Enter markdown content..."
-                      className="flex-1 w-full p-4 bg-[#0d0f17] text-slate-200 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-indigo-600/40"
+                      className="flex-1 w-full p-4 bg-[#0d0f17] text-slate-200 font-mono text-xs leading-relaxed focus:outline-none resize-none selection:bg-indigo-600/40 select-text cursor-text"
                       spellCheck={false}
                     />
                   </div>

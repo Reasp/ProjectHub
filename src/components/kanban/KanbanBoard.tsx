@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Plus,
   Tag,
@@ -455,83 +456,90 @@ export const KanbanBoard: React.FC = () => {
       )}
 
       {/* Create Task Modal */}
-      {isCreateOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in duration-150">
-          <form
-            onSubmit={handleCreateTask}
-            className="w-full max-w-lg bg-[#141724] border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+      {isCreateOpen &&
+        createPortal(
+          <div
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setIsCreateOpen(false);
+            }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in duration-150 select-text"
           >
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-[#161a2b]/70">
-              <h3 className="text-sm font-semibold text-white">{t.createTask.title}</h3>
-              <button
-                type="button"
-                onClick={() => setIsCreateOpen(false)}
-                className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-4 text-xs">
-              <div>
-                <label className="text-slate-300 font-medium block mb-1">
-                  {t.createTask.taskTitle} *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder={t.createTask.taskTitlePlaceholder}
-                  className="w-full bg-[#10121d] border border-slate-800 rounded-lg px-3 py-2 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition"
-                />
+            <form
+              onSubmit={handleCreateTask}
+              className="w-full max-w-lg bg-[#141724] border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden select-text"
+            >
+              <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-[#161a2b]/70">
+                <h3 className="text-sm font-semibold text-white">{t.createTask.title}</h3>
+                <button
+                  type="button"
+                  onClick={() => setIsCreateOpen(false)}
+                  className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
-              <div>
-                <label className="text-slate-300 font-medium block mb-1">
-                  {t.createTask.description}
-                </label>
-                <textarea
-                  rows={4}
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  placeholder={t.createTask.descriptionPlaceholder}
-                  className="w-full bg-[#10121d] border border-slate-800 rounded-lg px-3 py-2 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition"
-                />
+              <div className="p-5 space-y-4 text-xs select-text">
+                <div>
+                  <label className="text-slate-300 font-medium block mb-1">
+                    {t.createTask.taskTitle} *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    placeholder={t.createTask.taskTitlePlaceholder}
+                    className="w-full bg-[#10121d] border border-slate-800 rounded-lg px-3 py-2 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition select-text cursor-text selection:bg-indigo-600/40"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-300 font-medium block mb-1">
+                    {t.createTask.description}
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={newDesc}
+                    onChange={(e) => setNewDesc(e.target.value)}
+                    placeholder={t.createTask.descriptionPlaceholder}
+                    className="w-full bg-[#10121d] border border-slate-800 rounded-lg px-3 py-2 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition select-text cursor-text selection:bg-indigo-600/40"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-300 font-medium block mb-1">
+                    {t.createTask.labels}
+                  </label>
+                  <input
+                    type="text"
+                    value={newLabels}
+                    onChange={(e) => setNewLabels(e.target.value)}
+                    placeholder={t.createTask.labelsPlaceholder}
+                    className="w-full bg-[#10121d] border border-slate-800 rounded-lg px-3 py-2 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition select-text cursor-text selection:bg-indigo-600/40"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="text-slate-300 font-medium block mb-1">
-                  {t.createTask.labels}
-                </label>
-                <input
-                  type="text"
-                  value={newLabels}
-                  onChange={(e) => setNewLabels(e.target.value)}
-                  placeholder={t.createTask.labelsPlaceholder}
-                  className="w-full bg-[#10121d] border border-slate-800 rounded-lg px-3 py-2 text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition"
-                />
+              <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-2 bg-[#10121d]">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateOpen(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                >
+                  {t.common.cancel}
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-md shadow-indigo-600/20 transition"
+                >
+                  {t.createTask.createButton}
+                </button>
               </div>
-            </div>
-
-            <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-2 bg-[#10121d]">
-              <button
-                type="button"
-                onClick={() => setIsCreateOpen(false)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition"
-              >
-                {t.common.cancel}
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white shadow-md shadow-indigo-600/20 transition"
-              >
-                {t.createTask.createButton}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+            </form>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

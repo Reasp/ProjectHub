@@ -3,11 +3,11 @@ id: TASK-39
 title: >-
   Глобальные хоткеи Ctrl+A/B/D/E/G/I/M/P/R/T перехватывают ввод в полях и
   редакторах
-status: Review
+status: Done
 assignee:
   - Claude
 created_date: '2026-09-05 09:08'
-updated_date: '2026-09-06 20:17'
+updated_date: '2026-09-10 02:03'
 labels:
   - audit
   - ui
@@ -46,7 +46,7 @@ type: bug
 - [x] #1 Навигационные Ctrl-хоткеи (A, B, D, E, G, I, M, P, R, T) не срабатывают, когда фокус в input/textarea/contentEditable или внутри xterm
 - [x] #2 Ctrl+K, Ctrl+\ и Escape продолжают работать глобально
 - [x] #3 Список хоткеев в HotkeysHelpModal и в tabDefs ProjectWorkspace соответствует фактическому поведению
-- [ ] #4 Проверено вручную: Ctrl+A в редакторе документа выделяет текст
+- [x] #4 Проверено вручную: Ctrl+A в редакторе документа выделяет текст
 <!-- AC:END -->
 
 ## Implementation Plan

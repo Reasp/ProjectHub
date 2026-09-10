@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Tag,
@@ -110,6 +111,16 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     };
   }, [activeTab, rawContent, task?.filePath]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   if (!task) return null;
 
   const handleStatusChange = (newStatus: BacklogTask['status']) => {
@@ -182,9 +193,14 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className={`bg-[#131622] border border-slate-800 rounded-2xl w-full shadow-2xl overflow-hidden flex flex-col transition-all duration-150 ${
+  return createPortal(
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150 select-text"
+    >
+      <div className={`bg-[#131622] border border-slate-800 rounded-2xl w-full shadow-2xl overflow-hidden flex flex-col transition-all duration-150 select-text ${
         isDescriptionExpanded ? 'max-w-5xl h-[92vh]' : 'max-w-3xl max-h-[90vh]'
       }`}>
         {/* Modal Header */}
@@ -197,7 +213,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="font-semibold text-sm text-white bg-transparent border-b border-transparent hover:border-slate-700 focus:border-indigo-500 focus:outline-none px-1 py-0.5 transition truncate max-w-md"
+              className="font-semibold text-sm text-white bg-transparent border-b border-transparent hover:border-slate-700 focus:border-indigo-500 focus:outline-none px-1 py-0.5 transition truncate max-w-md select-text cursor-text"
               placeholder={t.taskDetail.title}
             />
           </div>
@@ -311,7 +327,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       onChange={(e) => setNewLabelInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddLabel())}
                       placeholder={t.taskDetail.addLabel}
-                      className="bg-[#10121d] border border-slate-800 rounded-md px-2.5 py-1 text-xs text-slate-200 placeholder:text-slate-500 flex-1 focus:outline-none focus:border-indigo-500"
+                      className="bg-[#10121d] border border-slate-800 rounded-md px-2.5 py-1 text-xs text-slate-200 placeholder:text-slate-500 flex-1 focus:outline-none focus:border-indigo-500 select-text cursor-text"
                     />
                     <button
                       type="button"
@@ -396,7 +412,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       onChange={(e) => setNewCriterionInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddCriterion())}
                       placeholder={t.taskDetail.criterionPlaceholder}
-                      className="w-full bg-[#10121d] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-[#10121d] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 select-text cursor-text"
                     />
                     <button
                       type="button"
@@ -465,25 +481,26 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
             {previewMode ? (
               <div
-                className={`bg-[#0e111a] p-4 rounded-xl text-xs text-slate-300 border border-slate-800 leading-relaxed overflow-y-auto ${
+                className={`bg-[#0e111a] p-4 rounded-xl text-xs text-slate-300 border border-slate-800 leading-relaxed overflow-y-auto select-text selection:bg-indigo-600/40 ${
                   isDescriptionExpanded ? 'flex-1 min-h-0' : 'min-h-[140px] max-h-[380px]'
                 }`}
               >
                 {description.trim() ? (
                   <MarkdownViewer content={description} />
                 ) : (
-                  <div className="text-slate-500 italic py-2">
+                  <div className="text-slate-500 italic py-2 select-none">
                     {t.createTask.descriptionPlaceholder || 'Нет описания'}
                   </div>
                 )}
               </div>
             ) : (
               <textarea
+                autoFocus
                 rows={isDescriptionExpanded ? undefined : 8}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={t.createTask.descriptionPlaceholder}
-                className={`w-full bg-[#10121d] border border-slate-800 rounded-xl p-3.5 text-xs text-slate-200 font-mono placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 leading-relaxed transition ${
+                className={`w-full bg-[#10121d] border border-slate-800 rounded-xl p-3.5 text-xs text-slate-200 font-mono placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 leading-relaxed transition select-text cursor-text selection:bg-indigo-600/40 ${
                   isDescriptionExpanded ? 'flex-1 min-h-0 resize-none' : 'resize-y'
                 }`}
               />
@@ -497,7 +514,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             <FileCode className="w-3.5 h-3.5 text-indigo-400" />
             {t.docs.markdownEditor}
           </label>
-          <pre className="bg-[#0e111a] p-4 rounded-xl text-xs text-slate-300 font-mono border border-slate-800 leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-[50vh]">
+          <pre className="bg-[#0e111a] p-4 rounded-xl text-xs text-slate-300 font-mono border border-slate-800 leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-[50vh] select-text selection:bg-indigo-600/40">
             {isRawLoading || rawContent === null ? (
               <span className="text-slate-500 italic">{t.common.loading}</span>
             ) : (
@@ -544,6 +561,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
