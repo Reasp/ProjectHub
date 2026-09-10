@@ -40,10 +40,10 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
         const data = await window.api.getClaudeUsage(force);
         setUsageData(data);
       } else {
-        setError('API получения usage Claude Code недоступно');
+        setError(t.claudeUsage.apiUnavailable);
       }
     } catch (err: any) {
-      setError(err.message || 'Ошибка загрузки статистики usage');
+      setError(err.message || t.claudeUsage.loadError);
     } finally {
       setIsLoading(false);
     }
@@ -190,7 +190,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
           {isLoading && !usageData && (
             <div className="py-12 flex flex-col items-center justify-center space-y-3">
               <RefreshCw className="w-7 h-7 text-amber-400 animate-spin" />
-              <p className="text-xs text-slate-400">Считывание квот и истории сессий Claude Code...</p>
+              <p className="text-xs text-slate-400">{t.claudeUsage.loadingDesc}</p>
             </div>
           )}
 
@@ -305,10 +305,10 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                   <div>
                     <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      Факторы потребления лимитов
+                      {t.claudeUsage.factorsTitle}
                     </h4>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Статистика локальных сессий Claude Code на этой машине
+                      {t.claudeUsage.factorsDesc}
                     </p>
                   </div>
 
@@ -322,7 +322,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                           : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      За 24 часа
+                      {t.claudeUsage.period24h}
                     </button>
                     <button
                       onClick={() => setBreakdownPeriod('7d')}
@@ -332,7 +332,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                           : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      За 7 дней
+                      {t.claudeUsage.period7d}
                     </button>
                   </div>
                 </div>
@@ -345,7 +345,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                         {currentBreakdown.requests ?? '—'}
                       </div>
                       <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
-                        Запросов
+                        {t.claudeUsage.requests}
                       </div>
                     </div>
                     <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/60">
@@ -353,7 +353,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                         {currentBreakdown.sessions ?? '—'}
                       </div>
                       <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
-                        Сессий
+                        {t.claudeUsage.sessions}
                       </div>
                     </div>
                     <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/60">
@@ -361,7 +361,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                         {currentBreakdown.contextAbove150kPercent ? `${currentBreakdown.contextAbove150kPercent}%` : '—'}
                       </div>
                       <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
-                        Контекст &gt;150k
+                        {t.claudeUsage.context150k}
                       </div>
                     </div>
                     <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/60">
@@ -369,13 +369,13 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                         {currentBreakdown.subagentHeavyPercent ? `${currentBreakdown.subagentHeavyPercent}%` : '—'}
                       </div>
                       <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">
-                        Подагенты
+                        {t.claudeUsage.subagents}
                       </div>
                     </div>
                   </div>
                 ) : (
                   <div className="text-xs text-slate-400 py-3 text-center">
-                    Нет данных за выбранный период.
+                    {t.claudeUsage.noPeriodData}
                   </div>
                 )}
 
@@ -385,7 +385,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                   <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800/60 space-y-2">
                     <div className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
                       <FileCode2 className="w-3 h-3 text-indigo-400" />
-                      Топ скиллов
+                      {t.claudeUsage.topSkills}
                     </div>
                     {currentBreakdown?.topSkills && currentBreakdown.topSkills.length > 0 ? (
                       <div className="space-y-1.5">
@@ -397,7 +397,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                         ))}
                       </div>
                     ) : (
-                      <div className="text-[11px] text-slate-500">Нет активности</div>
+                      <div className="text-[11px] text-slate-500">{t.claudeUsage.noActivity}</div>
                     )}
                   </div>
 
@@ -405,7 +405,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                   <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800/60 space-y-2">
                     <div className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
                       <Server className="w-3 h-3 text-emerald-400" />
-                      Топ MCP серверов
+                      {t.claudeUsage.topMcp}
                     </div>
                     {currentBreakdown?.topMcpServers && currentBreakdown.topMcpServers.length > 0 ? (
                       <div className="space-y-1.5">
@@ -417,7 +417,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                         ))}
                       </div>
                     ) : (
-                      <div className="text-[11px] text-slate-500">Нет активности</div>
+                      <div className="text-[11px] text-slate-500">{t.claudeUsage.noActivity}</div>
                     )}
                   </div>
 
@@ -425,7 +425,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                   <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800/60 space-y-2">
                     <div className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
                       <Bot className="w-3 h-3 text-amber-400" />
-                      Топ подагентов
+                      {t.claudeUsage.topSubagents}
                     </div>
                     {currentBreakdown?.topSubagents && currentBreakdown.topSubagents.length > 0 ? (
                       <div className="space-y-1.5">
@@ -437,7 +437,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                         ))}
                       </div>
                     ) : (
-                      <div className="text-[11px] text-slate-500">Нет активности</div>
+                      <div className="text-[11px] text-slate-500">{t.claudeUsage.noActivity}</div>
                     )}
                   </div>
                 </div>
@@ -451,19 +451,19 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
               {/* Summary Stats Strip */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800">
-                  <div className="text-xs text-slate-400">Всего сессий</div>
+                  <div className="text-xs text-slate-400">{t.claudeUsage.totalSessions}</div>
                   <div className="text-lg font-bold text-white font-mono mt-0.5">
                     {usageData?.totalSessions ?? '—'}
                   </div>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800">
-                  <div className="text-xs text-slate-400">Всего сообщений</div>
+                  <div className="text-xs text-slate-400">{t.claudeUsage.totalMessages}</div>
                   <div className="text-lg font-bold text-white font-mono mt-0.5">
                     {usageData?.totalMessages?.toLocaleString() ?? '—'}
                   </div>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 col-span-2">
-                  <div className="text-xs text-slate-400">Обновлено</div>
+                  <div className="text-xs text-slate-400">{t.claudeUsage.updated}</div>
                   <div className="text-xs font-mono text-slate-300 mt-1">
                     {usageData?.updatedAt ? new Date(usageData.updatedAt).toLocaleString() : '—'}
                   </div>
@@ -474,7 +474,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
               <div className="space-y-3">
                 <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-indigo-400" />
-                  Расход токенов по моделям Claude
+                  {t.claudeUsage.modelsBreakdown}
                 </h4>
 
                 {usageData?.modelUsage && Object.keys(usageData.modelUsage).length > 0 ? (
@@ -487,25 +487,25 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                         <div className="flex items-center justify-between">
                           <span className="font-mono text-xs font-bold text-white">{modelName}</span>
                           <span className="text-[11px] font-mono text-amber-300">
-                            Выход: {formatTokens(stats.outputTokens)} токенов
+                            {t.claudeUsage.outputTokens.replace('{count}', formatTokens(stats.outputTokens))}
                           </span>
                         </div>
 
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
                           <div className="p-2 rounded bg-slate-950/70 border border-slate-800/50">
-                            <span className="text-slate-400 block text-[10px]">Входные токены</span>
+                            <span className="text-slate-400 block text-[10px]">{t.claudeUsage.inputTokens}</span>
                             <span className="text-slate-200">{formatTokens(stats.inputTokens)}</span>
                           </div>
                           <div className="p-2 rounded bg-slate-950/70 border border-slate-800/50">
-                            <span className="text-slate-400 block text-[10px]">Кэш (Чтение)</span>
+                            <span className="text-slate-400 block text-[10px]">{t.claudeUsage.cacheRead}</span>
                             <span className="text-emerald-300">{formatTokens(stats.cacheReadInputTokens)}</span>
                           </div>
                           <div className="p-2 rounded bg-slate-950/70 border border-slate-800/50">
-                            <span className="text-slate-400 block text-[10px]">Кэш (Создание)</span>
+                            <span className="text-slate-400 block text-[10px]">{t.claudeUsage.cacheCreate}</span>
                             <span className="text-indigo-300">{formatTokens(stats.cacheCreationInputTokens)}</span>
                           </div>
                           <div className="p-2 rounded bg-slate-950/70 border border-slate-800/50">
-                            <span className="text-slate-400 block text-[10px]">Экономия кэша</span>
+                            <span className="text-slate-400 block text-[10px]">{t.claudeUsage.cacheSavings}</span>
                             <span className="text-teal-300">
                               {stats.cacheReadInputTokens > 0 ? '90%+' : '—'}
                             </span>
@@ -516,7 +516,7 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
                   </div>
                 ) : (
                   <div className="text-xs text-slate-500 py-4 text-center">
-                    Нет подробной статистики моделей в локальном stats-cache.json.
+                    {t.claudeUsage.noStatsCache}
                   </div>
                 )}
               </div>
@@ -527,10 +527,10 @@ export const ClaudeUsageModal: React.FC<ClaudeUsageModalProps> = ({ isOpen, onCl
           {activeTab === 'raw' && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>Прямой вывод команды <code>claude -p /usage</code>:</span>
+                <span>{t.claudeUsage.rawOutputDesc}</span>
               </div>
               <pre className="p-4 rounded-xl bg-black/90 border border-slate-800 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed overflow-x-auto max-h-[50vh]">
-                {usageData?.rawText || 'Нет данных'}
+                {usageData?.rawText || t.claudeUsage.noData}
               </pre>
             </div>
           )}

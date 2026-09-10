@@ -195,7 +195,7 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
                         {opt.label}
                       </div>
                       <VoiceBadge
-                        command={language === 'ru' ? `вариант ${optIdx + 1}` : `option ${optIdx + 1}`}
+                        command={t.aiStudio.approval.voiceOptionCmd.replace('{num}', String(optIdx + 1))}
                         variant={isSelected ? 'emerald' : 'indigo'}
                       />
                     </div>
@@ -379,7 +379,7 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
               disabled={isSubmitting}
               onClick={handleApprove}
               className="flex-1 px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 disabled:opacity-50 text-white font-semibold text-xs shadow-md shadow-emerald-700/20 flex items-center justify-center gap-1.5 transition active:scale-[0.98]"
-              title="Голосовая команда: «Одобрить» / «Принять»"
+              title={t.aiStudio.approval.voiceApproveTitle}
             >
               <Check className="w-4 h-4" />
               <span>{t.aiStudio.approval.allowOnce}</span>
@@ -391,7 +391,7 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
               disabled={isSubmitting}
               onClick={handleReject}
               className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-700/60 border border-slate-700 disabled:opacity-50 text-slate-300 font-medium text-xs flex items-center justify-center gap-1.5 transition active:scale-[0.98]"
-              title="Голосовая команда: «Отклонить» / «Отмена»"
+              title={t.aiStudio.approval.voiceRejectTitle}
             >
               <X className="w-4 h-4" />
               <span>{t.aiStudio.approval.deny}</span>

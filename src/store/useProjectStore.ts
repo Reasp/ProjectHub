@@ -31,10 +31,19 @@ import type {
 export function isProcessOfAction(p: ManagedProcess, projectPath: string, def: ActionDefinition): boolean {
   return p.cwd === projectPath && (p.name === def.name || p.command === def.command);
 }
-import type { Language } from '../i18n';
+import { getDictionary, type Language } from '../i18n';
+
+function formatLog(template: string, params?: Record<string, string | number>): string {
+  if (!params) return template;
+  let result = template;
+  for (const [k, v] of Object.entries(params)) {
+    result = result.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+  }
+  return result;
+}
 
 export interface RunActionOptions {
-  confirm?: (def: ActionDefinition) => boolean;
+  confirm?: (def: ActionDefinition) => boolean | Promise<boolean>;
 }
 
 export interface ProjectCachedData {
@@ -829,7 +838,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           ptySessions: [...state.ptySessions.filter((s) => s.id !== session.id), session],
           activePtySessionId: session.id
         }));
-        get().addTerminalLog(`[Terminal] Создана интерактивная сессия: ${session.title}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.sessionCreated, { title: session.title }));
 
         // Setup onPtyExit listener once
         if (!ptyExitCleanup && window.api.onPtyExit) {
@@ -847,7 +856,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       return null;
     } catch (err: any) {
       console.error('Failed to create PTY session:', err);
-      get().addTerminalLog(`[Terminal Error] Ошибка запуска: ${err.message}`);
+      get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.sessionError, { message: err.message }));
       return null;
     }
   },
@@ -899,11 +908,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         processes: [...state.processes.filter((p) => p.id !== proc.id), proc],
         activeProcessId: proc.id
       }));
-      get().addTerminalLog(`[Process] Запущен процесс: ${name} (${command})`);
+      get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.processStarted, { name, command }));
       return proc;
     } catch (e: any) {
       console.error(`Failed to start process ${name}:`, e);
-      get().addTerminalLog(`[Process Error] Не удалось запустить ${name}: ${e.message}`);
+      get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.processError, { name, message: e.message }));
       return null;
     }
   },
@@ -922,7 +931,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   runActionDefinition: async (def: ActionDefinition, options?: RunActionOptions) => {
-    if (def.requiresConfirmation && options?.confirm && !options.confirm(def)) return null;
+    if (def.requiresConfirmation && options?.confirm && !(await options.confirm(def))) return null;
     return get().startProcessAction(def.command, def.name, {
       env: def.env,
       cwd: def.cwd,
@@ -937,7 +946,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     // Перечитываем .projecthub.json при каждом запуске: файл могли поправить снаружи.
     const cfg = (await get().loadActionConfig(curProject.path)) ?? get().actionConfig;
     if (!cfg) {
-      get().addTerminalLog(`[Process Error] Не удалось прочитать конфигурацию действий проекта (${kind})`);
+      get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.processConfigError, { kind }));
       return null;
     }
     return get().runActionDefinition(cfg[kind], options);
@@ -960,7 +969,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
             p.id === processId ? { ...p, status: 'stopped' } : p
           )
         }));
-        get().addTerminalLog(`[Process] Процесс остановлен: ${processId}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.processStopped, { processId }));
       }
       return ok;
     } catch (e) {
@@ -977,11 +986,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         processes: [...state.processes.filter((p) => p.id !== proc.id), proc],
         activeProcessId: proc.id
       }));
-      get().addTerminalLog(`[Process] Перезапущен процесс: ${proc.name} (${proc.command})`);
+      get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.processRestarted, { name: proc.name, command: proc.command }));
       return proc;
     } catch (e: any) {
       console.error('Failed to restart process:', e);
-      get().addTerminalLog(`[Process Error] Не удалось перезапустить ${processId}: ${e.message}`);
+      get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.processRestartError, { processId, message: e.message }));
       return null;
     }
   },
@@ -1075,7 +1084,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
             get().selectProject(matched);
           }
         }
-        get().addTerminalLog(`[ProjectHub] Сканирование завершено: найдено проектов ${discovered.length}.`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.scanCompleted, { count: discovered.length }));
         return discovered;
       }
       return [];
@@ -1095,7 +1104,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         const list = await window.api.listProjects();
         set({ projects: list });
         get().selectProject(added);
-        get().addTerminalLog(`[ProjectHub] Добавлен проект: ${added.name} (${added.path})`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.projectAdded, { name: added.name, path: added.path }));
         return added;
       }
       return null;
@@ -1116,7 +1125,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           get().selectProject(null);
           set({ removedProjectNotice: projectPath });
         }
-        get().addTerminalLog(`[ProjectHub] Проект удален из каталога: ${projectPath}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.projectRemoved, { path: projectPath }));
       }
     } catch (e) {
       console.error('Failed to remove project:', e);
@@ -1184,7 +1193,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
                   lastLoadedAt: Date.now()
                 })
               }));
-              get().addTerminalLog(`[Backlog] Автосинхронизация задач: событие ${data.event} (${data.filePath})`);
+              get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.backlogSync, { event: data.event, path: data.filePath }));
             }
           });
         }
@@ -1276,7 +1285,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           get().loadProjectData(get().selectedProject!);
         }
       } else {
-        get().addTerminalLog(`[Backlog] Статус задачи ${task.id} изменен на "${newStatus}"`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.backlogStatusChanged, { id: task.id, status: newStatus }));
         if (get().selectedProject) {
           get().fetchMilestones(get().selectedProject!.path);
         }
@@ -1302,7 +1311,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         set((state) => ({
           tasks: state.tasks.map((t) => (t.id === updatedTask.id ? updatedTask : t))
         }));
-        get().addTerminalLog(`[Backlog] Задача ${updatedTask.id} успешно сохранена.`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.backlogTaskSaved, { id: updatedTask.id }));
         if (get().selectedProject) {
           get().fetchMilestones(get().selectedProject!.path);
         }
@@ -1320,7 +1329,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         set((state) => ({
           tasks: state.tasks.filter((t) => t.filePath !== filePath)
         }));
-        get().addTerminalLog(`[Backlog] Задача удалена: ${filePath}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.backlogTaskDeleted, { path: filePath }));
       }
     } catch (e) {
       console.error('Failed to delete task:', e);
@@ -1383,7 +1392,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const ok = await window.api.checkoutBranch(project.path, branchName, createNew);
       if (ok) {
-        get().addTerminalLog(`[Git] Переключено на ветку: ${branchName}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitBranchSwitched, { branch: branchName }));
         await get().loadGitRepoDetails(project);
       }
       return ok;
@@ -1399,7 +1408,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const ok = await window.api.createBranch(project.path, branchName);
       if (ok) {
-        get().addTerminalLog(`[Git] Создана и переключена ветка: ${branchName}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitBranchCreated, { branch: branchName }));
         await get().loadGitRepoDetails(project);
       }
       return ok;
@@ -1415,7 +1424,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const ok = await window.api.deleteBranch(project.path, branchName, force);
       if (ok) {
-        get().addTerminalLog(`[Git] Удалена ветка: ${branchName}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitBranchDeleted, { branch: branchName }));
         await get().loadGitRepoDetails(project);
       }
       return ok;
@@ -1431,10 +1440,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const res = await window.api.mergeBranch(project.path, branchName);
       if (res.success) {
-        get().addTerminalLog(`[Git] Ветка ${branchName} успешно объединена в текущую ветку`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitBranchMerged, { branch: branchName }));
         await get().loadGitRepoDetails(project);
       } else {
-        get().addTerminalLog(`[Git Ошибка] Слияние ветки ${branchName} завершилось ошибкой: ${res.error}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitBranchMergeError, { branch: branchName, error: res.error || '' }));
       }
       return res;
     } catch (e: any) {
@@ -1449,7 +1458,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const ok = await window.api.fetchRemote(project.path);
       if (ok) {
-        get().addTerminalLog(`[Git] Выполнен git fetch`);
+        get().addTerminalLog(getDictionary(get().language).terminalLogs.gitFetchDone);
         await get().loadGitRepoDetails(project);
       }
       return ok;
@@ -1465,10 +1474,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const res = await window.api.pullRemote(project.path);
       if (res.success) {
-        get().addTerminalLog(`[Git] Выполнен git pull — изменения получены`);
+        get().addTerminalLog(getDictionary(get().language).terminalLogs.gitPullDone);
         await get().loadGitRepoDetails(project);
       } else {
-        get().addTerminalLog(`[Git Ошибка] pull завершился ошибкой: ${res.error}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitPullError, { error: res.error || '' }));
       }
       return res;
     } catch (e: any) {
@@ -1483,10 +1492,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const res = await window.api.pushRemote(project.path);
       if (res.success) {
-        get().addTerminalLog(`[Git] Выполнен git push — коммиты отправлены в удаленный репозиторий`);
+        get().addTerminalLog(getDictionary(get().language).terminalLogs.gitPushDone);
         await get().loadGitRepoDetails(project);
       } else {
-        get().addTerminalLog(`[Git Ошибка] push завершился ошибкой: ${res.error}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitPushError, { error: res.error || '' }));
       }
       return res;
     } catch (e: any) {
@@ -1501,7 +1510,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const ok = await window.api.discardFileChanges(project.path, filePath);
       if (ok) {
-        get().addTerminalLog(`[Git] Отменены изменения в файле: ${filePath}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitRevertedFile, { path: filePath }));
         await get().loadGitRepoDetails(project);
         if (get().gitSelectedFile === filePath) {
           set({ gitSelectedFile: null, gitDiffContent: '' });
@@ -1572,7 +1581,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const ok = await window.api.commitChanges(project.path, message, stageAll);
       if (ok) {
-        get().addTerminalLog(`[Git] Коммит создан: "${message}"`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitCommitCreated, { message }));
         const [logs, _] = await Promise.all([
           window.api.getGitLog(project.path, 25),
           get().loadGitRepoDetails(project)
@@ -1634,14 +1643,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         customPath
       });
       if (wt) {
-        get().addTerminalLog(`[Worktree] Создано рабочее дерево: ${wt.path} (${wt.branch || 'detached'})`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.worktreeCreated, { path: wt.path, branch: wt.branch || 'detached' }));
         await get().loadWorktreesAction(project.path);
         await get().loadGitRepoDetails(project);
       }
       return wt;
     } catch (e: any) {
       console.error('Failed to create worktree:', e);
-      get().addTerminalLog(`[Worktree Error] Ошибка создания worktree: ${e.message || e}`);
+      get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.worktreeCreateError, { message: e.message || String(e) }));
       return null;
     }
   },
@@ -1652,14 +1661,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const ok = await window.api.removeWorktree(project.path, worktreePath, force);
       if (ok) {
-        get().addTerminalLog(`[Worktree] Удалено рабочее дерево: ${worktreePath}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.worktreeRemoved, { path: worktreePath }));
         await get().loadWorktreesAction(project.path);
         await get().loadGitRepoDetails(project);
       }
       return ok;
     } catch (e: any) {
       console.error('Failed to remove worktree:', e);
-      get().addTerminalLog(`[Worktree Error] Ошибка удаления worktree: ${e.message || e}`);
+      get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.worktreeRemoveError, { message: e.message || String(e) }));
       return false;
     }
   },
@@ -1670,7 +1679,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const ok = await window.api.pruneWorktrees(project.path);
       if (ok) {
-        get().addTerminalLog(`[Worktree] Очищены устаревшие деревья (prune)`);
+        get().addTerminalLog(getDictionary(get().language).terminalLogs.worktreePruned);
         await get().loadWorktreesAction(project.path);
       }
       return ok;
@@ -1697,11 +1706,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const res = await window.api.mergeWorktree(project.path, worktreeBranch, targetBranch);
       if (res.success) {
-        get().addTerminalLog(`[Worktree] Ветка ${worktreeBranch} успешно слита в ${targetBranch}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.worktreeMerged, { branch: worktreeBranch, targetBranch }));
         await get().loadGitRepoDetails(project);
         await get().loadWorktreesAction(project.path);
       } else {
-        get().addTerminalLog(`[Worktree Error] Ошибка слияния: ${res.error}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.worktreeMergeError, { error: res.error || '' }));
       }
       return res;
     } catch (e: any) {
@@ -1781,7 +1790,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const created = await window.api.createPullRequest(project.path, options);
       if (created) {
-        get().addTerminalLog(`[PR] Pull Request #${created.number} успешно создан: ${created.title}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.prCreated, { number: created.number, title: created.title }));
         await get().fetchPRs(project.path, get().prFilter);
         get().selectPR(created);
         // Reload tasks in case Backlog task status was transitioned to Review
@@ -1790,7 +1799,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       return created;
     } catch (err: any) {
       console.error('Failed to create PR:', err);
-      get().addTerminalLog(`[PR Error] Ошибка создания PR: ${err.message}`);
+      get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.prError, { message: err.message }));
       throw err;
     }
   },
@@ -1853,7 +1862,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const ok = await window.api.saveDoc(doc.filePath, get().docContent);
       if (ok) {
         set({ isDocDirty: false });
-        get().addTerminalLog(`[Docs] Документ сохранен: ${doc.fileRelative}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.docSaved, { path: doc.fileRelative }));
         if (get().selectedProject) {
           await get().fetchDocs(get().selectedProject!.path);
         }
@@ -1873,14 +1882,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const created = await window.api.createDoc(project.path, params);
       if (created) {
-        get().addTerminalLog(`[Docs] Создан ${created.category === 'decision' ? 'ADR' : 'документ'}: ${created.fileRelative}`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.docCreated, { category: created.category === 'decision' ? 'ADR' : (get().language === 'ru' ? 'документ' : 'document'), path: created.fileRelative }));
         await get().fetchDocs(project.path);
         await get().selectDoc(created);
       }
       return created;
     } catch (e: any) {
       console.error('Failed to create doc:', e);
-      get().addTerminalLog(`[Docs Error] Ошибка создания: ${e.message}`);
+      get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.docCreateError, { message: e.message }));
       return null;
     }
   },
@@ -1907,13 +1916,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const created = await window.api.createMilestone(project.path, params);
       if (created) {
-        get().addTerminalLog(`[Milestones] Создан майлстоун: ${created.title} (${created.id})`);
+        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.milestoneCreated, { title: created.title, id: created.id }));
         await get().fetchMilestones(project.path);
       }
       return created;
     } catch (e: any) {
       console.error('Failed to create milestone:', e);
-      get().addTerminalLog(`[Milestones Error] Ошибка создания: ${e.message}`);
+      get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.milestoneCreateError, { message: e.message }));
       return null;
     }
   },
@@ -1924,7 +1933,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const ok = await window.api.saveMilestone(filePath, params);
       if (ok) {
-        get().addTerminalLog(`[Milestones] Майлстоун обновлен.`);
+        get().addTerminalLog(getDictionary(get().language).terminalLogs.milestoneUpdated);
         await get().fetchMilestones(project.path);
       }
       return ok;
@@ -1940,7 +1949,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const ok = await window.api.deleteMilestone(filePath);
       if (ok) {
-        get().addTerminalLog(`[Milestones] Майлстоун удален.`);
+        get().addTerminalLog(getDictionary(get().language).terminalLogs.milestoneDeleted);
         await get().fetchMilestones(project.path);
       }
       return ok;

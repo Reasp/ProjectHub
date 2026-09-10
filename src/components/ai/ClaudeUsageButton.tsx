@@ -79,17 +79,17 @@ export const ClaudeUsageButton: React.FC<ClaudeUsageButtonProps> = ({
   };
 
   const getTooltip = () => {
-    if (!usage) return t.claudeUsage?.modalDesc || 'Показать расход токенов и лимиты Claude Code (/usage)';
-    const sessionLabel = t.claudeUsage?.sessionLimit || 'Сессия';
+    if (!usage) return t.claudeUsage.modalDesc;
+    const sessionLabel = t.claudeUsage.sessionLimit;
     const sessionText = typeof sessionPercent === 'number' ? `${sessionPercent}%` : '—';
-    const weeklyLabel = t.claudeUsage?.weeklyLimit || 'Неделя';
+    const weeklyLabel = t.claudeUsage.weeklyLimit;
     const weeklyText = typeof weeklyPercent === 'number' ? `${weeklyPercent}%` : '—';
     const parts = [
       `${sessionLabel}: ${sessionText}`,
       `${weeklyLabel}: ${weeklyText}`
     ];
     if (typeof fablePercent === 'number') {
-      const fableLabel = t.claudeUsage?.fableLimit || 'Fable';
+      const fableLabel = t.claudeUsage.fableLimit;
       parts.push(`${fableLabel}: ${fablePercent}%`);
     }
     return `Claude Code Usage (${sessionLabel}: ${sessionText}). ${parts.join(', ')}.`;

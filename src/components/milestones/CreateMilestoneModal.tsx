@@ -26,7 +26,7 @@ export const CreateMilestoneModal: React.FC<Props> = ({ isOpen, onClose, milesto
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      setError('Укажите название майлстоуна');
+      setError(t.milestones.titleRequired);
       return;
     }
 
@@ -44,7 +44,7 @@ export const CreateMilestoneModal: React.FC<Props> = ({ isOpen, onClose, milesto
         if (ok) {
           onClose();
         } else {
-          setError('Не удалось сохранить изменения');
+          setError(t.milestones.saveError);
         }
       } else {
         const created = await createMilestoneAction({
@@ -56,11 +56,11 @@ export const CreateMilestoneModal: React.FC<Props> = ({ isOpen, onClose, milesto
         if (created) {
           onClose();
         } else {
-          setError('Не удалось создать майлстоун');
+          setError(t.milestones.createError);
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Произошла ошибка');
+      setError(err.message || t.milestones.genericError);
     } finally {
       setIsSubmitting(false);
     }

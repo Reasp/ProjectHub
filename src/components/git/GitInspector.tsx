@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useDialog } from '../../hooks/useDialog';
 import { generateCommitMessage } from '../../services/aiAssistantService';
 import { SplitDiffViewer } from './SplitDiffViewer';
 import { WorktreePanel } from './WorktreePanel';
@@ -57,6 +58,7 @@ type GitTab = 'history' | 'branches' | 'working' | 'compare' | 'worktrees';
 
 export const GitInspector: React.FC = () => {
   const { t } = useTranslation();
+  const dialog = useDialog();
   const {
     selectedProject,
     gitLogs,
@@ -146,9 +148,9 @@ export const GitInspector: React.FC = () => {
     const ok = await gitCheckoutBranch(branch);
     setIsCheckingOut(null);
     if (!ok) {
-      showError(`Не удалось переключиться на ветку "${branch}". Проверьте незакоммиченные файлы.`);
+      showError(t.git.branchSwitchError.replace('{branch}', branch));
     } else {
-      showSuccess(`Ветка переключена на: ${branch}`);
+      showSuccess(t.git.branchSwitched.replace('{branch}', branch));
     }
   };
 
@@ -159,30 +161,38 @@ export const GitInspector: React.FC = () => {
     if (ok) {
       setNewBranchName('');
       setShowNewBranchInput(false);
-      showSuccess(`Создана новая ветка: ${name}`);
+      showSuccess(t.git.branchCreated.replace('{branch}', name));
     } else {
-      showError(`Ошибка создания ветки "${name}".`);
+      showError(t.git.branchCreateError.replace('{branch}', name));
     }
   };
 
   const handleDeleteBranch = async (branch: string) => {
-    if (confirm(`Вы уверены, что хотите удалить ветку "${branch}"?`)) {
+    const confirmed = await dialog.confirm({
+      message: t.git.confirmDeleteBranch.replace('{branch}', branch),
+      danger: true
+    });
+    if (confirmed) {
       const ok = await gitDeleteBranch(branch, true);
       if (ok) {
-        showSuccess(`Ветка "${branch}" удалена.`);
+        showSuccess(t.git.branchDeleted.replace('{branch}', branch));
       } else {
-        showError(`Не удалось удалить ветку "${branch}".`);
+        showError(t.git.branchDeleteError.replace('{branch}', branch));
       }
     }
   };
 
   const handleMergeBranch = async (branch: string) => {
-    if (confirm(`Объединить ветку "${branch}" в текущую ветку "${gitRepoDetails?.currentBranch}"?`)) {
+    const current = gitRepoDetails?.currentBranch || '';
+    const confirmed = await dialog.confirm({
+      message: t.git.confirmMergeBranch.replace('{branch}', branch).replace('{current}', current)
+    });
+    if (confirmed) {
       const res = await gitMergeBranch(branch);
       if (res.success) {
-        showSuccess(`Ветка "${branch}" успешно объединена!`);
+        showSuccess(t.git.branchMerged.replace('{branch}', branch));
       } else {
-        showError(`Ошибка слияния: ${res.error || 'Конфликты слияния'}`);
+        showError(t.git.mergeError.replace('{error}', res.error || 'Conflict'));
       }
     }
   };
@@ -191,31 +201,35 @@ export const GitInspector: React.FC = () => {
     setIsRemoteAction('fetch');
     const ok = await gitFetchRemote();
     setIsRemoteAction(null);
-    if (ok) showSuccess('Fetch завершен успешно.');
-    else showError('Ошибка выполнения fetch.');
+    if (ok) showSuccess(t.git.fetchSuccess);
+    else showError(t.git.fetchError);
   };
 
   const handlePull = async () => {
     setIsRemoteAction('pull');
     const res = await gitPullRemote();
     setIsRemoteAction(null);
-    if (res.success) showSuccess('Pull завершен: изменения получены.');
-    else showError(`Ошибка pull: ${res.error}`);
+    if (res.success) showSuccess(t.git.pullSuccess);
+    else showError(t.git.pullError.replace('{error}', res.error || ''));
   };
 
   const handlePush = async () => {
     setIsRemoteAction('push');
     const res = await gitPushRemote();
     setIsRemoteAction(null);
-    if (res.success) showSuccess('Push завершен: коммиты отправлены.');
-    else showError(`Ошибка push: ${res.error}`);
+    if (res.success) showSuccess(t.git.pushSuccess);
+    else showError(t.git.pushError.replace('{error}', res.error || ''));
   };
 
   const handleDiscard = async (filePath: string) => {
-    if (confirm(`Отменить все локальные изменения в файле "${filePath}"? Это действие необратимо.`)) {
+    const confirmed = await dialog.confirm({
+      message: t.git.confirmDiscardFile.replace('{file}', filePath),
+      danger: true
+    });
+    if (confirmed) {
       const ok = await gitDiscardFileChanges(filePath);
-      if (ok) showSuccess(`Изменения в "${filePath}" отменены.`);
-      else showError(`Не удалось отменить изменения в "${filePath}".`);
+      if (ok) showSuccess(t.git.discardSuccess.replace('{file}', filePath));
+      else showError(t.git.discardError.replace('{file}', filePath));
     }
   };
 
@@ -223,8 +237,8 @@ export const GitInspector: React.FC = () => {
     if (!inProgressTask) return;
     const branchName = `feat/${inProgressTask.id}`;
     const ok = await gitCreateBranch(branchName);
-    if (ok) showSuccess(`Ветка "${branchName}" создана.`);
-    else showError(`Ошибка создания ветки "${branchName}".`);
+    if (ok) showSuccess(t.git.branchCreated.replace('{branch}', branchName));
+    else showError(t.git.branchCreateError.replace('{branch}', branchName));
   };
 
   const handleCommit = async () => {
@@ -235,9 +249,9 @@ export const GitInspector: React.FC = () => {
     setIsCommitting(false);
     if (ok) {
       setCommitMessage('');
-      showSuccess('Коммит успешно создан!');
+      showSuccess(t.git.commitSuccess);
     } else {
-      showError('Ошибка коммита. Убедитесь, что файлы добавлены в Stage.');
+      showError(t.git.commitError);
     }
   };
 
@@ -292,11 +306,11 @@ export const GitInspector: React.FC = () => {
         {/* Tab Buttons */}
         <div className="flex items-center gap-1">
           {([
-            { id: 'working', label: `Изменения (${details?.files.length ?? 0})`, icon: FileDiff },
-            { id: 'branches', label: `Ветки (${details?.branches.length ?? 0})`, icon: GitBranch },
-            { id: 'worktrees', label: `Worktrees (${worktrees.length})`, icon: FolderGit2 },
-            { id: 'history', label: `История (${gitLogs.length})`, icon: GitCommitIcon },
-            { id: 'compare', label: 'Сравнение веток', icon: GitMerge }
+            { id: 'working', label: t.git.changesTab.replace('{count}', String(details?.files.length ?? 0)), icon: FileDiff },
+            { id: 'branches', label: t.git.branchesTab.replace('{count}', String(details?.branches.length ?? 0)), icon: GitBranch },
+            { id: 'worktrees', label: t.git.worktreesTab.replace('{count}', String(worktrees.length)), icon: FolderGit2 },
+            { id: 'history', label: t.git.historyTab.replace('{count}', String(gitLogs.length)), icon: GitCommitIcon },
+            { id: 'compare', label: t.git.compareTab, icon: GitMerge }
           ] as { id: GitTab; label: string; icon: any }[]).map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -361,7 +375,7 @@ export const GitInspector: React.FC = () => {
               <GitBranch className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
               <span className="font-semibold text-indigo-300 truncate max-w-[130px]">{details.currentBranch}</span>
               {details.isClean ? (
-                <span className="text-[10px] text-emerald-400 bg-emerald-950/50 px-1.5 py-0.2 rounded border border-emerald-700/30">Чисто</span>
+                <span className="text-[10px] text-emerald-400 bg-emerald-950/50 px-1.5 py-0.2 rounded border border-emerald-700/30">{t.git.clean}</span>
               ) : (
                 <span className="text-[10px] text-amber-400 bg-amber-950/50 px-1.5 py-0.2 rounded border border-amber-700/30">
                   {details.files.length}
@@ -383,21 +397,21 @@ export const GitInspector: React.FC = () => {
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
                   <ArrowUpFromLine className="w-3.5 h-3.5" />
-                  Подготовлено (Staged) • {stagedFiles.length}
+                  {t.git.stagedFiles} • {stagedFiles.length}
                 </span>
                 {stagedFiles.length > 0 && (
                   <button
                     onClick={() => stagedFiles.forEach(f => gitUnstageFile(f.path))}
                     className="text-[10px] text-slate-400 hover:text-slate-200 transition bg-slate-800 px-1.5 py-0.5 rounded"
                   >
-                    Снять все
+                    {t.git.unstageAll}
                   </button>
                 )}
               </div>
 
               <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
                 {stagedFiles.length === 0 ? (
-                  <div className="text-[11px] text-slate-600 italic py-1">Нет подготовленных файлов</div>
+                  <div className="text-[11px] text-slate-600 italic py-1">{t.git.noStagedFiles}</div>
                 ) : (
                   stagedFiles.map(f => {
                     const isSelected = gitSelectedFile === f.path && diffStagedMode;
@@ -418,7 +432,7 @@ export const GitInspector: React.FC = () => {
                         <button
                           onClick={e => { e.stopPropagation(); gitUnstageFile(f.path); }}
                           className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition"
-                          title="Снять из stage"
+                          title={t.git.unstageTooltip}
                         >
                           <ArrowDownToLine className="w-3 h-3" />
                         </button>
@@ -434,21 +448,21 @@ export const GitInspector: React.FC = () => {
               <div className="flex items-center justify-between mb-2 shrink-0">
                 <span className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider flex items-center gap-1">
                   <ArrowDownToLine className="w-3.5 h-3.5" />
-                  Изменения (Unstaged) • {unstagedFiles.length}
+                  {t.git.unstagedCount.replace('{count}', String(unstagedFiles.length))}
                 </span>
                 {unstagedFiles.length > 0 && (
                   <button
                     onClick={() => gitStageAll()}
                     className="text-[10px] text-emerald-400 hover:text-emerald-300 transition bg-emerald-950/40 border border-emerald-700/40 px-1.5 py-0.5 rounded"
                   >
-                    В stage все
+                    {t.git.stageAll}
                   </button>
                 )}
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-1 pr-1">
                 {unstagedFiles.length === 0 ? (
-                  <div className="text-[11px] text-slate-600 italic py-2">Рабочая копия чиста</div>
+                  <div className="text-[11px] text-slate-600 italic py-2">{t.git.cleanWorkingTree}</div>
                 ) : (
                   unstagedFiles.map(f => {
                     const isSelected = gitSelectedFile === f.path && !diffStagedMode;
@@ -469,14 +483,14 @@ export const GitInspector: React.FC = () => {
                         <button
                           onClick={e => { e.stopPropagation(); gitStageFile(f.path); }}
                           className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-700 text-emerald-400 transition"
-                          title="Добавить в stage"
+                          title={t.git.stageTooltip}
                         >
                           <ArrowUpFromLine className="w-3 h-3" />
                         </button>
                         <button
                           onClick={e => { e.stopPropagation(); handleDiscard(f.path); }}
                           className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-900/60 text-rose-400 transition"
-                          title="Отменить изменения (Discard)"
+                          title={t.git.discardTooltip}
                         >
                           <RotateCcw className="w-3 h-3" />
                         </button>
@@ -492,7 +506,7 @@ export const GitInspector: React.FC = () => {
               <textarea
                 value={commitMessage}
                 onChange={e => setCommitMessage(e.target.value)}
-                placeholder="Сообщение коммита (Ctrl/Cmd+Enter для сохранения)..."
+                placeholder={t.git.commitMessagePlaceholder}
                 className="w-full bg-slate-950/80 border border-slate-700/80 rounded-lg p-2 text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-indigo-500 resize-none h-16 font-mono"
                 onKeyDown={e => {
                   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleCommit();
@@ -504,7 +518,7 @@ export const GitInspector: React.FC = () => {
                     <button
                       onClick={insertTaskId}
                       className="flex items-center gap-1 px-2 py-1 rounded bg-violet-900/40 border border-violet-700/50 text-violet-300 text-[10px] hover:bg-violet-900/70 transition"
-                      title={`Вставить ID текущей задачи ${inProgressTask.id}`}
+                      title={t.git.insertTaskId.replace('{id}', inProgressTask.id)}
                     >
                       <Layers className="w-3 h-3" />
                       <span>{inProgressTask.id}</span>
@@ -519,7 +533,7 @@ export const GitInspector: React.FC = () => {
                     }}
                     type="button"
                     className="flex items-center gap-1 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[10px] hover:bg-amber-500/20 transition"
-                    title="Сгенерировать сообщение через AI"
+                    title={t.git.aiCommitTooltip}
                   >
                     <Sparkles className="w-3 h-3 text-amber-400" />
                     <span>AI Commit</span>
@@ -536,7 +550,7 @@ export const GitInspector: React.FC = () => {
                   ) : (
                     <Send className="w-3 h-3" />
                   )}
-                  <span>Закоммитить</span>
+                  <span>{t.git.commitAction}</span>
                 </button>
               </div>
             </div>
@@ -553,8 +567,8 @@ export const GitInspector: React.FC = () => {
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-slate-500">
                 <FileDiff className="w-12 h-12 text-slate-700 mb-3" />
-                <h4 className="text-sm font-medium text-slate-400 mb-1">Файл не выбран</h4>
-                <p className="text-xs max-w-sm">Выберите измененный файл из списка слева для просмотра диффа (Split или Unified).</p>
+                <h4 className="text-sm font-medium text-slate-400 mb-1">{t.git.noFileSelected}</h4>
+                <p className="text-xs max-w-sm">{t.git.noFileSelectedDesc}</p>
               </div>
             )}
           </div>
@@ -567,8 +581,8 @@ export const GitInspector: React.FC = () => {
           {/* Branch Actions Toolbar */}
           <div className="flex items-center justify-between gap-3 bg-slate-900/80 p-4 rounded-xl border border-slate-800">
             <div>
-              <h3 className="text-sm font-semibold text-white">Управление ветками репозитория</h3>
-              <p className="text-xs text-slate-400">Переключение, слияние и удаление локальных и отслеживаемых веток</p>
+              <h3 className="text-sm font-semibold text-white">{t.git.branchesTitle}</h3>
+              <p className="text-xs text-slate-400">{t.git.branchesSubtitle}</p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -576,13 +590,13 @@ export const GitInspector: React.FC = () => {
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Новая ветка</span>
+                <span>{t.git.newBranch}</span>
               </button>
               {inProgressTask && (
                 <button
                   onClick={handleCreateBranchForTask}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600/30 border border-violet-500/40 hover:bg-violet-600/50 text-violet-300 text-xs font-medium transition"
-                  title={`Создать feat/${inProgressTask.id}`}
+                  title={t.git.createFeatBranch.replace('{id}', inProgressTask.id)}
                 >
                   <GitBranch className="w-3.5 h-3.5" />
                   <span>feat/{inProgressTask.id}</span>
@@ -600,7 +614,7 @@ export const GitInspector: React.FC = () => {
                 value={newBranchName}
                 onChange={e => setNewBranchName(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCreateBranch()}
-                placeholder="Имя новой ветки (например: feature/new-diff-viewer)"
+                placeholder={t.git.newBranchPlaceholder}
                 className="flex-1 bg-transparent text-xs text-slate-200 placeholder-slate-500 outline-none font-mono"
               />
               <button
@@ -608,7 +622,7 @@ export const GitInspector: React.FC = () => {
                 disabled={!newBranchName.trim()}
                 className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-medium transition"
               >
-                Создать и переключить
+                {t.git.createAndSwitch}
               </button>
               <button
                 onClick={() => { setShowNewBranchInput(false); setNewBranchName(''); }}
@@ -624,7 +638,7 @@ export const GitInspector: React.FC = () => {
             <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                 <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
-                Локальные ветки ({details?.branches.length ?? 0})
+                {t.git.localBranches.replace('{count}', String(details?.branches.length ?? 0))}
               </span>
             </div>
             <div className="divide-y divide-slate-800/60">
@@ -648,7 +662,7 @@ export const GitInspector: React.FC = () => {
                       </span>
                       {isCurrent && (
                         <span className="text-[10px] text-indigo-400 bg-indigo-500/20 px-2 py-0.5 rounded font-sans border border-indigo-500/30">
-                          Текущая ветка (HEAD)
+                          {t.git.currentHead}
                         </span>
                       )}
                     </div>
@@ -660,7 +674,7 @@ export const GitInspector: React.FC = () => {
                             onClick={() => handleCheckout(branch)}
                             disabled={isCheckingOut === branch}
                             className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs transition border border-slate-700"
-                            title="Переключиться на ветку"
+                            title={t.git.switchBranchTooltip}
                           >
                             {isCheckingOut === branch ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ChevronRight className="w-3 h-3" />}
                             <span>Checkout</span>
@@ -668,7 +682,7 @@ export const GitInspector: React.FC = () => {
                           <button
                             onClick={() => handleMergeBranch(branch)}
                             className="flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-950/60 hover:bg-indigo-900 text-indigo-300 text-xs transition border border-indigo-700/50"
-                            title={`Слить ${branch} в ${details.currentBranch}`}
+                            title={t.git.mergeBranchTooltip.replace('{branch}', branch).replace('{current}', details.currentBranch)}
                           >
                             <GitMerge className="w-3 h-3" />
                             <span>Merge</span>
@@ -676,7 +690,7 @@ export const GitInspector: React.FC = () => {
                           <button
                             onClick={() => handleDeleteBranch(branch)}
                             className="p-1.5 rounded hover:bg-rose-950/80 text-slate-500 hover:text-rose-400 transition"
-                            title="Удалить ветку"
+                            title={t.git.deleteBranchTooltip}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -695,7 +709,7 @@ export const GitInspector: React.FC = () => {
               <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                   <Globe className="w-3.5 h-3.5 text-slate-400" />
-                  Удаленные ветки ({details.remoteBranches.length})
+                  {t.git.remoteBranches.replace('{count}', String(details.remoteBranches.length))}
                 </span>
               </div>
               <div className="divide-y divide-slate-800/60">
@@ -728,7 +742,7 @@ export const GitInspector: React.FC = () => {
           {/* Compare Toolbar */}
           <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900 border-b border-slate-800 text-xs shrink-0">
             <div className="flex items-center gap-2">
-              <span className="text-slate-400">Сравнить:</span>
+              <span className="text-slate-400">{t.git.compareTitle}</span>
               <select
                 value={compareTargetBranch}
                 onChange={e => setCompareTargetBranch(e.target.value)}
@@ -750,7 +764,7 @@ export const GitInspector: React.FC = () => {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition"
             >
               {isComparing ? <RefreshCw className="w-3 h-3 animate-spin" /> : <GitMerge className="w-3 h-3" />}
-              <span>Обновить сравнение</span>
+              <span>{t.git.refreshCompare}</span>
             </button>
           </div>
 

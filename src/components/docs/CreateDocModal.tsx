@@ -28,7 +28,7 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      setError('Укажите название документа или решения');
+      setError(t.docs.titleRequired);
       return;
     }
 
@@ -55,7 +55,7 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
         setTagsInput('');
       }
     } catch (err: any) {
-      setError(err.message || 'Ошибка создания документа');
+      setError(err.message || t.docs.createError);
     } finally {
       setIsSubmitting(false);
     }

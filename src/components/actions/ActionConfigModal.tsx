@@ -97,7 +97,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
       >
         <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full shadow-2xl p-8 flex flex-col items-center justify-center gap-3">
           <RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" />
-          <span className="text-xs text-slate-400 font-medium">Загрузка конфигурации действий...</span>
+          <span className="text-xs text-slate-400 font-medium">{t.actions.loadingConfig}</span>
         </div>
       </div>,
       document.body
@@ -188,8 +188,8 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
               <Settings className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Настройка команд проекта (.projecthub.json)</h2>
-              <p className="text-xs text-slate-400">Конфигурация быстрых кнопок Запуска, Деплоя и Тестирования</p>
+              <h2 className="text-sm font-semibold text-white">{t.actions.configModalTitle}</h2>
+              <p className="text-xs text-slate-400">{t.actions.configModalDesc}</p>
             </div>
           </div>
           <button
@@ -211,7 +211,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
             }`}
           >
             <Play className="w-3.5 h-3.5" />
-            <span>▶ Запуск (Run/Dev)</span>
+            <span>{t.actions.runDevTab}</span>
           </button>
 
           <button
@@ -223,7 +223,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
             }`}
           >
             <Rocket className="w-3.5 h-3.5" />
-            <span>🚀 Деплой (Deploy)</span>
+            <span>{t.actions.deployTab}</span>
           </button>
 
           <button
@@ -235,7 +235,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
             }`}
           >
             <FlaskConical className="w-3.5 h-3.5" />
-            <span>🧪 Тесты (Test)</span>
+            <span>{t.actions.testTab}</span>
           </button>
         </div>
 
@@ -244,7 +244,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
           {activeSubTab === 'run' && (
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Название действия</label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">{t.actions.actionNameLabel}</label>
                 <input
                   value={config.run.name}
                   onChange={e => updateRun({ name: e.target.value })}
@@ -254,7 +254,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Команда терминала</label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">{t.actions.terminalCmdLabel}</label>
                 <div className="flex items-center gap-2 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2">
                   <Terminal className="w-4 h-4 text-emerald-400 shrink-0" />
                   <input
@@ -267,7 +267,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">URL для открытия в браузере (autoOpenUrl)</label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">{t.actions.autoOpenUrlLabel}</label>
                 <div className="flex items-center gap-2 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2">
                   <Globe className="w-4 h-4 text-slate-400 shrink-0" />
                   <input
@@ -304,7 +304,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
           {activeSubTab === 'deploy' && (
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Название действия</label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">{t.actions.actionNameLabel}</label>
                 <input
                   value={config.deploy.name}
                   onChange={e => updateDeploy({ name: e.target.value })}
@@ -314,7 +314,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Команда деплоя</label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">{t.actions.deployCmdLabel}</label>
                 <div className="flex items-center gap-2 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2">
                   <Terminal className="w-4 h-4 text-indigo-400 shrink-0" />
                   <input
@@ -335,7 +335,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
                   className="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0"
                 />
                 <label htmlFor="reqConf" className="text-xs text-slate-300 cursor-pointer select-none">
-                  Запрашивать подтверждение перед запуском деплоя
+                  {t.actions.requireDeployConfirm}
                 </label>
               </div>
 
@@ -346,7 +346,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
           {activeSubTab === 'test' && (
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Название действия</label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">{t.actions.actionNameLabel}</label>
                 <input
                   value={config.test.name}
                   onChange={e => updateTest({ name: e.target.value })}
@@ -356,7 +356,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Команда прогона тестов</label>
+                <label className="block text-xs font-medium text-slate-300 mb-1">{t.actions.testCmdLabel}</label>
                 <div className="flex items-center gap-2 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2">
                   <Terminal className="w-4 h-4 text-amber-400 shrink-0" />
                   <input
@@ -375,14 +375,14 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
 
         {/* Modal Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-800 bg-slate-950/60">
-          <span className="text-[11px] text-slate-500 font-mono">Сохраняется в .projecthub.json</span>
+          <span className="text-[11px] text-slate-500 font-mono">{t.actions.savedToConfigHint}</span>
 
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
               className="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-white transition"
             >
-              Отмена
+              {t.common.cancel}
             </button>
             <button
               onClick={handleSave}
@@ -390,7 +390,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition shadow-sm"
             >
               {saveSuccess ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
-              <span>{saveSuccess ? 'Сохранено!' : 'Сохранить конфигурацию'}</span>
+              <span>{saveSuccess ? t.common.saved : t.actions.saveConfig}</span>
             </button>
           </div>
         </div>

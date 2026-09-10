@@ -60,7 +60,7 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
         const diff = await getWorktreeDiffAction(worktree.branch, targetBranch);
         if (!cancelled) setDiffText(diff);
       } catch (err: any) {
-        if (!cancelled) setErrorMessage(err.message || 'Ошибка загрузки diff');
+        if (!cancelled) setErrorMessage(err.message || t.worktrees.diffLoadError);
       } finally {
         if (!cancelled) setIsLoadingDiff(false);
       }
@@ -80,23 +80,23 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
     try {
       const res = await mergeWorktreeAction(worktree.branch, targetBranch);
       if (!res.success) {
-        setErrorMessage(res.error || 'Ошибка слияния ветки');
+        setErrorMessage(res.error || t.worktrees.mergeError);
         return;
       }
 
-      // Переводим связанную задачу в Review, если чекбокс включен
+      // Update linked task to Review if checkbox is checked
       if (updateTaskToReview && matchingTask && matchingTask.status !== 'Review' && matchingTask.status !== 'Done') {
         await updateTaskStatusLocal(matchingTask.id, 'Review');
       }
 
-      // Удаляем worktree, если чекбокс включен
+      // Remove worktree if checkbox is checked
       if (deleteAfterMerge && !worktree.isMain) {
         await removeWorktreeAction(worktree.path, true);
       }
 
       onClose();
     } catch (err: any) {
-      setErrorMessage(err.message || 'Ошибка операции слияния');
+      setErrorMessage(err.message || t.worktrees.mergeOpError);
     } finally {
       setIsMerging(false);
     }
@@ -119,7 +119,7 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
-                Просмотр изменений и безопасное слияние рабочей ветки в основную
+                {t.worktrees.completeSubtitle}
               </p>
             </div>
           </div>
@@ -136,7 +136,7 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
         <div className="px-6 py-3 bg-[#171b30] border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 shrink-0">
           {/* Target Branch Selector */}
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-slate-300">Слить ветку в:</span>
+            <span className="text-xs font-medium text-slate-300">{t.worktrees.mergeIntoLabel}</span>
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#0e111d] border border-slate-700">
               <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
               <select
@@ -165,7 +165,7 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
                   onChange={(e) => setUpdateTaskToReview(e.target.checked)}
                   className="rounded border-slate-700 text-indigo-600 focus:ring-0 focus:ring-offset-0 bg-[#0e111d]"
                 />
-                <span>Перевести задачу [{matchingTask.id}] в Review (Правило 5)</span>
+                <span>{t.worktrees.moveToReviewCheckbox.replace('{taskId}', matchingTask.id)}</span>
               </label>
             )}
 
@@ -176,7 +176,7 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
                 onChange={(e) => setDeleteAfterMerge(e.target.checked)}
                 className="rounded border-slate-700 text-indigo-600 focus:ring-0 focus:ring-offset-0 bg-[#0e111d]"
               />
-              <span>Удалить Worktree после слияния</span>
+              <span>{t.worktrees.deleteAfterMergeCheckbox}</span>
             </label>
           </div>
         </div>
@@ -186,7 +186,11 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
           {isLoadingDiff ? (
             <div className="flex-1 flex items-center justify-center p-8 text-slate-400 gap-2">
               <RefreshCw className="w-5 h-5 animate-spin text-indigo-400" />
-              <span className="text-xs">Загрузка диффа между {targetBranch} и {worktree.branch}...</span>
+              <span className="text-xs">
+                {t.worktrees.loadingDiffBetween
+                  .replace('{target}', targetBranch)
+                  .replace('{branch}', worktree.branch || '')}
+              </span>
             </div>
           ) : diffText.trim() ? (
             <div className="flex-1 overflow-y-auto p-4">
@@ -195,9 +199,13 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
               <CheckCircle className="w-10 h-10 text-emerald-400 mb-2" />
-              <p className="text-sm font-medium text-slate-200">Нет различий с веткой {targetBranch}</p>
+              <p className="text-sm font-medium text-slate-200">
+                {t.worktrees.noDiffWithBranch.replace('{target}', targetBranch)}
+              </p>
               <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                Ветка {worktree.branch} полностью синхронизирована с {targetBranch}, либо не содержит новых коммитов.
+                {t.worktrees.syncedDesc
+                  .replace('{branch}', worktree.branch || '')
+                  .replace('{target}', targetBranch)}
               </p>
             </div>
           )}
@@ -237,7 +245,7 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
               {isMerging ? (
                 <>
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Слияние...</span>
+                  <span>{t.worktrees.merging}</span>
                 </>
               ) : (
                 <>

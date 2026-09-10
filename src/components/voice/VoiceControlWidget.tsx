@@ -14,14 +14,17 @@ import { parseVoiceCommand } from '../../services/voiceCommandParser';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useAIStudioStore } from '../../store/useAIStudioStore';
 import { getDictionary } from '../../i18n';
+import { useDialog } from '../../hooks/useDialog';
 
 export const VoiceControlWidget: React.FC = () => {
+  const dialog = useDialog();
   // Единственное значение стора, на которое компонент подписан реактивно:
   // язык нужен для синхронизации с voiceService. Всё остальное (проекты, сессии,
   // approvals, процессы) читается через getState() в момент выполнения команды,
   // чтобы стриминговые обновления sessions не перерисовывали виджет и не
   // пересоздавали подписки на voiceService.
   const language = useProjectStore((s) => s.language);
+  const t = getDictionary(language);
 
   const [voiceState, setVoiceState] = useState<VoiceState>(voiceService.currentState);
   const [audioLevel, setAudioLevel] = useState<number>(0);
@@ -111,7 +114,7 @@ export const VoiceControlWidget: React.FC = () => {
       if ((cmd.intent === 'create_ai_session' || cmd.intent === 'new_ai_session') && projectPath) {
         setActiveTab('ai');
         createSession(projectPath);
-        const feedback = language === 'ru' ? 'Создан новый чат' : 'Created new chat session';
+        const feedback = t.voice.feedback.chatCreated;
         setLastFeedback(feedback);
         return;
       }
@@ -120,7 +123,7 @@ export const VoiceControlWidget: React.FC = () => {
       else if (cmd.intent === 'close_ai_session' && projectPath) {
         setActiveTab('ai');
         closeCurrentSession(projectPath);
-        const feedback = language === 'ru' ? 'Чат закрыт' : 'Chat session closed';
+        const feedback = t.voice.feedback.chatClosed;
         setLastFeedback(feedback);
         return;
       }
@@ -154,9 +157,8 @@ export const VoiceControlWidget: React.FC = () => {
         }
         if (projectSessions[idx]) {
           switchSession(projectPath, projectSessions[idx].id);
-          const feedback = language === 'ru'
-            ? `Открыт ${projectSessions[idx].title || `чат ${idx + 1}`}`
-            : `Switched to ${projectSessions[idx].title || `chat ${idx + 1}`}`;
+          const chatTitle = projectSessions[idx].title || t.voice.feedback.defaultChatTitle.replace('{n}', String(idx + 1));
+          const feedback = t.voice.feedback.chatOpened.replace('{title}', chatTitle);
           setLastFeedback(feedback);
         }
         return;
@@ -173,9 +175,7 @@ export const VoiceControlWidget: React.FC = () => {
         });
         if (matched) {
           switchSession(projectPath, matched.id);
-          const feedback = language === 'ru'
-            ? `Открыт чат ${matched.title}`
-            : `Switched to ${matched.title}`;
+          const feedback = t.voice.feedback.chatOpened.replace('{title}', matched.title);
           setLastFeedback(feedback);
         }
         return;
@@ -191,21 +191,21 @@ export const VoiceControlWidget: React.FC = () => {
         setActiveTab('ai');
         const dict = getDictionary(language);
         await sendMessage(projectPath, dict.aiStudio.quickActions.nextTaskPrompt);
-        setLastFeedback(language === 'ru' ? 'Запущен промпт «Следующая задача»' : 'Prompt "Next Task" sent');
+        setLastFeedback(t.voice.feedback.promptNextTask);
         return;
       }
       else if (cmd.intent === 'quick_commit' && projectPath) {
         setActiveTab('ai');
         const dict = getDictionary(language);
         await sendMessage(projectPath, dict.aiStudio.quickActions.commitPrompt);
-        setLastFeedback(language === 'ru' ? 'Запущен промпт «Комить»' : 'Prompt "Commit" sent');
+        setLastFeedback(t.voice.feedback.promptCommit);
         return;
       }
       else if (cmd.intent === 'quick_deploy' && projectPath) {
         setActiveTab('ai');
         const dict = getDictionary(language);
         await sendMessage(projectPath, dict.aiStudio.quickActions.deployPrompt);
-        setLastFeedback(language === 'ru' ? 'Запущен промпт «Деплой»' : 'Prompt "Deploy" sent');
+        setLastFeedback(t.voice.feedback.promptDeploy);
         return;
       }
 
@@ -248,9 +248,9 @@ export const VoiceControlWidget: React.FC = () => {
     else if (cmd.type === 'navigation' && cmd.intent === 'close_current_project') {
       const curName = selectedProject?.name || '';
       closeCurrentProject();
-      const feedback = language === 'ru'
-        ? (curName ? `Проект «${curName}» закрыт` : 'Проект закрыт')
-        : (curName ? `Closed ${curName}` : 'Project closed');
+      const feedback = curName
+        ? t.voice.feedback.projectClosed.replace('{name}', curName)
+        : t.voice.feedback.projectClosed.replace(' «{name}»', '').replace(' "{name}"', '');
       setLastFeedback(feedback);
       return;
     }
@@ -282,9 +282,7 @@ export const VoiceControlWidget: React.FC = () => {
       }
       if (activeProjects[idx]) {
         selectProject(activeProjects[idx]);
-        const feedback = language === 'ru'
-          ? `Открыт проект ${activeProjects[idx].name}`
-          : `Switched to ${activeProjects[idx].name}`;
+        const feedback = t.voice.feedback.projectOpened.replace('{name}', activeProjects[idx].name);
         setLastFeedback(feedback);
       }
       return;
@@ -327,9 +325,7 @@ export const VoiceControlWidget: React.FC = () => {
 
         if (matched) {
           selectProject(matched);
-          const feedback = language === 'ru'
-            ? `Открыт проект ${matched.name}`
-            : `Switched to ${matched.name}`;
+          const feedback = t.voice.feedback.projectOpened.replace('{name}', matched.name);
           setLastFeedback(feedback);
         }
       }
@@ -368,16 +364,14 @@ export const VoiceControlWidget: React.FC = () => {
           const projectTasks = tasks.length > 0 ? tasks : (await window.api?.getTasks(selectedProject.path)) || [];
           const activeTasks = projectTasks.filter((t) => t.status === 'In Progress' || t.status === 'To Do');
           if (activeTasks.length === 0) {
-            const noTasksMsg = language === 'ru'
-              ? 'В текущем проекте нет активных задач'
-              : 'No active tasks in current project';
+            const noTasksMsg = t.voice.feedback.noActiveTasks;
             setLastFeedback(noTasksMsg);
             voiceService.speak(noTasksMsg, language === 'ru' ? 'ru' : 'en');
           } else {
             const listText = activeTasks.slice(0, 5).map((t, i) => `${i + 1}. ${t.title}`).join('. ');
-            const summary = language === 'ru'
-              ? `Открытых задач ${activeTasks.length}: ${listText}`
-              : `Active tasks (${activeTasks.length}): ${listText}`;
+            const summary = t.voice.feedback.activeTasksList
+              .replace('{count}', String(activeTasks.length))
+              .replace('{list}', listText);
             setLastFeedback(summary);
             voiceService.speak(summary, language === 'ru' ? 'ru' : 'en');
           }
@@ -388,9 +382,7 @@ export const VoiceControlWidget: React.FC = () => {
       }
 
       if (cmd.intent === 'read_doc' && selectedProject) {
-        const docMsg = language === 'ru'
-          ? `Раздел документации проекта ${selectedProject.name}`
-          : `Documentation for ${selectedProject.name}`;
+        const docMsg = t.voice.feedback.docsSection.replace('{name}', selectedProject.name);
         setLastFeedback(docMsg);
         voiceService.speak(docMsg, language === 'ru' ? 'ru' : 'en');
         return;
@@ -436,7 +428,7 @@ export const VoiceControlWidget: React.FC = () => {
         const dict = getDictionary(language);
         await runProjectAction('deploy', {
           confirm: (def) =>
-            confirm(
+            dialog.confirm(
               dict.actions.confirmDeploy
                 .replace('{name}', selectedProject.name)
                 .replace('{command}', def.command)
@@ -567,12 +559,12 @@ export const VoiceControlWidget: React.FC = () => {
             </div>
             <div className="flex-1 space-y-1.5">
               <div className="font-bold text-rose-300 text-sm flex items-center justify-between">
-                <span>Голосовое управление недоступно</span>
+                <span>{t.voice.voiceUnavailable}</span>
                 <button
                   type="button"
                   onClick={() => setErrorMessage(null)}
                   className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition"
-                  title="Закрыть"
+                  title={t.common.close}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -580,9 +572,10 @@ export const VoiceControlWidget: React.FC = () => {
               <p className="text-slate-200 leading-relaxed text-[12px]">
                 {errorMessage}
               </p>
-              <div className="pt-1 text-[11px] text-indigo-300 bg-indigo-950/40 p-2 rounded-lg border border-indigo-500/30">
-                💡 <b>RDP / Удаленный рабочий стол:</b> откройте <code>mstsc.exe</code> → <i>Параметры</i> → <i>Локальные ресурсы</i> → <i>Удаленное аудио</i> → <i>Настройка...</i> → <i>Запись звука: «Записывать с этого компьютера»</i>.
-              </div>
+              <div
+                className="pt-1 text-[11px] text-indigo-300 bg-indigo-950/40 p-2 rounded-lg border border-indigo-500/30"
+                dangerouslySetInnerHTML={{ __html: t.voice.rdpHint }}
+              />
             </div>
           </div>
         </div>
@@ -613,12 +606,12 @@ export const VoiceControlWidget: React.FC = () => {
               {isTranscribing ? (
                 <>
                   <Zap className="w-3.5 h-3.5 text-amber-400 animate-spin shrink-0" />
-                  <span className="text-amber-300">⚡ Whisper инференс...</span>
+                  <span className="text-amber-300">{t.voice.whisperInferring}</span>
                 </>
               ) : isSpeech ? (
                 <>
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                  <span className="text-emerald-300 font-semibold">Слушаю речь...</span>
+                  <span className="text-emerald-300 font-semibold">{t.voice.listeningSpeech}</span>
                 </>
               ) : lastFeedback ? (
                 <>
@@ -633,7 +626,7 @@ export const VoiceControlWidget: React.FC = () => {
               ) : (
                 <>
                   <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse shrink-0" />
-                  <span className="text-slate-300">Talon Voice активен</span>
+                  <span className="text-slate-300">{t.voice.talonActive}</span>
                 </>
               )}
             </div>

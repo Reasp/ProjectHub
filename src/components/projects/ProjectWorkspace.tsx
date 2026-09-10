@@ -149,13 +149,13 @@ export const ProjectWorkspace: React.FC = () => {
               </div>
               <div className="min-w-0">
                 <h4 className="text-xs font-bold text-amber-200 tracking-wide">
-                  {t.emptyState?.removedNoticeTitle || 'Ранее открытый проект больше недоступен или был удален'}
+                  {t.emptyState.removedNoticeTitle}
                 </h4>
                 <p className="text-[11px] text-amber-300/80 font-mono mt-1 break-all bg-black/30 px-2 py-1 rounded-md border border-amber-500/20">
                   {removedProjectNotice}
                 </p>
                 <p className="text-[11px] text-slate-400 mt-2">
-                  {t.emptyState?.removedNoticeHint || 'Каталог проекта не найден на диске. Выберите другой проект из доступных или добавьте новую папку.'}
+                  {t.emptyState.removedNoticeHint}
                 </p>
               </div>
             </div>
@@ -178,10 +178,10 @@ export const ProjectWorkspace: React.FC = () => {
         </div>
 
         <h2 className="text-2xl font-bold text-white mb-2 tracking-tight">
-          {t.emptyState?.title || t.header.selectProjectHint || 'Проект не выбран'}
+          {t.emptyState.title}
         </h2>
         <p className="text-xs text-slate-400 max-w-lg mb-8 leading-relaxed">
-          {t.emptyState?.subtitle || 'Выберите проект из списка ниже, откройте боковое меню проектов или создайте новый по шаблону ProjectTemplate.'}
+          {t.emptyState.subtitle}
         </p>
 
         {/* Quick Action Buttons */}
@@ -193,7 +193,7 @@ export const ProjectWorkspace: React.FC = () => {
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 shadow-md hover:border-slate-600 transition cursor-pointer"
             >
               <PanelLeft className="w-4 h-4 text-indigo-400" />
-              <span>{t.sidebar.showSidebar || 'Открыть меню проектов'}</span>
+              <span>{t.sidebar.showSidebar}</span>
             </button>
           )}
 
@@ -208,7 +208,7 @@ export const ProjectWorkspace: React.FC = () => {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 shadow-md hover:border-slate-600 transition cursor-pointer"
           >
             <FolderPlus className="w-4 h-4 text-cyan-400" />
-            <span>{t.sidebar.addProject || 'Добавить папку'}</span>
+            <span>{t.sidebar.addProject}</span>
           </button>
 
           <button
@@ -217,7 +217,7 @@ export const ProjectWorkspace: React.FC = () => {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-xs font-semibold text-white shadow-lg shadow-indigo-600/30 transition hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>{t.sidebar.newFromTemplate || 'Создать по шаблону'}</span>
+            <span>{t.sidebar.newFromTemplate}</span>
           </button>
         </div>
 
@@ -226,7 +226,7 @@ export const ProjectWorkspace: React.FC = () => {
           <div className="w-full max-w-3xl text-left">
             <div className="flex items-center justify-between mb-3 px-1">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                {t.emptyState?.availableProjects || 'Доступные проекты в реестре'} ({projects.length})
+                {t.emptyState.availableProjects} ({projects.length})
               </span>
             </div>
 
@@ -255,11 +255,11 @@ export const ProjectWorkspace: React.FC = () => {
                   <div className="flex items-center justify-between pt-2 border-t border-slate-800/60 text-[10px] text-slate-400">
                     <span>
                       {p.taskCounts && p.taskCounts.total > 0
-                        ? `${p.taskCounts.total} ${t.emptyState?.tasksCount || 'задач'}`
-                        : (t.emptyState?.noTasks || 'нет задач')}
+                        ? `${p.taskCounts.total} ${t.emptyState.tasksCount}`
+                        : t.emptyState.noTasks}
                     </span>
                     <span className="text-indigo-400 font-medium flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                      {t.emptyState?.openProject || 'Открыть'} <ArrowRight className="w-3 h-3" />
+                      {t.emptyState.openProject} <ArrowRight className="w-3 h-3" />
                     </span>
                   </div>
                 </div>

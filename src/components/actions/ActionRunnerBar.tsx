@@ -12,11 +12,13 @@ import {
 } from 'lucide-react';
 import { useProjectStore, isProcessOfAction } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useDialog } from '../../hooks/useDialog';
 import { ActionConfigModal } from './ActionConfigModal';
 import { VoiceBadge } from '../voice/VoiceBadge';
 
 export const ActionRunnerBar: React.FC = () => {
   const { t } = useTranslation();
+  const dialog = useDialog();
   const {
     selectedProject,
     processes,
@@ -50,11 +52,11 @@ export const ActionRunnerBar: React.FC = () => {
   );
 
   const confirmDeploy = (def: { command: string }) =>
-    confirm(
-      t.actions.confirmDeploy
+    dialog.confirm({
+      message: t.actions.confirmDeploy
         .replace('{name}', selectedProject.name)
         .replace('{command}', def.command)
-    );
+    });
 
   const handleToggleRun = async () => {
     if (runningDevProcess) {

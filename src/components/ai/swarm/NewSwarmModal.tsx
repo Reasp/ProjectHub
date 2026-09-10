@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   Zap,
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useSwarmStore } from '../../../store/useSwarmStore';
 import { useProjectStore } from '../../../store/useProjectStore';
+import { useTranslation } from '../../../i18n';
 import type { AgentSlotConfig, SwarmMode } from '../../../types/electron';
 
 interface PresetOption {
@@ -26,18 +27,18 @@ interface PresetOption {
   stages?: { role: string; instructions: string }[];
 }
 
-const PRESETS: PresetOption[] = [
+const getPresets = (t: any): PresetOption[] => [
   {
     id: 'claude-vs-deepseek',
-    name: 'Дуэль: Claude 3.7 vs DeepSeek V3',
+    name: t.swarm.presetDuelTitle,
     mode: 'fan_out',
-    description: 'Параллельная генерация двумя флагманскими моделями в изолированных Git Worktrees',
+    description: t.swarm.presetDuelDesc,
     agents: [
       {
         id: 'agent-claude',
         name: 'Claude 3.7 Sonnet',
         engine: 'api',
-        role: 'Претендент A',
+        role: t.swarm.roleContenderA,
         providerConfig: {
           provider: 'anthropic',
           model: 'claude-3-7-sonnet-latest',
@@ -48,7 +49,7 @@ const PRESETS: PresetOption[] = [
         id: 'agent-deepseek',
         name: 'DeepSeek V3 / R1',
         engine: 'api',
-        role: 'Претендент B',
+        role: t.swarm.roleContenderB,
         providerConfig: {
           provider: 'deepseek',
           model: 'deepseek-chat',
@@ -59,21 +60,21 @@ const PRESETS: PresetOption[] = [
   },
   {
     id: 'tri-duel',
-    name: 'Тройной батл: Claude CLI + Codex + DeepSeek',
+    name: t.swarm.presetTripleTitle,
     mode: 'fan_out',
-    description: 'Сравнение локального CLI-агента и облачных API-моделей',
+    description: t.swarm.presetTripleDesc,
     agents: [
       {
         id: 'agent-claude-cli',
         name: 'Claude Code CLI',
         engine: 'claude-cli',
-        role: 'CLI Агент'
+        role: t.swarm.roleCliAgent
       },
       {
         id: 'agent-codex',
         name: 'OpenAI GPT-4o',
         engine: 'api',
-        role: 'OpenAI Агент',
+        role: t.swarm.roleOpenAiAgent,
         providerConfig: {
           provider: 'openrouter',
           model: 'openai/gpt-4o',
@@ -84,7 +85,7 @@ const PRESETS: PresetOption[] = [
         id: 'agent-deepseek',
         name: 'DeepSeek V3',
         engine: 'api',
-        role: 'DeepSeek Агент',
+        role: t.swarm.roleDeepSeekAgent,
         providerConfig: {
           provider: 'deepseek',
           model: 'deepseek-chat',
@@ -95,15 +96,15 @@ const PRESETS: PresetOption[] = [
   },
   {
     id: 'pipeline-trio',
-    name: 'Конвейер Handoff: Архитектор → Кодер → Ревьюер',
+    name: t.swarm.presetPipelineTitle,
     mode: 'handoff',
-    description: 'Последовательная передача задачи с накоплением спецификации, кода и тестов',
+    description: t.swarm.presetPipelineDesc,
     agents: [
       {
         id: 'agent-architect',
         name: 'Claude 3.7 Architect',
         engine: 'api',
-        role: 'Архитектор',
+        role: t.swarm.roleArchitect,
         providerConfig: {
           provider: 'anthropic',
           model: 'claude-3-7-sonnet-latest',
@@ -114,7 +115,7 @@ const PRESETS: PresetOption[] = [
         id: 'agent-coder',
         name: 'DeepSeek Coder',
         engine: 'api',
-        role: 'Ведущий кодер',
+        role: t.swarm.roleLeadCoder,
         providerConfig: {
           provider: 'deepseek',
           model: 'deepseek-chat',
@@ -125,7 +126,7 @@ const PRESETS: PresetOption[] = [
         id: 'agent-qa',
         name: 'QA & Test Reviewer',
         engine: 'api',
-        role: 'Тестировщик',
+        role: t.swarm.roleTester,
         providerConfig: {
           provider: 'anthropic',
           model: 'claude-3-7-sonnet-latest',
@@ -135,22 +136,25 @@ const PRESETS: PresetOption[] = [
     ],
     stages: [
       {
-        role: 'Архитектор',
-        instructions: 'Проанализируй требования, спроектируй архитектуру и создай четкий пошаговый план изменений.'
+        role: t.swarm.roleArchitect,
+        instructions: t.swarm.instructionsArchitect
       },
       {
-        role: 'Ведущий кодер',
-        instructions: 'Реализуй изменения в коде согласно спецификации архитектора, сохраняя обратную совместимость.'
+        role: t.swarm.roleLeadCoder,
+        instructions: t.swarm.instructionsLeadCoder
       },
       {
-        role: 'Тестировщик',
-        instructions: 'Проверь код, напиши unit-тесты и опиши итоговый отчет ревью.'
+        role: t.swarm.roleTester,
+        instructions: t.swarm.instructionsTester
       }
     ]
   }
 ];
 
 export const NewSwarmModal: React.FC = () => {
+  const { t } = useTranslation();
+  const presets = useMemo(() => getPresets(t), [t]);
+
   const { isNewSwarmModalOpen, closeNewSwarmModal, initialNewSwarmConfig, startFanOutAction, startHandoffAction, isLoading } =
     useSwarmStore();
   const { selectedProject, tasks } = useProjectStore();
@@ -159,8 +163,15 @@ export const NewSwarmModal: React.FC = () => {
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
   const [prompt, setPrompt] = useState<string>('');
   const [useWorktrees, setUseWorktrees] = useState<boolean>(true);
-  const [agents, setAgents] = useState<AgentSlotConfig[]>(PRESETS[0].agents);
-  const [selectedPresetId, setSelectedPresetId] = useState<string>(PRESETS[0].id);
+  const [agents, setAgents] = useState<AgentSlotConfig[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('claude-vs-deepseek');
+
+  useEffect(() => {
+    if (agents.length === 0 && presets.length > 0) {
+      setAgents(presets[0].agents);
+      setSelectedPresetId(presets[0].id);
+    }
+  }, [presets, agents.length]);
 
   useEffect(() => {
     if (initialNewSwarmConfig) {
@@ -182,7 +193,7 @@ export const NewSwarmModal: React.FC = () => {
     if (!taskId) return;
     const task = tasks.find((t) => t.id === taskId);
     if (task) {
-      const taskPrompt = `[Задача ${task.id}]: ${task.title}\n\n${task.description || ''}`;
+      const taskPrompt = `${t.swarm.taskPromptPrefix.replace('{id}', task.id).replace('{title}', task.title)}\n\n${task.description || ''}`;
       setPrompt(taskPrompt);
     }
   };
@@ -190,9 +201,11 @@ export const NewSwarmModal: React.FC = () => {
   const handleAddAgent = () => {
     const newAgent: AgentSlotConfig = {
       id: `agent-${Date.now().toString(36)}`,
-      name: `Агент ${agents.length + 1}`,
+      name: t.swarm.agentDefaultName.replace('{n}', String(agents.length + 1)),
       engine: 'api',
-      role: mode === 'fan_out' ? `Претендент ${agents.length + 1}` : 'Исполнитель',
+      role: mode === 'fan_out'
+        ? t.swarm.contenderDefaultRole.replace('{n}', String(agents.length + 1))
+        : t.swarm.executorDefaultRole,
       providerConfig: {
         provider: 'anthropic',
         model: 'claude-3-7-sonnet-latest',
@@ -229,11 +242,11 @@ export const NewSwarmModal: React.FC = () => {
         agents
       });
     } else {
-      const preset = PRESETS.find((p) => p.id === selectedPresetId);
+      const preset = presets.find((p) => p.id === selectedPresetId);
       const stages = agents.map((ag, idx) => ({
-        role: ag.role || `Этап ${idx + 1}`,
+        role: ag.role || t.swarm.stageDefaultRole.replace('{n}', String(idx + 1)),
         agent: ag,
-        instructions: preset?.stages?.[idx]?.instructions || `Выполни этап ${ag.role}`
+        instructions: preset?.stages?.[idx]?.instructions || t.swarm.stageDefaultInstructions.replace('{role}', ag.role || '')
       }));
 
       await startHandoffAction({
@@ -258,10 +271,10 @@ export const NewSwarmModal: React.FC = () => {
             </div>
             <div>
               <h2 className="text-lg font-semibold tracking-tight">
-                Конфигурация роя: Multi-Agent Swarm & Arena
+                {t.swarm.multiAgentSwarmTitle}
               </h2>
               <p className="text-xs text-muted-foreground">
-                Параллельная битва решений (Fan-Out) или сквозной конвейер (Handoff)
+                {t.swarm.multiAgentSwarmDesc}
               </p>
             </div>
           </div>
@@ -278,7 +291,7 @@ export const NewSwarmModal: React.FC = () => {
           {/* Режим работы */}
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">
-              Режим оркестрации
+              {t.swarm.orchestrationMode}
             </label>
             <div className="grid grid-cols-2 gap-3">
               <button
@@ -292,9 +305,9 @@ export const NewSwarmModal: React.FC = () => {
               >
                 <Zap className="w-5 h-5 shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-sm font-semibold text-foreground">Fan-Out Arena (Соревнование)</div>
+                  <div className="text-sm font-semibold text-foreground">{t.swarm.fanOutArenaTitle}</div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    Параллельный запуск нескольких агентов в изолированных Worktrees со сравнением решений
+                    {t.swarm.fanOutArenaDesc}
                   </div>
                 </div>
               </button>
@@ -310,9 +323,9 @@ export const NewSwarmModal: React.FC = () => {
               >
                 <Layers className="w-5 h-5 shrink-0 mt-0.5" />
                 <div>
-                  <div className="text-sm font-semibold text-foreground">Handoff Pipeline (Конвейер)</div>
+                  <div className="text-sm font-semibold text-foreground">{t.swarm.handoffPipelineTitle}</div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    Последовательная передача контекста (Архитектор → Кодер → Тестировщик)
+                    {t.swarm.handoffPipelineDesc}
                   </div>
                 </div>
               </button>
@@ -322,10 +335,10 @@ export const NewSwarmModal: React.FC = () => {
           {/* Быстрые пресеты */}
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">
-              Готовые пресеты
+              {t.swarm.readyPresets}
             </label>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-              {PRESETS.map((preset) => {
+              {presets.map((preset) => {
                 const isSelected = selectedPresetId === preset.id;
                 return (
                   <button
@@ -356,7 +369,7 @@ export const NewSwarmModal: React.FC = () => {
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <ListTodo className="w-3.5 h-3.5" />
-                Связать с задачей Backlog.md (опционально)
+                {t.swarm.linkBacklogTask}
               </label>
               {selectedTaskId && (
                 <button
@@ -364,7 +377,7 @@ export const NewSwarmModal: React.FC = () => {
                   onClick={() => handleSelectTask('')}
                   className="text-xs text-primary hover:underline"
                 >
-                  Сбросить выбор
+                  {t.swarm.resetSelection}
                 </button>
               )}
             </div>
@@ -373,7 +386,7 @@ export const NewSwarmModal: React.FC = () => {
               onChange={(e) => handleSelectTask(e.target.value)}
               className="w-full text-xs rounded-lg border border-border bg-secondary/40 px-3 py-2 text-foreground focus:outline-hidden focus:ring-1 focus:ring-primary"
             >
-              <option value="">-- Без привязки (пользовательский промпт) --</option>
+              <option value="">{t.swarm.noBacklogLink}</option>
               {tasks.map((t) => (
                 <option key={t.id} value={t.id}>
                   [{t.id}] {t.title} ({t.status})
@@ -385,12 +398,12 @@ export const NewSwarmModal: React.FC = () => {
           {/* Промпт задачи */}
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-1.5">
-              Промпт / Описание задачи для агентов
+              {t.swarm.taskPromptLabel}
             </label>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Опишите задачу или требования для участников состязания..."
+              placeholder={t.swarm.taskPromptPlaceholderDetailed}
               rows={4}
               required
               className="w-full text-xs rounded-lg border border-border bg-secondary/30 p-3 text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-primary font-mono"
@@ -401,14 +414,14 @@ export const NewSwarmModal: React.FC = () => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {mode === 'fan_out' ? 'Участники Арены (Претенденты)' : 'Этапы конвейера'} ({agents.length})
+                {mode === 'fan_out' ? t.swarm.arenaContenders : t.swarm.pipelineStages} ({agents.length})
               </label>
               <button
                 type="button"
                 onClick={handleAddAgent}
                 className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium"
               >
-                <Plus className="w-3.5 h-3.5" /> Добавить участника
+                <Plus className="w-3.5 h-3.5" /> {t.swarm.addContender}
               </button>
             </div>
 
@@ -426,7 +439,7 @@ export const NewSwarmModal: React.FC = () => {
                       type="text"
                       value={agent.name}
                       onChange={(e) => handleUpdateAgent(idx, { name: e.target.value })}
-                      placeholder="Имя агента"
+                      placeholder={t.swarm.agentNamePlaceholder}
                       className="px-2 py-1 rounded-sm border border-border bg-background text-foreground font-medium text-xs w-full"
                     />
                   </div>
@@ -468,7 +481,7 @@ export const NewSwarmModal: React.FC = () => {
                         <option value="anthropic">Anthropic (Claude)</option>
                         <option value="deepseek">DeepSeek V3/R1</option>
                         <option value="openrouter">OpenRouter</option>
-                        <option value="ollama">Ollama (Локально)</option>
+                        <option value="ollama">{t.swarm.providerOllamaLocal}</option>
                       </select>
                     )}
 
@@ -476,7 +489,7 @@ export const NewSwarmModal: React.FC = () => {
                       type="text"
                       value={agent.role || ''}
                       onChange={(e) => handleUpdateAgent(idx, { role: e.target.value })}
-                      placeholder="Роль (напр. Архитектор)"
+                      placeholder={t.swarm.rolePlaceholder}
                       className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs w-32"
                     />
                   </div>
@@ -500,10 +513,10 @@ export const NewSwarmModal: React.FC = () => {
               <GitFork className="w-4 h-4 text-primary" />
               <div>
                 <div className="text-xs font-semibold text-foreground">
-                  Изолировать агентов в Git Worktrees (TASK-53)
+                  {t.swarm.isolateInWorktreesTitle}
                 </div>
                 <div className="text-[11px] text-muted-foreground">
-                  Каждый агент работает в собственной временной ветке и директории без риска файловых конфликтов
+                  {t.swarm.isolateInWorktreesDesc}
                 </div>
               </div>
             </div>
@@ -522,7 +535,7 @@ export const NewSwarmModal: React.FC = () => {
               onClick={closeNewSwarmModal}
               className="px-4 py-2 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
             >
-              Отмена
+              {t.swarm.cancel}
             </button>
             <button
               type="submit"
@@ -530,7 +543,7 @@ export const NewSwarmModal: React.FC = () => {
               className="inline-flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 shadow-md transition-all"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              {mode === 'fan_out' ? 'Запустить Арену' : 'Запустить конвейер'}
+              {mode === 'fan_out' ? t.swarm.launchArena : t.swarm.launchPipeline}
             </button>
           </div>
         </form>

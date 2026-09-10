@@ -7,8 +7,10 @@ import { TerminalPanel } from './components/terminal/TerminalPanel';
 import { OmniSearchModal } from './components/search/OmniSearchModal';
 import { HotkeysHelpModal } from './components/layout/HotkeysHelpModal';
 import { VoiceControlWidget } from './components/voice/VoiceControlWidget';
+import { DialogHost } from './components/common/DialogHost';
 import { useProjectStore } from './store/useProjectStore';
 import { useAIStudioStore } from './store/useAIStudioStore';
+import { useTranslation } from './i18n/useTranslation';
 import { Bot } from 'lucide-react';
 
 
@@ -23,6 +25,7 @@ const isEditableTarget = (target: EventTarget | null): boolean => {
 };
 
 export const App: React.FC = () => {
+  const { t } = useTranslation();
   const {
     projects,
     fetchProjects,
@@ -73,20 +76,20 @@ export const App: React.FC = () => {
           });
           if (matched) {
             selectProject(matched);
-            showRemoteToast(`Внешний агент открыл проект «${matched.name}»`);
+            showRemoteToast(t.app.remoteSwitchedProject.replace('{name}', matched.name));
           }
         }
       } else if (action.type === 'switch_tab') {
         const tab = action.payload?.tab;
         if (tab) {
           setActiveTab(tab);
-          showRemoteToast(`Внешний агент переключил вкладку на «${tab}»`);
+          showRemoteToast(t.app.remoteSwitchedTab.replace('{tab}', tab));
         }
       } else if (action.type === 'send_studio_prompt') {
         const { prompt, sendImmediately } = action.payload || {};
         if (prompt && selectedProject) {
           setActiveTab('ai');
-          showRemoteToast(`Внешний агент передал промпт в Claude Studio`);
+          showRemoteToast(t.app.remoteStudioPrompt);
           if (sendImmediately) {
             useAIStudioStore.getState().sendMessage(selectedProject.path, prompt);
           }
@@ -98,7 +101,7 @@ export const App: React.FC = () => {
           const top = requestId ? list.find((a) => a.id === requestId) : list[0];
           if (top) {
             useAIStudioStore.getState().sendApprovalResponse(selectedProject.path, top.id, approved, reason);
-            showRemoteToast(`Внешний агент ${approved ? 'одобрил' : 'отклонил'} действие`);
+            showRemoteToast(approved ? t.common.applied : t.common.rejected);
           }
         }
       }
@@ -267,6 +270,9 @@ export const App: React.FC = () => {
           <span className="font-medium">{remoteActionToast}</span>
         </div>
       )}
+
+      {/* Global Promise-based Modals (ConfirmDialog, PromptDialog, AlertDialog) */}
+      <DialogHost />
     </div>
   );
 };

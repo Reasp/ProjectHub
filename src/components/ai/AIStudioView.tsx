@@ -25,6 +25,7 @@ import {
 import { useAIStudioStore, type AISession } from '../../store/useAIStudioStore';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useDialog } from '../../hooks/useDialog';
 import { AISettingsModal } from './AISettingsModal';
 import { InteractiveApprovalCard } from './InteractiveApprovalCard';
 import { SubagentsPanel } from './SubagentsPanel';
@@ -40,6 +41,7 @@ import { SwarmArenaView } from './swarm/SwarmArenaView';
 
 export const AIStudioView: React.FC = () => {
   const { t, language } = useTranslation();
+  const dialog = useDialog();
   const { selectedProject, tasks, gitRepoDetails } = useProjectStore();
   const {
     sessions,
@@ -153,7 +155,7 @@ export const AIStudioView: React.FC = () => {
                 onClick={() => setAiViewMode('studio')}
                 className="px-3 py-1 rounded text-xs font-semibold text-slate-400 hover:text-slate-200 transition"
               >
-                Одиночный агент (Студия)
+                {t.aiStudio.singleAgentStudio}
               </button>
               <button
                 type="button"
@@ -189,7 +191,7 @@ export const AIStudioView: React.FC = () => {
                     ? 'bg-[#181b2a] border-amber-500 text-slate-100 shadow-sm ring-1 ring-slate-800/40'
                     : 'bg-[#141624]/60 border-transparent text-slate-400 hover:text-slate-200 hover:bg-[#161928]'
                 }`}
-                title={`${session.title || t.aiStudio.newChat} — Скажите: «Чат ${tabNumber}» или «Сессия ${tabNumber}»`}
+                title={t.aiStudio.chatVoiceTooltip.replace('{title}', session.title || t.aiStudio.newChat).replace('{num}', String(tabNumber))}
               >
                 {/* Voice / Tab Order Badge */}
                 <span
@@ -198,7 +200,7 @@ export const AIStudioView: React.FC = () => {
                       ? 'bg-amber-500/25 text-amber-200 border-amber-500/50 font-bold'
                       : 'bg-slate-800/80 text-slate-400 border-slate-700/60 group-hover:text-slate-200'
                   }`}
-                  title={`Голосовая команда: «Чат ${tabNumber}»`}
+                  title={t.aiStudio.chatVoiceCommandTitle.replace('{num}', String(tabNumber))}
                 >
                   {tabNumber}
                 </span>
@@ -211,11 +213,15 @@ export const AIStudioView: React.FC = () => {
                 <span
                   className="truncate text-xs font-sans max-w-[120px]"
                   title={session.title}
-                  onDoubleClick={(e) => {
+                  onDoubleClick={async (e) => {
                     e.stopPropagation();
-                    const newTitle = window.prompt(t.aiStudio.renamePrompt || 'Название чата / сессии:', session.title);
-                    if (newTitle !== null) {
-                      renameSession(projectPath, session.id, newTitle);
+                    const newTitle = await dialog.prompt({
+                      title: t.aiStudio.renameSession,
+                      message: t.aiStudio.renamePrompt,
+                      defaultValue: session.title
+                    });
+                    if (newTitle !== null && newTitle.trim()) {
+                      renameSession(projectPath, session.id, newTitle.trim());
                     }
                   }}
                 >
@@ -223,22 +229,26 @@ export const AIStudioView: React.FC = () => {
                 </span>
 
                 <VoiceBadge
-                  command={language === 'ru' ? `чат ${tabNumber}` : `chat ${tabNumber}`}
+                  command={t.aiStudio.voiceChatCmd.replace('{num}', String(tabNumber))}
                   variant="amber"
                 />
 
                 {/* Rename Session Button */}
                 <button
                   type="button"
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.stopPropagation();
-                    const newTitle = window.prompt(t.aiStudio.renamePrompt || 'Название чата / сессии:', session.title);
-                    if (newTitle !== null) {
-                      renameSession(projectPath, session.id, newTitle);
+                    const newTitle = await dialog.prompt({
+                      title: t.aiStudio.renameSession,
+                      message: t.aiStudio.renamePrompt,
+                      defaultValue: session.title
+                    });
+                    if (newTitle !== null && newTitle.trim()) {
+                      renameSession(projectPath, session.id, newTitle.trim());
                     }
                   }}
                   className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-700/80 text-slate-400 hover:text-amber-300 transition shrink-0"
-                  title={t.aiStudio.renameSession || 'Переименовать диалог'}
+                  title={t.aiStudio.renameSession}
                 >
                   <Pencil className="w-2.5 h-2.5" />
                 </button>
@@ -281,13 +291,13 @@ export const AIStudioView: React.FC = () => {
               onClick={() => setAiViewMode('studio')}
               className="px-2.5 py-1 rounded text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-xs transition"
             >
-              Студия
+              {t.aiStudio.studioTab}
             </button>
             <button
               type="button"
               onClick={() => setAiViewMode('swarm')}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold text-slate-400 hover:text-amber-300 transition"
-              title="Открыть Swarm Arena для параллельного запуска агентов"
+              title={t.aiStudio.openSwarmArenaTooltip}
             >
               <Zap className="w-3 h-3 text-amber-400" />
               <span>Swarm Arena</span>
@@ -535,7 +545,7 @@ export const AIStudioView: React.FC = () => {
                   onClick={() =>
                     sendMessage(
                       projectPath,
-                      'Создай архитектурное решение (ADR) для внедрения новой функциональности в этот проект.'
+                      t.aiStudio.promptCards.adrCreatePrompt
                     )
                   }
                   className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-amber-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"

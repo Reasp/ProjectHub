@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Columns, AlignJustify, Copy, Check, ChevronDown, ChevronRight, FileCode } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 
 interface ParsedHunkLine {
   type: 'context' | 'added' | 'deleted' | 'header' | 'hunk-header';
@@ -144,6 +145,7 @@ export const SplitDiffViewer: React.FC<SplitDiffViewerProps> = ({
   filePath,
   defaultMode = 'split'
 }) => {
+  const { t } = useTranslation();
   const [viewMode, setViewMode] = useState<'unified' | 'split'>(defaultMode);
   const [copied, setCopied] = useState(false);
 
@@ -160,7 +162,7 @@ export const SplitDiffViewer: React.FC<SplitDiffViewerProps> = ({
     return (
       <div className="flex flex-col items-center justify-center h-48 text-xs text-slate-500 italic p-6 text-center">
         <FileCode className="w-8 h-8 text-slate-700 mb-2" />
-        <span>Нет изменений для отображения</span>
+        <span>{t.git.diffViewerNoChanges}</span>
       </div>
     );
   }
@@ -176,7 +178,7 @@ export const SplitDiffViewer: React.FC<SplitDiffViewerProps> = ({
             </span>
           )}
           <span className="text-[10px] text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">
-            {hunks.length} {hunks.length === 1 ? 'ханк' : 'ханков'}
+            {hunks.length} {hunks.length === 1 ? t.git.diffViewerHunk : t.git.diffViewerHunks}
           </span>
         </div>
 
@@ -190,7 +192,7 @@ export const SplitDiffViewer: React.FC<SplitDiffViewerProps> = ({
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
-              title="Unified diff (в одну колонку)"
+              title={t.git.diffViewerUnifiedTooltip}
             >
               <AlignJustify className="w-3 h-3" />
               <span>Unified</span>
@@ -202,7 +204,7 @@ export const SplitDiffViewer: React.FC<SplitDiffViewerProps> = ({
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
-              title="Split diff (параллельное сравнение)"
+              title={t.git.diffViewerSplitTooltip}
             >
               <Columns className="w-3 h-3" />
               <span>Split</span>
@@ -212,10 +214,10 @@ export const SplitDiffViewer: React.FC<SplitDiffViewerProps> = ({
           <button
             onClick={handleCopy}
             className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition"
-            title="Скопировать сырой diff"
+            title={t.git.diffViewerCopyTooltip}
           >
             {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-            <span>{copied ? 'Скопировано' : 'Diff'}</span>
+            <span>{copied ? t.common.copied : 'Diff'}</span>
           </button>
         </div>
       </div>

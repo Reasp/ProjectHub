@@ -27,6 +27,7 @@ import type { BacklogTask, TaskCriterion } from '../../types/electron';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useSwarmStore } from '../../store/useSwarmStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useDialog } from '../../hooks/useDialog';
 import { generateTaskDraft } from '../../services/aiAssistantService';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 
@@ -46,6 +47,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onToggleCriterion
 }) => {
   const { t } = useTranslation();
+  const dialog = useDialog();
   const {
     milestones,
     worktrees,
@@ -180,9 +182,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
   const handleStatusChange = (newStatus: BacklogTask['status']) => {
     if (newStatus === 'Done' && (status === 'To Do' || status === 'In Progress')) {
-      setWarningMessage(
-        'Внимание (Правило 5 Backlog.md): Рекомендуется сначала перевести задачу в статус "Review" для проверки перед закрытием в "Done".'
-      );
+      setWarningMessage(t.taskDetail.reviewWarningRule5);
     } else {
       setWarningMessage(null);
     }
@@ -242,7 +242,12 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   };
 
   const handleDelete = async () => {
-    if (confirm(`${t.taskDetail.confirmDelete} (${task.id}: ${task.filePath})`)) {
+    if (
+      await dialog.confirm({
+        message: `${t.taskDetail.confirmDelete} (${task.id}: ${task.filePath})`,
+        danger: true
+      })
+    ) {
       await onDelete(task.filePath);
       onClose();
     }
@@ -544,7 +549,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   <MarkdownViewer content={description} />
                 ) : (
                   <div className="text-slate-500 italic py-2 select-none">
-                    {t.createTask.descriptionPlaceholder || 'Нет описания'}
+                    {t.taskDetail.noDescription}
                   </div>
                 )}
               </div>
@@ -607,7 +612,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   onClick={handleOpenOrCreateWorktree}
                   disabled={isWorktreeLoading}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-700/50 text-xs font-semibold shadow-sm transition"
-                  title={`Изолированное дерево активно: ${existingWorktree.path}. Нажмите для запуска сессии Claude в директории задачи.`}
+                  title={t.taskDetail.worktreeActiveTooltip.replace('{path}', existingWorktree.path)}
                 >
                   <FolderGit2 className="w-3.5 h-3.5 text-cyan-400" />
                   <span>Worktree: {existingWorktree.branch || 'wt'}</span>
@@ -618,10 +623,10 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   onClick={handleOpenOrCreateWorktree}
                   disabled={isWorktreeLoading}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-700/50 text-xs font-semibold shadow-sm transition"
-                  title="Создать изолированное Git Worktree в .worktrees/<id> со своей веткой task/<id> и открыть терминал"
+                  title={t.taskDetail.createWorktreeTooltip.replace('{id}', task.id)}
                 >
                   <FolderGit2 className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>{isWorktreeLoading ? 'Создание...' : 'Открыть в Worktree'}</span>
+                  <span>{isWorktreeLoading ? t.taskDetail.creatingWorktree : t.taskDetail.openInWorktree}</span>
                 </button>
               )
             )}
@@ -634,15 +639,15 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 openNewSwarmModal({
                   taskId: task.id,
                   taskTitle: task.title,
-                  prompt: `[Задача ${task.id}]: ${task.title}\n\n${task.description || ''}`
+                  prompt: `[${task.id}]: ${task.title}\n\n${task.description || ''}`
                 });
                 setMainTab('ai');
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border border-amber-700/50 text-xs font-semibold shadow-sm transition"
-              title="Запустить соревновательную генерацию нескольких AI-агентов в Swarm Arena"
+              title={t.taskDetail.swarmArenaTooltip}
             >
               <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>В Swarm Arena</span>
+              <span>{t.taskDetail.inSwarmArena}</span>
             </button>
           </div>
 

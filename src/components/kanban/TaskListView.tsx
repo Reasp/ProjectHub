@@ -11,6 +11,7 @@ import {
   ArrowUpDown
 } from 'lucide-react';
 import type { BacklogTask } from '../../types/electron';
+import { useTranslation } from '../../i18n';
 
 interface TaskListViewProps {
   tasks: BacklogTask[];
@@ -23,6 +24,7 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
   onSelectTask,
   onUpdateStatus
 }) => {
+  const { t } = useTranslation();
   const getStatusBadge = (status: BacklogTask['status']) => {
     switch (status) {
       case 'To Do':
@@ -44,18 +46,18 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
         <thead>
           <tr className="border-b border-slate-800 bg-[#161a2b]/80 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
             <th className="py-3 px-4 w-28">ID</th>
-            <th className="py-3 px-4">Название задачи</th>
-            <th className="py-3 px-4 w-40">Статус</th>
-            <th className="py-3 px-4 w-48">Теги</th>
-            <th className="py-3 px-4 w-32">Критерии</th>
-            <th className="py-3 px-4 w-28">Дата</th>
+            <th className="py-3 px-4">{t.kanban.taskTitleCol}</th>
+            <th className="py-3 px-4 w-40">{t.kanban.statusCol}</th>
+            <th className="py-3 px-4 w-48">{t.kanban.tagsCol}</th>
+            <th className="py-3 px-4 w-32">{t.kanban.criteriaCol}</th>
+            <th className="py-3 px-4 w-28">{t.kanban.dateCol}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800/60 text-slate-300">
           {tasks.length === 0 ? (
             <tr>
               <td colSpan={6} className="py-8 text-center text-slate-500">
-                Задачи не найдены
+                {t.kanban.noTasksFound}
               </td>
             </tr>
           ) : (

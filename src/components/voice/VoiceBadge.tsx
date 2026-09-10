@@ -1,6 +1,7 @@
 import React from 'react';
 import { Mic } from 'lucide-react';
 import { useVoiceState } from '../../hooks/useVoiceState';
+import { useI18n } from '../../i18n';
 
 export interface VoiceBadgeProps {
   /** Voice command text or phrase to speak, e.g. "задачи", "старт дев" */
@@ -26,10 +27,14 @@ export const VoiceBadge: React.FC<VoiceBadgeProps> = ({
   alwaysShow = false
 }) => {
   const { isListening } = useVoiceState();
+  const { t, language } = useI18n();
 
   if (!isListening && !alwaysShow) {
     return null;
   }
+
+  const altText = altCommand ? t.voice.altCommandFormat.replace('{altCommand}', altCommand) : '';
+  const tooltip = t.voice.speakHint.replace('{command}', command).replace('{alt}', altText);
 
   const variantStyles = {
     indigo:
@@ -55,7 +60,7 @@ export const VoiceBadge: React.FC<VoiceBadgeProps> = ({
   return (
     <span
       className={`select-none pointer-events-none inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[9.5px] font-mono font-semibold backdrop-blur-md shadow-md animate-in fade-in zoom-in-95 duration-150 transition-all ${variantStyles[variant]} ${positionStyles[position]} ${className}`}
-      title={`Скажите голосом: «${command}»${altCommand ? ` или «${altCommand}»` : ''}`}
+      title={tooltip}
     >
       <Mic className="w-2.5 h-2.5 shrink-0 opacity-80 animate-pulse text-indigo-400" />
       <span className="tracking-tight whitespace-nowrap">

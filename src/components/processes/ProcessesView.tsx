@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useDialog } from '../../hooks/useDialog';
 import { ActionConfigModal } from '../actions/ActionConfigModal';
 import type { ManagedProcess } from '../../types/electron';
 
@@ -56,6 +57,7 @@ export const ProcessesView: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [busy, setBusy] = useState<Record<string, 'stop' | 'restart' | undefined>>({});
   const [startingKey, setStartingKey] = useState<string | null>(null);
+  const dialog = useDialog();
 
   const projectPath = selectedProject?.path;
 
@@ -102,7 +104,7 @@ export const ProcessesView: React.FC = () => {
     : [];
 
   const confirmAction = (def: { command: string }) =>
-    confirm(t.actions.confirmDeploy.replace('{name}', selectedProject.name).replace('{command}', def.command));
+    dialog.confirm(t.actions.confirmDeploy.replace('{name}', selectedProject.name).replace('{command}', def.command));
 
   const handleRunAction = async (key: string, def: (typeof quickActions)[number]['def']) => {
     setStartingKey(key);

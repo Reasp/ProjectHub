@@ -43,9 +43,9 @@ export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose })
         const matchedTask = tasks.find((t) => t.id.toLowerCase() === taskId);
         if (matchedTask) {
           setTitle(`feat(${matchedTask.id}): ${matchedTask.title}`);
-          let templateBody = `## Описание изменений\n${matchedTask.description || matchedTask.title}\n\n`;
+          let templateBody = `${t.prs.templateChangesTitle}${matchedTask.description || matchedTask.title}\n\n`;
           if (matchedTask.acceptanceCriteria && matchedTask.acceptanceCriteria.length > 0) {
-            templateBody += `## Критерии приемки (Backlog)\n`;
+            templateBody += t.prs.templateCriteriaTitle;
             matchedTask.acceptanceCriteria.forEach((c) => {
               templateBody += `- [${c.completed ? 'x' : ' '}] ${c.text}\n`;
             });
@@ -57,16 +57,16 @@ export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose })
       }
 
       setTitle(current ? `Changes for ${current}` : '');
-      setBody('## Описание\nКраткое описание внесенных изменений.\n');
+      setBody(`${t.prs.templateDefaultTitle}${t.prs.templateDefaultDesc}`);
     }
-  }, [isOpen, selectedProject, gitRepoDetails, tasks]);
+  }, [isOpen, selectedProject, gitRepoDetails, tasks, t]);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !sourceBranch.trim()) {
-      setError('Заполните заголовок и исходную ветку');
+      setError(t.prs.fillTitleAndBranchError);
       return;
     }
 
@@ -83,7 +83,7 @@ export const CreatePRModal: React.FC<CreatePRModalProps> = ({ isOpen, onClose })
       });
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Ошибка создания Pull Request');
+      setError(err.message || t.prs.createPrError);
     } finally {
       setIsSubmitting(false);
     }

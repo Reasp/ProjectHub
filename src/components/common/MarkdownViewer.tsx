@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MermaidDiagram } from './MermaidDiagram';
 import { parseMarkdownBlocks, type MarkdownBlock } from './markdownBlocks';
 import { Copy, Check, Info, AlertTriangle, AlertCircle, Lightbulb, Flame } from 'lucide-react';
+import { useI18n } from '../../i18n';
 
 interface MarkdownViewerProps {
   content: string;
@@ -12,11 +13,14 @@ interface MarkdownViewerProps {
 export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
   content,
   className = '',
-  emptyMessage = 'Документ пуст'
+  emptyMessage
 }) => {
+  const { t } = useI18n();
+  const effectiveEmptyMessage = emptyMessage !== undefined ? emptyMessage : t.markdown.emptyDocument;
+
   if (!content || !content.trim()) {
-    if (emptyMessage === null) return null;
-    return <div className="text-xs text-slate-500 italic p-4">{emptyMessage}</div>;
+    if (effectiveEmptyMessage === null) return null;
+    return <div className="text-xs text-slate-500 italic p-4">{effectiveEmptyMessage}</div>;
   }
 
   // Parse markdown into high-level blocks
@@ -131,6 +135,7 @@ const BlockRenderer: React.FC<{ block: MarkdownBlock }> = ({ block }) => {
 };
 
 const CodeBlock: React.FC<{ lang: string; code: string }> = ({ lang, code }) => {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -148,7 +153,7 @@ const CodeBlock: React.FC<{ lang: string; code: string }> = ({ lang, code }) => 
           className="flex items-center gap-1 hover:text-white transition px-2 py-0.5 rounded hover:bg-slate-700/50"
         >
           {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-          {copied ? 'Скопировано' : 'Копировать'}
+          {copied ? t.markdown.copied : t.markdown.copy}
         </button>
       </div>
       <pre className="p-4 overflow-x-auto text-[11px] font-mono text-slate-200 leading-relaxed selection:bg-indigo-500/30">

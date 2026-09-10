@@ -134,7 +134,11 @@ export const NewProjectWizardModal: React.FC<NewProjectWizardModalProps> = ({
       selectProject(createdProject);
       setActiveTab('kanban');
 
-      addTerminalLog(`[ProjectHub] Успешно создан новый проект: ${createdProject.name} (${createdProject.path})`);
+      addTerminalLog(
+        t.terminalLogs.wizardProjectCreated
+          .replace('{name}', createdProject.name)
+          .replace('{path}', createdProject.path)
+      );
       onClose();
     } catch (err: any) {
       console.error('Project creation failed:', err);

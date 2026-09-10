@@ -20,9 +20,11 @@ import {
   Laptop
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import { useTranslation } from '../../i18n';
 import type { RemoteControlStatus } from '../../types/electron';
 
 export const RemoteControlBadge: React.FC = () => {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<RemoteControlStatus | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'connect' | 'devices' | 'settings' | 'telegram'>('connect');
@@ -161,7 +163,7 @@ export const RemoteControlBadge: React.FC = () => {
         telegramMiniAppUrl
       });
       setStatus(updated);
-      setTestNotificationResult('Настройки успешно сохранены');
+      setTestNotificationResult(t.remote.settingsSavedSuccess);
       setTimeout(() => setTestNotificationResult(null), 3000);
     } catch (e) {
       console.error('Failed to update remote config:', e);
@@ -188,14 +190,14 @@ export const RemoteControlBadge: React.FC = () => {
     setTestingNotification(true);
     setTestNotificationResult(null);
     try {
-      const ok = await window.api.testTelegramNotification('🔔 *ProjectHub Test*: Связь с Telegram успешно установлена! Удаленное управление готово к работе. 🚀');
+      const ok = await window.api.testTelegramNotification(t.remote.testTelegramMessageText);
       if (ok) {
-        setTestNotificationResult('✅ Сообщение успешно отправлено в Telegram!');
+        setTestNotificationResult(t.remote.testMsgSuccess);
       } else {
-        setTestNotificationResult('❌ Ошибка отправки. Проверьте Bot Token и Chat ID.');
+        setTestNotificationResult(t.remote.testMsgError);
       }
     } catch (e: any) {
-      setTestNotificationResult(`❌ Ошибка: ${e?.message || e}`);
+      setTestNotificationResult(t.remote.testMsgPrefixError.replace('{msg}', e?.message || String(e)));
     } finally {
       setTestingNotification(false);
     }
@@ -249,7 +251,7 @@ export const RemoteControlBadge: React.FC = () => {
             ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
             : 'bg-slate-800/40 border-slate-700/50 text-slate-400 hover:bg-slate-800 hover:text-slate-300'
         }`}
-        title="Удаленное управление и Telegram Mini App"
+        title={t.remote.badgeTooltip}
       >
         <span className="relative flex h-2 w-2">
           {status.enabled && (
@@ -285,19 +287,19 @@ export const RemoteControlBadge: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                    Удаленное управление (Remote & Telegram)
+                    {t.remote.modalTitle}
                     {status.enabled ? (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-mono font-normal">
-                        АКТИВЕН
+                        {t.remote.statusActive}
                       </span>
                     ) : (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-400 font-mono font-normal">
-                        ОТКЛЮЧЕН
+                        {t.remote.statusDisabled}
                       </span>
                     )}
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    Управление проектами, процессами, задачами и AI со смартфона или Telegram Mini App
+                    {t.remote.modalSubtitle}
                   </p>
                 </div>
               </div>
@@ -313,7 +315,7 @@ export const RemoteControlBadge: React.FC = () => {
                   }`}
                 >
                   <Power className="w-3.5 h-3.5" />
-                  {status.enabled ? 'Остановить' : 'Включить'}
+                  {status.enabled ? t.remote.stopBtn : t.remote.startBtn}
                 </button>
                 <button
                   type="button"
@@ -337,7 +339,7 @@ export const RemoteControlBadge: React.FC = () => {
                 }`}
               >
                 <QrCode className="w-3.5 h-3.5" />
-                Подключение и QR
+                {t.remote.tabConnect}
               </button>
               <button
                 type="button"
@@ -349,7 +351,7 @@ export const RemoteControlBadge: React.FC = () => {
                 }`}
               >
                 <Send className="w-3.5 h-3.5" />
-                Telegram Mini App
+                {t.remote.tabTelegram}
               </button>
               <button
                 type="button"
@@ -361,7 +363,7 @@ export const RemoteControlBadge: React.FC = () => {
                 }`}
               >
                 <Smartphone className="w-3.5 h-3.5" />
-                Устройства ({connectedCount})
+                {t.remote.tabDevices} ({connectedCount})
               </button>
               <button
                 type="button"
@@ -373,7 +375,7 @@ export const RemoteControlBadge: React.FC = () => {
                 }`}
               >
                 <Sliders className="w-3.5 h-3.5" />
-                Настройки сети
+                {t.remote.tabSettings}
               </button>
             </div>
 
@@ -388,29 +390,29 @@ export const RemoteControlBadge: React.FC = () => {
                         <img src={qrDataUrl} alt="Remote QR Code" className="w-32 h-32 rounded-lg" />
                       ) : (
                         <div className="w-32 h-32 flex items-center justify-center text-slate-400 text-xs">
-                          Генерация QR...
+                          {t.remote.generatingQr}
                         </div>
                       )}
                     </div>
                     <div className="space-y-2 text-left">
                       <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
                         <Lock className="w-3.5 h-3.5 text-emerald-400" />
-                        Сквозное шифрование E2EE (AES-256-GCM)
+                        {t.remote.e2eeTitle}
                       </div>
                       <p className="text-xs text-slate-400 leading-relaxed">
-                        Отсканируйте камерой смартфона в одной локальной сети или используйте Telegram Mini App для мобильного доступа.
+                        {t.remote.e2eeDesc}
                       </p>
                       <div className="flex flex-wrap gap-1.5 pt-1">
                         <span className="px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-[10px] text-indigo-300">
-                          {status.useP2P ? 'Peer-to-Peer (WebRTC)' : 'Direct LAN'}
+                          {status.useP2P ? t.remote.p2pBadge : t.remote.lanBadge}
                         </span>
                         {status.relayConnected && (
                           <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-[10px] text-emerald-300">
-                            Relay онлайн
+                            {t.remote.relayOnline}
                           </span>
                         )}
                         <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px] text-slate-300">
-                          Порт: {status.port}
+                          {t.remote.portLabel}: {status.port}
                         </span>
                       </div>
                     </div>
@@ -419,14 +421,14 @@ export const RemoteControlBadge: React.FC = () => {
                   {/* Ссылка для браузера */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-slate-300 flex justify-between">
-                      <span>Прямая ссылка веб-клиента</span>
+                      <span>{t.remote.directWebLink}</span>
                       <button
                         type="button"
                         onClick={() => window.api?.openExternal(webClientUrl)}
                         className="text-indigo-400 hover:text-indigo-300 text-[11px] flex items-center gap-1"
                       >
                         <ExternalLink className="w-3 h-3" />
-                        Открыть в браузере
+                        {t.remote.openInBrowser}
                       </button>
                     </label>
                     <div className="flex items-center gap-2">
@@ -440,7 +442,7 @@ export const RemoteControlBadge: React.FC = () => {
                         type="button"
                         onClick={() => copyToClipboard(webClientUrl, 'webUrl')}
                         className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition"
-                        title="Скопировать ссылку"
+                        title={t.remote.copyLinkTooltip}
                       >
                         {copiedKey === 'webUrl' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                       </button>
@@ -452,7 +454,7 @@ export const RemoteControlBadge: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
                         <Shield className="w-3.5 h-3.5 text-indigo-400" />
-                        Секретный ключ (AES-256)
+                        {t.remote.secretKeyTitle}
                       </label>
                       <button
                         type="button"
@@ -460,7 +462,7 @@ export const RemoteControlBadge: React.FC = () => {
                         className="text-[11px] text-slate-400 hover:text-indigo-400 flex items-center gap-1 transition"
                       >
                         <RefreshCw className="w-3 h-3" />
-                        Сгенерировать новый
+                        {t.remote.generateNewKey}
                       </button>
                     </div>
                     <div className="flex items-center gap-2">
@@ -474,7 +476,7 @@ export const RemoteControlBadge: React.FC = () => {
                         type="button"
                         onClick={() => copyToClipboard(status.secretToken, 'secretToken')}
                         className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition"
-                        title="Скопировать токен"
+                        title={t.remote.copyTokenTooltip}
                       >
                         {copiedKey === 'secretToken' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                       </button>
@@ -485,11 +487,11 @@ export const RemoteControlBadge: React.FC = () => {
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
                       <Laptop className="w-3.5 h-3.5 text-indigo-400" />
-                      Имя этого компьютера (в Едином Hub)
+                      {t.remote.machineNameLabel}
                     </label>
                     <input
                       type="text"
-                      placeholder="например, Рабочий ПК (Windows)"
+                      placeholder={t.remote.machineNamePlaceholder}
                       value={machineName}
                       onChange={(e) => setMachineName(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
@@ -506,7 +508,7 @@ export const RemoteControlBadge: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
                         <Globe className="w-3.5 h-3.5 text-sky-400" />
-                        Публичный HTTPS-туннель:
+                        {t.remote.publicHttpsTunnel}
                       </span>
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                         status?.tunnelStatus === 'active'
@@ -515,7 +517,7 @@ export const RemoteControlBadge: React.FC = () => {
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                           : 'bg-slate-800 text-slate-400'
                       }`}>
-                        {status?.tunnelStatus === 'active' ? '🟢 АКТИВЕН' : status?.tunnelStatus === 'starting' ? '⏳ ПОДКЛЮЧЕНИЕ...' : '⚪ НЕ ЗАПУЩЕН'}
+                        {status?.tunnelStatus === 'active' ? t.remote.tunnelActive : status?.tunnelStatus === 'starting' ? t.remote.tunnelStarting : t.remote.tunnelNotStarted}
                       </span>
                     </div>
 
@@ -526,7 +528,7 @@ export const RemoteControlBadge: React.FC = () => {
                           type="button"
                           onClick={() => copyToClipboard(`${status.tunnelUrl}/telegram`, 'tg_tunnel')}
                           className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white"
-                          title="Копировать адрес"
+                          title={t.remote.copyAddressTooltip}
                         >
                           {copiedKey === 'tg_tunnel' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
@@ -534,14 +536,14 @@ export const RemoteControlBadge: React.FC = () => {
                           type="button"
                           onClick={() => window.api?.openExternal?.(`${status.tunnelUrl}/telegram`)}
                           className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white"
-                          title="Открыть в браузере"
+                          title={t.remote.openInBrowser}
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     ) : (
                       <div className="text-[11px] text-slate-400">
-                        Zero-config Cloudflare Quick Tunnel с валидным SSL для Telegram WebApp.
+                        {t.remote.cloudflareTunnelDesc}
                       </div>
                     )}
 
@@ -551,9 +553,9 @@ export const RemoteControlBadge: React.FC = () => {
                           type="checkbox"
                           checked={autoStart}
                           onChange={(e) => setAutoStart(e.target.checked)}
-                          className="rounded bg-slate-900 border-slate-700 text-sky-500 focus:ring-0"
+                          className="rounded bg-slate-950 border-slate-700 text-sky-500 focus:ring-0"
                         />
-                        Автозапуск при старте ProjectHub
+                        {t.remote.autoStartWithHub}
                       </label>
                       <button
                         type="button"
@@ -562,7 +564,7 @@ export const RemoteControlBadge: React.FC = () => {
                         className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-200 transition disabled:opacity-50 flex items-center gap-1"
                       >
                         <RefreshCw className={`w-3 h-3 ${startingTunnel ? 'animate-spin' : ''}`} />
-                        {status?.tunnelStatus === 'active' ? 'Перезапустить' : 'Запустить туннель'}
+                        {status?.tunnelStatus === 'active' ? t.remote.restartTunnel : t.remote.startTunnel}
                       </button>
                     </div>
                   </div>
@@ -574,17 +576,17 @@ export const RemoteControlBadge: React.FC = () => {
                         <img src={qrTelegramDataUrl} alt="Telegram Mini App QR" className="w-32 h-32 rounded-lg" />
                       ) : (
                         <div className="w-32 h-32 flex items-center justify-center text-slate-400 text-xs">
-                          Генерация QR...
+                          {t.remote.generatingQr}
                         </div>
                       )}
                     </div>
                     <div className="space-y-2 text-left">
                       <div className="flex items-center gap-2 text-xs font-semibold text-sky-300">
                         <Send className="w-3.5 h-3.5 text-sky-400" />
-                        Telegram Mini App (TMA)
+                        {t.remote.tmaTitle}
                       </div>
                       <p className="text-xs text-slate-400 leading-relaxed">
-                        Управляйте процессами, задачами и общайтесь с AI прямо внутри Telegram с нативным Haptic Feedback и сканером QR.
+                        {t.remote.tmaDesc}
                       </p>
                       <div className="pt-1 flex flex-wrap gap-2">
                         {telegramBotDeepLink ? (
@@ -594,7 +596,7 @@ export const RemoteControlBadge: React.FC = () => {
                             className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold flex items-center gap-1.5 transition"
                           >
                             <Send className="w-3.5 h-3.5" />
-                            Открыть в Telegram
+                            {t.remote.openInTelegram}
                           </button>
                         ) : (
                           <button
@@ -603,7 +605,7 @@ export const RemoteControlBadge: React.FC = () => {
                             className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition border border-slate-700"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
-                            Открыть Mini App в браузере
+                            {t.remote.openTmaInBrowser}
                           </button>
                         )}
                       </div>
@@ -614,7 +616,7 @@ export const RemoteControlBadge: React.FC = () => {
                   <div className="space-y-3 pt-2 text-xs">
                     <div>
                       <label className="text-slate-300 font-medium block mb-1">
-                        Telegram Bot Token (из @BotFather)
+                        {t.remote.tgBotTokenLabel}
                       </label>
                       <input
                         type="password"
@@ -628,7 +630,7 @@ export const RemoteControlBadge: React.FC = () => {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="text-slate-300 font-medium block mb-1">
-                          Юзернейм бота (без @)
+                          {t.remote.tgBotUsernameLabel}
                         </label>
                         <input
                           type="text"
@@ -640,11 +642,11 @@ export const RemoteControlBadge: React.FC = () => {
                       </div>
                       <div>
                         <label className="text-slate-300 font-medium block mb-1">
-                          Ваш Telegram Chat ID
+                          {t.remote.tgChatIdLabel}
                         </label>
                         <input
                           type="text"
-                          placeholder="например 12345678"
+                          placeholder="12345678"
                           value={telegramChatId}
                           onChange={(e) => setTelegramChatId(e.target.value)}
                           className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono"
@@ -654,7 +656,7 @@ export const RemoteControlBadge: React.FC = () => {
 
                     <div>
                       <label className="text-slate-300 font-medium block mb-1">
-                        Публичный URL WebApp (если используется туннель Cloudflare/Vercel)
+                        {t.remote.publicWebappUrlLabel}
                       </label>
                       <input
                         type="text"
@@ -683,14 +685,14 @@ export const RemoteControlBadge: React.FC = () => {
                         onClick={handleSaveConfig}
                         className="flex-1 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 font-semibold text-white transition disabled:opacity-50"
                       >
-                        {savingSettings ? 'Сохранение...' : 'Сохранить настройки Telegram'}
+                        {savingSettings ? t.remote.saving : t.remote.saveTgSettings}
                       </button>
                       <button
                         type="button"
                         disabled={testingNotification || !telegramBotToken || !telegramChatId}
                         onClick={handleTestNotification}
                         className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition disabled:opacity-40"
-                        title="Отправить тестовое сообщение"
+                        title={t.remote.sendTestMsgTooltip}
                       >
                         <Bot className="w-4 h-4" />
                       </button>
@@ -698,11 +700,11 @@ export const RemoteControlBadge: React.FC = () => {
 
                     {/* How to setup banner */}
                     <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-1 text-slate-400 text-[11px] leading-relaxed">
-                      <div className="font-semibold text-slate-300">💡 Как подключить в Telegram:</div>
+                      <div className="font-semibold text-slate-300">{t.remote.howToConnectTitle}</div>
                       <ol className="list-decimal pl-4 space-y-0.5">
-                        <li>Создайте бота в <b>@BotFather</b> через команду <code className="text-slate-200">/newbot</code>.</li>
-                        <li>Вставьте полученный токен и имя бота в поля выше.</li>
-                        <li>Нажмите <code className="text-slate-200">/newapp</code> в @BotFather, выберите вашего бота и укажите URL Mini App.</li>
+                        <li>{t.remote.howToStep1}</li>
+                        <li>{t.remote.howToStep2}</li>
+                        <li>{t.remote.howToStep3}</li>
                       </ol>
                     </div>
                   </div>
@@ -713,13 +715,13 @@ export const RemoteControlBadge: React.FC = () => {
               {activeTab === 'devices' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                    <span>Подключенные устройства ({connectedCount})</span>
-                    <span>Одобрено: {approvedCount}</span>
+                    <span>{t.remote.connectedDevicesTitle} ({connectedCount})</span>
+                    <span>{t.remote.approvedCount.replace('{count}', String(approvedCount))}</span>
                   </div>
 
                   {(!status.connectedDevices || status.connectedDevices.length === 0) ? (
                     <div className="p-8 text-center rounded-xl bg-slate-950/40 border border-slate-800 text-slate-500 text-xs">
-                      Нет активных подключений. Отсканируйте QR-код на вкладке "Подключение" или откройте Telegram Mini App.
+                      {t.remote.noActiveConnections}
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -753,18 +755,18 @@ export const RemoteControlBadge: React.FC = () => {
                                 className="flex items-center gap-1 px-2.5 py-1 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold hover:bg-emerald-500/30 transition"
                               >
                                 <UserCheck className="w-3 h-3" />
-                                Одобрить
+                                {t.remote.approveDevice}
                               </button>
                             ) : (
                               <span className="text-[11px] text-emerald-400 flex items-center gap-1 font-medium">
-                                <Check className="w-3 h-3" /> Одобрено
+                                <Check className="w-3 h-3" /> {t.remote.approvedBadge}
                               </span>
                             )}
                             <button
                               type="button"
                               onClick={() => handleDisconnectDevice(dev.id)}
                               className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition"
-                              title="Отключить"
+                              title={t.remote.disconnectDevice}
                             >
                               <UserX className="w-3.5 h-3.5" />
                             </button>
@@ -781,7 +783,7 @@ export const RemoteControlBadge: React.FC = () => {
                 <div className="space-y-4 text-xs">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-slate-300 font-medium block mb-1">Порт локального сервера</label>
+                      <label className="text-slate-300 font-medium block mb-1">{t.remote.localServerPort}</label>
                       <input
                         type="number"
                         value={port}
@@ -790,7 +792,7 @@ export const RemoteControlBadge: React.FC = () => {
                       />
                     </div>
                     <div>
-                      <label className="text-slate-300 font-medium block mb-1">WebSocket Relay URL</label>
+                      <label className="text-slate-300 font-medium block mb-1">{t.remote.wsRelayUrl}</label>
                       <input
                         type="text"
                         value={relayUrl}
@@ -809,7 +811,7 @@ export const RemoteControlBadge: React.FC = () => {
                         onChange={(e) => setUseP2P(e.target.checked)}
                         className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
                       />
-                      <span>Включить WebRTC Peer-to-Peer (прямой P2P туннель)</span>
+                      <span>{t.remote.enableWebRTC}</span>
                     </label>
 
                     <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
@@ -819,7 +821,7 @@ export const RemoteControlBadge: React.FC = () => {
                         onChange={(e) => setUseRelay(e.target.checked)}
                         className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
                       />
-                      <span>Использовать WebSocket Relay (для доступа из интернета без белого IP)</span>
+                      <span>{t.remote.useWsRelay}</span>
                     </label>
 
                     <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
@@ -829,7 +831,7 @@ export const RemoteControlBadge: React.FC = () => {
                         onChange={(e) => setRequireApproval(e.target.checked)}
                         className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
                       />
-                      <span>Требовать подтверждение хоста при первом подключении устройства</span>
+                      <span>{t.remote.requireApproval}</span>
                     </label>
 
                     <label className="flex items-center gap-2 text-amber-300 cursor-pointer">
@@ -839,7 +841,7 @@ export const RemoteControlBadge: React.FC = () => {
                         onChange={(e) => setReadOnly(e.target.checked)}
                         className="rounded border-slate-700 bg-slate-950 text-amber-600 focus:ring-0"
                       />
-                      <span>Режим только для чтения (запретить остановку процессов и коммиты)</span>
+                      <span>{t.remote.readOnlyMode}</span>
                     </label>
                   </div>
 
@@ -850,7 +852,7 @@ export const RemoteControlBadge: React.FC = () => {
                       onClick={handleSaveConfig}
                       className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 font-semibold text-white transition disabled:opacity-50"
                     >
-                      {savingSettings ? 'Сохранение...' : 'Сохранить настройки'}
+                      {savingSettings ? t.remote.saving : t.remote.saveSettings}
                     </button>
                   </div>
                 </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Check, Sparkles, Zap, Cpu, Flame, Layers } from 'lucide-react';
+import { useI18n } from '../../i18n';
 import type { ClaudeModelOption, AIProviderConfig } from '../../types/electron';
 
 interface ModelSelectorDropdownProps {
@@ -73,6 +74,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
   config,
   onSelectModel
 }) => {
+  const { t } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [models, setModels] = useState<ClaudeModelOption[]>(FALLBACK_MODELS);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -139,7 +141,7 @@ export const ModelSelectorDropdown: React.FC<ModelSelectorDropdownProps> = ({
           setIsOpen((prev) => !prev);
         }}
         className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0d101a] border border-slate-800 hover:border-slate-700 hover:bg-[#141724] text-slate-200 text-[11px] font-medium transition shadow-sm cursor-pointer"
-        title="Выбор активной модели Claude Code"
+        title={t.aiStudio.selectModelTitle}
       >
         <span className="text-amber-400 font-bold text-[10px]">✳</span>
         <span className="font-medium max-w-[130px] truncate">{currentModel.name}</span>

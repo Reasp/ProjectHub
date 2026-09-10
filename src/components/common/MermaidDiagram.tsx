@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import mermaid from 'mermaid';
 import DOMPurify from 'dompurify';
+import { useI18n } from '../../i18n';
 
 // Initialize mermaid with rich dark theme aesthetics.
 // securityLevel 'strict': HTML в подписях экранируется, click-колбэки отключены (TASK-30).
@@ -41,12 +42,14 @@ interface MermaidDiagramProps {
 }
 
 export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart }) => {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
+
     const renderChart = async () => {
       if (!chart.trim()) return;
       try {
@@ -59,7 +62,7 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart }) => {
       } catch (err: any) {
         console.error('Mermaid render error:', err);
         if (isMounted) {
-          setError(err.message || 'Ошибка синтаксиса диаграммы Mermaid');
+          setError(err.message || t.markdown.mermaidSyntaxError);
         }
       }
     };
@@ -68,12 +71,12 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart }) => {
     return () => {
       isMounted = false;
     };
-  }, [chart]);
+  }, [chart, t]);
 
   if (error) {
     return (
       <div className="my-4 p-4 rounded-xl bg-red-950/40 border border-red-800/50 text-red-300 text-xs font-mono">
-        <div className="font-semibold mb-1">Ошибка рендеринга Mermaid диаграммы:</div>
+        <div className="font-semibold mb-1">{t.markdown.renderError}</div>
         <div className="text-red-400 whitespace-pre-wrap">{error}</div>
         <pre className="mt-2 p-2 rounded bg-black/40 text-slate-400 overflow-x-auto text-[11px]">{chart}</pre>
       </div>
@@ -83,7 +86,7 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart }) => {
   if (!svg) {
     return (
       <div className="my-4 p-6 rounded-2xl bg-[#0e111d] border border-slate-800 flex items-center justify-center text-xs text-slate-500 animate-pulse">
-        Построение диаграммы Mermaid...
+        {t.markdown.mermaidRendering}
       </div>
     );
   }

@@ -63,8 +63,8 @@ export const Header: React.FC = () => {
             title={isSidebarOpen ? t.sidebar.hideSidebar : t.sidebar.showSidebar}
           >
             {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4 text-indigo-400" />}
-            {!isSidebarOpen && <span className="text-xs font-semibold pr-1">{t.sidebar.title || 'Проекты'}</span>}
-            <VoiceBadge command={isSidebarOpen ? 'скрой меню' : 'покажи меню'} />
+            {!isSidebarOpen && <span className="text-xs font-semibold pr-1">{t.sidebar.title}</span>}
+            <VoiceBadge command={isSidebarOpen ? t.sidebar.hideMenuCommand : t.sidebar.showMenuCommand} />
           </button>
           <span className="text-xs text-slate-500">{t.header.selectProjectHint}</span>
         </div>
@@ -137,8 +137,8 @@ export const Header: React.FC = () => {
           title={isSidebarOpen ? t.sidebar.hideSidebar : t.sidebar.showSidebar}
         >
           {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4 text-indigo-400" />}
-          {!isSidebarOpen && <span className="text-xs font-semibold pr-1 hidden md:inline">{t.sidebar.title || 'Проекты'}</span>}
-          <VoiceBadge command={isSidebarOpen ? 'скрой меню' : 'покажи меню'} />
+          {!isSidebarOpen && <span className="text-xs font-semibold pr-1 hidden md:inline">{t.sidebar.title}</span>}
+          <VoiceBadge command={isSidebarOpen ? t.sidebar.hideMenuCommand : t.sidebar.showMenuCommand} />
         </button>
 
         <div className="min-w-0 truncate">
@@ -146,7 +146,7 @@ export const Header: React.FC = () => {
             <h2 className="text-sm font-semibold text-white tracking-tight flex items-center gap-2 truncate" title={selectedProject.name}>
               <span className="truncate">{selectedProject.name}</span>
               {selectedProject.hasInfraConfig && (
-                <span className="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1 shrink-0 whitespace-nowrap" title="Соответствует стандарту ProjectTemplate">
+                <span className="text-[10px] text-emerald-400 font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1 shrink-0 whitespace-nowrap" title={t.header.standardProjectTemplate}>
                   <Sparkles className="w-2.5 h-2.5 shrink-0" /> ProjectTemplate
                 </span>
               )}
@@ -159,20 +159,20 @@ export const Header: React.FC = () => {
                   <button
                     onClick={() => setActiveTab('ai')}
                     className="text-[11px] text-amber-300 font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/50 flex items-center gap-1.5 shrink-0 animate-pulse hover:bg-amber-500/30 transition shadow-sm"
-                    title="Кликните, чтобы перейти в Claude Studio и принять решение"
+                    title={t.header.requiresDecisionTooltip}
                   >
                     <span className="text-amber-400 font-bold">⚠️</span>
-                    <span>Требует решения</span>
+                    <span>{t.header.requiresDecision}</span>
                   </button>
                 ) : agentStatus.status === 'running' ? (
                   <button
                     onClick={() => setActiveTab('ai')}
                     className="text-[11px] text-indigo-300 font-medium px-2.5 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-500/30 flex items-center gap-1.5 shrink-0 hover:bg-indigo-500/25 transition"
-                    title="Claude Studio выполняет задачу"
+                    title={t.header.claudeExecutingTooltip}
                   >
                     <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
                     <span className="font-bold text-amber-400">✳</span>
-                    <span className="truncate max-w-[140px]">{agentStatus.lastMessage || 'Работает...'}</span>
+                    <span className="truncate max-w-[140px]">{agentStatus.lastMessage || t.header.working}</span>
                   </button>
                 ) : null}
               </div>
@@ -185,7 +185,7 @@ export const Header: React.FC = () => {
 
         {selectedProject.hasGit && selectedProject.gitBranch && (
           <div className="flex items-center gap-2 pl-3 border-l border-slate-800 shrink-0 whitespace-nowrap">
-            <span className="flex items-center gap-1.5 text-xs text-slate-300 font-mono px-2 py-1 rounded bg-[#181c2b] border border-slate-800 whitespace-nowrap" title={`Текущая Git ветка: ${selectedProject.gitBranch}`}>
+            <span className="flex items-center gap-1.5 text-xs text-slate-300 font-mono px-2 py-1 rounded bg-[#181c2b] border border-slate-800 whitespace-nowrap" title={t.header.currentGitBranch.replace('{branch}', selectedProject.gitBranch)}>
               <GitBranch className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
               {selectedProject.gitBranch}
             </span>
@@ -199,8 +199,8 @@ export const Header: React.FC = () => {
                 }`}
                 title={
                   selectedProject.uncommittedCount === 0
-                    ? 'Рабочее дерево чисто (нет незакоммиченных изменений)'
-                    : `Есть измененные файлы: ${selectedProject.uncommittedCount}`
+                    ? t.git.cleanWorkingTree
+                    : `${t.git.unstagedCount.replace('{count}', String(selectedProject.uncommittedCount))}`
                 }
               >
                 <CircleDot className="w-2.5 h-2.5 shrink-0" />
@@ -211,7 +211,7 @@ export const Header: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveTab('git')}
-              title={`Git Worktrees (${worktrees.length}): управление изолированными деревьями задач на вкладке Git`}
+              title={t.header.worktreeCountTooltip.replace('{count}', String(worktrees.length))}
               className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded border font-mono whitespace-nowrap transition ${
                 worktrees.filter((w) => !w.isMain).length > 0
                   ? 'text-cyan-300 bg-cyan-950/40 border-cyan-600/50 hover:bg-cyan-900/50 shadow-sm'
@@ -298,7 +298,7 @@ export const Header: React.FC = () => {
           </button>
           <button
             onClick={() => setLanguage('ru')}
-            title="Русский язык"
+            title={t.header.ruLanguageTooltip}
             className={`px-2 py-1 rounded text-[11px] font-semibold transition ${
               language === 'ru'
                 ? 'bg-indigo-600 text-white shadow-sm'

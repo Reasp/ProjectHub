@@ -31,9 +31,9 @@ export const ProjectAnalyticsView: React.FC = () => {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
         <BarChart2 className="w-12 h-12 text-indigo-400/40 mb-3" />
-        <h3 className="text-sm font-semibold text-white mb-1">Проект не выбран</h3>
+        <h3 className="text-sm font-semibold text-white mb-1">{t.header.selectProjectHint}</h3>
         <p className="text-xs text-slate-400 max-w-sm">
-          Выберите проект в левой панели для просмотра аналитики и метрик.
+          {t.analytics.selectProjectToView}
         </p>
       </div>
     );
@@ -72,7 +72,7 @@ export const ProjectAnalyticsView: React.FC = () => {
   // Git Authors Statistics
   const authorCounts: Record<string, number> = {};
   for (const c of gitLogs) {
-    const author = c.author_name || 'Неизвестный';
+    const author = c.author_name || t.analytics.unknownAuthor;
     authorCounts[author] = (authorCounts[author] || 0) + 1;
   }
   const sortedAuthors = Object.entries(authorCounts).sort((a, b) => b[1] - a[1]);

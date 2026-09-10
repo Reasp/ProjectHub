@@ -31,6 +31,7 @@ import {
 import type { LocalWhisperStatusInfo } from '../../types/electron';
 import { CONFIGURABLE_COMMANDS, type CommandPhraseDefinition } from '../../services/voiceCommandPhrases';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useDialog } from '../../hooks/useDialog';
 
 interface VoiceSettingsModalProps {
   isOpen: boolean;
@@ -41,6 +42,7 @@ type TabType = 'devices' | 'phrases' | 'recognition' | 'cheatsheet';
 
 export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, onClose }) => {
   const { t, language } = useTranslation();
+  const dialog = useDialog();
   const [activeTab, setActiveTab] = useState<TabType>('devices');
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>(voiceService.getConfig());
   const [phrasesMap, setPhrasesMap] = useState<Record<string, string[]>>({});
@@ -184,8 +186,8 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
     voiceService.saveCommandPhrases(newMap);
   };
 
-  const handleResetDefaults = () => {
-    if (window.confirm(t.voice.settingsModal.resetConfirm)) {
+  const handleResetDefaults = async () => {
+    if (await dialog.confirm(t.voice.settingsModal.resetConfirm)) {
       const defaults = voiceService.resetCommandPhrases();
       setPhrasesMap(defaults);
       setResetSuccess(true);
@@ -208,52 +210,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
   });
 
   const getCommandTitle = (cmd: CommandPhraseDefinition): string => {
-    switch (cmd.intent) {
-      case 'navigate_ai':
-        return language === 'ru' ? 'Вкладка AI Studio / Чат' : 'Claude AI Studio / Chat Tab';
-      case 'navigate_kanban':
-        return language === 'ru' ? 'Вкладка Задачи / Бэклог' : 'Tasks / Backlog Tab';
-      case 'navigate_milestones':
-        return language === 'ru' ? 'Вкладка Дорожная карта / Майлстоуны' : 'Milestones / Roadmap Tab';
-      case 'navigate_git':
-        return language === 'ru' ? 'Вкладка Git репозиторий' : 'Git Repository Tab';
-      case 'navigate_files':
-        return language === 'ru' ? 'Вкладка Файлы проекта' : 'Project Files Tab';
-      case 'navigate_prs':
-        return language === 'ru' ? 'Вкладка Pull Requests' : 'Pull Requests Tab';
-      case 'navigate_docs':
-        return language === 'ru' ? 'Вкладка Документы и ADR' : 'Docs & ADR Tab';
-      case 'navigate_analytics':
-        return language === 'ru' ? 'Вкладка Аналитика' : 'Analytics Tab';
-      case 'toggle_terminal':
-        return language === 'ru' ? 'Панель Терминала' : 'Terminal Panel';
-      case 'toggle_sidebar':
-        return language === 'ru' ? 'Меню проектов (скрыть / показать)' : 'Project Menu (toggle)';
-      case 'hide_sidebar':
-        return language === 'ru' ? 'Скрыть меню проектов' : 'Hide Project Menu';
-      case 'show_sidebar':
-        return language === 'ru' ? 'Показать меню проектов' : 'Show Project Menu';
-      case 'new_ai_session':
-        return language === 'ru' ? 'Создать новый чат' : 'Create New Chat';
-      case 'close_ai_session':
-        return language === 'ru' ? 'Закрыть текущий чат' : 'Close Current Chat';
-      case 'switch_session_next':
-        return language === 'ru' ? 'Следующий чат' : 'Next Chat';
-      case 'switch_session_prev':
-        return language === 'ru' ? 'Предыдущий чат' : 'Previous Chat';
-      case 'quick_next_task':
-        return language === 'ru' ? 'Быстрый промпт: Следующая задача' : 'Quick Prompt: Next Task';
-      case 'quick_commit':
-        return language === 'ru' ? 'Быстрый промпт: Комить' : 'Quick Prompt: Commit';
-      case 'quick_deploy':
-        return language === 'ru' ? 'Быстрый промпт: Деплой' : 'Quick Prompt: Deploy';
-      case 'agent_approve':
-        return language === 'ru' ? 'Одобрить действие агента' : 'Approve Agent Action';
-      case 'agent_reject':
-        return language === 'ru' ? 'Отклонить действие агента' : 'Reject Agent Action';
-      default:
-        return cmd.intent;
-    }
+    return t.voice.settingsModal.commandTitles[cmd.intent] || cmd.intent;
   };
 
   return createPortal(
@@ -346,7 +303,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
               title={t.voice.settingsModal.resetDefaults}
             >
               <RotateCcw className="w-3 h-3 text-slate-400" />
-              <span>{resetSuccess ? (language === 'ru' ? 'Сброшено!' : 'Reset!') : t.voice.settingsModal.resetDefaults}</span>
+              <span>{resetSuccess ? t.voice.settingsModal.resetDone : t.voice.settingsModal.resetDefaults}</span>
             </button>
           )}
         </div>
@@ -383,7 +340,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                     title={t.voice.settingsModal.deviceRefresh}
                   >
                     <RefreshCw className={`w-3 h-3 ${isLoadingDevices ? 'animate-spin' : ''}`} />
-                    <span>{language === 'ru' ? 'Обновить список' : 'Refresh'}</span>
+                    <span>{t.voice.settingsModal.refreshList}</span>
                   </button>
                 </div>
 
@@ -407,7 +364,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                   <div className="flex items-center gap-2 text-[11px] text-slate-400 truncate">
                     <span className="text-slate-500">{t.voice.settingsModal.deviceActiveChannel}:</span>
                     <span className="font-mono text-indigo-300 truncate font-medium">
-                      {activeMicLabel || (voiceConfig.audioInputDeviceId ? (language === 'ru' ? 'Выбранное устройство' : 'Selected device') : t.voice.settingsModal.deviceDefault)}
+                      {activeMicLabel || (voiceConfig.audioInputDeviceId ? t.voice.settingsModal.deviceSelected : t.voice.settingsModal.deviceDefault)}
                     </span>
                   </div>
 
@@ -452,7 +409,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                     className="flex items-center gap-1.5 text-[11px] font-semibold text-purple-300 hover:text-white px-2.5 py-1 rounded-lg bg-purple-950/40 border border-purple-500/30 hover:bg-purple-900/50 transition disabled:opacity-50"
                   >
                     <Volume2 className={`w-3.5 h-3.5 ${isPlayingTest ? 'animate-bounce text-purple-400' : ''}`} />
-                    <span>{isPlayingTest ? (language === 'ru' ? 'Звучит сигнал...' : 'Playing...') : t.voice.settingsModal.deviceTestSound}</span>
+                    <span>{isPlayingTest ? t.voice.settingsModal.playingSignal : t.voice.settingsModal.deviceTestSound}</span>
                   </button>
                 </div>
 
@@ -510,7 +467,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                 <Sparkles className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="font-semibold text-white leading-relaxed">
-                    {language === 'ru' ? 'Кастомизация голосовых триггеров' : 'Voice Trigger Customization'}
+                    {t.voice.settingsModal.customTriggers}
                   </p>
                   <p className="text-[11px] text-slate-300 leading-relaxed">
                     {t.voice.settingsModal.phrasesHint}
@@ -552,7 +509,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={language === 'ru' ? 'Поиск команды или фразы...' : 'Search command or phrase...'}
+                    placeholder={t.voice.settingsModal.searchCommandsPlaceholder}
                     className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                   />
                   {searchQuery && (
@@ -571,7 +528,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                 {filteredCommands.length === 0 ? (
                   <div className="p-8 text-center text-slate-500 text-xs bg-slate-950/30 rounded-2xl border border-slate-800">
                     <AlertCircle className="w-6 h-6 mx-auto mb-2 text-slate-600" />
-                    {language === 'ru' ? 'Команды не найдены по текущему фильтру' : 'No commands found'}
+                    {t.voice.settingsModal.noCommandsFound}
                   </div>
                 ) : (
                   filteredCommands.map((cmd) => {
@@ -594,7 +551,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                             <p className="text-[11px] text-slate-400 mt-0.5">{cmd.feedbackText}</p>
                           </div>
                           <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-400 border border-slate-700/50">
-                            {phrases.length} {language === 'ru' ? 'фраз' : 'phrases'}
+                            {phrases.length} {t.voice.settingsModal.phrasesCount}
                           </span>
                         </div>
 
@@ -603,7 +560,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                           {phrases.map((phrase) => {
                             const isHighlight =
                               cmd.intent === 'navigate_ai' &&
-                              ['чат', 'чет', 'чад', 'чят'].includes(phrase.toLowerCase());
+                              ['chat', '\u0447\u0430\u0442', '\u0447\u0435\u0442', '\u0447\u0430\u0434', '\u0447\u044f\u0442'].includes(phrase.toLowerCase());
 
                             return (
                               <span
@@ -619,7 +576,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                                   type="button"
                                   onClick={() => handleRemovePhrase(cmd.intent, phrase)}
                                   className="p-0.5 rounded hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 transition"
-                                  title={language === 'ru' ? `Удалить фразу «${phrase}»` : `Remove phrase "${phrase}"`}
+                                  title={t.voice.settingsModal.removePhraseTitle.replace('{phrase}', phrase)}
                                 >
                                   <X className="w-3 h-3" />
                                 </button>
@@ -673,12 +630,10 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                 <div>
                   <div className="font-semibold text-white flex items-center gap-2">
                     <Activity className="w-4 h-4 text-indigo-400" />
-                    {language === 'ru' ? 'Непрерывный Hands-Free режим' : 'Continuous Hands-Free Mode'}
+                    {t.voice.settingsModal.continuousHandsFree}
                   </div>
                   <div className="text-[11px] text-slate-400 mt-1 max-w-lg">
-                    {language === 'ru'
-                      ? 'Звук пишется непрерывно и нарезается на фразы с помощью локального детектора VAD без необходимости удерживать горячие клавиши.'
-                      : 'Audio is recorded continuously and chunked by local VAD detector without needing to hold hotkeys.'}
+                    {t.voice.settingsModal.continuousHandsFreeDesc}
                   </div>
                 </div>
                 <button
@@ -699,9 +654,9 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
               {/* VAD Silence Threshold Slider */}
               <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
                 <div className="flex items-center justify-between text-slate-300 font-semibold">
-                  <span>{language === 'ru' ? 'Чувствительность паузы тишины (VAD)' : 'VAD Silence Threshold'}</span>
+                  <span>{t.voice.settingsModal.vadSilenceThreshold}</span>
                   <span className="font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
-                    {voiceConfig.vadSilenceThresholdMs} мс
+                    {voiceConfig.vadSilenceThresholdMs} ms
                   </span>
                 </div>
                 <input
@@ -718,16 +673,16 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                   className="w-full accent-indigo-500 cursor-pointer"
                 />
                 <div className="flex justify-between text-[10px] text-slate-500">
-                  <span>{language === 'ru' ? 'Быстро (300 мс)' : 'Fast (300 ms)'}</span>
-                  <span>{language === 'ru' ? 'Баланс (480 мс)' : 'Balanced (480 ms)'}</span>
-                  <span>{language === 'ru' ? 'Длинные паузы (1000 мс)' : 'Long pauses (1000 ms)'}</span>
+                  <span>{t.voice.settingsModal.vadFast}</span>
+                  <span>{t.voice.settingsModal.vadBalanced}</span>
+                  <span>{t.voice.settingsModal.vadLong}</span>
                 </div>
               </div>
 
               {/* Recognition Engine: Whisper pipeline vs browser Web Speech API */}
               <div className="space-y-2 p-4 rounded-xl bg-slate-950/60 border border-slate-800">
                 <label className="block text-slate-300 font-semibold mb-1.5">
-                  {language === 'ru' ? 'Движок распознавания речи' : 'Speech Recognition Engine'}
+                  {t.voice.settingsModal.recognitionEngine}
                 </label>
                 <select
                   value={voiceConfig.engine}
@@ -742,23 +697,17 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
                 >
                   <option value="whisper">
-                    {language === 'ru'
-                      ? 'Whisper (VAD + локальная модель или облако)'
-                      : 'Whisper (VAD + local model or cloud)'}
+                    {t.voice.settingsModal.engineWhisperOption}
                   </option>
                   <option value="webspeech" disabled={!voiceService.isWebSpeechAvailable}>
-                    {language === 'ru'
-                      ? `Web Speech API (браузерное распознавание${voiceService.isWebSpeechAvailable ? '' : ' — недоступно'})`
-                      : `Web Speech API (browser recognition${voiceService.isWebSpeechAvailable ? '' : ' — unavailable'})`}
+                    {t.voice.settingsModal.engineWebSpeechOption}{voiceService.isWebSpeechAvailable ? '' : ' — N/A'}
                   </option>
                 </select>
                 {voiceConfig.engine === 'webspeech' && (
                   <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-[11px] text-amber-200 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                     <span>
-                      {language === 'ru'
-                        ? 'Распознавание выполняется встроенным движком Chromium (SpeechRecognition). В Electron без ключа Google Speech API он может вернуть ошибку «network» — тогда переключитесь на Whisper.'
-                        : 'Recognition runs on the built-in Chromium engine (SpeechRecognition). In Electron without a Google Speech API key it may fail with a "network" error — switch back to Whisper in that case.'}
+                      {t.voice.settingsModal.engineWebSpeechDesc}
                     </span>
                   </div>
                 )}
@@ -769,7 +718,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
               <div className="space-y-3 p-4 rounded-xl bg-slate-950/60 border border-slate-800">
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1.5">
-                    {language === 'ru' ? 'Провайдер Whisper' : 'Whisper Provider'}
+                    {t.voice.settingsModal.whisperProviderLabel}
                   </label>
                   <select
                     value={voiceConfig.whisperProvider}
@@ -787,12 +736,10 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                     className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
                   >
                     <option value="local">
-                      {language === 'ru'
-                        ? 'Встроенный локальный Whisper (Изолированный Worker поток, 100% офлайн)'
-                        : 'Embedded Local Whisper (Isolated Worker thread, 100% offline)'}
+                      {t.voice.settingsModal.whisperLocalWorkerOption}
                     </option>
-                    <option value="groq">Groq Whisper (whisper-large-v3, сверхбыстрый ~150мс)</option>
-                    <option value="openai">OpenAI Whisper (whisper-1, облачный)</option>
+                    <option value="groq">Groq Whisper (whisper-large-v3, ~150ms)</option>
+                    <option value="openai">OpenAI Whisper (whisper-1)</option>
                   </select>
                 </div>
 
@@ -801,9 +748,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                     <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-[11px] text-indigo-300 flex items-center gap-2">
                       <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span>
-                        {language === 'ru'
-                          ? 'Инференс локальной модели выполняется в фоновом потоке worker_threads без нагрузки на UI. Модель не грузится на старте приложения — только при первом включении Hands-Free или по кнопке прогрева.'
-                          : 'Local model inference runs in a background worker thread with 0 UI latency. The model is not loaded at app start — only on first Hands-Free activation or via the warm-up button.'}
+                        {t.voice.settingsModal.whisperLocalWorkerNotice}
                       </span>
                     </div>
 
@@ -821,17 +766,17 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                         )}
                         <div className="min-w-0">
                           <div className="text-slate-200 font-semibold truncate">
-                            {language === 'ru' ? 'Модель' : 'Model'}: {whisperStatus?.model || voiceConfig.whisperModel}
+                            {t.voice.settingsModal.whisperModelLabel}: {whisperStatus?.model || voiceConfig.whisperModel}
                           </div>
                           <div className="text-slate-400 truncate">
                             {whisperStatus?.status === 'ready'
-                              ? (language === 'ru' ? 'Готова' : 'Ready') +
+                              ? t.voice.settingsModal.whisperReady +
                                 (whisperStatus.loadTimeMs ? ` (${(whisperStatus.loadTimeMs / 1000).toFixed(1)} s)` : '')
                               : whisperStatus?.status === 'loading'
-                              ? language === 'ru' ? 'Загружается…' : 'Loading…'
+                              ? t.voice.settingsModal.whisperLoading
                               : whisperStatus?.status === 'error'
-                              ? (language === 'ru' ? 'Ошибка: ' : 'Error: ') + (whisperStatus.error || '')
-                              : language === 'ru' ? 'Не загружена' : 'Not loaded'}
+                              ? t.voice.settingsModal.whisperError + (whisperStatus.error || '')
+                              : t.voice.settingsModal.whisperNotLoaded}
                           </div>
                         </div>
                       </div>
@@ -841,7 +786,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                         disabled={isWarmingUp || whisperStatus?.status === 'loading' || whisperStatus?.status === 'ready'}
                         className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-semibold shrink-0 transition"
                       >
-                        {language === 'ru' ? 'Прогреть модель' : 'Warm up model'}
+                        {t.voice.settingsModal.whisperWarmup}
                       </button>
                     </div>
                   </div>
@@ -851,7 +796,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                 {voiceConfig.whisperProvider !== 'local' && (
                   <div>
                     <label className="block text-slate-300 font-semibold mb-1">
-                      API Ключ {voiceConfig.whisperProvider === 'groq' ? 'Groq' : 'OpenAI'}
+                      {t.voice.settingsModal.apiKeyLabel} {voiceConfig.whisperProvider === 'groq' ? 'Groq' : 'OpenAI'}
                     </label>
                     <input
                       type="password"
@@ -861,12 +806,12 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                         voiceService.saveConfig({ whisperApiKey: val });
                         setVoiceConfig((c) => ({ ...c, whisperApiKey: val }));
                       }}
-                      placeholder={language === 'ru' ? 'Введите API-ключ провайдера' : 'Enter provider API key'}
+                      placeholder={t.voice.settingsModal.apiKeyPlaceholder}
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                     />
                     <div className="mt-1 flex items-center gap-1.5 text-[10px] text-emerald-400 font-medium">
                       <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                      <span>Ключ надёжно защищён системным шифрованием (safeStorage / DPAPI)</span>
+                      <span>{t.voice.settingsModal.apiKeySafeNotice}</span>
                     </div>
                   </div>
                 )}
@@ -883,31 +828,31 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
               <div className="p-4 rounded-xl bg-indigo-950/20 border border-indigo-900/40 space-y-3">
                 <div className="font-bold text-indigo-300 flex items-center gap-2">
                   <Sparkles className="w-4 h-4" />
-                  {language === 'ru' ? 'Основные голосовые паттерны' : 'Key Voice Patterns'}
+                  {t.voice.settingsModal.keyPatternsTitle}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-300">
                   <div className="p-3 rounded-lg bg-slate-950/50 border border-slate-800 space-y-1">
-                    <span className="font-semibold text-white">Вкладки и навигация:</span>
+                    <span className="font-semibold text-white">{t.voice.settingsModal.cheatTabsLabel}</span>
                     <p className="text-[11px] text-slate-400">
-                      «чат», «студия», «задачи», «гит», «доки», «файлы», «пиары», «аналитика»
+                      {t.voice.settingsModal.cheatTabsExamples}
                     </p>
                   </div>
                   <div className="p-3 rounded-lg bg-slate-950/50 border border-slate-800 space-y-1">
-                    <span className="font-semibold text-white">Проекты:</span>
+                    <span className="font-semibold text-white">{t.voice.settingsModal.cheatProjectsLabel}</span>
                     <p className="text-[11px] text-slate-400">
-                      «проект 1», «проект 2», «следующий проект», «перейди на проект [Имя]»
+                      {t.voice.settingsModal.cheatProjectsExamples}
                     </p>
                   </div>
                   <div className="p-3 rounded-lg bg-slate-950/50 border border-slate-800 space-y-1">
-                    <span className="font-semibold text-white">Панели и интерфейс:</span>
+                    <span className="font-semibold text-white">{t.voice.settingsModal.cheatPanelsLabel}</span>
                     <p className="text-[11px] text-slate-400">
-                      «скрой меню», «покажи меню», «меню», «терминал», «консоль»
+                      {t.voice.settingsModal.cheatPanelsExamples}
                     </p>
                   </div>
                   <div className="p-3 rounded-lg bg-slate-950/50 border border-slate-800 space-y-1">
-                    <span className="font-semibold text-white">Claude AI Studio:</span>
+                    <span className="font-semibold text-white">{t.voice.settingsModal.cheatAiLabel}</span>
                     <p className="text-[11px] text-slate-400">
-                      «новый чат», «чат 1», «промпт [текст]», «принять», «отклонить», «лимиты»
+                      {t.voice.settingsModal.cheatAiExamples}
                     </p>
                   </div>
                 </div>
@@ -919,9 +864,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-3 border-t border-slate-800 bg-[#0e111b]/80 shrink-0">
           <div className="text-[11px] text-slate-500">
-            {language === 'ru'
-              ? 'Изменения фраз сохраняются мгновенно и сразу учитываются распознаванием.'
-              : 'Phrase changes are saved immediately and take effect in real-time.'}
+            {t.voice.settingsModal.instantSaveHint}
           </div>
           <button
             type="button"

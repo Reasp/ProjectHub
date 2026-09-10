@@ -1,5 +1,8 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { useProjectStore } from '../../store/useProjectStore';
+import { ru } from '../../i18n/ru';
+import { en } from '../../i18n/en';
 
 interface Props {
   children: ReactNode;
@@ -45,6 +48,8 @@ export class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
+      const t = (useProjectStore.getState().language === 'en' ? en : ru).errorBoundary;
+
       return (
         <div className="min-h-screen w-full bg-[#0f1117] text-slate-100 flex items-center justify-center p-6 select-none font-sans">
           <div className="bg-[#141724] border border-rose-900/60 rounded-2xl max-w-xl w-full p-6 shadow-2xl flex flex-col gap-4 animate-in fade-in duration-200">
@@ -53,8 +58,8 @@ export class ErrorBoundary extends Component<Props, State> {
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
-                <h2 className="text-base font-semibold text-white">Произошла ошибка рендеринга</h2>
-                <p className="text-xs text-rose-300/80">Интерфейс был защищен от падения в черный экран</p>
+                <h2 className="text-base font-semibold text-white">{t.title}</h2>
+                <p className="text-xs text-rose-300/80">{t.subtitle}</p>
               </div>
             </div>
 
@@ -73,7 +78,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 onClick={this.handleReset}
                 className="px-3.5 py-1.5 rounded-lg border border-slate-700 hover:bg-slate-800 text-xs text-slate-300 font-medium transition"
               >
-                Попробовать снова
+                {t.retry}
               </button>
               <button
                 type="button"
@@ -81,7 +86,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs text-white font-medium flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                Перезагрузить приложение
+                {t.reloadApp}
               </button>
             </div>
           </div>

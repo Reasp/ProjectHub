@@ -22,11 +22,15 @@ import {
 } from 'lucide-react';
 import { useSwarmStore } from '../../../store/useSwarmStore';
 import { useProjectStore } from '../../../store/useProjectStore';
+import { useTranslation } from '../../../i18n/useTranslation';
+import { useDialog } from '../../../hooks/useDialog';
 import { MarkdownViewer } from '../../common/MarkdownViewer';
 import { NewSwarmModal } from './NewSwarmModal';
 import type { AgentSlotState, SwarmSession } from '../../../types/electron';
 
 export const SwarmArenaView: React.FC = () => {
+  const { t } = useTranslation();
+  const dialog = useDialog();
   const {
     swarms,
     activeSwarmId,
@@ -65,7 +69,7 @@ export const SwarmArenaView: React.FC = () => {
     try {
       const res = await pickWinnerAction(currentSwarm.id, agentId, true);
       if (!res.success) {
-        alert(`Ошибка при слиянии решения победителя: ${res.error}`);
+        await dialog.alert(t.swarm.mergeWinnerError.replace('{error}', res.error || ''));
       }
     } finally {
       setIsMergingWinner(null);
@@ -83,7 +87,7 @@ export const SwarmArenaView: React.FC = () => {
   if (!projectPath) {
     return (
       <div className="flex-1 flex items-center justify-center p-8 text-muted-foreground text-sm">
-        Выберите проект для работы с мульти-агентным роем.
+        {t.swarm.selectProjectPrompt}
       </div>
     );
   }
@@ -99,7 +103,7 @@ export const SwarmArenaView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base font-bold tracking-tight text-foreground">
-                Swarm Arena & Multi-Agent Fleet
+                {t.swarm.title}
               </h1>
               {currentSwarm && (
                 <span
@@ -112,15 +116,15 @@ export const SwarmArenaView: React.FC = () => {
                   }`}
                 >
                   {currentSwarm.status === 'running'
-                    ? 'Выполняется'
+                    ? t.swarm.statusRunning
                     : currentSwarm.status === 'completed'
-                    ? 'Завершено'
+                    ? t.swarm.statusCompleted
                     : currentSwarm.status}
                 </span>
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Параллельная генерация в Git Worktrees, соревновательный Side-by-Side смотр и выбор победителя
+              {t.swarm.subtitle}
             </p>
           </div>
         </div>
@@ -135,8 +139,10 @@ export const SwarmArenaView: React.FC = () => {
             >
               {projectSwarms.map((s, idx) => (
                 <option key={s.id} value={s.id}>
-                  Запуск #{projectSwarms.length - idx}: {s.mode === 'fan_out' ? 'Арена' : 'Конвейер'} (
-                  {new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                  {t.swarm.runHistoryItem
+                    .replace('{index}', String(projectSwarms.length - idx))
+                    .replace('{mode}', s.mode === 'fan_out' ? t.swarm.modeArena : t.swarm.modePipelineName)
+                    .replace('{date}', new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}
                 </option>
               ))}
             </select>
@@ -148,7 +154,7 @@ export const SwarmArenaView: React.FC = () => {
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 transition-colors"
             >
               <Square className="w-3.5 h-3.5 fill-current" />
-              Остановить рой
+              {t.swarm.stopAll}
             </button>
           )}
 
@@ -157,7 +163,7 @@ export const SwarmArenaView: React.FC = () => {
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-all"
           >
             <Plus className="w-3.5 h-3.5" />
-            Новый запуск
+            {t.swarm.newDuel}
           </button>
         </div>
       </div>
@@ -171,18 +177,17 @@ export const SwarmArenaView: React.FC = () => {
               <Sparkles className="w-8 h-8" />
             </div>
             <h2 className="text-lg font-bold text-foreground mb-1">
-              Нет активных состязаний роя
+              {t.swarm.noActiveSwarm}
             </h2>
             <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
-              Запустите несколько разнородных агентов (Claude Code CLI, OpenAI Codex, DeepSeek, Ollama)
-              параллельно над одной задачей в изолированных Git Worktrees и выберите лучшее решение в один клик.
+              {t.swarm.noActiveSwarmDesc}
             </p>
             <button
               onClick={() => openNewSwarmModal()}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-md transition-all"
             >
               <Play className="w-4 h-4 fill-current" />
-              Запустить состязание в Swarm Arena
+              {t.swarm.startSwarmButton}
             </button>
           </div>
         ) : (
@@ -219,7 +224,7 @@ export const SwarmArenaView: React.FC = () => {
               </div>
 
               <div className="text-right text-[11px] text-muted-foreground shrink-0">
-                Базовая ветка: <span className="font-mono text-foreground font-semibold">{currentSwarm.baseBranch}</span>
+                {t.swarm.baseBranchLabel} <span className="font-mono text-foreground font-semibold">{currentSwarm.baseBranch}</span>
               </div>
             </div>
 
@@ -228,10 +233,12 @@ export const SwarmArenaView: React.FC = () => {
               <div className="p-4 rounded-xl border border-border/70 bg-card/30">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Этапы конвейера (Handoff Pipeline)
+                    {t.swarm.handoffStagesTitle}
                   </span>
                   <span className="text-xs text-primary font-medium">
-                    Этап {(currentSwarm.currentHandoffStageIndex ?? 0) + 1} из {currentSwarm.handoffStages.length}
+                    {t.swarm.handoffStageProgress
+                      .replace('{current}', String((currentSwarm.currentHandoffStageIndex ?? 0) + 1))
+                      .replace('{total}', String(currentSwarm.handoffStages.length))}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -266,7 +273,7 @@ export const SwarmArenaView: React.FC = () => {
                           </div>
                           {stage.durationMs && (
                             <div className="text-[10px] text-muted-foreground mt-1">
-                              {(stage.durationMs / 1000).toFixed(1)} с
+                              {(stage.durationMs / 1000).toFixed(1)} {t.swarm.secondsUnit}
                             </div>
                           )}
                         </div>
@@ -284,7 +291,7 @@ export const SwarmArenaView: React.FC = () => {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Претенденты состязания ({currentSwarm.agents.length})
+                  {t.swarm.contestantsTitle.replace('{count}', String(currentSwarm.agents.length))}
                 </h3>
               </div>
 
@@ -321,7 +328,7 @@ export const SwarmArenaView: React.FC = () => {
                             </span>
                             {isWinner && (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
-                                <Trophy className="w-3 h-3 text-amber-400" /> ПОБЕДИТЕЛЬ
+                                <Trophy className="w-3 h-3 text-amber-400" /> {t.swarm.winnerBadge}
                               </span>
                             )}
                           </div>
@@ -342,11 +349,11 @@ export const SwarmArenaView: React.FC = () => {
                           <button
                             onClick={() => handlePickWinner(agent.id)}
                             disabled={isMergingWinner !== null || agent.status !== 'completed'}
-                            title="Слить решение этого агента в основную ветку и закрыть остальные"
+                            title={t.swarm.mergeWinnerTooltip}
                             className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-30 transition-all shadow-xs shrink-0"
                           >
                             <Trophy className="w-3 h-3" />
-                            {isMergingWinner === agent.id ? 'Слияние...' : 'Выбрать (Pick)'}
+                            {isMergingWinner === agent.id ? t.swarm.mergingStatus : t.swarm.pickButton}
                           </button>
                         )}
                       </div>
@@ -364,12 +371,12 @@ export const SwarmArenaView: React.FC = () => {
                           {agent.metrics.durationMs ? (
                             <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3" />
-                              {(agent.metrics.durationMs / 1000).toFixed(1)} с
+                              {(agent.metrics.durationMs / 1000).toFixed(1)} {t.swarm.secondsUnit}
                             </span>
                           ) : null}
 
                           {agent.metrics.tokensEstimated ? (
-                            <span title="Примерное число токенов">
+                            <span title={t.swarm.approxTokensTooltip}>
                               ~{agent.metrics.tokensEstimated} tok
                             </span>
                           ) : null}
@@ -393,7 +400,7 @@ export const SwarmArenaView: React.FC = () => {
                               : 'border-transparent text-muted-foreground hover:text-foreground'
                           }`}
                         >
-                          <FileText className="w-3.5 h-3.5" /> Вывод
+                          <FileText className="w-3.5 h-3.5" /> {t.swarm.outputTab}
                         </button>
                         <button
                           onClick={() => setAgentTab(agent.id, 'logs')}
@@ -403,7 +410,7 @@ export const SwarmArenaView: React.FC = () => {
                               : 'border-transparent text-muted-foreground hover:text-foreground'
                           }`}
                         >
-                          <Terminal className="w-3.5 h-3.5" /> Логи ({agent.logs.length})
+                          <Terminal className="w-3.5 h-3.5" /> {t.swarm.logsTab.replace('{count}', String(agent.logs.length))}
                         </button>
                         <button
                           onClick={() => setAgentTab(agent.id, 'diff')}
@@ -413,7 +420,7 @@ export const SwarmArenaView: React.FC = () => {
                               : 'border-transparent text-muted-foreground hover:text-foreground'
                           }`}
                         >
-                          <Code2 className="w-3.5 h-3.5" /> Дифф ({agent.diffSummary?.filesChanged || 0})
+                          <Code2 className="w-3.5 h-3.5" /> {t.swarm.diffTab.replace('{count}', String(agent.diffSummary?.filesChanged || 0))}
                         </button>
                       </div>
 
@@ -431,10 +438,10 @@ export const SwarmArenaView: React.FC = () => {
                                 {agent.status === 'running' ? (
                                   <div className="flex items-center gap-2">
                                     <RefreshCw className="w-4 h-4 animate-spin text-primary" />
-                                    Генерация решения...
+                                    {t.swarm.generatingSolution}
                                   </div>
                                 ) : (
-                                  'Ожидание старта'
+                                  t.swarm.waitingStart
                                 )}
                               </div>
                             )}
@@ -447,9 +454,9 @@ export const SwarmArenaView: React.FC = () => {
                               <div
                                 key={i}
                                 className={`leading-relaxed ${
-                                  line.includes('Error') || line.includes('Ошибка')
+                                  /(error|fail|\u043e\u0448\u0438\u0431\u043a)/i.test(line)
                                     ? 'text-rose-400'
-                                    : line.includes('готово') || line.includes('успешно')
+                                    : /(done|success|\u0433\u043e\u0442\u043e\u0432|\u0443\u0441\u043f\u0435\u0448\u043d)/i.test(line)
                                     ? 'text-emerald-400'
                                     : ''
                                 }`}
@@ -459,7 +466,7 @@ export const SwarmArenaView: React.FC = () => {
                             ))}
                             {agent.logs.length === 0 && (
                               <div className="text-center text-muted-foreground py-8">
-                                Нет записей логов
+                                {t.swarm.noLogsRecorded}
                               </div>
                             )}
                           </div>
@@ -493,7 +500,7 @@ export const SwarmArenaView: React.FC = () => {
                               </div>
                             ) : (
                               <div className="h-full flex items-center justify-center text-muted-foreground">
-                                Изменений в рабочей ветке нет
+                                {t.swarm.noChangesInWorktree}
                               </div>
                             )}
                           </div>

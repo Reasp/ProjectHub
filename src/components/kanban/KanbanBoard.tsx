@@ -18,12 +18,14 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useDialog } from '../../hooks/useDialog';
 import type { BacklogTask } from '../../types/electron';
 import { TaskDetailModal } from './TaskDetailModal';
 import { TaskListView } from './TaskListView';
 
 export const KanbanBoard: React.FC = () => {
   const { t } = useTranslation();
+  const dialog = useDialog();
   const {
     tasks,
     milestones,
@@ -128,9 +130,13 @@ export const KanbanBoard: React.FC = () => {
 
     // Rule 5 check: moving to Done directly
     if (targetStatus === 'Done' && (targetTask.status === 'To Do' || targetTask.status === 'In Progress')) {
-      const proceed = confirm(
-        `Rule 5 / Правило 5: Recommend moving to "Review" first.\nDo you really want to move ${targetTask.id} directly to Done?`
-      );
+      const proceed = await dialog.confirm({
+        title: t.kanban.rule5Title,
+        message: t.kanban.rule5Message.replace('{id}', targetTask.id),
+        confirmText: t.kanban.moveToDoneAnyway,
+        cancelText: t.kanban.moveToReviewInstead,
+        danger: true
+      });
       if (!proceed) {
         // Move to Review instead
         updateTaskStatusLocal(taskId, 'Review');
@@ -259,7 +265,7 @@ export const KanbanBoard: React.FC = () => {
                 onClick={() =>
                   setSelectedLabelFilter(selectedLabelFilter === label ? null : label)
                 }
-                title={`Фильтровать по тегу "${label}"`}
+                title={t.kanban.filterByTag.replace('{tag}', label)}
                 className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition whitespace-nowrap shrink-0 ${
                   selectedLabelFilter === label
                     ? 'bg-indigo-600 text-white shadow-sm'
@@ -274,17 +280,17 @@ export const KanbanBoard: React.FC = () => {
 
           {/* Milestone Filter Dropdown */}
           {milestones.length > 0 && (
-            <div className="flex items-center gap-1.5 ml-auto shrink-0 whitespace-nowrap" title="Фильтрация задач по майлстоуну">
+            <div className="flex items-center gap-1.5 ml-auto shrink-0 whitespace-nowrap" title={t.kanban.filterByMilestone}>
               <span className="text-[11px] text-slate-500 font-medium flex items-center gap-1 shrink-0">
                 <Target className="w-3 h-3 text-indigo-400 shrink-0" />
-                Этап:
+                {t.kanban.milestoneStage}
               </span>
               <select
                 value={selectedMilestoneFilter || ''}
                 onChange={(e) => setSelectedMilestoneFilter(e.target.value || null)}
                 className="bg-[#141724] border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-300 focus:outline-none focus:border-indigo-500"
               >
-                <option value="">Все этапы</option>
+                <option value="">{t.kanban.allStages}</option>
                 {milestones.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.id}: {m.title}
@@ -295,7 +301,7 @@ export const KanbanBoard: React.FC = () => {
                 <button
                   onClick={() => setSelectedMilestoneFilter(null)}
                   className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition"
-                  title="Сбросить фильтр этапа"
+                  title={t.kanban.resetMilestoneFilter}
                 >
                   <X className="w-3 h-3" />
                 </button>

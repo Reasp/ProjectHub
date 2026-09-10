@@ -100,7 +100,7 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[10px] text-amber-400 font-semibold uppercase tracking-wider flex items-center gap-1 mr-1">
             <span className="text-xs">⚡</span>
-            <span>{language === 'ru' ? 'Быстрые команды:' : 'Quick Prompts:'}</span>
+            <span>{t.aiStudio.input.quickPrompts}</span>
           </span>
 
           <button
@@ -141,13 +141,13 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
         {isSpeech && (
           <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] animate-pulse">
             <Radio className="w-3 h-3 text-emerald-400" />
-            <span>Слушаю речь (Talon Voice)...</span>
+            <span>{t.voice.listeningSpeech}</span>
           </div>
         )}
         {isTranscribing && (
           <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[11px] animate-pulse">
             <Zap className="w-3 h-3 text-amber-400 animate-spin" />
-            <span>Инференс Whisper...</span>
+            <span>{t.voice.inferring}</span>
           </div>
         )}
       </div>
@@ -201,7 +201,7 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
             e.target.style.height = `${Math.min(e.target.scrollHeight, 180)}px`;
           }}
           onKeyDown={handleKeyDown}
-          placeholder={isHandsFree ? 'Talon Voice активен: говорите текст вслух без кнопок...' : t.aiStudio.input.placeholder}
+          placeholder={isHandsFree ? t.aiStudio.input.handsFreePlaceholder : t.aiStudio.input.placeholder}
           className="flex-1 bg-transparent text-xs text-white placeholder:text-slate-500 focus:outline-none resize-none font-sans px-2 py-1 leading-relaxed max-h-44"
         />
 
@@ -219,13 +219,13 @@ export const PromptInputArea: React.FC<PromptInputAreaProps> = memo(({
                 ? 'bg-indigo-600 text-white ring-2 ring-indigo-500/40'
                 : 'bg-[#121522] border border-slate-700 hover:border-indigo-500/70 text-slate-400 hover:text-indigo-400'
             }`}
-            title={isHandsFree ? 'Talon Voice Hands-Free активен (кликните для отключения)' : 'Включить Talon Voice диктовку промпта'}
+            title={isHandsFree ? t.aiStudio.input.handsFreeDisableTitle : t.aiStudio.input.handsFreeEnableTitle}
           >
             <Mic className="w-4 h-4" />
           </button>
           <VoiceBadge
-            command={language === 'ru' ? 'промпт [текст]' : 'prompt [text]'}
-            altCommand={language === 'ru' ? 'напиши [текст]' : 'ask [text]'}
+            command={t.aiStudio.input.voicePromptCmd}
+            altCommand={t.aiStudio.input.voiceAskCmd}
             position="top"
           />
         </div>

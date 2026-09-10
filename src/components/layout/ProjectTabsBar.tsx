@@ -65,7 +65,7 @@ export const ProjectTabsBar: React.FC = () => {
                   ? 'bg-indigo-600/20 text-white border-indigo-500/40 shadow-sm'
                   : 'bg-[#141724]/60 hover:bg-[#181d2f] text-slate-400 hover:text-slate-200 border-slate-800/60'
               }`}
-              title={`${project.name}${project.voiceAlias ? ` [Голос: «${project.voiceAlias}»]` : ''} — Скажите: «Проект ${tabNumber}»`}
+              title={t.projectTabs.tabVoiceTitle.replace('{name}', project.name).replace('{number}', String(tabNumber))}
             >
               {/* Voice / Tab Order Badge */}
               <span
@@ -74,7 +74,7 @@ export const ProjectTabsBar: React.FC = () => {
                     ? 'bg-indigo-500/30 text-indigo-200 border-indigo-500/50 font-bold'
                     : 'bg-slate-800/80 text-slate-400 border-slate-700/60 group-hover:text-slate-200'
                 }`}
-                title={`Номер вкладки для голоса: «Проект ${tabNumber}» или «Вкладка ${tabNumber}»`}
+                title={t.projectTabs.tabVoiceNumberTooltip.replace(/\{number\}/g, String(tabNumber))}
               >
                 {tabNumber}
               </span>
@@ -100,13 +100,13 @@ export const ProjectTabsBar: React.FC = () => {
                 {project.voiceAlias && (
                   <span
                     className="text-[9px] font-mono px-1 py-0.2 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-700/50 shrink-0"
-                    title={`Голосовое имя: «${project.voiceAlias}»`}
+                    title={t.projectTabs.voiceAliasTooltip.replace('{alias}', project.voiceAlias)}
                   >
                     «{project.voiceAlias}»
                   </span>
                 )}
                 <VoiceBadge
-                  command={language === 'ru' ? `проект ${tabNumber}` : `project ${tabNumber}`}
+                  command={t.projectTabs.tabVoiceCommand.replace('{number}', String(tabNumber))}
                   altCommand={project.voiceAlias}
                   variant={isSelected ? 'emerald' : 'indigo'}
                 />

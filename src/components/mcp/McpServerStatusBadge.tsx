@@ -14,8 +14,10 @@ import {
 } from 'lucide-react';
 
 import type { McpServerStatus } from '../../types/electron';
+import { useTranslation } from '../../i18n/useTranslation';
 
 export const McpServerStatusBadge: React.FC = () => {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<McpServerStatus | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -101,7 +103,7 @@ export const McpServerStatusBadge: React.FC = () => {
             ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300 hover:bg-emerald-900/50 hover:border-emerald-500/50'
             : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-slate-200'
         }`}
-        title="Встроенный MCP Remote Server (управление приложением из внешних агентов)"
+        title={t.mcp.badgeTooltip}
       >
         <span
           className={`w-2 h-2 rounded-full shrink-0 ${
@@ -128,7 +130,7 @@ export const McpServerStatusBadge: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    Встроенный MCP HTTP/SSE Сервер
+                    {t.mcp.modalTitle}
                     <span
                       className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-normal border ${
                         status.isRunning
@@ -140,7 +142,7 @@ export const McpServerStatusBadge: React.FC = () => {
                     </span>
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    Управление окном ProjectHub из Claude Code, Cursor, Windsurf и Antigravity
+                    {t.mcp.modalDesc}
                   </p>
                 </div>
               </div>
@@ -156,7 +158,7 @@ export const McpServerStatusBadge: React.FC = () => {
             {/* Controls Bar */}
             <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800 text-xs">
               <div className="space-y-0.5">
-                <div className="font-semibold text-slate-200">Эндпоинт SSE:</div>
+                <div className="font-semibold text-slate-200">{t.mcp.sseEndpoint}</div>
                 <div className="font-mono text-indigo-300 text-[11px] select-all">{status.url}</div>
               </div>
               <div className="flex items-center gap-2">
@@ -170,7 +172,7 @@ export const McpServerStatusBadge: React.FC = () => {
                   }`}
                 >
                   <Power className="w-3.5 h-3.5" />
-                  <span>{status.isRunning ? 'Остановить' : 'Запустить'}</span>
+                  <span>{status.isRunning ? t.mcp.stopServer : t.mcp.startServer}</span>
                 </button>
               </div>
             </div>
@@ -178,7 +180,7 @@ export const McpServerStatusBadge: React.FC = () => {
             {/* Startup error (e.g. no free port) */}
             {!status.isRunning && status.lastError && (
               <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-[11px] leading-relaxed">
-                Ошибка запуска: {status.lastError}
+                {t.mcp.startError.replace('{error}', status.lastError)}
               </div>
             )}
 
@@ -187,7 +189,7 @@ export const McpServerStatusBadge: React.FC = () => {
               <div className="flex items-center justify-between text-slate-400 text-[11px]">
                 <span className="flex items-center gap-1 font-semibold text-slate-300">
                   <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                  Сессионный токен доступа (Bearer Token):
+                  {t.mcp.bearerToken}
                 </span>
                 <button
                   type="button"
@@ -195,7 +197,7 @@ export const McpServerStatusBadge: React.FC = () => {
                   className="text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
                 >
                   <RefreshCw className="w-3 h-3" />
-                  Обновить
+                  {t.mcp.regenerateToken}
                 </button>
               </div>
               <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg p-2 font-mono text-[11px] text-slate-300">
@@ -204,7 +206,7 @@ export const McpServerStatusBadge: React.FC = () => {
                   type="button"
                   onClick={() => copyToClipboard(status.token, 'token')}
                   className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800"
-                  title="Скопировать токен"
+                  title={t.mcp.copyTokenTooltip}
                 >
                   {copiedKey === 'token' ? (
                     <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -218,7 +220,7 @@ export const McpServerStatusBadge: React.FC = () => {
             {/* Quick Config Copy */}
             <div className="space-y-2 text-xs">
               <div className="font-semibold text-slate-300 flex items-center justify-between">
-                <span>Конфигурация для Claude Desktop / Cursor (`.mcp.json`):</span>
+                <span>{t.mcp.configTitle}</span>
                 <button
                   type="button"
                   onClick={() => copyToClipboard(mcpJsonConfig, 'config')}
@@ -227,12 +229,12 @@ export const McpServerStatusBadge: React.FC = () => {
                   {copiedKey === 'config' ? (
                     <>
                       <Check className="w-3 h-3 text-emerald-400" />
-                      <span>Скопировано!</span>
+                      <span>{t.mcp.copied}</span>
                     </>
                   ) : (
                     <>
                       <Copy className="w-3 h-3" />
-                      <span>Копировать JSON</span>
+                      <span>{t.mcp.copyJson}</span>
                     </>
                   )}
                 </button>
@@ -247,7 +249,7 @@ export const McpServerStatusBadge: React.FC = () => {
               <div className="font-semibold text-slate-300 flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <Terminal className="w-3.5 h-3.5 text-indigo-400" />
-                  Быстрый HTTP REST вызов (cURL / Скрипты):
+                  {t.mcp.restCallTitle}
                 </span>
                 <button
                   type="button"
@@ -257,12 +259,12 @@ export const McpServerStatusBadge: React.FC = () => {
                   {copiedKey === 'curl' ? (
                     <>
                       <Check className="w-3 h-3 text-emerald-400" />
-                      <span>Скопировано!</span>
+                      <span>{t.mcp.copied}</span>
                     </>
                   ) : (
                     <>
                       <Copy className="w-3 h-3" />
-                      <span>Копировать cURL</span>
+                      <span>{t.mcp.copyCurl}</span>
                     </>
                   )}
                 </button>
@@ -276,14 +278,14 @@ export const McpServerStatusBadge: React.FC = () => {
             <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-[11px] text-slate-400">
               <span className="flex items-center gap-1.5">
                 <Shield className="w-3.5 h-3.5 text-emerald-400" />
-                Привязан строго к <strong className="text-slate-300">127.0.0.1</strong> (без внешнего доступа)
+                {t.mcp.localOnlyNotice}
               </span>
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
                 className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition"
               >
-                Закрыть
+                {t.common.close}
               </button>
             </div>
           </div>

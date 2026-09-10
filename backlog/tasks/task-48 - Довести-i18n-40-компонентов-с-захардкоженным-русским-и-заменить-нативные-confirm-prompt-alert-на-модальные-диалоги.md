@@ -3,9 +3,10 @@ id: TASK-48
 title: >-
   Довести i18n (40 компонентов с захардкоженным русским) и заменить нативные
   confirm/prompt/alert на модальные диалоги
-status: To Do
+status: Review
 assignee: []
 created_date: '2026-09-05 09:10'
+updated_date: '2026-09-10 07:36'
 labels:
   - audit
   - i18n
@@ -38,8 +39,22 @@ type: enhancement
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Все пользовательские строки в src/components вынесены в словари ru/en; grep по кириллице в src/components возвращает только комментарии
-- [ ] #2 Реализованы общие компоненты ConfirmDialog и PromptDialog (Promise-API через хук useDialog), все 14 вызовов confirm/prompt/alert заменены
-- [ ] #3 Логи terminalLogs формируются через t(), либо ключи и параметры сохраняются и локализуются при отображении
-- [ ] #4 Проверено переключение языка: HUD голоса, диалоги подтверждения и MarkdownViewer отображаются на выбранном языке
+- [x] #1 Все пользовательские строки в src/components вынесены в словари ru/en; grep по кириллице в src/components возвращает только комментарии
+- [x] #2 Реализованы общие компоненты ConfirmDialog и PromptDialog (Promise-API через хук useDialog), все 14 вызовов confirm/prompt/alert заменены
+- [x] #3 Логи terminalLogs формируются через t(), либо ключи и параметры сохраняются и локализуются при отображении
+- [x] #4 Проверено переключение языка: HUD голоса, диалоги подтверждения и MarkdownViewer отображаются на выбранном языке
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+1. Очищены от кириллических строк все 40+ компонентов в src/components. Скрипт проверки кириллицы вне комментариев возвращает строго 0 строк.
+2. Реализованы DialogHost, useDialog и useDialogStore с Promise-API (confirm, prompt, alert), полностью заменены нативные блокирующие вызовы confirm/prompt/alert в UI.
+3. Логи terminalLogs формируются через словарь t() и добавлены в словари.
+4. Синхронизированы и расширены словари src/i18n/ru.ts, src/i18n/en.ts и типы src/i18n/types.ts.
+5. TypeScript (npx tsc --noEmit) — 0 ошибок.
+6. ESLint (npm run lint) — 0 ошибок.
+7. Unit-тесты (npm test) — 22 тест-файла, 186 пройденных тестов.
+8. Документация (npm run lint:docs) — 83 файла проверено, 100% валидно, RAG-индекс актуален.
+9. Сборка десктопного приложения (npm run pack:win) выполнена успешно в release/win-unpacked/ProjectHub.exe (Правило 14).
+<!-- SECTION:NOTES:END -->

@@ -22,10 +22,12 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useDialog } from '../../hooks/useDialog';
 import { PtyTabTerminal } from './PtyTabTerminal';
 
 export const TerminalPanel: React.FC = () => {
   const { t } = useTranslation();
+  const dialog = useDialog();
   const {
     isTerminalOpen,
     setTerminalOpen,
@@ -91,7 +93,7 @@ export const TerminalPanel: React.FC = () => {
 
   const confirmAction = (def: { command: string }) =>
     selectedProject
-      ? confirm(
+      ? dialog.confirm(
           t.actions.confirmDeploy
             .replace('{name}', selectedProject.name)
             .replace('{command}', def.command)
@@ -137,7 +139,7 @@ export const TerminalPanel: React.FC = () => {
     processXtermRef.current = term;
     processFitAddonRef.current = fitAddon;
 
-    term.writeln('\x1b[38;2;99;102;241m[ProjectHub Logs]\x1b[0m Системный лог и мониторинг фоновых процессов.');
+    term.writeln(`\x1b[38;2;99;102;241m${t.terminal.systemLogHeader}\x1b[0m ${t.terminal.systemLogDesc}`);
     term.writeln('\x1b[90m------------------------------------------------------------\x1b[0m');
 
     const handleResize = () => {
@@ -150,8 +152,12 @@ export const TerminalPanel: React.FC = () => {
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      term.dispose();
+      try {
+        term.dispose();
+      } catch (e) {}
       processXtermRef.current = null;
+      processFitAddonRef.current = null;
+      writtenLogCountRef.current = 0;
     };
   }, []);
 
@@ -177,7 +183,7 @@ export const TerminalPanel: React.FC = () => {
     if (activeProcessId === null) {
       const term = processXtermRef.current;
       term.clear();
-      term.writeln('\x1b[38;2;99;102;241m[ProjectHub System Logs]\x1b[0m');
+      term.writeln(`\x1b[38;2;99;102;241m${t.terminal.systemLogHeader}\x1b[0m`);
       const logs = useProjectStore.getState().terminalLogs;
       for (const line of logs) {
         term.writeln(`\x1b[90m>\x1b[0m ${line}`);
@@ -190,7 +196,7 @@ export const TerminalPanel: React.FC = () => {
           if (processXtermRef.current) {
             processXtermRef.current.clear();
             processXtermRef.current.writeln(
-              `\x1b[38;2;99;102;241m[Process: ${proc.name}]\x1b[0m PID: ${proc.pid || 'N/A'} • Команда: \x1b[33m${proc.command}\x1b[0m`
+              `\x1b[38;2;99;102;241m[Process: ${proc.name}]\x1b[0m PID: ${proc.pid || 'N/A'} • ${t.terminal.commandPrefix}\x1b[33m${proc.command}\x1b[0m`
             );
             processXtermRef.current.writeln('\x1b[90m------------------------------------------------------------\x1b[0m');
             if (historical) {

@@ -151,7 +151,7 @@ export const DocsRagView: React.FC = () => {
     const start = el.selectionStart;
     const end = el.selectionEnd;
     const selected = docContent.substring(start, end);
-    const replacement = `${before}${selected || 'текст'}${after}`;
+    const replacement = `${before}${selected || t.docs.placeholderText}${after}`;
     const newContent = docContent.substring(0, start) + replacement + docContent.substring(end);
     setDocContent(newContent);
 

@@ -25,12 +25,14 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useDialog } from '../../hooks/useDialog';
 import { ScanSettingsModal } from '../projects/ScanSettingsModal';
 import { NewProjectWizardModal } from '../projects/NewProjectWizardModal';
 import { VoiceBadge } from '../voice/VoiceBadge';
 
 export const Sidebar: React.FC = () => {
   const { t } = useTranslation();
+  const dialog = useDialog();
   const {
     projects,
     selectedProject,
@@ -62,7 +64,11 @@ export const Sidebar: React.FC = () => {
     e.stopPropagation();
     const promptText = t.sidebar.promptVoiceAlias;
     const current = project.voiceAlias || '';
-    const newAlias = window.prompt(promptText, current);
+    const newAlias = await dialog.prompt({
+      message: promptText,
+      defaultValue: current,
+      title: t.sidebar.voiceAlias
+    });
     if (newAlias !== null) {
       await setProjectVoiceAlias(project.path, newAlias);
     }
@@ -214,7 +220,7 @@ export const Sidebar: React.FC = () => {
                 {t.sidebar.voiceHint}
               </span>
             </div>
-            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-900 text-indigo-300 shrink-0 border border-slate-700/60" title="Скрыть/показать меню">
+            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-900 text-indigo-300 shrink-0 border border-slate-700/60" title={t.sidebar.toggleMenu}>
               Ctrl+[
             </span>
           </div>
@@ -265,7 +271,7 @@ export const Sidebar: React.FC = () => {
                           ? 'bg-indigo-600 text-white'
                           : 'bg-slate-800/90 text-slate-400 group-hover:text-slate-200'
                       }`}
-                      title={`Команда голоса: «проект ${index + 1}»`}
+                      title={t.sidebar.voiceProjectCmd.replace('{number}', String(index + 1))}
                     >
                       #{index + 1}
                     </span>
@@ -303,7 +309,7 @@ export const Sidebar: React.FC = () => {
                       </span>
                     ) : (
                       <VoiceBadge
-                        command={`проект ${index + 1}`}
+                        command={t.projectTabs.tabVoiceCommand.replace('{number}', String(index + 1))}
                         variant="indigo"
                         className="shrink-0 text-[9px]"
                       />
@@ -367,9 +373,14 @@ export const Sidebar: React.FC = () => {
                     </button>
 
                     <button
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
-                        if (confirm(t.sidebar.confirmRemoveProject.replace('{name}', project.name))) {
+                        if (
+                          await dialog.confirm({
+                            message: t.sidebar.confirmRemoveProject.replace('{name}', project.name),
+                            danger: true
+                          })
+                        ) {
                           removeProjectFromCatalog(project.path);
                         }
                       }}
@@ -399,7 +410,7 @@ export const Sidebar: React.FC = () => {
                       )}
                     </div>
                   ) : (
-                    <span className="text-slate-500 italic text-[10px]">без git</span>
+                    <span className="text-slate-500 italic text-[10px]">{t.sidebar.noGit}</span>
                   )}
 
                   {/* Processes and RAG */}
@@ -414,7 +425,7 @@ export const Sidebar: React.FC = () => {
                     {hasRagReady && (
                       <span
                         className="p-0.5 rounded text-indigo-400"
-                        title={`RAG Индекс готов: ${project.ragStatus?.chunksCount || 0} чанков`}
+                        title={t.sidebar.ragReadyTooltip.replace('{count}', String(project.ragStatus?.chunksCount || 0))}
                       >
                         <BookOpen className="w-2.5 h-2.5" />
                       </span>
@@ -429,7 +440,7 @@ export const Sidebar: React.FC = () => {
                       <div className="flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500/20 to-amber-600/20 border border-amber-500/60 text-amber-200 text-[10px] font-medium shadow-sm animate-pulse">
                         <span className="flex items-center gap-1">
                           <span className="text-amber-400 font-bold">⚠️</span>
-                          <span className="font-bold">Требует решения!</span>
+                          <span className="font-bold">{t.sidebar.requiresDecisionExclamation}</span>
                         </span>
                         <span className="text-[9px] bg-amber-500/30 text-amber-200 px-1 py-0.2 rounded font-mono">
                           Human-in-the-loop
@@ -439,12 +450,12 @@ export const Sidebar: React.FC = () => {
                       <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-indigo-950/70 border border-indigo-500/40 text-indigo-300 text-[10px]">
                         <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
                         <span className="font-bold text-amber-400">✳</span>
-                        <span className="truncate">{agentStatus.lastMessage || 'Агент выполняет задачу...'}</span>
+                        <span className="truncate">{agentStatus.lastMessage || t.sidebar.agentWorking}</span>
                       </div>
                     ) : agentStatus.status === 'done' ? (
                       <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-950/50 border border-emerald-800/50 text-emerald-300 text-[10px]">
                         <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
-                        <span>Claude завершил задачу</span>
+                        <span>{t.sidebar.claudeFinishedTask}</span>
                       </div>
                     ) : null}
                   </div>
@@ -459,26 +470,26 @@ export const Sidebar: React.FC = () => {
                   {project.taskCounts && project.taskCounts.total > 0 ? (
                     <div className="flex items-center gap-1.5">
                       {inProgressCount > 0 && (
-                        <span className="flex items-center gap-0.5 text-amber-400 font-medium" title="В работе (In Progress)">
+                        <span className="flex items-center gap-0.5 text-amber-400 font-medium" title={t.sidebar.inProgressTooltip}>
                           <Clock className="w-2.5 h-2.5" />
                           {inProgressCount}
                         </span>
                       )}
                       {todoCount > 0 && (
-                        <span className="flex items-center gap-0.5 text-slate-400" title="К выполнению (To Do)">
+                        <span className="flex items-center gap-0.5 text-slate-400" title={t.sidebar.toDoTooltip}>
                           <CheckCircle2 className="w-2.5 h-2.5" />
                           {todoCount}
                         </span>
                       )}
                       {reviewCount > 0 && (
-                        <span className="flex items-center gap-0.5 text-purple-400" title="На проверке (Review)">
+                        <span className="flex items-center gap-0.5 text-purple-400" title={t.sidebar.reviewTooltip}>
                           <Activity className="w-2.5 h-2.5" />
                           {reviewCount}
                         </span>
                       )}
                     </div>
                   ) : (
-                    <span className="text-[10px] text-slate-600">нет задач</span>
+                    <span className="text-[10px] text-slate-600">{t.sidebar.noTasks}</span>
                   )}
                 </div>
               </div>

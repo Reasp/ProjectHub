@@ -396,7 +396,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                       onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
                       placeholder={
                         form.provider === 'anthropic'
-                          ? 'sk-ant-api03-... (Опционально, если выполнен вход в Claude.ai)'
+                          ? t.aiStudio.settingsModal.apiKeyPlaceholderAnthropic
                           : form.provider === 'openrouter'
                           ? 'sk-or-v1-...'
                           : 'sk-...'
@@ -413,7 +413,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                   </div>
                   <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
                     <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-                    <span>Ключ автоматически шифруется системным DPAPI (Electron safeStorage)</span>
+                    <span>{t.aiStudio.settingsModal.dpapiEncryptionHint}</span>
                   </div>
                 </div>
               )}
@@ -530,7 +530,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
               {/* Action Types Permissions */}
               <div className="space-y-2">
                 <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] block">
-                  Разрешенные категории автоматических действий:
+                  {t.aiStudio.settingsModal.allowedCategoriesLabel}
                 </label>
                 <div className="grid grid-cols-2 gap-2.5">
                   <label className="p-3 rounded-xl bg-[#141726] border border-slate-800 flex items-start gap-3 cursor-pointer hover:border-slate-700 transition">
@@ -699,7 +699,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                         handleAddReadPattern();
                       }
                     }}
-                    placeholder="Например: .env*, **/*.pem, **/*.key, id_rsa..."
+                    placeholder={t.aiStudio.settingsModal.readPatternPlaceholder}
                     className="flex-1 bg-[#0c0e17] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-600 font-mono focus:outline-none focus:border-indigo-500"
                   />
                   <button
@@ -756,7 +756,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                         handleAddCommandPattern();
                       }
                     }}
-                    placeholder="Например: rm -rf, git push, drop database..."
+                    placeholder={t.aiStudio.settingsModal.commandPatternPlaceholder}
                     className="flex-1 bg-[#0c0e17] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-600 font-mono focus:outline-none focus:border-rose-500"
                   />
                   <button

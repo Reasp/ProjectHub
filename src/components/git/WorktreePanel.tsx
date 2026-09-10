@@ -19,6 +19,7 @@ import {
 import type { GitWorktreeInfo, BacklogTask } from '../../types/electron';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useDialog } from '../../hooks/useDialog';
 import { WorktreeCompleteModal } from './WorktreeCompleteModal';
 
 interface WorktreePanelProps {
@@ -27,6 +28,7 @@ interface WorktreePanelProps {
 
 export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) => {
   const { t } = useTranslation();
+  const dialog = useDialog();
   const {
     selectedProject,
     worktrees,
@@ -66,7 +68,11 @@ export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) =>
   const handleRemove = async (wt: GitWorktreeInfo) => {
     if (wt.isMain) return;
     const confirmText = t.worktrees.confirmRemove.replace('{path}', wt.path);
-    if (!confirm(confirmText)) return;
+    const confirmed = await dialog.confirm({
+      message: confirmText,
+      danger: true
+    });
+    if (!confirmed) return;
 
     setActionLoadingPath(wt.path);
     try {
@@ -269,12 +275,12 @@ export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) =>
                     {/* Linked Backlog Task */}
                     {matchingTask && (
                       <div className="flex items-center gap-2 pt-1">
-                        <span className="text-[11px] text-slate-400 font-medium">Задача:</span>
+                        <span className="text-[11px] text-slate-400 font-medium">{t.worktrees.taskLabel}</span>
                         <button
                           type="button"
                           onClick={() => onSelectTask?.(matchingTask)}
                           className="flex items-center gap-1 text-xs text-indigo-300 hover:text-indigo-200 hover:underline font-medium"
-                          title="Открыть задачу в Backlog"
+                          title={t.worktrees.openTaskInBacklog}
                         >
                           <span className="font-mono text-indigo-400 uppercase">[{matchingTask.id}]</span>
                           <span className="truncate max-w-xs">{matchingTask.title}</span>
@@ -303,7 +309,7 @@ export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) =>
                     <button
                       type="button"
                       onClick={() => handleLaunchClaude(wt)}
-                      title="Запустить Claude Code в директории этого worktree"
+                      title={t.worktrees.launchClaude}
                       className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/80 text-xs font-medium text-indigo-300 border border-indigo-800/40 transition"
                     >
                       <Bot className="w-3.5 h-3.5 text-indigo-400" />
@@ -314,7 +320,7 @@ export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) =>
                     <button
                       type="button"
                       onClick={() => handleLaunchShell(wt)}
-                      title="Открыть терминал в директории этого worktree"
+                      title={t.worktrees.openInTerminal}
                       className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-300 border border-slate-700/60 transition"
                     >
                       <Terminal className="w-3.5 h-3.5 text-cyan-400" />
@@ -325,7 +331,7 @@ export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) =>
                     <button
                       type="button"
                       onClick={() => handleOpenCode(wt.path)}
-                      title="Открыть папку worktree в VS Code"
+                      title={t.worktrees.openInVsCode}
                       className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition"
                     >
                       <Code className="w-3.5 h-3.5 text-blue-400" />
@@ -335,7 +341,7 @@ export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) =>
                     <button
                       type="button"
                       onClick={() => handleOpenFolder(wt.path)}
-                      title="Открыть папку в проводнике"
+                      title={t.worktrees.openInExplorer}
                       className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition"
                     >
                       <FolderOpen className="w-3.5 h-3.5 text-amber-400" />

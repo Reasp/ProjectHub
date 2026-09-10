@@ -17,6 +17,7 @@ import {
   User
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useTranslation } from '../../i18n/useTranslation';
 
 interface Props {
   isOpen: boolean;
@@ -24,6 +25,7 @@ interface Props {
 }
 
 export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   const {
     selectedProject,
     tasks,
@@ -67,7 +69,7 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
   // Git Authors Statistics
   const authorCounts: Record<string, number> = {};
   for (const c of gitLogs) {
-    const author = c.author_name || 'Неизвестный';
+    const author = c.author_name || t.analytics.unknownAuthor;
     authorCounts[author] = (authorCounts[author] || 0) + 1;
   }
   const sortedAuthors = Object.entries(authorCounts).sort((a, b) => b[1] - a[1]);
@@ -86,13 +88,13 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-white">Аналитика и здоровье проекта</h2>
+                <h2 className="text-sm font-semibold text-white">{t.analytics.healthModalTitle}</h2>
                 <span className="text-[10px] font-mono font-medium text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
                   {selectedProject.name}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                Сводные метрики Backlog, динамика выполнения задач, Git-активность и RAG-индекс
+                {t.analytics.healthModalDesc}
               </p>
             </div>
           </div>
@@ -111,13 +113,13 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
           <div className="grid grid-cols-4 gap-4">
             <div className="p-4 rounded-xl bg-[#161922] border border-slate-800 flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                <span>Готовность задач</span>
+                <span>{t.analytics.taskReadiness}</span>
                 <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
                 <span className="text-2xl font-bold text-emerald-400">{completionRate}%</span>
                 <span className="text-[10px] text-slate-500">
-                  {doneTasks}/{totalTasks} закрыто
+                  {doneTasks}/{totalTasks} {t.analytics.tasksClosed}
                 </span>
               </div>
               <div className="w-full h-1.5 rounded-full bg-slate-800 mt-3 overflow-hidden">
@@ -136,7 +138,7 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
               <div className="mt-2 flex items-baseline gap-2">
                 <span className="text-2xl font-bold text-indigo-400">{criteriaRate}%</span>
                 <span className="text-[10px] text-slate-500">
-                  {completedCriteria}/{totalCriteria} чек-поинтов
+                  {completedCriteria}/{totalCriteria} {t.analytics.checkpoints}
                 </span>
               </div>
               <div className="w-full h-1.5 rounded-full bg-slate-800 mt-3 overflow-hidden">
@@ -149,13 +151,13 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
             <div className="p-4 rounded-xl bg-[#161922] border border-slate-800 flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                <span>Майлстоуны</span>
+                <span>{t.milestones.title}</span>
                 <Target className="w-3.5 h-3.5 text-cyan-400" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
                 <span className="text-2xl font-bold text-cyan-400">{completedMilestones}</span>
                 <span className="text-[10px] text-slate-500">
-                  из {milestones.length} этапов
+                  {t.analytics.stagesCount.replace('{total}', String(milestones.length))}
                 </span>
               </div>
               <div className="w-full h-1.5 rounded-full bg-slate-800 mt-3 overflow-hidden">
@@ -170,12 +172,12 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
             <div className="p-4 rounded-xl bg-[#161922] border border-slate-800 flex flex-col justify-between">
               <div className="flex items-center justify-between text-slate-400 text-[11px]">
-                <span>Git История</span>
+                <span>{t.analytics.gitHistory}</span>
                 <GitCommit className="w-3.5 h-3.5 text-purple-400" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
                 <span className="text-2xl font-bold text-purple-400">{gitLogs.length}</span>
-                <span className="text-[10px] text-slate-500">коммитов в кэше</span>
+                <span className="text-[10px] text-slate-500">{t.analytics.commitsInCache}</span>
               </div>
               <div className="text-[10px] text-slate-400 mt-3 truncate font-mono">
                 {gitRepoDetails?.currentBranch || 'main'} ({gitRepoDetails?.isClean ? 'clean' : `${gitRepoDetails?.files.length} changed`})
@@ -189,14 +191,14 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="p-5 rounded-xl bg-[#161922] border border-slate-800 flex flex-col gap-4">
               <h3 className="text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-2">
                 <Activity className="w-3.5 h-3.5 text-indigo-400" />
-                Распределение статусов задач
+                {t.analytics.tasksByStatus}
               </h3>
 
               <div className="space-y-3">
                 <div>
                   <div className="flex justify-between text-[11px] mb-1">
                     <span className="text-emerald-400 font-medium flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /> Done (Готово)
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /> {t.kanban.done}
                     </span>
                     <span className="font-mono text-slate-300">
                       {doneTasks} ({totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0}%)
@@ -213,7 +215,7 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <div>
                   <div className="flex justify-between text-[11px] mb-1">
                     <span className="text-purple-400 font-medium flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-purple-400 inline-block" /> Review (На проверке)
+                      <span className="w-2 h-2 rounded-full bg-purple-400 inline-block" /> {t.kanban.review}
                     </span>
                     <span className="font-mono text-slate-300">
                       {reviewTasks} ({totalTasks > 0 ? Math.round((reviewTasks / totalTasks) * 100) : 0}%)
@@ -230,7 +232,7 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <div>
                   <div className="flex justify-between text-[11px] mb-1">
                     <span className="text-cyan-400 font-medium flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block" /> In Progress (В работе)
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block" /> {t.kanban.inProgress}
                     </span>
                     <span className="font-mono text-slate-300">
                       {inProgressTasks} ({totalTasks > 0 ? Math.round((inProgressTasks / totalTasks) * 100) : 0}%)
@@ -247,7 +249,7 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <div>
                   <div className="flex justify-between text-[11px] mb-1">
                     <span className="text-slate-400 font-medium flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-slate-500 inline-block" /> To Do (К выполнению)
+                      <span className="w-2 h-2 rounded-full bg-slate-500 inline-block" /> {t.kanban.todo}
                     </span>
                     <span className="font-mono text-slate-300">
                       {todoTasks} ({totalTasks > 0 ? Math.round((todoTasks / totalTasks) * 100) : 0}%)
@@ -267,12 +269,12 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="p-5 rounded-xl bg-[#161922] border border-slate-800 flex flex-col gap-4">
               <h3 className="text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-2">
                 <Tag className="w-3.5 h-3.5 text-indigo-400" />
-                Топ тегов и категорий
+                {t.analytics.tagsDistribution}
               </h3>
 
               {sortedLabels.length === 0 ? (
                 <p className="text-xs text-slate-500 italic py-4 text-center">
-                  Теги еще не присвоены задачам
+                  {t.analytics.noTagsAssigned}
                 </p>
               ) : (
                 <div className="space-y-2.5">
@@ -284,7 +286,7 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                           <span className="px-2 py-0.5 rounded bg-slate-800 text-indigo-300 font-mono border border-slate-700/60">
                             {label}
                           </span>
-                          <span className="text-slate-400">{count} задач</span>
+                          <span className="text-slate-400">{count} {t.sidebar.tasksCount}</span>
                         </div>
                         <span className="font-mono text-slate-500">{pct}%</span>
                       </div>
@@ -298,12 +300,12 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="p-5 rounded-xl bg-[#161922] border border-slate-800 flex flex-col gap-4">
               <h3 className="text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-2">
                 <User className="w-3.5 h-3.5 text-indigo-400" />
-                Авторы коммитов (Git Contributors)
+                {t.analytics.topContributors}
               </h3>
 
               {sortedAuthors.length === 0 ? (
                 <p className="text-xs text-slate-500 italic py-4 text-center">
-                  История коммитов пуста или не загружена
+                  {t.analytics.commitsEmptyOrNotLoaded}
                 </p>
               ) : (
                 <div className="space-y-2.5">
@@ -318,7 +320,7 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                         </div>
                         <span className="text-slate-200 font-medium">{author}</span>
                       </div>
-                      <span className="text-slate-400 font-mono">{count} коммитов</span>
+                      <span className="text-slate-400 font-mono">{t.analytics.commitsCount.replace('{count}', String(count))}</span>
                     </div>
                   ))}
                 </div>
@@ -329,39 +331,39 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="p-5 rounded-xl bg-[#161922] border border-slate-800 flex flex-col gap-4">
               <h3 className="text-xs font-semibold text-white uppercase tracking-wider flex items-center gap-2">
                 <Database className="w-3.5 h-3.5 text-indigo-400" />
-                База знаний Vector RAG
+                {t.analytics.ragStats}
               </h3>
 
               <div className="space-y-3 text-[11px]">
                 <div className="flex justify-between p-2.5 rounded-lg bg-[#12151e] border border-slate-800">
-                  <span className="text-slate-400">Статус векторного индекса</span>
+                  <span className="text-slate-400">{t.analytics.ragIndexStatus}</span>
                   <span
                     className={`font-semibold ${
                       selectedProject.ragStatus?.ready ? 'text-emerald-400' : 'text-amber-400'
                     }`}
                   >
-                    {selectedProject.ragStatus?.ready ? '✔ Активен и готов' : 'Требуется сборка'}
+                    {selectedProject.ragStatus?.ready ? t.analytics.ragActiveReady : t.analytics.ragBuildRequired}
                   </span>
                 </div>
 
                 <div className="flex justify-between p-2.5 rounded-lg bg-[#12151e] border border-slate-800">
-                  <span className="text-slate-400">Количество чанков LanceDB</span>
+                  <span className="text-slate-400">{t.analytics.ragChunksCount}</span>
                   <span className="font-mono text-slate-200 font-bold">
                     {selectedProject.ragStatus?.chunksCount ?? '—'}
                   </span>
                 </div>
 
                 <div className="flex justify-between p-2.5 rounded-lg bg-[#12151e] border border-slate-800">
-                  <span className="text-slate-400">Embedding модель</span>
+                  <span className="text-slate-400">{t.analytics.ragEmbeddingModel}</span>
                   <span className="font-mono text-indigo-300">
                     {selectedProject.ragStatus?.model || 'BAAI/bge-small-en-v1.5'}
                   </span>
                 </div>
 
                 <div className="flex justify-between p-2.5 rounded-lg bg-[#12151e] border border-slate-800">
-                  <span className="text-slate-400">Дата последней переиндексации</span>
+                  <span className="text-slate-400">{t.analytics.ragLastIndexedDate}</span>
                   <span className="font-mono text-slate-300">
-                    {selectedProject.ragStatus?.builtAt || 'Не индексировалось'}
+                    {selectedProject.ragStatus?.builtAt || t.analytics.ragNeverIndexed}
                   </span>
                 </div>
               </div>
@@ -371,12 +373,12 @@ export const ProjectAnalyticsModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
         {/* Footer */}
         <div className="px-6 py-3 border-t border-slate-800 bg-[#10131e]/90 flex items-center justify-between text-[11px] text-slate-400 shrink-0">
-          <span>Сводка обновляется в реальном времени при изменении задач и коммитов</span>
+          <span>{t.analytics.realtimeUpdateNotice}</span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition"
           >
-            Закрыть
+            {t.common.close}
           </button>
         </div>
       </div>

@@ -82,9 +82,9 @@ export const VoiceControlHeader: React.FC = () => {
           }`}
           title={
             isError
-              ? 'Микрофон не обнаружен (кликните для проверки)'
+              ? t.voice.micNotFound
               : isHandsFreeActive
-              ? 'Голосовое управление включено (кликните для выключения)'
+              ? t.voice.voiceEnabled
               : t.voice.inactiveTitle
           }
         >
@@ -97,7 +97,7 @@ export const VoiceControlHeader: React.FC = () => {
           )}
 
           <span className="hidden xl:inline font-medium">
-            {isError ? 'Ошибка' : isHandsFreeActive ? (t.voice.voiceActive || 'Голос: Вкл') : (t.voice.voiceOff || 'Голос')}
+            {isError ? t.voice.voiceError : isHandsFreeActive ? t.voice.voiceActive : t.voice.voiceOff}
           </span>
         </button>
 

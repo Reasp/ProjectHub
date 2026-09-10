@@ -17,11 +17,13 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useDialog } from '../../hooks/useDialog';
 import { CreateMilestoneModal } from './CreateMilestoneModal';
 import type { Milestone } from '../../types/electron';
 
 export const MilestonesRoadmapView: React.FC = () => {
   const { t } = useTranslation();
+  const dialog = useDialog();
   const {
     selectedProject,
     milestones,
@@ -47,7 +49,12 @@ export const MilestonesRoadmapView: React.FC = () => {
   };
 
   const handleDelete = async (m: Milestone) => {
-    if (window.confirm(t.milestones.confirmDelete.replace('{title}', m.title))) {
+    if (
+      await dialog.confirm({
+        message: t.milestones.confirmDelete.replace('{title}', m.title),
+        danger: true
+      })
+    ) {
       await deleteMilestoneAction(m.filePath);
     }
   };

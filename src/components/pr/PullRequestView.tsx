@@ -111,12 +111,12 @@ export const PullRequestView: React.FC = () => {
         <div className="flex items-center gap-4 min-w-0 flex-1 overflow-hidden">
           {/* Provider / Repo status */}
           <div className="flex items-center gap-2 text-xs shrink-0 whitespace-nowrap">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-300 font-mono text-[11px] shrink-0" title={`Репозиторий: ${prProviderInfo?.repo || 'Локальный'}`}>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-300 font-mono text-[11px] shrink-0" title={t.prs.repoTooltip.replace('{repo}', prProviderInfo?.repo || t.prs.local)}>
               <GitPullRequest className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-              <span className="truncate max-w-[160px]">{prProviderInfo?.repo || 'Локальный репозиторий'}</span>
+              <span className="truncate max-w-[160px]">{prProviderInfo?.repo || t.prs.localRepo}</span>
             </div>
             {prProviderInfo?.hasCli && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium shrink-0 whitespace-nowrap" title="GitHub CLI доступен">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium shrink-0 whitespace-nowrap" title={t.prs.ghCliAvailable}>
                 <ShieldCheck className="w-3 h-3 shrink-0" />
                 gh CLI
               </span>
