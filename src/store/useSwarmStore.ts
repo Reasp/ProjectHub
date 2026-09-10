@@ -3,7 +3,9 @@ import type {
   SwarmSession,
   StartFanOutOptions,
   StartHandoffOptions,
-  SwarmEventPayload
+  SwarmEventPayload,
+  SwarmExportFormat,
+  SwarmTranscript
 } from '../types/electron';
 
 interface SwarmState {
@@ -29,7 +31,28 @@ interface SwarmState {
     winnerAgentId: string,
     mergeIntoBase?: boolean
   ) => Promise<{ success: boolean; error?: string; mergedBranch?: string; conflictedFiles?: string[] }>;
+  /** Возобновить прерванную перезапуском сессию (TASK-56). */
+  resumeSwarmAction: (swarmId: string) => Promise<{ success: boolean; error?: string }>;
+  /** Закрыть сессию с очисткой worktree/веток и удалением файлов состояния (TASK-56). */
+  discardSwarmAction: (projectPath: string, swarmId: string) => Promise<{ success: boolean; error?: string }>;
+  getTranscriptAction: (swarmId: string, agentId: string) => Promise<SwarmTranscript | null>;
+  exportSwarmAction: (
+    swarmId: string,
+    format: SwarmExportFormat
+  ) => Promise<{ success: boolean; path?: string; error?: string; canceled?: boolean }>;
   initSwarmEventListener: () => () => void;
+}
+
+function removeSwarm(state: SwarmState, projectPath: string, swarmId: string) {
+  const list = (state.swarms[projectPath] || []).filter((s) => s.id !== swarmId);
+  const active = state.activeSwarmId[projectPath];
+  return {
+    swarms: { ...state.swarms, [projectPath]: list },
+    activeSwarmId: {
+      ...state.activeSwarmId,
+      [projectPath]: active === swarmId ? list[0]?.id || null : active
+    }
+  };
 }
 
 export const useSwarmStore = create<SwarmState>((set) => ({
@@ -156,11 +179,62 @@ export const useSwarmStore = create<SwarmState>((set) => ({
     }
   },
 
+  resumeSwarmAction: async (swarmId: string) => {
+    if (!window.api?.resumeSwarm) return { success: false, error: 'API not available' };
+    try {
+      return await window.api.resumeSwarm(swarmId);
+    } catch (err: any) {
+      console.error('[SwarmStore] Failed to resume swarm:', err);
+      return { success: false, error: err.message || String(err) };
+    }
+  },
+
+  discardSwarmAction: async (projectPath: string, swarmId: string) => {
+    if (!window.api?.discardSwarm) return { success: false, error: 'API not available' };
+    try {
+      const res = await window.api.discardSwarm(swarmId, true);
+      if (res.success) set((state) => removeSwarm(state, projectPath, swarmId));
+      return res;
+    } catch (err: any) {
+      console.error('[SwarmStore] Failed to discard swarm:', err);
+      return { success: false, error: err.message || String(err) };
+    }
+  },
+
+  getTranscriptAction: async (swarmId: string, agentId: string) => {
+    if (!window.api?.getSwarmTranscript) return null;
+    try {
+      return await window.api.getSwarmTranscript(swarmId, agentId);
+    } catch (err) {
+      console.error('[SwarmStore] Failed to read transcript:', err);
+      return null;
+    }
+  },
+
+  exportSwarmAction: async (swarmId: string, format: SwarmExportFormat) => {
+    if (!window.api?.exportSwarmToFile) return { success: false, error: 'API not available' };
+    try {
+      return await window.api.exportSwarmToFile(swarmId, format);
+    } catch (err: any) {
+      console.error('[SwarmStore] Failed to export swarm:', err);
+      return { success: false, error: err.message || String(err) };
+    }
+  },
+
   initSwarmEventListener: () => {
     if (!window.api?.onSwarmEvent) return () => {};
 
     return window.api.onSwarmEvent((event: SwarmEventPayload) => {
       const { session, swarmId } = event;
+
+      if (event.type === 'swarm_removed') {
+        set((state) => {
+          const projectPath = Object.keys(state.swarms).find((p) => state.swarms[p].some((s) => s.id === swarmId));
+          return projectPath ? removeSwarm(state, projectPath, swarmId) : {};
+        });
+        return;
+      }
+
       if (!session) return;
 
       set((state) => {

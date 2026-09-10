@@ -1,5 +1,6 @@
-import { ipcMain, shell } from 'electron';
+import { ipcMain, shell, dialog } from 'electron';
 import { spawn } from 'node:child_process';
+import fs from 'node:fs/promises';
 import type { CreatePtyOptions, AISession } from '../../src/types/electron';
 import { ptyService } from '../services/ptyService';
 import {
@@ -11,7 +12,12 @@ import {
 import { claudeBridgeService } from '../services/claudeBridgeService';
 import { aiSessionStore } from '../services/aiSessionStore';
 import { claudeUsageService } from '../services/claudeUsageService';
-import { agentFleetService, type StartFanOutOptions, type StartHandoffOptions } from '../services/agentFleetService';
+import {
+  agentFleetService,
+  type StartFanOutOptions,
+  type StartHandoffOptions,
+  type SwarmExportFormat
+} from '../services/agentFleetService';
 import { assertRegisteredProject } from '../services/projectPathGuard';
 import type { IpcContext } from './types';
 
@@ -214,6 +220,50 @@ export function registerAiIpc(ctx: IpcContext) {
 
   ipcMain.handle('swarm:list', async (_event, projectPath?: string) => {
     const safeProject = projectPath ? await assertRegisteredProject(projectPath) : undefined;
+    await agentFleetService.ready;
     return agentFleetService.listSwarms(safeProject);
+  });
+
+  // Персистентность, транскрипты и экспорт swarm-сессий (TASK-56)
+  ipcMain.handle('swarm:resume', async (_event, swarmId: string) => {
+    if (typeof swarmId !== 'string') return { success: false, error: 'Invalid swarm id' };
+    return await agentFleetService.resumeSwarm(swarmId);
+  });
+
+  ipcMain.handle('swarm:discard', async (_event, swarmId: string, cleanupWorktrees = true) => {
+    if (typeof swarmId !== 'string') return { success: false, error: 'Invalid swarm id' };
+    return await agentFleetService.discardSwarm(swarmId, cleanupWorktrees !== false);
+  });
+
+  ipcMain.handle('swarm:readTranscript', async (_event, swarmId: string, agentId: string) => {
+    if (typeof swarmId !== 'string' || typeof agentId !== 'string') return null;
+    return await agentFleetService.readTranscript(swarmId, agentId);
+  });
+
+  ipcMain.handle('swarm:export', async (_event, swarmId: string, format: SwarmExportFormat) => {
+    if (typeof swarmId !== 'string') return null;
+    return agentFleetService.exportSession(swarmId, format === 'json' ? 'json' : 'markdown');
+  });
+
+  ipcMain.handle('swarm:exportToFile', async (_event, swarmId: string, format: SwarmExportFormat) => {
+    if (typeof swarmId !== 'string') return { success: false, error: 'Invalid swarm id' };
+    const fmt: SwarmExportFormat = format === 'json' ? 'json' : 'markdown';
+    const content = agentFleetService.exportSession(swarmId, fmt);
+    if (content === null) return { success: false, error: `Swarm session ${swarmId} not found` };
+    const win = ctx.getMainWindow();
+    const ext = fmt === 'json' ? 'json' : 'md';
+    const dialogOptions = {
+      title: 'Экспорт swarm-сессии',
+      defaultPath: `${swarmId}.${ext}`,
+      filters: fmt === 'json' ? [{ name: 'JSON', extensions: ['json'] }] : [{ name: 'Markdown', extensions: ['md'] }]
+    };
+    const result = win ? await dialog.showSaveDialog(win, dialogOptions) : await dialog.showSaveDialog(dialogOptions);
+    if (result.canceled || !result.filePath) return { success: false, canceled: true };
+    try {
+      await fs.writeFile(result.filePath, content, 'utf-8');
+      return { success: true, path: result.filePath };
+    } catch (err: any) {
+      return { success: false, error: err?.message || String(err) };
+    }
   });
 }

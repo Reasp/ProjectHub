@@ -2,126 +2,67 @@ import { EventEmitter } from 'node:events';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import os from 'node:os';
 import { spawn, type ChildProcess } from 'node:child_process';
 import treeKill from 'tree-kill';
 import simpleGit from 'simple-git';
 import { worktreeService } from './worktreeService.js';
 import { aiAgentService, type AIProviderConfig, type AIMessage } from './aiAgentService.js';
+import { claudeUsageService } from './claudeUsageService.js';
+import { getUserDataDir } from './appPaths.js';
+import { SwarmSessionStore } from './swarmSessionStore.js';
+import { appendLiveOutput, pushAgentLog, resetLiveOutput } from './swarmLogBuffer.js';
+import {
+  BUILTIN_PRICE_TABLE,
+  addUsage,
+  emptyUsage,
+  formatUsd,
+  mergePriceTables,
+  parseClaudeResultEvent,
+  parseCliUsageText,
+  priceUsage,
+  usageFromClaudeAssistantEvent,
+  type AgentUsage,
+  type PriceTable
+} from './agentCost.js';
+import { exportSwarmSessionJson, exportSwarmSessionMarkdown, summarizeSwarmSession } from './swarmExport.js';
+import type {
+  AgentSlotConfig,
+  AgentSlotDiffSummary,
+  AgentSlotState,
+  HandoffStageState,
+  StartFanOutOptions,
+  StartHandoffOptions,
+  SwarmEventPayload,
+  SwarmExportFormat,
+  SwarmSession,
+  SwarmTranscript
+} from './swarmTypes.js';
 
-export type SwarmMode = 'fan_out' | 'handoff';
-export type SwarmStatus = 'idle' | 'preparing' | 'running' | 'completed' | 'failed' | 'stopped';
-export type AgentSlotStatus = 'pending' | 'preparing' | 'running' | 'completed' | 'failed' | 'stopped';
+export type {
+  AgentSlotConfig,
+  AgentSlotDiffSummary,
+  AgentSlotMetrics,
+  AgentSlotState,
+  AgentSlotStatus,
+  HandoffStageState,
+  StartFanOutOptions,
+  StartHandoffOptions,
+  SwarmEventPayload,
+  SwarmExportFormat,
+  SwarmMode,
+  SwarmSession,
+  SwarmStatus,
+  SwarmTranscript
+} from './swarmTypes.js';
 
-export interface AgentSlotConfig {
-  id: string;
-  name: string;
-  engine: 'claude-cli' | 'codex-cli' | 'api';
-  role?: string;
-  providerConfig?: AIProviderConfig;
-  systemPromptAddon?: string;
-  cliCommand?: string;
-}
+/** Файл пользовательских переопределений цен моделей (см. agentCost.ts). */
+export const AGENT_PRICING_FILE = 'agent-pricing.json';
 
-export interface AgentSlotDiffSummary {
-  filesChanged: number;
-  insertions: number;
-  deletions: number;
-  patch: string;
-}
-
-export interface AgentSlotMetrics {
-  startTime: number;
-  endTime?: number;
-  durationMs?: number;
-  charsGenerated?: number;
-  tokensEstimated?: number;
-  speedCharsPerSec?: number;
-}
-
-export interface AgentSlotState {
-  id: string;
-  config: AgentSlotConfig;
-  status: AgentSlotStatus;
-  worktreePath?: string;
-  worktreeBranch?: string;
-  commitHash?: string;
-  stashHash?: string;
-  lastCommitHash?: string;
-  commitStatus?: 'committed' | 'stashed' | 'no_changes';
-  logs: string[];
-  liveOutput: string;
-  finalOutput?: string;
-  diffSummary?: AgentSlotDiffSummary;
-  metrics: AgentSlotMetrics;
-  winner?: boolean;
-  error?: string;
-}
-
-export interface HandoffStageState {
-  stageIndex: number;
-  role: string;
-  agentId: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  inputPrompt: string;
-  outputResult?: string;
-  durationMs?: number;
-}
-
-export interface SwarmSession {
-  id: string;
-  projectPath: string;
-  taskId?: string;
-  taskTitle?: string;
-  mode: SwarmMode;
-  prompt: string;
-  baseBranch: string;
-  useWorktrees: boolean;
-  autoCommitAgentResults?: boolean;
-  status: SwarmStatus;
-  createdAt: number;
-  completedAt?: number;
-  agents: AgentSlotState[];
-  handoffStages?: HandoffStageState[];
-  currentHandoffStageIndex?: number;
-  winnerAgentId?: string;
-  error?: string;
-}
-
-export interface StartFanOutOptions {
-  projectPath: string;
-  prompt: string;
-  taskId?: string;
-  taskTitle?: string;
-  baseBranch?: string;
-  useWorktrees?: boolean;
-  autoCommitAgentResults?: boolean;
-  agents: AgentSlotConfig[];
-}
-
-export interface StartHandoffOptions {
-  projectPath: string;
-  prompt: string;
-  taskId?: string;
-  taskTitle?: string;
-  baseBranch?: string;
-  useWorktrees?: boolean;
-  autoCommitAgentResults?: boolean;
-  stages: {
-    role: string;
-    agent: AgentSlotConfig;
-    instructions?: string;
-  }[];
-}
-
-export interface SwarmEventPayload {
-  type: 'swarm_updated' | 'agent_updated' | 'agent_chunk' | 'swarm_completed' | 'error';
-  swarmId: string;
-  agentId?: string;
-  session?: SwarmSession;
-  chunk?: string;
-  error?: string;
-}
+/** Дополнение к промпту при возобновлении прерванного агента в том же worktree. */
+export const RESUME_PROMPT_SUFFIX =
+  '\n\n[ProjectHub] Предыдущий запуск этого агента был прерван перезапуском приложения. ' +
+  'Рабочий каталог уже содержит частично выполненную работу: изучи текущее состояние файлов и историю git, ' +
+  'продолжи с места остановки и не начинай задачу заново.';
 
 /**
  * Парсер унифицированного диффа для подсчета затронутых файлов, добавлений и удалений.
@@ -160,6 +101,19 @@ function sanitizeSlug(str: string): string {
   return str.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 30);
 }
 
+function normalizeFsPath(p: string): string {
+  const norm = path.resolve(p);
+  return process.platform === 'win32' ? norm.toLowerCase() : norm;
+}
+
+function isActiveAgentStatus(status: AgentSlotState['status']): boolean {
+  return status === 'pending' || status === 'preparing' || status === 'running';
+}
+
+function isActiveSwarmStatus(status: SwarmSession['status']): boolean {
+  return status === 'preparing' || status === 'running';
+}
+
 function killProcessTree(proc: ChildProcess): void {
   const pid = proc.pid;
   if (!pid) {
@@ -173,18 +127,45 @@ function killProcessTree(proc: ChildProcess): void {
   });
 }
 
+function timeStamp(): string {
+  return new Date().toISOString().slice(11, 19);
+}
+
 export class AgentFleetService extends EventEmitter {
   private sessions = new Map<string, SwarmSession>();
   private activeProcesses = new Map<string, Set<ChildProcess>>();
   private abortControllers = new Map<string, Set<AbortController>>();
   private agentProcesses = new Map<string, Set<ChildProcess>>();
   private agentAbortControllers = new Map<string, Set<AbortController>>();
-  private storageDir = path.join(os.homedir(), '.projecthub', 'swarms');
+  private priceTable: PriceTable = BUILTIN_PRICE_TABLE;
+  private priceTableLoaded = false;
+  private readyPromise: Promise<void> = Promise.resolve();
 
-  constructor() {
+  /**
+   * @param store хранилище сессий; `null` — без персистентности (unit-тесты).
+   */
+  constructor(private readonly store: SwarmSessionStore | null = null) {
     super();
-    this.ensureStorageDir();
   }
+
+  /** Разрешается после восстановления сессий с диска (см. `init`). */
+  public get ready(): Promise<void> {
+    return this.readyPromise;
+  }
+
+  /** Восстановление сессий при старте приложения. Вызывается из main после `app.whenReady`. */
+  public init(): Promise<void> {
+    this.readyPromise = this.restoreFromDisk()
+      .then(() => undefined)
+      .catch((err) => {
+        console.error('[AgentFleetService] Failed to restore swarm sessions:', err);
+      });
+    return this.readyPromise;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Процессы и отмена
+  // ---------------------------------------------------------------------------
 
   private trackAgentProcess(agentId: string, proc: ChildProcess): void {
     if (!this.agentProcesses.has(agentId)) {
@@ -223,21 +204,141 @@ export class AgentFleetService extends EventEmitter {
     }
   }
 
-
-
-  private async ensureStorageDir(): Promise<void> {
-    try {
-      if (!existsSync(this.storageDir)) {
-        await fs.mkdir(this.storageDir, { recursive: true });
-      }
-    } catch (err) {
-      console.error('[AgentFleetService] Failed to create storage dir:', err);
-    }
+  private ensureSessionTracking(swarmId: string): void {
+    if (!this.activeProcesses.has(swarmId)) this.activeProcesses.set(swarmId, new Set());
+    if (!this.abortControllers.has(swarmId)) this.abortControllers.set(swarmId, new Set());
   }
+
+  // ---------------------------------------------------------------------------
+  // Персистентность, логи, события
+  // ---------------------------------------------------------------------------
 
   private emitSwarmEvent(event: SwarmEventPayload): void {
     this.emit('swarmEvent', event);
+    if (event.session && event.type !== 'swarm_removed') {
+      const terminal = event.type === 'swarm_completed' || event.type === 'swarm_updated';
+      this.persist(event.session, terminal && !isActiveSwarmStatus(event.session.status));
+    }
   }
+
+  /** Сохранение состояния: троттлинг по умолчанию, немедленная запись для терминальных событий. */
+  private persist(session: SwarmSession, immediate = false): void {
+    if (!this.store) return;
+    if (immediate) {
+      this.store.save(session).catch((e) => {
+        console.warn(`[AgentFleetService] Failed to save swarm ${session.id}:`, e);
+      });
+    } else {
+      this.store.scheduleSave(session);
+    }
+  }
+
+  /** Строка лога агента: кольцевой буфер в памяти + строка в файле транскрипта. */
+  private log(session: SwarmSession, agent: AgentSlotState, line: string): void {
+    pushAgentLog(agent, line);
+    void this.store?.appendTranscript(session.id, agent.id, `\n[${timeStamp()}] ${line}\n`);
+  }
+
+  /** Потоковый чанк вывода агента: хвост в памяти, полный текст в транскрипте, событие в UI. */
+  private appendOutput(session: SwarmSession, agent: AgentSlotState, text: string): void {
+    if (!text) return;
+    appendLiveOutput(agent, text);
+    agent.metrics.charsGenerated = (agent.metrics.charsGenerated ?? 0) + text.length;
+    void this.store?.appendTranscript(session.id, agent.id, text);
+    this.emitSwarmEvent({
+      type: 'agent_chunk',
+      swarmId: session.id,
+      agentId: agent.id,
+      chunk: text,
+      session
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Стоимость и бюджет
+  // ---------------------------------------------------------------------------
+
+  /** Таблица цен: встроенная + переопределения из `<userData>/agent-pricing.json` (читается один раз). */
+  public async getPriceTable(): Promise<PriceTable> {
+    if (this.priceTableLoaded) return this.priceTable;
+    this.priceTableLoaded = true;
+    try {
+      const file = path.join(getUserDataDir(), AGENT_PRICING_FILE);
+      if (existsSync(file)) {
+        const raw = JSON.parse(await fs.readFile(file, 'utf8'));
+        this.priceTable = mergePriceTables(BUILTIN_PRICE_TABLE, raw);
+        console.log(`[AgentFleetService] Loaded custom price table (${Object.keys(this.priceTable.models).length} models, updated ${this.priceTable.updatedAt})`);
+      }
+    } catch (err) {
+      console.warn('[AgentFleetService] Failed to read agent-pricing.json, using built-in prices:', err);
+    }
+    return this.priceTable;
+  }
+
+  /** Подмена таблицы цен (тесты, настройки). */
+  public setPriceTable(table: PriceTable): void {
+    this.priceTable = table;
+    this.priceTableLoaded = true;
+  }
+
+  private recomputeSessionCost(session: SwarmSession): void {
+    const totals = summarizeSwarmSession(session);
+    session.totalCostUsd = totals.costKnown ? totals.costUsd : undefined;
+  }
+
+  /**
+   * Записывает usage агента (накопительно или заменяя итогом), считает стоимость по таблице
+   * цен, если провайдер её не сообщил, и проверяет бюджеты слота и сессии.
+   * Возвращает true, если агент остановлен по бюджету.
+   */
+  private recordUsage(
+    session: SwarmSession,
+    agent: AgentSlotState,
+    usage: AgentUsage,
+    mode: 'add' | 'replace',
+    model?: string
+  ): boolean {
+    const merged = mode === 'replace' ? usage : addUsage(agent.metrics.usage ?? emptyUsage(), usage);
+    const priced = priceUsage(merged, model ?? merged.model ?? agent.config.providerConfig?.model, this.priceTable);
+    agent.metrics.usage = priced;
+    agent.metrics.costUsd = priced.costUsd;
+    this.recomputeSessionCost(session);
+    return this.enforceBudget(session, agent);
+  }
+
+  /** Бюджеты: слот (`config.budgetUsd`) и сессия (`session.budgetUsd`). */
+  private enforceBudget(session: SwarmSession, agent: AgentSlotState): boolean {
+    const agentCost = agent.metrics.costUsd;
+    const agentBudget = agent.config.budgetUsd;
+    if (typeof agentBudget === 'number' && agentBudget > 0 && typeof agentCost === 'number' && agentCost > agentBudget) {
+      this.stopAgentForBudget(session, agent, `Бюджет агента ${formatUsd(agentBudget)} превышен (потрачено ${formatUsd(agentCost)})`);
+      return true;
+    }
+    const sessionBudget = session.budgetUsd;
+    const total = session.totalCostUsd;
+    if (typeof sessionBudget === 'number' && sessionBudget > 0 && typeof total === 'number' && total > sessionBudget) {
+      const reason = `Бюджет сессии ${formatUsd(sessionBudget)} превышен (потрачено ${formatUsd(total)})`;
+      session.error = reason;
+      for (const a of session.agents) {
+        if (isActiveAgentStatus(a.status)) this.stopAgentForBudget(session, a, reason);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private stopAgentForBudget(session: SwarmSession, agent: AgentSlotState, reason: string): void {
+    if (agent.status === 'budget_exceeded') return;
+    agent.status = 'budget_exceeded';
+    agent.error = reason;
+    this.log(session, agent, `[Swarm Budget] ${reason}. Агент остановлен.`);
+    this.killAgentProcess(agent.id);
+    this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agent.id, session });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Чтение
+  // ---------------------------------------------------------------------------
 
   public getSwarm(swarmId: string): SwarmSession | undefined {
     return this.sessions.get(swarmId);
@@ -246,7 +347,241 @@ export class AgentFleetService extends EventEmitter {
   public listSwarms(projectPath?: string): SwarmSession[] {
     const all = Array.from(this.sessions.values()).sort((a, b) => b.createdAt - a.createdAt);
     if (!projectPath) return all;
-    return all.filter((s) => path.normalize(s.projectPath) === path.normalize(projectPath));
+    return all.filter((s) => normalizeFsPath(s.projectPath) === normalizeFsPath(projectPath));
+  }
+
+  /** Полный транскрипт агента из файла (хвост до лимита). */
+  public async readTranscript(swarmId: string, agentId: string): Promise<SwarmTranscript | null> {
+    if (!this.store) return null;
+    const session = this.sessions.get(swarmId);
+    if (!session || !session.agents.some((a) => a.id === agentId)) return null;
+    const result = await this.store.readTranscript(swarmId, agentId);
+    if (!result) return null;
+    return { swarmId, agentId, ...result };
+  }
+
+  /** Экспорт сессии в Markdown или JSON (AC #5). */
+  public exportSession(swarmId: string, format: SwarmExportFormat): string | null {
+    const session = this.sessions.get(swarmId);
+    if (!session) return null;
+    return format === 'json' ? exportSwarmSessionJson(session) : exportSwarmSessionMarkdown(session);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Восстановление после перезапуска (AC #1)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Загружает сессии с диска. Незавершённые помечаются `interrupted`, их worktree сверяются
+   * с `git worktree list` и файловой системой; агенты с потерянным worktree получают `worktreeMissing`.
+   */
+  public async restoreFromDisk(): Promise<SwarmSession[]> {
+    if (!this.store) return [];
+    const stored = await this.store.list();
+    const worktreesByProject = new Map<string, Set<string> | null>();
+
+    const registeredWorktrees = async (projectPath: string): Promise<Set<string> | null> => {
+      const key = normalizeFsPath(projectPath);
+      if (worktreesByProject.has(key)) return worktreesByProject.get(key)!;
+      let set: Set<string> | null = null;
+      try {
+        const list = await worktreeService.listWorktrees(projectPath);
+        set = new Set(list.map((w) => normalizeFsPath(w.path)));
+      } catch (err) {
+        console.warn(`[AgentFleetService] git worktree list failed for ${projectPath}:`, err);
+      }
+      worktreesByProject.set(key, set);
+      return set;
+    };
+
+    const restored: SwarmSession[] = [];
+    for (const session of stored) {
+      if (this.sessions.has(session.id)) continue;
+      session.restored = true;
+      let changed = false;
+
+      if (isActiveSwarmStatus(session.status)) {
+        session.status = 'interrupted';
+        session.interruptedAt = Date.now();
+        changed = true;
+      }
+      for (const agent of session.agents) {
+        if (isActiveAgentStatus(agent.status)) {
+          agent.status = 'interrupted';
+          pushAgentLog(agent, '[Swarm] Работа прервана перезапуском ProjectHub. Сессию можно возобновить или закрыть.');
+          changed = true;
+        }
+        if (agent.worktreePath && (session.status === 'interrupted' || isActiveAgentStatus(agent.status) || agent.status === 'interrupted')) {
+          const registered = await registeredWorktrees(session.projectPath);
+          const onDisk = this.pathExists(agent.worktreePath);
+          const inGit = registered ? registered.has(normalizeFsPath(agent.worktreePath)) : onDisk;
+          const missing = !onDisk || !inGit;
+          if (missing !== Boolean(agent.worktreeMissing)) {
+            agent.worktreeMissing = missing || undefined;
+            changed = true;
+          }
+          if (missing) pushAgentLog(agent, `[Swarm] Worktree ${agent.worktreePath} не найден: возобновление невозможно, только очистка.`);
+        }
+      }
+      if (session.mode === 'handoff' && session.handoffStages) {
+        for (const stage of session.handoffStages) {
+          if (stage.status === 'running') {
+            stage.status = 'pending';
+            changed = true;
+          }
+        }
+      }
+
+      this.sessions.set(session.id, session);
+      this.ensureSessionTracking(session.id);
+      restored.push(session);
+      if (changed) this.persist(session, true);
+    }
+
+    if (restored.length > 0) {
+      const interrupted = restored.filter((s) => s.status === 'interrupted').length;
+      console.log(`[AgentFleetService] Restored ${restored.length} swarm session(s) from disk, ${interrupted} interrupted`);
+    }
+    return restored;
+  }
+
+  /**
+   * Возобновление прерванной сессии: агенты перезапускаются в своих worktree с промптом
+   * «продолжи». Агенты без worktree помечаются failed.
+   */
+  public async resumeSwarm(swarmId: string): Promise<{ success: boolean; error?: string }> {
+    const session = this.sessions.get(swarmId);
+    if (!session) return { success: false, error: `Swarm session ${swarmId} not found` };
+    if (session.status !== 'interrupted') {
+      return { success: false, error: `Сессия в статусе "${session.status}" не может быть возобновлена` };
+    }
+
+    const resumable = session.agents.filter((a) => a.status === 'interrupted');
+    if (resumable.length === 0) {
+      return { success: false, error: 'В сессии нет прерванных агентов' };
+    }
+    for (const agent of resumable) {
+      if (agent.worktreePath && agent.worktreeMissing) {
+        agent.status = 'failed';
+        agent.error = 'Worktree агента не найден после перезапуска';
+        this.log(session, agent, `[Swarm Error] ${agent.error}`);
+      }
+    }
+
+    // Возобновлять нечего: все прерванные агенты потеряли worktree.
+    const startIndex =
+      session.mode === 'handoff'
+        ? Math.max(0, session.handoffStages?.findIndex((s) => s.status !== 'completed') ?? session.currentHandoffStageIndex ?? 0)
+        : 0;
+    const stillResumable =
+      session.mode === 'handoff'
+        ? session.agents[startIndex]?.status === 'interrupted'
+        : session.agents.some((a) => a.status === 'interrupted');
+    if (!stillResumable) {
+      session.status = 'failed';
+      session.error = 'Worktree прерванных агентов не найдены: возобновление невозможно, сессию можно только закрыть';
+      session.completedAt = Date.now();
+      this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
+      return { success: false, error: session.error };
+    }
+
+    session.status = 'running';
+    session.interruptedAt = undefined;
+    session.error = undefined;
+    this.ensureSessionTracking(session.id);
+    this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
+
+    if (session.mode === 'handoff') {
+      void this.executeHandoff(session, startIndex, true);
+    } else {
+      void this.executeFanOut(session, true);
+    }
+    return { success: true };
+  }
+
+  private prepareAgentForResume(session: SwarmSession, agent: AgentSlotState): void {
+    agent.resumeCount = (agent.resumeCount ?? 0) + 1;
+    agent.status = 'pending';
+    agent.error = undefined;
+    agent.finalOutput = undefined;
+    agent.diffSummary = undefined;
+    resetLiveOutput(agent);
+    this.log(session, agent, `[Swarm] Возобновление работы агента (попытка ${agent.resumeCount + 1}) в ${agent.worktreePath || session.projectPath}`);
+  }
+
+  /**
+   * Закрытие сессии с очисткой: остановка процессов, удаление worktree и временных веток,
+   * удаление файлов состояния и транскриптов.
+   */
+  public async discardSwarm(swarmId: string, cleanupWorktrees = true): Promise<{ success: boolean; error?: string }> {
+    const session = this.sessions.get(swarmId);
+    if (!session) return { success: false, error: `Swarm session ${swarmId} not found` };
+
+    this.stopSwarm(swarmId, false);
+
+    if (cleanupWorktrees && session.useWorktrees) {
+      const seen = new Set<string>();
+      for (const agent of session.agents) {
+        if (!agent.worktreePath) continue;
+        const key = normalizeFsPath(agent.worktreePath);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (normalizeFsPath(agent.worktreePath) === normalizeFsPath(session.projectPath)) continue;
+        try {
+          if (this.pathExists(agent.worktreePath)) {
+            await this.materializeAgentResult(session, agent);
+            await worktreeService.removeWorktree(session.projectPath, agent.worktreePath, true);
+          }
+          const branch = agent.worktreeBranch;
+          if (branch && (branch.startsWith('swarm/') || branch.startsWith('handoff/'))) {
+            try {
+              await simpleGit(session.projectPath).deleteLocalBranch(branch, true);
+            } catch (branchErr) {
+              console.warn(`[AgentFleetService] Failed to delete branch ${branch}:`, branchErr);
+            }
+          }
+        } catch (cleanErr) {
+          console.warn(`[AgentFleetService] Failed to cleanup worktree ${agent.worktreePath}:`, cleanErr);
+        }
+      }
+      try {
+        await worktreeService.pruneWorktrees(session.projectPath);
+      } catch { /* ignore */ }
+    }
+
+    this.sessions.delete(swarmId);
+    this.activeProcesses.delete(swarmId);
+    this.abortControllers.delete(swarmId);
+    if (this.store) await this.store.delete(swarmId);
+    this.emit('swarmEvent', { type: 'swarm_removed', swarmId } satisfies SwarmEventPayload);
+    return { success: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fan-Out
+  // ---------------------------------------------------------------------------
+
+  private async detectBaseBranch(projectPath: string, fallback?: string): Promise<string> {
+    let baseBranch = fallback || 'main';
+    try {
+      const git = simpleGit(projectPath);
+      const status = await git.status();
+      if (status.current) baseBranch = status.current;
+    } catch (e) {
+      console.warn('[AgentFleetService] Could not determine current git branch:', e);
+    }
+    return baseBranch;
+  }
+
+  private newAgentState(cfg: AgentSlotConfig, id: string, startTime: number): AgentSlotState {
+    return {
+      id,
+      config: cfg,
+      status: 'pending',
+      logs: [],
+      liveOutput: '',
+      metrics: { startTime, charsGenerated: 0, tokensEstimated: 0 }
+    };
   }
 
   /**
@@ -257,31 +592,12 @@ export class AgentFleetService extends EventEmitter {
     const useWorktrees = options.useWorktrees !== false;
     const autoCommitAgentResults = options.autoCommitAgentResults !== false;
     const swarmId = `swarm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const baseBranch = await this.detectBaseBranch(projectPath, options.baseBranch);
+    await this.getPriceTable();
 
-    // Определяем текущую ветку проекта
-    let baseBranch = options.baseBranch || 'main';
-    try {
-      const git = simpleGit(projectPath);
-      const status = await git.status();
-      if (status.current) {
-        baseBranch = status.current;
-      }
-    } catch (e) {
-      console.warn('[AgentFleetService] Could not determine current git branch:', e);
-    }
-
-    const agentStates: AgentSlotState[] = agents.map((cfg) => ({
-      id: cfg.id || `agent-${Math.random().toString(36).slice(2, 7)}`,
-      config: cfg,
-      status: 'pending',
-      logs: [],
-      liveOutput: '',
-      metrics: {
-        startTime: Date.now(),
-        charsGenerated: 0,
-        tokensEstimated: 0
-      }
-    }));
+    const agentStates: AgentSlotState[] = agents.map((cfg) =>
+      this.newAgentState(cfg, cfg.id || `agent-${Math.random().toString(36).slice(2, 7)}`, Date.now())
+    );
 
     const session: SwarmSession = {
       id: swarmId,
@@ -293,39 +609,40 @@ export class AgentFleetService extends EventEmitter {
       baseBranch,
       useWorktrees,
       autoCommitAgentResults,
+      ...(typeof options.budgetUsd === 'number' && options.budgetUsd > 0 ? { budgetUsd: options.budgetUsd } : {}),
       status: 'preparing',
       createdAt: Date.now(),
       agents: agentStates
     };
 
     this.sessions.set(swarmId, session);
-    this.activeProcesses.set(swarmId, new Set());
-    this.abortControllers.set(swarmId, new Set());
+    this.ensureSessionTracking(swarmId);
 
-    this.emitSwarmEvent({
-      type: 'swarm_updated',
-      swarmId,
-      session
-    });
+    this.emitSwarmEvent({ type: 'swarm_updated', swarmId, session });
 
     // Асинхронно запускаем выполнение всех агентов параллельно
-    void this.executeFanOut(session);
+    void this.executeFanOut(session, false);
 
     return session;
   }
 
-  private async executeFanOut(session: SwarmSession): Promise<void> {
+  private async executeFanOut(session: SwarmSession, resume: boolean): Promise<void> {
     session.status = 'running';
     this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
 
-    // Инициализируем worktrees при необходимости
-    for (const agentState of session.agents) {
+    const targets = resume ? session.agents.filter((a) => a.status === 'interrupted') : session.agents;
+
+    for (const agentState of targets) {
+      if (resume) {
+        this.prepareAgentForResume(session, agentState);
+        continue;
+      }
       if (session.useWorktrees) {
         try {
           const agentSlug = sanitizeSlug(agentState.config.name || agentState.id);
           const branchName = `swarm/${session.id.slice(-6)}/${agentSlug}`;
           agentState.status = 'preparing';
-          agentState.logs.push(`[Swarm] Создание изолированного Git Worktree: ветка ${branchName}...`);
+          this.log(session, agentState, `[Swarm] Создание изолированного Git Worktree: ветка ${branchName}...`);
           this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
 
           const wt = await worktreeService.addWorktree(session.projectPath, {
@@ -335,25 +652,41 @@ export class AgentFleetService extends EventEmitter {
           });
           agentState.worktreePath = wt.path;
           agentState.worktreeBranch = wt.branch || branchName;
-          agentState.logs.push(`[Swarm] Изолированное рабочее дерево готово: ${wt.path}`);
+          this.log(session, agentState, `[Swarm] Изолированное рабочее дерево готово: ${wt.path}`);
         } catch (err: any) {
           console.error(`[AgentFleetService] Failed to create worktree for ${agentState.id}:`, err);
-          agentState.logs.push(`[Swarm Error] Не удалось создать worktree: ${err.message}. Запуск в основном каталоге.`);
+          this.log(session, agentState, `[Swarm Error] Не удалось создать worktree: ${err.message}. Запуск в основном каталоге.`);
         }
       }
     }
 
-    // Запускаем каждого агента параллельно
-    const agentPromises = session.agents.map((agentState) => this.runSingleAgent(session, agentState));
+    const agentPromises = targets.map((agentState) =>
+      this.runSingleAgent(session, agentState, resume ? `${session.prompt}${RESUME_PROMPT_SUFFIX}` : undefined)
+    );
     await Promise.allSettled(agentPromises);
 
-    // Проверяем общий статус
-    const allDone = session.agents.every((a) => a.status === 'completed' || a.status === 'failed' || a.status === 'stopped');
-    if (allDone && session.status === 'running') {
-      session.status = 'completed';
-      session.completedAt = Date.now();
-      this.emitSwarmEvent({ type: 'swarm_completed', swarmId: session.id, session });
+    if (session.status !== 'running') return;
+    const allDone = session.agents.every((a) => !isActiveAgentStatus(a.status) && a.status !== 'interrupted');
+    if (allDone) {
+      this.finishSession(session);
     }
+  }
+
+  private finishSession(session: SwarmSession): void {
+    session.completedAt = Date.now();
+    const budgetHit =
+      typeof session.budgetUsd === 'number' &&
+      session.budgetUsd > 0 &&
+      typeof session.totalCostUsd === 'number' &&
+      session.totalCostUsd > session.budgetUsd;
+    if (budgetHit) {
+      session.status = 'failed';
+      session.error = session.error || `Бюджет сессии ${formatUsd(session.budgetUsd)} превышен`;
+      this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
+      return;
+    }
+    session.status = 'completed';
+    this.emitSwarmEvent({ type: 'swarm_completed', swarmId: session.id, session });
   }
 
   /**
@@ -368,8 +701,10 @@ export class AgentFleetService extends EventEmitter {
     const promptToRun = customPrompt || session.prompt;
     const startTime = Date.now();
     agentState.metrics.startTime = startTime;
+    agentState.metrics.endTime = undefined;
+    agentState.metrics.durationMs = undefined;
     agentState.status = 'running';
-    agentState.logs.push(`[Swarm] Старт агента "${agentState.config.name}" (движок: ${agentState.config.engine})...`);
+    this.log(session, agentState, `[Swarm] Старт агента "${agentState.config.name}" (движок: ${agentState.config.engine})...`);
     this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
 
     try {
@@ -381,14 +716,19 @@ export class AgentFleetService extends EventEmitter {
         await this.runApiAgent(session, agentState, targetPath, promptToRun);
       }
 
-      agentState.status = 'completed';
       agentState.metrics.endTime = Date.now();
       agentState.metrics.durationMs = agentState.metrics.endTime - startTime;
       const chars = agentState.metrics.charsGenerated || agentState.liveOutput.length;
       agentState.metrics.charsGenerated = chars;
-      agentState.metrics.tokensEstimated = Math.round(chars / 4);
+      // Грубая оценка нужна только когда реального usage нет.
+      agentState.metrics.tokensEstimated = agentState.metrics.usage ? undefined : Math.round(chars / 4);
       agentState.metrics.speedCharsPerSec = Math.round((chars / Math.max(1, agentState.metrics.durationMs)) * 1000);
-      agentState.logs.push(`[Swarm] Агент завершил работу за ${(agentState.metrics.durationMs / 1000).toFixed(1)} с.`);
+
+      // Остановка/бюджет могли изменить статус, пока процесс завершался — не перетираем.
+      if (agentState.status === 'running') {
+        agentState.status = 'completed';
+        this.log(session, agentState, `[Swarm] Агент завершил работу за ${(agentState.metrics.durationMs / 1000).toFixed(1)} с.`);
+      }
 
       // Фиксируем результат агента в Git (AC #1)
       await this.materializeAgentResult(session, agentState);
@@ -403,7 +743,9 @@ export class AgentFleetService extends EventEmitter {
             agentState.worktreePath
           );
           agentState.diffSummary = parseDiffSummary(diffRaw);
-          agentState.logs.push(
+          this.log(
+            session,
+            agentState,
             `[Swarm] Сформирован дифф: ${agentState.diffSummary.filesChanged} файлов, +${agentState.diffSummary.insertions} / -${agentState.diffSummary.deletions}`
           );
         } catch (diffErr) {
@@ -412,12 +754,16 @@ export class AgentFleetService extends EventEmitter {
       }
     } catch (err: any) {
       console.error(`[AgentFleetService] Agent ${agentState.id} execution failed:`, err);
-      agentState.status = 'failed';
-      agentState.error = err.message || String(err);
-      agentState.logs.push(`[Swarm Error] Ошибка: ${agentState.error}`);
+      agentState.metrics.endTime = Date.now();
+      agentState.metrics.durationMs = agentState.metrics.endTime - startTime;
+      if (agentState.status === 'running') {
+        agentState.status = 'failed';
+        agentState.error = err.message || String(err);
+      }
+      this.log(session, agentState, `[Swarm Error] Ошибка: ${err.message || String(err)}`);
       try {
         await this.materializeAgentResult(session, agentState);
-      } catch {}
+      } catch { /* ignore */ }
     } finally {
       this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
     }
@@ -455,6 +801,11 @@ export class AgentFleetService extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       let outputBuffer = '';
+      let usageSeen = false;
+      const cleanup = () => {
+        abortSet?.delete(controller);
+        this.untrackAgentAbort(agentState.id, controller);
+      };
       aiAgentService.streamChat(
         {
           sessionId: `swarm-${agentState.id}`,
@@ -466,39 +817,44 @@ export class AgentFleetService extends EventEmitter {
         (chunk) => {
           if (chunk.text) {
             outputBuffer += chunk.text;
-            agentState.liveOutput = outputBuffer;
-            agentState.metrics.charsGenerated = outputBuffer.length;
-            this.emitSwarmEvent({
-              type: 'agent_chunk',
-              swarmId: session.id,
-              agentId: agentState.id,
-              chunk: chunk.text,
-              session
-            });
+            this.appendOutput(session, agentState, chunk.text);
           }
           if (chunk.thought) {
-            agentState.logs.push(`[Thought] ${chunk.thought.slice(0, 200)}...`);
+            this.log(session, agentState, `[Thought] ${chunk.thought.slice(0, 200)}...`);
+          }
+          if (chunk.toolCall) {
+            this.log(session, agentState, `[Tool] ${chunk.toolCall.name}`);
+          }
+          if (chunk.usage) {
+            usageSeen = true;
+            this.recordUsage(session, agentState, chunk.usage, 'replace', config.model);
           }
         },
         (finalMsg) => {
           agentState.finalOutput = finalMsg.content || outputBuffer;
-          abortSet?.delete(controller);
-          this.untrackAgentAbort(agentState.id, controller);
+          if (finalMsg.usage && !usageSeen) {
+            this.recordUsage(session, agentState, finalMsg.usage, 'replace', config.model);
+          }
+          cleanup();
           resolve();
         },
         (err) => {
-          abortSet?.delete(controller);
-          this.untrackAgentAbort(agentState.id, controller);
+          cleanup();
           reject(new Error(err));
         }
       ).catch((err) => {
-        abortSet?.delete(controller);
-        this.untrackAgentAbort(agentState.id, controller);
+        cleanup();
         reject(err);
       });
     });
   }
 
+  /**
+   * Claude Code CLI в режиме `-p --output-format stream-json`: промпт передаётся через stdin
+   * (без экранирования аргументов оболочки), текст ответов идёт в вывод агента, события
+   * `assistant` дают usage по каждому ходу (для бюджета), событие `result` — итоговые
+   * токены и `total_cost_usd` (AC #3).
+   */
   private async runClaudeCliAgent(
     session: SwarmSession,
     agentState: AgentSlotState,
@@ -506,19 +862,23 @@ export class AgentFleetService extends EventEmitter {
     prompt: string
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      const args = ['-p', prompt, '--dangerously-skip-permissions'];
+      const args = ['-p', '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+      const model = agentState.config.providerConfig?.model;
+      if (model && model !== 'default') args.push('--model', model);
+
       let child: ChildProcess;
       try {
         child = spawn('claude', args, {
           cwd: targetPath,
           shell: true,
+          stdio: ['pipe', 'pipe', 'pipe'],
           env: {
             ...process.env,
             FORCE_COLOR: '0'
           }
         });
       } catch (e: any) {
-        agentState.logs.push(`[Swarm] Claude CLI недоступен напрямую (${e.message}), запуск через API fallback.`);
+        this.log(session, agentState, `[Swarm] Claude CLI недоступен напрямую (${e.message}), запуск через API fallback.`);
         return this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
       }
 
@@ -526,40 +886,147 @@ export class AgentFleetService extends EventEmitter {
       procSet?.add(child);
       this.trackAgentProcess(agentState.id, child);
 
+      let finished = false;
+      let sawJson = false;
+      let sawResult = false;
+      let stdoutBuffer = '';
+      let stderrTail = '';
+      let turnUsage = emptyUsage();
+      const finish = (fn: () => void) => {
+        if (finished) return;
+        finished = true;
+        procSet?.delete(child);
+        this.untrackAgentProcess(agentState.id, child);
+        fn();
+      };
+
+      const handleEvent = (event: any) => {
+        if (event.type === 'rate_limit_event' || event.rate_limit_info) {
+          try {
+            claudeUsageService.noteRateLimitEvent(event.rate_limit_info || event);
+          } catch { /* ignore */ }
+          return;
+        }
+        if (event.type === 'assistant' && event.message?.content) {
+          for (const item of event.message.content) {
+            if (item.type === 'text' && typeof item.text === 'string') {
+              this.appendOutput(session, agentState, item.text);
+            } else if (item.type === 'tool_use') {
+              const input = item.input && typeof item.input === 'object' ? JSON.stringify(item.input) : '';
+              this.log(session, agentState, `[Tool] ${item.name} ${input.slice(0, 300)}`);
+            }
+          }
+          const usage = usageFromClaudeAssistantEvent(event);
+          if (usage) {
+            turnUsage = addUsage(turnUsage, usage);
+            const stopped = this.recordUsage(session, agentState, usage, 'add', usage.model);
+            if (stopped) return;
+            this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
+          }
+          return;
+        }
+        if (event.type === 'result') {
+          const summary = parseClaudeResultEvent(event);
+          if (!summary) return;
+          sawResult = true;
+          if (summary.result && !agentState.liveOutput.trim()) {
+            this.appendOutput(session, agentState, summary.result);
+          }
+          const finalUsage =
+            summary.usage.totalTokens > 0 ? summary.usage : { ...turnUsage, costUsd: summary.usage.costUsd, costSource: summary.usage.costSource };
+          this.recordUsage(session, agentState, finalUsage, 'replace', summary.usage.model);
+          const u = agentState.metrics.usage;
+          this.log(
+            session,
+            agentState,
+            `[Swarm Usage] ходов: ${summary.numTurns ?? '?'}, вход ${u?.inputTokens ?? 0}, выход ${u?.outputTokens ?? 0}, ` +
+              `кэш ${u?.cacheReadTokens ?? 0}/${u?.cacheCreationTokens ?? 0}, стоимость ${formatUsd(u?.costUsd)} (${u?.costSource ?? 'unknown'})`
+          );
+          if (summary.isError && summary.subtype) {
+            this.log(session, agentState, `[Swarm] Claude CLI завершился со статусом ${summary.subtype}`);
+          }
+        }
+      };
+
       child.stdout?.on('data', (d: Buffer) => {
-        const text = d.toString('utf-8');
-        agentState.liveOutput += text;
-        this.emitSwarmEvent({
-          type: 'agent_chunk',
-          swarmId: session.id,
-          agentId: agentState.id,
-          chunk: text,
-          session
-        });
+        stdoutBuffer += d.toString('utf-8');
+        const lines = stdoutBuffer.split('\n');
+        stdoutBuffer = lines.pop() || '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          if (trimmed.startsWith('{')) {
+            try {
+              const event = JSON.parse(trimmed);
+              sawJson = true;
+              handleEvent(event);
+              continue;
+            } catch {
+              /* не JSON — ниже как обычный текст */
+            }
+          }
+          // Старый CLI без stream-json или служебный вывод — показываем как есть.
+          this.appendOutput(session, agentState, `${line}\n`);
+        }
       });
 
       child.stderr?.on('data', (d: Buffer) => {
         const text = d.toString('utf-8');
-        agentState.logs.push(text);
+        stderrTail = (stderrTail + text).slice(-4000);
+        this.log(session, agentState, text.trimEnd());
       });
+      child.stdout?.on('error', (err) => this.log(session, agentState, `[Swarm] stdout error: ${err.message}`));
+      child.stderr?.on('error', (err) => this.log(session, agentState, `[Swarm] stderr error: ${err.message}`));
+      child.stdin?.on('error', (err) => this.log(session, agentState, `[Swarm] stdin error: ${err.message}`));
 
       child.on('error', (err) => {
-        procSet?.delete(child);
-        this.untrackAgentProcess(agentState.id, child);
-        agentState.logs.push(`[Swarm] Ошибка Claude CLI: ${err.message}. Пробуем API fallback.`);
-        this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
+        finish(() => {
+          this.log(session, agentState, `[Swarm] Ошибка Claude CLI: ${err.message}. Пробуем API fallback.`);
+          this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
+        });
       });
 
       child.on('close', (code) => {
-        procSet?.delete(child);
-        this.untrackAgentProcess(agentState.id, child);
-        if (code === 0 || agentState.liveOutput.length > 0) {
-          agentState.finalOutput = agentState.liveOutput;
-          resolve();
-        } else {
-          this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
-        }
+        finish(() => {
+          if (stdoutBuffer.trim()) {
+            const rest = stdoutBuffer;
+            stdoutBuffer = '';
+            if (rest.trim().startsWith('{')) {
+              try {
+                handleEvent(JSON.parse(rest.trim()));
+              } catch {
+                this.appendOutput(session, agentState, rest);
+              }
+            } else {
+              this.appendOutput(session, agentState, rest);
+            }
+          }
+          // Агент остановлен пользователем или по бюджету — результат уже зафиксирован в статусе.
+          if (agentState.status !== 'running') {
+            agentState.finalOutput = agentState.liveOutput;
+            resolve();
+            return;
+          }
+          if (code === 0 || sawResult || (sawJson && agentState.liveOutput.length > 0)) {
+            agentState.finalOutput = agentState.liveOutput;
+            resolve();
+          } else if (agentState.liveOutput.length > 0) {
+            agentState.finalOutput = agentState.liveOutput;
+            resolve();
+          } else {
+            this.log(session, agentState, `[Swarm] Claude CLI завершился с кодом ${code}${stderrTail ? `: ${stderrTail.trim().slice(-500)}` : ''}. Пробуем API fallback.`);
+            this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
+          }
+        });
       });
+
+      try {
+        child.stdin?.write(prompt, 'utf-8');
+        child.stdin?.end();
+      } catch (err: any) {
+        this.log(session, agentState, `[Swarm] Не удалось передать промпт в Claude CLI: ${err?.message || String(err)}`);
+        killProcessTree(child);
+      }
     });
   }
 
@@ -571,6 +1038,11 @@ export class AgentFleetService extends EventEmitter {
   ): Promise<void> {
     const isWin = process.platform === 'win32';
     const cmd = isWin ? 'codex.cmd' : 'codex';
+    const fallbackConfig: AIProviderConfig = {
+      provider: 'openrouter',
+      model: 'openai/gpt-4o',
+      temperature: 0.2
+    };
 
     return new Promise((resolve, reject) => {
       let child: ChildProcess;
@@ -581,11 +1053,6 @@ export class AgentFleetService extends EventEmitter {
           env: { ...process.env, FORCE_COLOR: '0' }
         });
       } catch {
-        const fallbackConfig: AIProviderConfig = {
-          provider: 'openrouter',
-          model: 'openai/gpt-4o',
-          temperature: 0.2
-        };
         agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
         return this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
       }
@@ -593,43 +1060,60 @@ export class AgentFleetService extends EventEmitter {
       const procSet = this.activeProcesses.get(session.id);
       procSet?.add(child);
       this.trackAgentProcess(agentState.id, child);
+      let finished = false;
+      let stderrTail = '';
+      const finish = (fn: () => void) => {
+        if (finished) return;
+        finished = true;
+        procSet?.delete(child);
+        this.untrackAgentProcess(agentState.id, child);
+        fn();
+      };
 
       child.stdout?.on('data', (d: Buffer) => {
+        this.appendOutput(session, agentState, d.toString('utf-8'));
+      });
+      child.stderr?.on('data', (d: Buffer) => {
         const text = d.toString('utf-8');
-        agentState.liveOutput += text;
-        this.emitSwarmEvent({
-          type: 'agent_chunk',
-          swarmId: session.id,
-          agentId: agentState.id,
-          chunk: text,
-          session
+        stderrTail = (stderrTail + text).slice(-4000);
+        this.log(session, agentState, text.trimEnd());
+      });
+      child.stdout?.on('error', () => undefined);
+      child.stderr?.on('error', () => undefined);
+
+      child.on('error', () => {
+        finish(() => {
+          agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
+          this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
         });
       });
 
-      child.on('error', () => {
-        procSet?.delete(child);
-        this.untrackAgentProcess(agentState.id, child);
-        const fallbackConfig: AIProviderConfig = {
-          provider: 'openrouter',
-          model: 'openai/gpt-4o',
-          temperature: 0.2
-        };
-        agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
-        this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
-      });
-
       child.on('close', (code) => {
-        procSet?.delete(child);
-        this.untrackAgentProcess(agentState.id, child);
-        if (code === 0 || agentState.liveOutput.length > 0) {
-          agentState.finalOutput = agentState.liveOutput;
-          resolve();
-        } else {
-          this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
-        }
+        finish(() => {
+          if (agentState.status !== 'running') {
+            agentState.finalOutput = agentState.liveOutput;
+            resolve();
+            return;
+          }
+          if (code === 0 || agentState.liveOutput.length > 0) {
+            agentState.finalOutput = agentState.liveOutput;
+            // Best-effort: итоговые строки CLI вида «tokens used: N» (AC #3).
+            const parsed = parseCliUsageText(`${agentState.liveOutput.slice(-4000)}\n${stderrTail}`);
+            if (parsed) {
+              this.recordUsage(session, agentState, parsed, 'replace', agentState.config.providerConfig?.model);
+            }
+            resolve();
+          } else {
+            this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
+          }
+        });
       });
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Handoff
+  // ---------------------------------------------------------------------------
 
   /**
    * Запуск режима Handoff (последовательный конвейер специализированных ролей).
@@ -639,36 +1123,20 @@ export class AgentFleetService extends EventEmitter {
     const useWorktrees = options.useWorktrees !== false;
     const autoCommitAgentResults = options.autoCommitAgentResults !== false;
     const swarmId = `swarm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const baseBranch = await this.detectBaseBranch(projectPath, options.baseBranch);
+    await this.getPriceTable();
 
-    let baseBranch = options.baseBranch || 'main';
-    try {
-      const git = simpleGit(projectPath);
-      const status = await git.status();
-      if (status.current) baseBranch = status.current;
-    } catch { /* ignore */ }
-
-    const agentStates: AgentSlotState[] = stages.map((stg, idx) => ({
-      id: stg.agent.id || `handoff-agent-${idx + 1}`,
-      config: {
-        ...stg.agent,
-        role: stg.role
-      },
-      status: 'pending',
-      logs: [],
-      liveOutput: '',
-      metrics: {
-        startTime: 0,
-        charsGenerated: 0,
-        tokensEstimated: 0
-      }
-    }));
+    const agentStates: AgentSlotState[] = stages.map((stg, idx) =>
+      this.newAgentState({ ...stg.agent, role: stg.role }, stg.agent.id || `handoff-agent-${idx + 1}`, 0)
+    );
 
     const handoffStages: HandoffStageState[] = stages.map((stg, idx) => ({
       stageIndex: idx,
       role: stg.role,
       agentId: agentStates[idx].id,
       status: 'pending',
-      inputPrompt: ''
+      inputPrompt: '',
+      ...(stg.instructions ? { instructions: stg.instructions } : {})
     }));
 
     const session: SwarmSession = {
@@ -681,6 +1149,7 @@ export class AgentFleetService extends EventEmitter {
       baseBranch,
       useWorktrees,
       autoCommitAgentResults,
+      ...(typeof options.budgetUsd === 'number' && options.budgetUsd > 0 ? { budgetUsd: options.budgetUsd } : {}),
       status: 'preparing',
       createdAt: Date.now(),
       agents: agentStates,
@@ -689,27 +1158,30 @@ export class AgentFleetService extends EventEmitter {
     };
 
     this.sessions.set(swarmId, session);
-    this.activeProcesses.set(swarmId, new Set());
-    this.abortControllers.set(swarmId, new Set());
+    this.ensureSessionTracking(swarmId);
 
     this.emitSwarmEvent({ type: 'swarm_updated', swarmId, session });
 
-    void this.executeHandoff(session, stages);
+    void this.executeHandoff(session, 0, false);
 
     return session;
   }
 
-  private async executeHandoff(
-    session: SwarmSession,
-    stages: StartHandoffOptions['stages']
-  ): Promise<void> {
+  private async executeHandoff(session: SwarmSession, startIndex: number, resume: boolean): Promise<void> {
     session.status = 'running';
     this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
 
+    const stages = session.handoffStages ?? [];
     let sharedWorktreePath = session.projectPath;
     let sharedWorktreeBranch = session.baseBranch;
 
-    if (session.useWorktrees) {
+    if (resume) {
+      const known = session.agents.find((a) => a.worktreePath);
+      if (known) {
+        sharedWorktreePath = known.worktreePath!;
+        sharedWorktreeBranch = known.worktreeBranch || session.baseBranch;
+      }
+    } else if (session.useWorktrees) {
       try {
         const branchName = `handoff/${session.id.slice(-6)}`;
         const wt = await worktreeService.addWorktree(session.projectPath, {
@@ -724,25 +1196,30 @@ export class AgentFleetService extends EventEmitter {
       }
     }
 
-    let previousStageOutput = '';
+    let previousStageOutput = startIndex > 0 ? stages[startIndex - 1]?.outputResult || '' : '';
 
-    for (let i = 0; i < stages.length; i++) {
+    for (let i = startIndex; i < stages.length; i++) {
+      if (session.status !== 'running') return;
       session.currentHandoffStageIndex = i;
-      const stageConfig = stages[i];
+      const stageState = stages[i];
       const agentState = session.agents[i];
-      const stageState = session.handoffStages![i];
+      if (!agentState) break;
 
       agentState.worktreePath = sharedWorktreePath;
       agentState.worktreeBranch = sharedWorktreeBranch;
 
+      const resumingThisStage = resume && i === startIndex && agentState.status === 'interrupted';
+      if (resumingThisStage) this.prepareAgentForResume(session, agentState);
+
       let stagePrompt = `[Задача проекта]: ${session.prompt}\n\n`;
-      if (stageConfig.instructions) {
-        stagePrompt += `[Инструкции этапа (${stageConfig.role})]: ${stageConfig.instructions}\n\n`;
+      if (stageState.instructions) {
+        stagePrompt += `[Инструкции этапа (${stageState.role})]: ${stageState.instructions}\n\n`;
       }
       if (previousStageOutput) {
         stagePrompt += `[Артефакты и результат предыдущего этапа]:\n${previousStageOutput}\n\n`;
       }
-      stagePrompt += `Выполни свою часть работы в рамках роли "${stageConfig.role}".`;
+      stagePrompt += `Выполни свою часть работы в рамках роли "${stageState.role}".`;
+      if (resumingThisStage) stagePrompt += RESUME_PROMPT_SUFFIX;
 
       stageState.inputPrompt = stagePrompt;
       stageState.status = 'running';
@@ -758,18 +1235,25 @@ export class AgentFleetService extends EventEmitter {
 
       this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
 
-      if (agentState.status === 'failed') {
+      if (session.status !== 'running') return;
+      if (agentState.status !== 'completed') {
         session.status = 'failed';
-        session.error = `Этап ${stageConfig.role} завершился с ошибкой`;
+        session.error =
+          agentState.status === 'budget_exceeded'
+            ? agentState.error || `Этап ${stageState.role} остановлен по бюджету`
+            : `Этап ${stageState.role} завершился с ошибкой`;
+        session.completedAt = Date.now();
         this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
         return;
       }
     }
 
-    session.status = 'completed';
-    session.completedAt = Date.now();
-    this.emitSwarmEvent({ type: 'swarm_completed', swarmId: session.id, session });
+    this.finishSession(session);
   }
+
+  // ---------------------------------------------------------------------------
+  // Pick Winner / Stop
+  // ---------------------------------------------------------------------------
 
   /**
    * Выбор победителя (Pick Winner) в 1 клик (AC #5, AC #4).
@@ -806,7 +1290,7 @@ export class AgentFleetService extends EventEmitter {
           };
         }
         mergedBranch = winnerAgent.worktreeBranch;
-        winnerAgent.logs.push(`[Swarm] Ветка ${mergedBranch} успешно влита в ${session.baseBranch}!`);
+        this.log(session, winnerAgent, `[Swarm] Ветка ${mergedBranch} успешно влита в ${session.baseBranch}!`);
       } catch (err: any) {
         return { success: false, error: `Merge error: ${err.message || err}` };
       }
@@ -816,9 +1300,9 @@ export class AgentFleetService extends EventEmitter {
     for (const agent of session.agents) {
       if (agent.id !== winnerAgentId) {
         this.killAgentProcess(agent.id);
-        if (agent.status === 'running' || agent.status === 'preparing' || agent.status === 'pending') {
+        if (isActiveAgentStatus(agent.status) || agent.status === 'interrupted') {
           agent.status = 'stopped';
-          agent.logs.push('[Swarm] Остановлен в связи с выбором другого победителя.');
+          this.log(session, agent, '[Swarm] Остановлен в связи с выбором другого победителя.');
         }
       }
     }
@@ -841,14 +1325,16 @@ export class AgentFleetService extends EventEmitter {
             }
 
             await worktreeService.removeWorktree(session.projectPath, agent.worktreePath, true);
-            agent.logs.push(`[Swarm] Временное рабочее дерево ${agent.worktreePath} очищено.`);
+            this.log(session, agent, `[Swarm] Временное рабочее дерево ${agent.worktreePath} очищено.`);
 
             // Удаляем временную ветку проигравшего (AC #4)
             if (agent.worktreeBranch) {
               try {
                 const git = simpleGit(session.projectPath);
                 await git.deleteLocalBranch(agent.worktreeBranch, true);
-                agent.logs.push(
+                this.log(
+                  session,
+                  agent,
                   `[Swarm] Ветка ${agent.worktreeBranch} удалена. Хэш коммита для отката: ${agent.lastCommitHash?.slice(0, 7) || 'N/A'}`
                 );
               } catch (branchErr) {
@@ -882,7 +1368,7 @@ export class AgentFleetService extends EventEmitter {
     };
   }
 
-  public stopSwarm(swarmId: string): boolean {
+  public stopSwarm(swarmId: string, emit = true): boolean {
     const session = this.sessions.get(swarmId);
     if (!session) return false;
 
@@ -897,20 +1383,27 @@ export class AgentFleetService extends EventEmitter {
       for (const c of controllers) c.abort();
       controllers.clear();
     }
+    for (const a of session.agents) this.killAgentProcess(a.id);
 
-    session.status = 'stopped';
+    const wasActive = isActiveSwarmStatus(session.status) || session.status === 'interrupted';
+    if (wasActive) {
+      session.status = 'stopped';
+      session.completedAt = Date.now();
+    }
     for (const a of session.agents) {
-      if (a.status === 'running' || a.status === 'preparing') {
+      if (isActiveAgentStatus(a.status) || a.status === 'interrupted') {
         a.status = 'stopped';
-        a.logs.push('[Swarm] Сессия принудительно остановлена пользователем.');
+        this.log(session, a, '[Swarm] Сессия принудительно остановлена пользователем.');
       }
     }
 
-    this.emitSwarmEvent({
-      type: 'swarm_updated',
-      swarmId,
-      session
-    });
+    if (emit) {
+      this.emitSwarmEvent({
+        type: 'swarm_updated',
+        swarmId,
+        session
+      });
+    }
 
     return true;
   }
@@ -968,7 +1461,7 @@ export class AgentFleetService extends EventEmitter {
         agentState.commitHash = head;
         agentState.lastCommitHash = head;
         agentState.commitStatus = 'committed';
-        agentState.logs.push(`[Swarm Git] Изменения зафиксированы в коммите ${head.slice(0, 7)}: "${commitMsg}"`);
+        pushAgentLog(agentState, `[Swarm Git] Изменения зафиксированы в коммите ${head.slice(0, 7)}: "${commitMsg}"`);
       } else {
         // Режим сохранения в stash snapshot
         const stashMsg = `swarm snapshot: ${agentState.id}`;
@@ -976,15 +1469,16 @@ export class AgentFleetService extends EventEmitter {
         if (stashHash) {
           agentState.stashHash = stashHash;
           agentState.commitStatus = 'stashed';
-          agentState.logs.push(`[Swarm Git] Сформирован git stash snapshot: ${stashHash.slice(0, 7)}`);
+          pushAgentLog(agentState, `[Swarm Git] Сформирован git stash snapshot: ${stashHash.slice(0, 7)}`);
         }
       }
     } catch (err: any) {
       console.warn(`[AgentFleetService] materializeAgentResult error for ${agentState.id}:`, err);
-      agentState.logs.push(`[Swarm Git Warning] Не удалось зафиксировать изменения: ${err.message || String(err)}`);
+      pushAgentLog(agentState, `[Swarm Git Warning] Не удалось зафиксировать изменения: ${err.message || String(err)}`);
     }
   }
 
+  /** Немедленное завершение всех процессов (без записи состояния). */
   public killAll(): void {
     for (const [, procs] of this.activeProcesses.entries()) {
       for (const p of procs) killProcessTree(p);
@@ -992,9 +1486,40 @@ export class AgentFleetService extends EventEmitter {
     for (const [, controllers] of this.abortControllers.entries()) {
       for (const c of controllers) c.abort();
     }
+    for (const [, procs] of this.agentProcesses.entries()) {
+      for (const p of procs) killProcessTree(p);
+    }
     this.activeProcesses.clear();
     this.abortControllers.clear();
+    this.agentProcesses.clear();
+    this.agentAbortControllers.clear();
+  }
+
+  /**
+   * Корректное завершение при выходе: активные сессии помечаются `interrupted`,
+   * процессы убиваются, отложенные записи сбрасываются на диск.
+   */
+  public async shutdown(): Promise<void> {
+    for (const session of this.sessions.values()) {
+      if (!isActiveSwarmStatus(session.status)) continue;
+      session.status = 'interrupted';
+      session.interruptedAt = Date.now();
+      for (const agent of session.agents) {
+        if (isActiveAgentStatus(agent.status)) {
+          agent.status = 'interrupted';
+          pushAgentLog(agent, '[Swarm] Работа прервана завершением ProjectHub.');
+        }
+      }
+      if (session.handoffStages) {
+        for (const stage of session.handoffStages) {
+          if (stage.status === 'running') stage.status = 'pending';
+        }
+      }
+      this.persist(session, true);
+    }
+    this.killAll();
+    if (this.store) await this.store.flush();
   }
 }
 
-export const agentFleetService = new AgentFleetService();
+export const agentFleetService = new AgentFleetService(new SwarmSessionStore());

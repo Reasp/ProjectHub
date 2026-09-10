@@ -349,9 +349,11 @@ async function performGracefulShutdown() {
   }
 
   try {
-    agentFleetService.killAll();
+    // Активные swarm-сессии помечаются interrupted и сбрасываются на диск (TASK-56)
+    await agentFleetService.shutdown();
   } catch (e) {
     console.warn('[Main] Error cleaning up swarm sessions:', e);
+    try { agentFleetService.killAll(); } catch { /* ignore */ }
   }
 
   try {
@@ -422,6 +424,9 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+
+  // Восстановление swarm-сессий с диска: незавершённые помечаются interrupted (TASK-56)
+  void agentFleetService.init();
 
   claudeBridgeService.setCliPermissionBroker({
     ensureEndpoint: () => mcpServerService.ensurePermissionEndpoint()

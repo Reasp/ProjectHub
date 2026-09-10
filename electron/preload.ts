@@ -246,6 +246,14 @@ const api: IElectronAPI = {
     ipcRenderer.invoke('swarm:pickWinner', swarmId, winnerAgentId, mergeIntoBase),
   getSwarm: (swarmId: string) => ipcRenderer.invoke('swarm:get', swarmId),
   listSwarms: (projectPath?: string) => ipcRenderer.invoke('swarm:list', projectPath),
+  resumeSwarm: (swarmId: string) => ipcRenderer.invoke('swarm:resume', swarmId),
+  discardSwarm: (swarmId: string, cleanupWorktrees?: boolean) =>
+    ipcRenderer.invoke('swarm:discard', swarmId, cleanupWorktrees),
+  getSwarmTranscript: (swarmId: string, agentId: string) =>
+    ipcRenderer.invoke('swarm:readTranscript', swarmId, agentId),
+  exportSwarm: (swarmId: string, format: 'markdown' | 'json') => ipcRenderer.invoke('swarm:export', swarmId, format),
+  exportSwarmToFile: (swarmId: string, format: 'markdown' | 'json') =>
+    ipcRenderer.invoke('swarm:exportToFile', swarmId, format),
   onSwarmEvent: (callback: (event: any) => void) => {
     const handler = (_event: any, data: any) => callback(data);
     ipcRenderer.on('swarm:event', handler);

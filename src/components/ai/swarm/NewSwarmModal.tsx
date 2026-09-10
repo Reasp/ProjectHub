@@ -11,7 +11,8 @@ import {
   Plus,
   Trash2,
   CheckCircle2,
-  ListTodo
+  ListTodo,
+  DollarSign
 } from 'lucide-react';
 import { useSwarmStore } from '../../../store/useSwarmStore';
 import { useProjectStore } from '../../../store/useProjectStore';
@@ -163,6 +164,7 @@ export const NewSwarmModal: React.FC = () => {
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
   const [prompt, setPrompt] = useState<string>('');
   const [useWorktrees, setUseWorktrees] = useState<boolean>(true);
+  const [budgetUsd, setBudgetUsd] = useState<string>('');
   const [agents, setAgents] = useState<AgentSlotConfig[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string>('claude-vs-deepseek');
 
@@ -231,6 +233,8 @@ export const NewSwarmModal: React.FC = () => {
     if (!selectedProject || !prompt.trim() || agents.length === 0) return;
 
     const taskObj = tasks.find((t) => t.id === selectedTaskId);
+    const parsedBudgetRaw = Number(budgetUsd.replace(',', '.'));
+    const parsedBudget = Number.isFinite(parsedBudgetRaw) && parsedBudgetRaw > 0 ? parsedBudgetRaw : undefined;
 
     if (mode === 'fan_out') {
       await startFanOutAction({
@@ -239,6 +243,7 @@ export const NewSwarmModal: React.FC = () => {
         taskId: selectedTaskId || undefined,
         taskTitle: taskObj?.title,
         useWorktrees,
+        budgetUsd: parsedBudget,
         agents
       });
     } else {
@@ -255,6 +260,7 @@ export const NewSwarmModal: React.FC = () => {
         taskId: selectedTaskId || undefined,
         taskTitle: taskObj?.title,
         useWorktrees,
+        budgetUsd: parsedBudget,
         stages
       });
     }
@@ -492,6 +498,38 @@ export const NewSwarmModal: React.FC = () => {
                       placeholder={t.swarm.rolePlaceholder}
                       className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs w-32"
                     />
+
+                    {agent.engine !== 'codex-cli' && (
+                      <input
+                        type="text"
+                        value={agent.providerConfig?.model || ''}
+                        onChange={(e) =>
+                          handleUpdateAgent(idx, {
+                            providerConfig: {
+                              provider: agent.providerConfig?.provider || 'anthropic',
+                              ...agent.providerConfig,
+                              model: e.target.value
+                            }
+                          })
+                        }
+                        placeholder={t.swarm.modelPlaceholder}
+                        className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs w-36 font-mono"
+                      />
+                    )}
+
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      value={agent.budgetUsd ?? ''}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        handleUpdateAgent(idx, { budgetUsd: Number.isFinite(v) && v > 0 ? v : undefined });
+                      }}
+                      placeholder={t.swarm.agentBudgetPlaceholder}
+                      title={t.swarm.agentBudgetTooltip}
+                      className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs w-20"
+                    />
                   </div>
 
                   <button
@@ -505,6 +543,26 @@ export const NewSwarmModal: React.FC = () => {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Бюджет сессии (TASK-56) */}
+          <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-secondary/20 gap-4">
+            <div className="flex items-center gap-2.5">
+              <DollarSign className="w-4 h-4 text-primary" />
+              <div>
+                <div className="text-xs font-semibold text-foreground">{t.swarm.sessionBudgetLabel}</div>
+                <div className="text-[11px] text-muted-foreground">{t.swarm.sessionBudgetDesc}</div>
+              </div>
+            </div>
+            <input
+              type="number"
+              min={0}
+              step={0.5}
+              value={budgetUsd}
+              onChange={(e) => setBudgetUsd(e.target.value)}
+              placeholder="0"
+              className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs w-24 text-right"
+            />
           </div>
 
           {/* Изоляция в Git Worktrees */}

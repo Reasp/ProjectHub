@@ -16,6 +16,7 @@ import {
 import { isInsideProject } from './pathGuard.js';
 import { processManager } from './processManager.js';
 import { claudeUsageService } from './claudeUsageService.js';
+import { parseClaudeResultEvent, priceUsage, type AgentUsage } from './agentCost.js';
 
 export type AgentStatusType = 'idle' | 'running' | 'waiting_approval' | 'done' | 'error';
 
@@ -165,6 +166,8 @@ export interface ClaudeBridgeMessageChunk {
   status?: AgentStatusType;
   claudeCliSessionId?: string;
   rateLimitWarning?: RateLimitWarning;
+  /** Токены и стоимость ответа (событие `result` stream-json или usage API-провайдера), TASK-56. */
+  usage?: AgentUsage;
 }
 
 export interface ClaudeCliAvailability {
@@ -1486,6 +1489,7 @@ class ClaudeBridgeService extends EventEmitter {
     let accumulatedThought = '';
     const toolCalls: AIToolCall[] = [];
     let buffer = '';
+    let resultUsage: AgentUsage | undefined;
 
     child.stdout.on('data', async (data: Buffer) => {
       buffer += data.toString('utf-8');
@@ -1564,6 +1568,12 @@ class ClaudeBridgeService extends EventEmitter {
               accumulatedText = event.result;
               onChunk({ text: event.result });
             }
+            // Реальные токены и total_cost_usd ответа — в сообщение AI Studio (TASK-56).
+            const summary = parseClaudeResultEvent(event);
+            if (summary && (summary.usage.totalTokens > 0 || typeof summary.usage.costUsd === 'number')) {
+              resultUsage = priceUsage(summary.usage, summary.usage.model);
+              onChunk({ usage: resultUsage });
+            }
           }
         } catch {
           // Check non-json line for warning
@@ -1614,7 +1624,8 @@ class ClaudeBridgeService extends EventEmitter {
             ...tc,
             status: tc.status || 'done'
           })),
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          ...(resultUsage ? { usage: resultUsage } : {})
         };
         if (aborted) {
           this.finishSession(sessionId, projectPath, 'aborted', 'Сессия прервана пользователем');

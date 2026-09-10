@@ -18,9 +18,15 @@ import {
   Plus,
   ChevronRight,
   ExternalLink,
-  Bot,
   GitCommit,
-  Bookmark
+  Bookmark,
+  Download,
+  RotateCcw,
+  Trash2,
+  ScrollText,
+  X,
+  AlertTriangle,
+  DollarSign
 } from 'lucide-react';
 import { useSwarmStore } from '../../../store/useSwarmStore';
 import { useProjectStore } from '../../../store/useProjectStore';
@@ -28,7 +34,8 @@ import { useTranslation } from '../../../i18n/useTranslation';
 import { useDialog } from '../../../hooks/useDialog';
 import { MarkdownViewer } from '../../common/MarkdownViewer';
 import { NewSwarmModal } from './NewSwarmModal';
-import type { AgentSlotState, SwarmSession } from '../../../types/electron';
+import type { AgentSlotState, SwarmSession, SwarmTranscript } from '../../../types/electron';
+import { agentInputTokens, formatDuration, formatTokens, formatUsd, summarizeSwarm } from '../../../utils/swarmFormat';
 
 export const SwarmArenaView: React.FC = () => {
   const { t } = useTranslation();
@@ -41,6 +48,10 @@ export const SwarmArenaView: React.FC = () => {
     openNewSwarmModal,
     stopSwarmAction,
     pickWinnerAction,
+    resumeSwarmAction,
+    discardSwarmAction,
+    getTranscriptAction,
+    exportSwarmAction,
     initSwarmEventListener,
     isLoading
   } = useSwarmStore();
@@ -56,6 +67,97 @@ export const SwarmArenaView: React.FC = () => {
   const [isMergingWinner, setIsMergingWinner] = useState<string | null>(null);
   const [appliedFileMsg, setAppliedFileMsg] = useState<string | null>(null);
   const [isApplyingFile, setIsApplyingFile] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [transcript, setTranscript] = useState<{ agent: AgentSlotState; data: SwarmTranscript | null; loading: boolean } | null>(null);
+  const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
+
+  const showNotice = (msg: string) => {
+    setNoticeMsg(msg);
+    setTimeout(() => setNoticeMsg(null), 5000);
+  };
+
+  const handleResume = async () => {
+    if (!currentSwarm) return;
+    setIsResuming(true);
+    try {
+      const res = await resumeSwarmAction(currentSwarm.id);
+      if (!res.success) await dialog.alert(t.swarm.resumeError.replace('{error}', res.error || ''));
+    } finally {
+      setIsResuming(false);
+    }
+  };
+
+  const handleDiscard = async () => {
+    if (!currentSwarm) return;
+    const ok = await dialog.confirm({
+      title: t.swarm.deleteSession,
+      message: t.swarm.discardConfirm.replace('{id}', currentSwarm.id),
+      danger: true
+    });
+    if (!ok) return;
+    const res = await discardSwarmAction(projectPath, currentSwarm.id);
+    if (!res.success) await dialog.alert(t.swarm.discardError.replace('{error}', res.error || ''));
+  };
+
+  const handleExport = async (format: 'markdown' | 'json') => {
+    if (!currentSwarm) return;
+    setIsExporting(true);
+    try {
+      const res = await exportSwarmAction(currentSwarm.id, format);
+      if (res.success && res.path) showNotice(t.swarm.exportDone.replace('{path}', res.path));
+      else if (!res.canceled) await dialog.alert(t.swarm.exportError.replace('{error}', res.error || ''));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleOpenTranscript = async (agent: AgentSlotState) => {
+    if (!currentSwarm) return;
+    setTranscript({ agent, data: null, loading: true });
+    const data = await getTranscriptAction(currentSwarm.id, agent.id);
+    setTranscript((prev) => (prev && prev.agent.id === agent.id ? { agent, data, loading: false } : prev));
+  };
+
+  const swarmStatusLabel = (status: SwarmSession['status']): string => {
+    switch (status) {
+      case 'running':
+        return t.swarm.statusRunning;
+      case 'completed':
+        return t.swarm.statusCompleted;
+      case 'failed':
+        return t.swarm.statusFailed;
+      case 'interrupted':
+        return t.swarm.statusInterrupted;
+      case 'stopped':
+        return t.swarm.statusStopped;
+      default:
+        return status;
+    }
+  };
+
+  const agentStatusBadge = (agent: AgentSlotState): { label: string; className: string } | null => {
+    switch (agent.status) {
+      case 'interrupted':
+        return { label: t.swarm.agentStatusInterrupted, className: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
+      case 'budget_exceeded':
+        return { label: t.swarm.agentStatusBudget, className: 'bg-rose-500/10 text-rose-400 border-rose-500/30' };
+      case 'stopped':
+        return { label: t.swarm.agentStatusStopped, className: 'bg-muted text-muted-foreground border-border' };
+      case 'failed':
+        return { label: t.swarm.agentStatusFailed, className: 'bg-rose-500/10 text-rose-400 border-rose-500/30' };
+      default:
+        return null;
+    }
+  };
+
+  const costSourceLabel = (source: string | undefined): string => {
+    if (source === 'provider') return t.swarm.costSourceProvider;
+    if (source === 'price-table') return t.swarm.costSourcePriceTable;
+    return t.swarm.costSourceUnknown;
+  };
+
+  const totals = currentSwarm ? summarizeSwarm(currentSwarm) : null;
 
   useEffect(() => {
     if (projectPath) {
@@ -138,14 +240,14 @@ export const SwarmArenaView: React.FC = () => {
                       ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20 animate-pulse'
                       : currentSwarm.status === 'completed'
                       ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                      : currentSwarm.status === 'interrupted'
+                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                      : currentSwarm.status === 'failed'
+                      ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
                       : 'bg-muted text-muted-foreground'
                   }`}
                 >
-                  {currentSwarm.status === 'running'
-                    ? t.swarm.statusRunning
-                    : currentSwarm.status === 'completed'
-                    ? t.swarm.statusCompleted
-                    : currentSwarm.status}
+                  {swarmStatusLabel(currentSwarm.status)}
                 </span>
               )}
             </div>
@@ -172,6 +274,36 @@ export const SwarmArenaView: React.FC = () => {
                 </option>
               ))}
             </select>
+          )}
+
+          {currentSwarm && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => handleExport('markdown')}
+                disabled={isExporting}
+                title={t.swarm.exportMarkdown}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/70 transition-colors disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" /> .md
+              </button>
+              <button
+                onClick={() => handleExport('json')}
+                disabled={isExporting}
+                title={t.swarm.exportJson}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/70 transition-colors disabled:opacity-50"
+              >
+                <Download className="w-3.5 h-3.5" /> .json
+              </button>
+              {currentSwarm.status !== 'running' && currentSwarm.status !== 'preparing' && (
+                <button
+                  onClick={handleDiscard}
+                  title={t.swarm.deleteSession}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 border border-border/70 transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           )}
 
           {currentSwarm && currentSwarm.status === 'running' && (
@@ -218,6 +350,50 @@ export const SwarmArenaView: React.FC = () => {
           </div>
         ) : (
           <>
+            {noticeMsg && (
+              <div className="px-3 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span className="truncate">{noticeMsg}</span>
+              </div>
+            )}
+
+            {/* Interrupted session: resume or discard (TASK-56) */}
+            {currentSwarm.status === 'interrupted' && (
+              <div className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">{t.swarm.interruptedBannerTitle}</div>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{t.swarm.interruptedBannerDesc}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleResume}
+                    disabled={isResuming || !currentSwarm.agents.some((a) => a.status === 'interrupted' && !a.worktreeMissing)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                  >
+                    <RotateCcw className={`w-3.5 h-3.5 ${isResuming ? 'animate-spin' : ''}`} />
+                    {t.swarm.resumeSession}
+                  </button>
+                  <button
+                    onClick={handleDiscard}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-destructive/10 text-destructive hover:bg-destructive/20 border border-destructive/20 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {t.swarm.discardSession}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {currentSwarm.status === 'failed' && currentSwarm.error && (
+              <div className="px-3 py-2 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{currentSwarm.error}</span>
+              </div>
+            )}
+
             {/* Swarm Context & Task Banner */}
             <div className="p-4 rounded-xl border border-border/70 bg-card/40 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
               <div className="space-y-1">
@@ -249,8 +425,41 @@ export const SwarmArenaView: React.FC = () => {
                 </p>
               </div>
 
-              <div className="text-right text-[11px] text-muted-foreground shrink-0">
-                {t.swarm.baseBranchLabel} <span className="font-mono text-foreground font-semibold">{currentSwarm.baseBranch}</span>
+              <div className="text-right text-[11px] text-muted-foreground shrink-0 space-y-1">
+                <div>
+                  {t.swarm.baseBranchLabel} <span className="font-mono text-foreground font-semibold">{currentSwarm.baseBranch}</span>
+                </div>
+                {totals && (
+                  <div className="flex items-center justify-end gap-3 font-mono text-[10px]" title={t.swarm.sessionSummaryTitle}>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> {formatDuration(totals.durationMs, t.swarm.secondsUnit)}
+                    </span>
+                    {totals.usage.totalTokens > 0 && (
+                      <span title={`${t.swarm.tokensLabel}: ${formatTokens(agentInputTokens(totals.usage))} / ${formatTokens(totals.usage.outputTokens)}`}>
+                        {formatTokens(agentInputTokens(totals.usage))} / {formatTokens(totals.usage.outputTokens)} tok
+                      </span>
+                    )}
+                    <span
+                      className={`flex items-center gap-1 ${
+                        typeof currentSwarm.budgetUsd === 'number' &&
+                        typeof totals.costUsd === 'number' &&
+                        totals.costUsd > currentSwarm.budgetUsd
+                          ? 'text-rose-400 font-semibold'
+                          : 'text-foreground'
+                      }`}
+                      title={t.swarm.costLabel}
+                    >
+                      <DollarSign className="w-3 h-3" />
+                      {totals.costKnown ? formatUsd(totals.costUsd) : '—'}
+                      {typeof currentSwarm.budgetUsd === 'number' && currentSwarm.budgetUsd > 0 && (
+                        <span className="text-muted-foreground"> / {formatUsd(currentSwarm.budgetUsd)}</span>
+                      )}
+                    </span>
+                  </div>
+                )}
+                {currentSwarm.restored && (
+                  <div className="text-[10px] text-muted-foreground/70 italic">{t.swarm.restoredBadge}</div>
+                )}
               </div>
             </div>
 
@@ -357,6 +566,22 @@ export const SwarmArenaView: React.FC = () => {
                                 <Trophy className="w-3 h-3 text-amber-400" /> {t.swarm.winnerBadge}
                               </span>
                             )}
+                            {(() => {
+                              const badge = agentStatusBadge(agent);
+                              return badge ? (
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${badge.className}`}
+                                  title={agent.error || badge.label}
+                                >
+                                  {badge.label}
+                                </span>
+                              ) : null;
+                            })()}
+                            {agent.worktreeMissing && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-rose-500/10 text-rose-400 border-rose-500/30">
+                                {t.swarm.worktreeMissingBadge}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] px-1.5 py-0.2 rounded-sm bg-secondary font-mono text-muted-foreground">
@@ -429,9 +654,40 @@ export const SwarmArenaView: React.FC = () => {
                             </span>
                           ) : null}
 
-                          {agent.metrics.tokensEstimated ? (
+                          {agent.metrics.usage ? (
+                            <span
+                              className="font-mono text-[10px]"
+                              title={t.swarm.costTooltip
+                                .replace('{cost}', formatUsd(agent.metrics.usage.costUsd))
+                                .replace('{source}', costSourceLabel(agent.metrics.usage.costSource))
+                                .replace('{input}', formatTokens(agent.metrics.usage.inputTokens))
+                                .replace('{output}', formatTokens(agent.metrics.usage.outputTokens))
+                                .replace('{cacheRead}', formatTokens(agent.metrics.usage.cacheReadTokens))
+                                .replace('{cacheWrite}', formatTokens(agent.metrics.usage.cacheCreationTokens))}
+                            >
+                              {formatTokens(agentInputTokens(agent.metrics.usage))} / {formatTokens(agent.metrics.usage.outputTokens)} tok
+                            </span>
+                          ) : agent.metrics.tokensEstimated ? (
                             <span title={t.swarm.approxTokensTooltip}>
                               ~{agent.metrics.tokensEstimated} tok
+                            </span>
+                          ) : null}
+
+                          {agent.metrics.usage ? (
+                            <span
+                              className={`flex items-center gap-0.5 font-mono text-[10px] ${
+                                agent.status === 'budget_exceeded' ? 'text-rose-400 font-semibold' : 'text-foreground'
+                              }`}
+                              title={
+                                typeof agent.metrics.usage.costUsd === 'number'
+                                  ? `${t.swarm.costLabel}: ${formatUsd(agent.metrics.usage.costUsd)} (${costSourceLabel(agent.metrics.usage.costSource)})${
+                                      agent.config.budgetUsd ? ` / ${t.swarm.budgetLabel} ${formatUsd(agent.config.budgetUsd)}` : ''
+                                    }`
+                                  : t.swarm.costUnknownTooltip.replace('{model}', agent.metrics.usage.model || agent.config.providerConfig?.model || '?')
+                              }
+                            >
+                              <DollarSign className="w-3 h-3" />
+                              {typeof agent.metrics.usage.costUsd === 'number' ? formatUsd(agent.metrics.usage.costUsd) : '—'}
                             </span>
                           ) : null}
 
@@ -483,10 +739,17 @@ export const SwarmArenaView: React.FC = () => {
                         {currentTab === 'output' && (
                           <div className="h-full overflow-y-auto">
                             {agent.liveOutput || agent.finalOutput ? (
-                              <MarkdownViewer
-                                content={agent.finalOutput || agent.liveOutput}
-                                className="text-xs"
-                              />
+                              <>
+                                {agent.liveOutputTruncated && (
+                                  <div className="mb-2 text-[10px] text-amber-400/90 italic flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3" /> {t.swarm.outputTruncatedNote}
+                                  </div>
+                                )}
+                                <MarkdownViewer
+                                  content={agent.finalOutput || agent.liveOutput}
+                                  className="text-xs"
+                                />
+                              </>
                             ) : (
                               <div className="h-full flex items-center justify-center text-muted-foreground">
                                 {agent.status === 'running' ? (
@@ -504,6 +767,18 @@ export const SwarmArenaView: React.FC = () => {
 
                         {currentTab === 'logs' && (
                           <div className="font-mono text-[11px] space-y-1 text-muted-foreground h-full overflow-y-auto select-text">
+                            <div className="flex items-center justify-between gap-2 mb-1 font-sans">
+                              <span className="text-[10px] text-muted-foreground/80">
+                                {agent.logsDropped ? t.swarm.logsDroppedNote.replace('{count}', String(agent.logsDropped)) : ''}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenTranscript(agent)}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-secondary hover:bg-secondary/70 text-[10px] text-foreground border border-border/60 transition shrink-0"
+                              >
+                                <ScrollText className="w-3 h-3" /> {t.swarm.fullLog}
+                              </button>
+                            </div>
                             {agent.logs.map((line, i) => (
                               <div
                                 key={i}
@@ -618,6 +893,53 @@ export const SwarmArenaView: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* Full transcript modal (TASK-56) */}
+      {transcript && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4" onClick={() => setTranscript(null)}>
+          <div
+            className="relative w-full max-w-4xl h-[85vh] rounded-xl border border-border bg-card shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-foreground truncate">
+                  {t.swarm.fullLogTitle.replace('{name}', transcript.agent.config.name)}
+                </h3>
+                {transcript.data && (
+                  <p className="text-[10px] text-muted-foreground font-mono truncate" title={transcript.data.path}>
+                    {transcript.data.truncated
+                      ? t.swarm.fullLogTruncated
+                          .replace('{size}', String(Math.round(transcript.data.sizeBytes / 1024)))
+                          .replace('{path}', transcript.data.path)
+                      : t.swarm.fullLogPath.replace('{path}', transcript.data.path)}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setTranscript(null)}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                title={t.swarm.closeButton}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {transcript.loading ? (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-xs gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                </div>
+              ) : transcript.data ? (
+                <pre className="text-[11px] font-mono whitespace-pre-wrap break-words text-muted-foreground select-text">
+                  {transcript.data.content}
+                </pre>
+              ) : (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-xs">{t.swarm.fullLogEmpty}</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New Swarm Modal */}
       <NewSwarmModal />

@@ -7,6 +7,7 @@ import { searchProjectDocs } from './ragSearch.js';
 import { secretStorageService } from './secretStorageService.js';
 import matter from 'gray-matter';
 import { assertInsideProject, isInsideProject } from './pathGuard.js';
+import { usageFromAnthropic, usageFromOpenAI, type AgentUsage } from './agentCost.js';
 
 export interface AutoApproveRules {
   enabled: boolean;
@@ -53,6 +54,16 @@ export interface AIMessage {
   thought?: string;
   toolCalls?: AIToolCall[];
   timestamp: string;
+  /** Токены и стоимость ответа модели, если провайдер их сообщил (TASK-56). */
+  usage?: AgentUsage;
+}
+
+/** Чанк стрима: текст/рассуждение/вызов инструмента, плюс usage ответа по завершении (TASK-56). */
+export interface AIStreamChunkPayload {
+  text?: string;
+  thought?: string;
+  toolCall?: AIToolCall;
+  usage?: AgentUsage;
 }
 
 export interface AIStreamRequest {
@@ -259,7 +270,7 @@ class AIAgentService {
    */
   public async streamChat(
     req: AIStreamRequest,
-    onChunk: (payload: { text?: string; thought?: string; toolCall?: AIToolCall }) => void,
+    onChunk: (payload: AIStreamChunkPayload) => void,
     onComplete: (msg: AIMessage) => void,
     onError: (err: string) => void
   ): Promise<void> {
@@ -292,7 +303,7 @@ class AIAgentService {
     req: AIStreamRequest,
     systemPrompt: string,
     signal: AbortSignal,
-    onChunk: (payload: { text?: string; thought?: string; toolCall?: AIToolCall }) => void,
+    onChunk: (payload: AIStreamChunkPayload) => void,
     onComplete: (msg: AIMessage) => void,
     onError: (err: string) => void
   ): Promise<void> {
@@ -352,6 +363,7 @@ class AIAgentService {
     let fullThought = '';
     const toolCalls: AIToolCall[] = [];
     let currentTool: { id: string; name: string; argsStr: string } | null = null;
+    let usage: AgentUsage | null = null;
 
     const reader = response.body?.getReader();
     if (!reader) throw new Error('Response body is empty');
@@ -375,6 +387,25 @@ class AIAgentService {
 
         try {
           const parsed = JSON.parse(dataStr);
+          if (parsed.type === 'message_start' && parsed.message?.usage) {
+            // Входные токены и кэш известны сразу; output_tokens придут в message_delta.
+            usage = usageFromAnthropic(parsed.message.usage, parsed.message.model || body.model) ?? usage;
+          } else if (parsed.type === 'message_delta' && parsed.usage) {
+            const delta = parsed.usage as Record<string, unknown>;
+            const base = usage ?? usageFromAnthropic({ input_tokens: 0 }, body.model) ?? null;
+            const merged = usageFromAnthropic(
+              {
+                input_tokens: typeof delta.input_tokens === 'number' ? delta.input_tokens : base?.inputTokens ?? 0,
+                output_tokens: typeof delta.output_tokens === 'number' ? delta.output_tokens : base?.outputTokens ?? 0,
+                cache_read_input_tokens:
+                  typeof delta.cache_read_input_tokens === 'number' ? delta.cache_read_input_tokens : base?.cacheReadTokens ?? 0,
+                cache_creation_input_tokens:
+                  typeof delta.cache_creation_input_tokens === 'number' ? delta.cache_creation_input_tokens : base?.cacheCreationTokens ?? 0
+              },
+              base?.model || body.model
+            );
+            if (merged) usage = merged;
+          }
           if (parsed.type === 'content_block_delta') {
             if (parsed.delta?.type === 'text_delta') {
               const chunk = parsed.delta.text;
@@ -440,6 +471,7 @@ class AIAgentService {
       }
     }
 
+    if (usage) onChunk({ usage });
     onComplete({
       id: `msg-${Date.now()}`,
       role: 'assistant',
@@ -449,7 +481,8 @@ class AIAgentService {
         ...tc,
         status: tc.status || (tc.diff ? 'pending' : 'done')
       })) : undefined,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      ...(usage ? { usage } : {})
     });
   }
 
@@ -460,7 +493,7 @@ class AIAgentService {
     req: AIStreamRequest,
     systemPrompt: string,
     signal: AbortSignal,
-    onChunk: (payload: { text?: string; thought?: string; toolCall?: AIToolCall }) => void,
+    onChunk: (payload: AIStreamChunkPayload) => void,
     onComplete: (msg: AIMessage) => void,
     onError: (err: string) => void
   ): Promise<void> {
@@ -508,6 +541,13 @@ class AIAgentService {
       temperature: req.config.temperature ?? 0.7,
       stream: true
     };
+    // Usage в последнем чанке стрима — для учёта стоимости (TASK-56). Ollama поле не понимает.
+    if (req.config.provider !== 'ollama') {
+      body.stream_options = { include_usage: true };
+    }
+    if (req.config.provider === 'openrouter') {
+      body.usage = { include: true };
+    }
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -523,6 +563,7 @@ class AIAgentService {
 
     let fullText = '';
     let fullThought = '';
+    let usage: AgentUsage | null = null;
 
     const reader = response.body?.getReader();
     if (!reader) throw new Error('Response body is empty');
@@ -546,6 +587,9 @@ class AIAgentService {
 
         try {
           const parsed = JSON.parse(dataStr);
+          if (parsed.usage) {
+            usage = usageFromOpenAI(parsed.usage, parsed.model || body.model) ?? usage;
+          }
           const delta = parsed.choices?.[0]?.delta;
           if (delta) {
             if (delta.reasoning_content) {
@@ -563,12 +607,14 @@ class AIAgentService {
       }
     }
 
+    if (usage) onChunk({ usage });
     onComplete({
       id: `msg-${Date.now()}`,
       role: 'assistant',
       content: fullText,
       thought: fullThought || undefined,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      ...(usage ? { usage } : {})
     });
   }
 

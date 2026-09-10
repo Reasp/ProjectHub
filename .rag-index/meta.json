@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "a9138a087573e0479056b3ad038c6702cb879fdabd93ea6b371f4414c9c1a495",
+  "docsHash": "acb12cd5d5e6371df53496ddb06a379b02e62672cf481c0687ca452b8da68b0a",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -12,6 +12,7 @@
     "backlog/decisions/decision-13 - Уведомления-через-единую-шину-событий-трей-системные-уведомления-звук-и-Telegram.md",
     "backlog/decisions/decision-14 - Релиз-инфраструктура-GitHub-Actions-автообновление-crash-репорты-и-Linux-таргет.md",
     "backlog/decisions/decision-15 - Многокорневой-режим-активный-worktree-как-контекст-приложения.md",
+    "backlog/decisions/decision-16 - Персистентность-swarm-сессий-кольцевые-буферы-логов-и-учёт-стоимости-агентов.md",
     "backlog/decisions/decision-2 - TypeScript-6-для-инструментов-качества-ESLint-файловый-логгер-main-процесса-и-проверка-externals-бандла.md",
     "backlog/decisions/decision-3 - Backlog.md-как-единственный-источник-истины-для-задач-документов-и-решений.md",
     "backlog/decisions/decision-4 - Claude-Code-CLI-как-основной-агентный-движок-API-провайдеры-как-дополнение.md",
@@ -30,6 +31,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 197,
-  "builtAt": "2026-09-10T07:22:18.584Z"
+  "chunks": 206,
+  "builtAt": "2026-09-10T10:48:32.717Z"
 }

@@ -565,6 +565,12 @@ export interface IElectronAPI {
   getSwarm: (swarmId: string) => Promise<SwarmSession | undefined>;
   listSwarms: (projectPath?: string) => Promise<SwarmSession[]>;
   onSwarmEvent: (callback: (event: SwarmEventPayload) => void) => () => void;
+  // Персистентность, транскрипты и экспорт swarm-сессий (TASK-56)
+  resumeSwarm: (swarmId: string) => Promise<{ success: boolean; error?: string }>;
+  discardSwarm: (swarmId: string, cleanupWorktrees?: boolean) => Promise<{ success: boolean; error?: string }>;
+  getSwarmTranscript: (swarmId: string, agentId: string) => Promise<SwarmTranscript | null>;
+  exportSwarm: (swarmId: string, format: SwarmExportFormat) => Promise<string | null>;
+  exportSwarmToFile: (swarmId: string, format: SwarmExportFormat) => Promise<{ success: boolean; path?: string; error?: string; canceled?: boolean }>;
 
   // File Explorer & Helpers
   readDirectoryTree: (projectPath: string, subDir?: string, maxDepth?: number) => Promise<FileTreeNode[]>;
@@ -775,6 +781,8 @@ export interface AIMessage {
   thought?: string;
   toolCalls?: AIToolCall[];
   timestamp: string;
+  /** Токены и стоимость ответа модели, если провайдер их сообщил (TASK-56). */
+  usage?: AgentUsage;
 }
 
 /** Диалог AI Studio; хранится файлом `~/.projecthub/sessions/<hash(projectPath)>/<id>.json` (TASK-35). */
@@ -917,10 +925,34 @@ declare global {
   }
 }
 
-// Multi-Agent Swarm & Fleet Orchestration Types (TASK-54)
+// Multi-Agent Swarm & Fleet Orchestration Types (TASK-54, TASK-56)
+// Зеркало `electron/services/swarmTypes.ts` и `agentCost.ts`.
 export type SwarmMode = 'fan_out' | 'handoff';
-export type SwarmStatus = 'idle' | 'preparing' | 'running' | 'completed' | 'failed' | 'stopped';
-export type AgentSlotStatus = 'pending' | 'preparing' | 'running' | 'completed' | 'failed' | 'stopped';
+export type SwarmStatus = 'idle' | 'preparing' | 'running' | 'completed' | 'failed' | 'stopped' | 'interrupted';
+export type AgentSlotStatus =
+  | 'pending'
+  | 'preparing'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'stopped'
+  | 'interrupted'
+  | 'budget_exceeded';
+
+export type AgentCostSource = 'provider' | 'price-table' | 'unknown';
+
+/** Реальный usage и стоимость ответа модели/прогона агента (TASK-56). */
+export interface AgentUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  totalTokens: number;
+  costUsd?: number;
+  costSource: AgentCostSource;
+  model?: string;
+  turns?: number;
+}
 
 export interface AgentSlotConfig {
   id: string;
@@ -930,6 +962,8 @@ export interface AgentSlotConfig {
   providerConfig?: AIProviderConfig;
   systemPromptAddon?: string;
   cliCommand?: string;
+  /** Бюджет слота/роли в USD; при превышении агент останавливается. */
+  budgetUsd?: number;
 }
 
 export interface AgentSlotDiffSummary {
@@ -937,6 +971,7 @@ export interface AgentSlotDiffSummary {
   insertions: number;
   deletions: number;
   patch: string;
+  truncated?: boolean;
 }
 
 export interface AgentSlotMetrics {
@@ -946,6 +981,8 @@ export interface AgentSlotMetrics {
   charsGenerated?: number;
   tokensEstimated?: number;
   speedCharsPerSec?: number;
+  usage?: AgentUsage;
+  costUsd?: number;
 }
 
 export interface AgentSlotState {
@@ -954,8 +991,12 @@ export interface AgentSlotState {
   status: AgentSlotStatus;
   worktreePath?: string;
   worktreeBranch?: string;
+  worktreeMissing?: boolean;
+  /** Хвост логов (кольцевой буфер); полный транскрипт читается через getSwarmTranscript. */
   logs: string[];
+  logsDropped?: number;
   liveOutput: string;
+  liveOutputTruncated?: boolean;
   finalOutput?: string;
   diffSummary?: AgentSlotDiffSummary;
   metrics: AgentSlotMetrics;
@@ -965,6 +1006,7 @@ export interface AgentSlotState {
   stashHash?: string;
   commitStatus?: 'committed' | 'stashed' | 'no_changes' | 'pending';
   lastCommitHash?: string;
+  resumeCount?: number;
 }
 
 export interface HandoffStageState {
@@ -973,6 +1015,7 @@ export interface HandoffStageState {
   agentId: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   inputPrompt: string;
+  instructions?: string;
   outputResult?: string;
   durationMs?: number;
 }
@@ -990,11 +1033,15 @@ export interface SwarmSession {
   status: SwarmStatus;
   createdAt: number;
   completedAt?: number;
+  interruptedAt?: number;
   agents: AgentSlotState[];
   handoffStages?: HandoffStageState[];
   currentHandoffStageIndex?: number;
   winnerAgentId?: string;
   error?: string;
+  budgetUsd?: number;
+  totalCostUsd?: number;
+  restored?: boolean;
 }
 
 export interface StartFanOutOptions {
@@ -1005,6 +1052,7 @@ export interface StartFanOutOptions {
   baseBranch?: string;
   useWorktrees?: boolean;
   autoCommitAgentResults?: boolean;
+  budgetUsd?: number;
   agents: AgentSlotConfig[];
 }
 
@@ -1016,6 +1064,7 @@ export interface StartHandoffOptions {
   baseBranch?: string;
   useWorktrees?: boolean;
   autoCommitAgentResults?: boolean;
+  budgetUsd?: number;
   stages: {
     role: string;
     agent: AgentSlotConfig;
@@ -1024,13 +1073,24 @@ export interface StartHandoffOptions {
 }
 
 export interface SwarmEventPayload {
-  type: 'swarm_updated' | 'agent_updated' | 'agent_chunk' | 'swarm_completed' | 'error';
+  type: 'swarm_updated' | 'agent_updated' | 'agent_chunk' | 'swarm_completed' | 'swarm_removed' | 'error';
   swarmId: string;
   agentId?: string;
   session?: SwarmSession;
   chunk?: string;
   error?: string;
 }
+
+export interface SwarmTranscript {
+  swarmId: string;
+  agentId: string;
+  path: string;
+  content: string;
+  truncated: boolean;
+  sizeBytes: number;
+}
+
+export type SwarmExportFormat = 'markdown' | 'json';
 
 
 
