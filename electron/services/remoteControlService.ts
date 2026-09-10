@@ -3,7 +3,8 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { BrowserWindow } from 'electron';
 import { WebSocketServer, WebSocket } from 'ws';
 import type {
@@ -13,7 +14,8 @@ import type {
   RemoteDevice,
   RemotePacket,
   EncryptedPacket,
-  PlainPacket
+  PlainPacket,
+  FederationHost
 } from '../../src/types/remote.js';
 import { generateSecretKey, generatePairingPin, encryptPayload, decryptPayload } from '../../src/utils/remoteCryptoNode.js';
 import { projectRegistry } from './projectRegistry.js';
@@ -21,6 +23,7 @@ import { processManager } from './processManager.js';
 import { gitService } from './gitService.js';
 import { claudeBridgeService } from './claudeBridgeService.js';
 import { logger } from './logger.js';
+import { getUserDataDir, getDevRepoRoot, getAppRootDir } from './appPaths.js';
 import matter from 'gray-matter';
 
 /**
@@ -59,6 +62,18 @@ class RemoteControlService {
   private relayServerUrl = 'ws://127.0.0.1:42055';
   private requireApproval = true;
   private readOnly = false;
+  private machineName = os.hostname();
+  private autoStart = false;
+
+  private telegramBotToken = '';
+  private telegramChatId = '';
+  private telegramBotUsername = '';
+  private telegramMiniAppUrl = '';
+
+  private tunnelProcess: ChildProcess | null = null;
+  private tunnelUrl = '';
+  private tunnelStatus: 'idle' | 'starting' | 'active' | 'error' = 'idle';
+  private tunnelError: string | null = null;
 
   private hostId: string;
   private pairingPin: string;
@@ -68,14 +83,102 @@ class RemoteControlService {
   private connectedDevices = new Map<string, RemoteDevice>();
   private localClients = new Map<string, ClientConnection>();
   private activeProjectPath: string | null = null;
+  private knownFederationHosts = new Map<string, FederationHost>();
+  private cachedLocalProjects: Array<{ id: string; name: string; path: string }> = [];
 
   constructor() {
     this.hostId = `ph_host_${crypto.randomBytes(6).toString('hex')}`;
     this.pairingPin = generatePairingPin();
     this.secretKey = generateSecretKey();
 
+    // Загрузка сохраненной конфигурации (постоянный hostId, machineName, telegramBotToken)
+    this.loadConfig();
+
+    // Инициализация локальных проектов для федерации
+    this.refreshLocalProjects().catch(() => {});
+
     // Подписка на стриминг логов фоновых процессов
     this.setupProcessLogStreaming();
+  }
+
+  public async refreshLocalProjects(): Promise<void> {
+    try {
+      const list = await projectRegistry.getProjects();
+      this.cachedLocalProjects = list.map((p) => ({
+        id: p.path,
+        name: path.basename(p.path),
+        path: p.path
+      }));
+    } catch {
+      // ignore
+    }
+  }
+
+  private getConfigFilePath(): string {
+    return path.join(getUserDataDir(), 'remote-control.json');
+  }
+
+  private loadConfig() {
+    try {
+      const cfgPath = this.getConfigFilePath();
+      if (existsSync(cfgPath)) {
+        const raw = readFileSync(cfgPath, 'utf8');
+        const data = JSON.parse(raw);
+        if (data.hostId) this.hostId = data.hostId;
+        if (data.machineName) this.machineName = data.machineName;
+        if (data.pairingPin) this.pairingPin = data.pairingPin;
+        if (data.secretKey) this.secretKey = data.secretKey;
+        if (typeof data.port === 'number') this.port = data.port;
+        if (data.mode) this.mode = data.mode;
+        if (data.relayServerUrl) this.relayServerUrl = data.relayServerUrl;
+        if (typeof data.requireApproval === 'boolean') this.requireApproval = data.requireApproval;
+        if (typeof data.readOnly === 'boolean') this.readOnly = data.readOnly;
+        if (typeof data.autoStart === 'boolean') this.autoStart = data.autoStart;
+        if (data.telegramBotToken) this.telegramBotToken = data.telegramBotToken;
+        if (data.telegramChatId) this.telegramChatId = data.telegramChatId;
+        if (data.telegramBotUsername) this.telegramBotUsername = data.telegramBotUsername;
+        if (data.telegramMiniAppUrl) this.telegramMiniAppUrl = data.telegramMiniAppUrl;
+      }
+    } catch (err: any) {
+      logger.warn(`[RemoteControl] Failed to load config: ${err?.message || err}`);
+    }
+  }
+
+  private saveConfig() {
+    try {
+      const cfgPath = this.getConfigFilePath();
+      const data = {
+        hostId: this.hostId,
+        machineName: this.machineName,
+        pairingPin: this.pairingPin,
+        secretKey: this.secretKey,
+        port: this.port,
+        mode: this.mode,
+        relayServerUrl: this.relayServerUrl,
+        requireApproval: this.requireApproval,
+        readOnly: this.readOnly,
+        autoStart: this.autoStart,
+        telegramBotToken: this.telegramBotToken,
+        telegramChatId: this.telegramChatId,
+        telegramBotUsername: this.telegramBotUsername,
+        telegramMiniAppUrl: this.telegramMiniAppUrl
+      };
+      writeFileSync(cfgPath, JSON.stringify(data, null, 2), 'utf8');
+    } catch (err: any) {
+      logger.warn(`[RemoteControl] Failed to save config: ${err?.message || err}`);
+    }
+  }
+
+  public async initOnStartup(): Promise<void> {
+    // Если включен autoStart или задан Telegram Bot Token, сервис и туннель стартуют автоматически
+    if (this.autoStart || Boolean(this.telegramBotToken)) {
+      try {
+        await this.start();
+        logger.info('[RemoteControl] Service auto-started successfully on application launch');
+      } catch (err: any) {
+        logger.warn(`[RemoteControl] Failed to auto-start service: ${err?.message || err}`);
+      }
+    }
   }
 
   public setActiveProject(projectPath: string | null) {
@@ -83,6 +186,7 @@ class RemoteControlService {
   }
 
   public getStatus(): RemoteControlStatus {
+    const localIps = getLocalIpAddresses();
     return {
       enabled: this.enabled,
       port: this.port,
@@ -90,14 +194,49 @@ class RemoteControlService {
       relayServerUrl: this.relayServerUrl,
       relayConnected: this.relayConnected,
       hostId: this.hostId,
+      machineName: this.machineName,
       pairingPin: this.pairingPin,
       secretKey: this.secretKey,
-      localIps: getLocalIpAddresses(),
+      localIps,
       connectedDevices: Array.from(this.connectedDevices.values()),
       requireApproval: this.requireApproval,
       readOnly: this.readOnly,
-      lastError: this.lastError
+      lastError: this.lastError,
+      autoStart: this.autoStart,
+      tunnelUrl: this.tunnelUrl,
+      tunnelStatus: this.tunnelStatus,
+      tunnelError: this.tunnelError,
+      federationHosts: this.getFederationHostsList(),
+      localAddresses: localIps,
+      secretToken: this.secretKey,
+      useRelay: this.mode === 'relay' || Boolean(this.relayServerUrl),
+      useP2P: this.mode === 'webrtc',
+      telegramBotToken: this.telegramBotToken,
+      telegramChatId: this.telegramChatId,
+      telegramBotUsername: this.telegramBotUsername,
+      telegramMiniAppUrl: this.telegramMiniAppUrl || (this.tunnelUrl ? `${this.tunnelUrl}/telegram` : '')
     };
+  }
+
+  public async sendTelegramNotification(text: string): Promise<boolean> {
+    if (!this.telegramBotToken || !this.telegramChatId) return false;
+    try {
+      const url = `https://api.telegram.org/bot${this.telegramBotToken}/sendMessage`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: this.telegramChatId,
+          text,
+          parse_mode: 'Markdown'
+        })
+      });
+      const data = await res.json() as any;
+      return Boolean(data?.ok);
+    } catch (err: any) {
+      logger.warn(`[RemoteControl] Failed to send Telegram notification: ${err?.message || err}`);
+      return false;
+    }
   }
 
   public async toggle(targetState?: boolean): Promise<RemoteControlStatus> {
@@ -132,10 +271,36 @@ class RemoteControlService {
     if (patch.readOnly !== undefined) {
       this.readOnly = patch.readOnly;
     }
+    if (patch.machineName !== undefined && patch.machineName.trim()) {
+      this.machineName = patch.machineName.trim();
+    }
+    if (patch.autoStart !== undefined) {
+      this.autoStart = patch.autoStart;
+    }
+    if (patch.tunnelUrl !== undefined) {
+      this.tunnelUrl = patch.tunnelUrl;
+    }
+    if (patch.telegramBotToken !== undefined) {
+      this.telegramBotToken = patch.telegramBotToken;
+    }
+    if (patch.telegramChatId !== undefined) {
+      this.telegramChatId = patch.telegramChatId;
+    }
+    if (patch.telegramBotUsername !== undefined) {
+      this.telegramBotUsername = patch.telegramBotUsername;
+    }
+    if (patch.telegramMiniAppUrl !== undefined) {
+      this.telegramMiniAppUrl = patch.telegramMiniAppUrl;
+    }
+
+    // Сохраняем обновленные настройки на диск
+    this.saveConfig();
 
     if (this.enabled && restartRequired) {
       await this.stop();
       await this.start();
+    } else if (this.enabled && patch.telegramBotToken && this.tunnelUrl) {
+      this.registerTelegramMenuButton(`${this.tunnelUrl}/telegram`).catch(() => {});
     }
 
     this.notifyStatusChanged();
@@ -145,6 +310,7 @@ class RemoteControlService {
   public regenerateToken(): RemoteControlStatus {
     this.pairingPin = generatePairingPin();
     this.secretKey = generateSecretKey();
+    this.saveConfig();
 
     // Отключаем все текущие устройства при смене ключа
     for (const client of this.localClients.values()) {
@@ -191,6 +357,194 @@ class RemoteControlService {
     return this.getStatus();
   }
 
+  public getHostFederationInfo(): FederationHost {
+    const projects = this.cachedLocalProjects;
+    const running = processManager.getAllRunningProcesses();
+    const localIps = getLocalIpAddresses();
+    return {
+      hostId: this.hostId,
+      machineName: this.machineName || os.hostname(),
+      platform: process.platform as 'win32' | 'darwin' | 'linux',
+      tunnelUrl: this.tunnelUrl || (this.telegramMiniAppUrl ? this.telegramMiniAppUrl.replace(/\/telegram\/?$/, '') : ''),
+      localIps,
+      isOnline: true,
+      projectsCount: projects.length,
+      activeProcessesCount: running.length,
+      projects: projects.map((p) => ({ id: p.id, name: p.name, path: p.path })),
+      lastSeen: Date.now()
+    };
+  }
+
+  public getFederationHostsList(): FederationHost[] {
+    const current = this.getHostFederationInfo();
+    const list: FederationHost[] = [current];
+    const now = Date.now();
+
+    for (const [id, host] of this.knownFederationHosts.entries()) {
+      if (id !== this.hostId) {
+        const isOnline = now - host.lastSeen < 90000;
+        list.push({ ...host, isOnline });
+      }
+    }
+    return list;
+  }
+
+  public registerPeerHost(peer: FederationHost) {
+    if (peer.hostId && peer.hostId !== this.hostId) {
+      peer.lastSeen = Date.now();
+      peer.isOnline = true;
+      this.knownFederationHosts.set(peer.hostId, peer);
+      this.notifyStatusChanged();
+    }
+  }
+
+  public async registerTelegramMenuButton(webAppUrl: string): Promise<boolean> {
+    if (!this.telegramBotToken) return false;
+    try {
+      const url = `https://api.telegram.org/bot${this.telegramBotToken}/setChatMenuButton`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          menu_button: {
+            type: 'web_app',
+            text: 'ProjectHub',
+            web_app: { url: webAppUrl }
+          }
+        })
+      });
+      const data = (await res.json()) as any;
+      if (data?.ok) {
+        logger.info(`[RemoteControl] Telegram Menu Button registered successfully with URL: ${webAppUrl}`);
+        return true;
+      } else {
+        logger.warn(`[RemoteControl] Telegram setChatMenuButton error: ${data?.description || 'unknown'}`);
+        return false;
+      }
+    } catch (err: any) {
+      logger.warn(`[RemoteControl] Failed to set Telegram Menu Button: ${err?.message || err}`);
+      return false;
+    }
+  }
+
+  public async startTunnel(): Promise<string> {
+    if (this.tunnelUrl && this.tunnelStatus === 'active') {
+      return this.tunnelUrl;
+    }
+
+    // Если в настройках вручную задан готовый https URL mini app, используем его
+    if (this.telegramMiniAppUrl && this.telegramMiniAppUrl.startsWith('https://')) {
+      this.tunnelUrl = this.telegramMiniAppUrl.replace(/\/telegram\/?$/, '');
+      this.tunnelStatus = 'active';
+      this.tunnelError = null;
+      logger.info(`[RemoteControl] Using configured custom HTTPS tunnel: ${this.tunnelUrl}`);
+      if (this.telegramBotToken) {
+        await this.registerTelegramMenuButton(`${this.tunnelUrl}/telegram`);
+      }
+      this.notifyStatusChanged();
+      return this.tunnelUrl;
+    }
+
+    this.stopTunnel();
+    this.tunnelStatus = 'starting';
+    this.tunnelError = null;
+    this.notifyStatusChanged();
+
+    logger.info(`[RemoteControl] Starting automatic Cloudflare Quick Tunnel for port ${this.port}...`);
+
+    return new Promise((resolve) => {
+      let resolved = false;
+      const cmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+      const args = ['--yes', 'cloudflared', 'tunnel', '--url', `http://127.0.0.1:${this.port}`];
+
+      try {
+        const child = spawn(cmd, args, {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          windowsHide: true
+        });
+
+        this.tunnelProcess = child;
+
+        const onOutput = (data: Buffer) => {
+          const text = data.toString();
+          // Ищем URL вида https://[...].trycloudflare.com
+          const match = text.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
+          if (match && !resolved) {
+            resolved = true;
+            this.tunnelUrl = match[0];
+            this.tunnelStatus = 'active';
+            this.tunnelError = null;
+            logger.info(`[RemoteControl] Cloudflare Quick Tunnel established: ${this.tunnelUrl}`);
+
+            if (this.telegramBotToken) {
+              this.registerTelegramMenuButton(`${this.tunnelUrl}/telegram`).catch(() => {});
+            }
+            this.notifyStatusChanged();
+            resolve(this.tunnelUrl);
+          }
+        };
+
+        child.stdout.on('data', onOutput);
+        child.stderr.on('data', onOutput);
+
+        child.on('error', (err) => {
+          logger.warn(`[RemoteControl] Cloudflare tunnel process error: ${err.message}`);
+          this.tunnelStatus = 'error';
+          this.tunnelError = err.message;
+          this.notifyStatusChanged();
+          if (!resolved) {
+            resolved = true;
+            resolve('');
+          }
+        });
+
+        child.on('exit', (code) => {
+          logger.info(`[RemoteControl] Cloudflare tunnel process exited with code ${code}`);
+          if (this.tunnelStatus === 'active') {
+            this.tunnelStatus = 'idle';
+            this.tunnelUrl = '';
+            this.notifyStatusChanged();
+          }
+        });
+
+        // Таймаут ожидания инициализации туннеля (30с)
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            if (this.tunnelStatus === 'starting') {
+              this.tunnelStatus = 'error';
+              this.tunnelError = 'Таймаут подключения туннеля Cloudflare (30s)';
+              this.notifyStatusChanged();
+            }
+            resolve(this.tunnelUrl);
+          }
+        }, 30000);
+      } catch (err: any) {
+        this.tunnelStatus = 'error';
+        this.tunnelError = err?.message || String(err);
+        this.notifyStatusChanged();
+        if (!resolved) {
+          resolved = true;
+          resolve('');
+        }
+      }
+    });
+  }
+
+  public stopTunnel() {
+    if (this.tunnelProcess) {
+      try {
+        this.tunnelProcess.kill('SIGTERM');
+      } catch {
+        // ignore
+      }
+      this.tunnelProcess = null;
+    }
+    this.tunnelUrl = '';
+    this.tunnelStatus = 'idle';
+    this.tunnelError = null;
+  }
+
   public async start(): Promise<void> {
     if (this.server && this.server.listening) {
       return;
@@ -199,11 +553,19 @@ class RemoteControlService {
     this.lastError = null;
 
     try {
+      await this.refreshLocalProjects();
       await this.startLocalHttpAndWsServer();
       this.enabled = true;
 
       if (this.mode === 'relay' || this.relayServerUrl) {
         this.connectToRelay();
+      }
+
+      // Если задан Telegram Bot Token или включен autoStart, автоматически поднимаем HTTPS-туннель
+      if (this.telegramBotToken || this.autoStart) {
+        this.startTunnel().catch((err) => {
+          logger.warn(`[RemoteControl] Tunnel background startup failed: ${err?.message || err}`);
+        });
       }
 
       logger.info(`[RemoteControl] Service started on port ${this.port} (mode: ${this.mode})`);
@@ -218,6 +580,7 @@ class RemoteControlService {
   public async stop(): Promise<void> {
     this.enabled = false;
     this.disconnectFromRelay();
+    this.stopTunnel();
 
     // Закрываем локальные клиенты
     for (const client of this.localClients.values()) {
@@ -273,7 +636,7 @@ class RemoteControlService {
   }
 
   /**
-   * Обработка HTTP запросов (отдача веб-клиента и публичного статуса).
+   * Обработка HTTP запросов (отдача веб-клиента, публичного статуса и федерации хостов).
    */
   private async handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     // CORS headers
@@ -297,12 +660,48 @@ class RemoteControlService {
           status: 'ok',
           service: 'ProjectHub-Remote',
           hostId: this.hostId,
+          machineName: this.machineName,
           mode: this.mode,
           requireApproval: this.requireApproval,
           localIps: getLocalIpAddresses(),
-          port: this.port
+          port: this.port,
+          tunnelUrl: this.tunnelUrl
         })
       );
+      return;
+    }
+
+    // GET /api/federation/info - сводка данного компьютера для единого Hub
+    if (url.pathname === '/api/federation/info') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(this.getHostFederationInfo()));
+      return;
+    }
+
+    // GET /api/federation/hosts - список всех известных компьютеров разработчика
+    if (url.pathname === '/api/federation/hosts') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ hosts: this.getFederationHostsList() }));
+      return;
+    }
+
+    // POST /api/federation/register - регистрация удаленного ПК в реестре федерации
+    if (url.pathname === '/api/federation/register' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => {
+        body += chunk;
+      });
+      req.on('end', () => {
+        try {
+          const peer = JSON.parse(body) as FederationHost;
+          this.registerPeerHost(peer);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, hosts: this.getFederationHostsList() }));
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON' }));
+        }
+      });
       return;
     }
 
@@ -320,6 +719,15 @@ class RemoteControlService {
           hostId: this.hostId
         })
       );
+      return;
+    }
+
+
+
+    // GET /telegram или GET /telegram/ - отдача Telegram Mini App
+    if (url.pathname === '/telegram' || url.pathname === '/telegram/' || url.pathname.startsWith('/telegram/')) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(await this.getTelegramMiniAppHtml());
       return;
     }
 
@@ -564,13 +972,14 @@ class RemoteControlService {
       return;
     }
 
-    // RPC Request
-    if (packet.type === 'rpc_req') {
+    // RPC Request (поддержка rpc_req и request из Telegram Mini App)
+    if (packet.type === 'rpc_req' || (packet as any).type === 'request') {
       const req = packet as PlainPacket;
+      const isReqType = (packet as any).type === 'request';
       try {
         const result = await this.dispatchRpc(req.method || '', req.params, device);
-        const resPayload: PlainPacket = {
-          type: 'rpc_res',
+        const resPayload: any = {
+          type: isReqType ? 'response' : 'rpc_res',
           id: req.id,
           result
         };
@@ -581,8 +990,8 @@ class RemoteControlService {
           reply(resPayload);
         }
       } catch (err: any) {
-        const errPayload: PlainPacket = {
-          type: 'rpc_res',
+        const errPayload: any = {
+          type: isReqType ? 'response' : 'rpc_res',
           id: req.id,
           error: err?.message || String(err)
         };
@@ -625,6 +1034,10 @@ class RemoteControlService {
       case 'get_status': {
         const projects = await projectRegistry.getProjects();
         return {
+          hostId: this.hostId,
+          machineName: this.machineName || os.hostname(),
+          platform: process.platform,
+          tunnelUrl: this.tunnelUrl,
           activeProjectPath: this.activeProjectPath,
           projectsCount: projects.length,
           runningProcesses: processManager.getActiveProcessCount(),
@@ -632,8 +1045,19 @@ class RemoteControlService {
         };
       }
 
-      case 'get_projects':
-        return await projectRegistry.getProjects();
+      case 'get_federation_hosts': {
+        return { hosts: this.getFederationHostsList() };
+      }
+
+      case 'get_projects': {
+        const projects = await projectRegistry.getProjects();
+        this.cachedLocalProjects = projects.map((p) => ({
+          id: p.path,
+          name: path.basename(p.path),
+          path: p.path
+        }));
+        return projects;
+      }
 
       case 'select_project': {
         this.activeProjectPath = params.projectPath;
@@ -817,6 +1241,9 @@ class RemoteControlService {
     });
     processManager.onStatusChanged((proc) => {
       this.broadcastEvent('process:statusChanged', proc);
+      if (proc.status === 'stopped' && (proc as any).exitCode && (proc as any).exitCode !== 0) {
+        this.sendTelegramNotification(`🚨 *Внимание!* Процесс \`${proc.name}\` аварийно завершился с кодом \`${(proc as any).exitCode}\`.`);
+      }
     });
   }
 
@@ -1230,6 +1657,32 @@ class RemoteControlService {
   </script>
 </body>
 </html>`;
+  }
+
+  /**
+   * Получение HTML для Telegram Mini App (из файла src/telegram-mini-app/index.html или fallback).
+   */
+  private async getTelegramMiniAppHtml(): Promise<string> {
+    const root = getDevRepoRoot() || getAppRootDir();
+    const candidates = [
+      path.join(root, 'src', 'telegram-mini-app', 'index.html'),
+      path.join(root, 'dist', 'telegram-mini-app', 'index.html'),
+      path.join(__dirname, '..', 'src', 'telegram-mini-app', 'index.html'),
+      path.join(__dirname, 'telegram-mini-app', 'index.html')
+    ];
+
+    for (const p of candidates) {
+      try {
+        if (existsSync(p)) {
+          return await fs.readFile(p, 'utf8');
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Fallback: встроенный веб-клиент
+    return this.getEmbeddedWebClientHtml();
   }
 }
 

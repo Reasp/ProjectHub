@@ -565,6 +565,17 @@ class HubProcessManager {
     return this.activeProcesses.size;
   }
 
+  /** Все активные процессы со статусом running (для удаленного мониторинга и Telegram Mini App). */
+  getAllRunningProcesses(): ManagedProcess[] {
+    const result: ManagedProcess[] = [];
+    for (const item of this.activeProcesses.values()) {
+      if (item.info.status === 'running') {
+        result.push({ ...item.info, autoOpenUrl: item.options.autoOpenUrl || undefined });
+      }
+    }
+    return result;
+  }
+
   /** Есть ли в проекте запущенный hub-процесс (для агрегации событий git-вотчера). */
   hasRunningProcess(projectPath: string): boolean {
     const normalized = path.normalize(projectPath);

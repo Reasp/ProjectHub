@@ -48,6 +48,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // GET /api/federation/hosts - список всех активных хостов в федерации
+  if (req.url === '/api/federation/hosts') {
+    const hosts = [];
+    for (const s of sessions.values()) {
+      if (s.hostWs && s.hostWs.readyState === WebSocket.OPEN) {
+        hosts.push(
+          s.hostMeta || {
+            hostId: s.hostId,
+            machineName: 'ProjectHub Host',
+            platform: 'unknown',
+            isOnline: true,
+            lastSeen: Date.now()
+          }
+        );
+      }
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ hosts }));
+    return;
+  }
+
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Not Found' }));
 });
@@ -60,6 +81,9 @@ wss.on('connection', (ws, req) => {
   const hostId = url.searchParams.get('hostId');
   const clientId = url.searchParams.get('clientId') || `c_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const clientName = url.searchParams.get('name') || 'Remote Client';
+  const machineName = url.searchParams.get('machineName') || 'Desktop PC';
+  const platform = url.searchParams.get('platform') || 'win32';
+  const tunnelUrl = url.searchParams.get('tunnelUrl') || '';
 
   if (!hostId || !role) {
     ws.close(1008, 'Missing role or hostId');
@@ -69,10 +93,22 @@ wss.on('connection', (ws, req) => {
   // Роль: HOST (десктопное приложение ProjectHub)
   if (role === 'host') {
     let session = sessions.get(hostId);
+    const hostMeta = {
+      hostId,
+      machineName,
+      platform,
+      tunnelUrl,
+      isOnline: true,
+      projectsCount: 0,
+      activeProcessesCount: 0,
+      lastSeen: Date.now()
+    };
+
     if (!session) {
       session = {
         hostWs: ws,
         hostId,
+        hostMeta,
         clients: new Map()
       };
       sessions.set(hostId, session);
@@ -86,16 +122,23 @@ wss.on('connection', (ws, req) => {
         // ignore
       }
       session.hostWs = ws;
+      session.hostMeta = hostMeta;
     }
 
-    console.log(`[Relay] Host registered: ${hostId} (IP: ${req.socket.remoteAddress})`);
+    console.log(`[Relay] Host registered: ${hostId} [${machineName}] (IP: ${req.socket.remoteAddress})`);
 
     // Подтверждение хосту
-    ws.send(JSON.stringify({ type: 'relay_ack', role: 'host', hostId }));
+    ws.send(JSON.stringify({ type: 'relay_ack', role: 'host', hostId, machineName }));
 
     ws.on('message', (raw) => {
       try {
         const msg = JSON.parse(raw.toString());
+
+        // Обновление метаданных хоста (проекты, процессы)
+        if (msg.type === 'host_meta_update' && msg.meta) {
+          session.hostMeta = { ...session.hostMeta, ...msg.meta, lastSeen: Date.now() };
+          return;
+        }
 
         // Если хост отправляет сообщение конкретному клиенту
         if (msg.targetClientId) {

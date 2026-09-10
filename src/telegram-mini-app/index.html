@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ProjectHub Telegram Mini App</title>
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #0b0f19);
+      --card-bg: var(--tg-theme-secondary-bg-color, #131b2e);
+      --border: rgba(255, 255, 255, 0.08);
+      --text: var(--tg-theme-text-color, #f1f5f9);
+      --muted: var(--tg-theme-hint-color, #94a3b8);
+      --primary: var(--tg-theme-button-color, #6366f1);
+      --primary-text: var(--tg-theme-button-text-color, #ffffff);
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-height: 100vh; overflow-x: hidden; }
+    
+    /* Header */
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      backdrop-filter: blur(8px);
+    }
+    .logo-box { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; color: var(--primary); }
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); }
+    .status-dot.connected { background: var(--success); box-shadow: 0 0 6px var(--success); }
+
+    /* Host Selector Pill */
+    .host-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      max-width: 170px;
+    }
+    .host-pill:active { background: rgba(255, 255, 255, 0.16); }
+    .host-name-truncate {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100px;
+    }
+
+    /* Modal Sheet for Federation Hosts */
+    .host-modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(5px);
+      z-index: 100;
+      display: none;
+      align-items: flex-end;
+    }
+    .host-modal-overlay.open { display: flex; animation: fadeIn 0.15s ease-out; }
+    .host-modal {
+      background: var(--card-bg);
+      border-top-left-radius: 20px;
+      border-top-right-radius: 20px;
+      border-top: 1px solid var(--border);
+      width: 100%;
+      max-height: 80vh;
+      overflow-y: auto;
+      padding: 18px;
+      box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
+    }
+    .host-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      margin-bottom: 8px;
+      background: rgba(255, 255, 255, 0.03);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .host-item:active { background: rgba(255, 255, 255, 0.08); }
+    .host-item.active {
+      border-color: var(--primary);
+      background: rgba(99, 102, 241, 0.12);
+    }
+    .badge-machine {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: rgba(99, 102, 241, 0.18);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      margin-left: 6px;
+    }
+    .fed-switcher {
+      display: flex;
+      background: rgba(0,0,0,0.3);
+      border-radius: 10px;
+      padding: 3px;
+      margin-bottom: 10px;
+      border: 1px solid var(--border);
+    }
+    .fed-tab-btn {
+      flex: 1;
+      padding: 6px;
+      font-size: 11px;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+    }
+    .fed-tab-btn.active {
+      background: var(--primary);
+      color: #fff;
+    }
+    
+    /* Layout */
+    .container { padding: 14px; max-width: 540px; margin: 0 auto; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeIn 0.15s ease-in-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Buttons */
+    button {
+      background: var(--primary);
+      color: var(--primary-text);
+      border: none;
+      padding: 9px 15px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    button:active { transform: scale(0.97); opacity: 0.85; }
+    button.secondary { background: rgba(255, 255, 255, 0.08); color: var(--text); border: 1px solid var(--border); }
+    button.danger { background: var(--danger); color: #fff; }
+    button.success { background: var(--success); color: #fff; }
+    button.full { width: 100%; margin-top: 8px; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* Inputs */
+    select, input, textarea {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    select:focus, input:focus, textarea:focus { border-color: var(--primary); }
+
+    /* Bottom Navigation Bar */
+    .nav-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--card-bg);
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-around;
+      padding: 8px 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+    .nav-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 500;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 12px;
+      border-radius: 8px;
+    }
+    .nav-btn.active { color: var(--primary); font-weight: 700; }
+    .nav-icon { font-size: 18px; }
+
+    /* Process Items */
+    .process-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .process-item:last-child { border-bottom: none; }
+    .process-meta { flex: 1; }
+    .process-name { font-size: 13px; font-weight: 600; color: var(--text); }
+    .process-cmd { font-size: 11px; color: var(--muted); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+    .process-actions { display: flex; gap: 6px; }
+
+    /* Terminal Logs */
+    .terminal-box {
+      background: #050811;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      color: #38bdf8;
+      height: 280px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* Tasks / Backlog */
+    .task-badge {
+      display: inline-block;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .task-badge.todo { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+    .task-badge.progress { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
+    .task-badge.review { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
+    .task-badge.done { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+    
+    .task-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+    .ac-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12px;
+      margin-top: 6px;
+      color: var(--muted);
+    }
+    .ac-item.done { text-decoration: line-through; color: rgba(255, 255, 255, 0.3); }
+
+    /* HITL Approval Card */
+    .hitl-banner {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid var(--warning);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .hitl-title { font-size: 13px; font-weight: 700; color: #fbbf24; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+
+  <!-- App Header -->
+  <header>
+    <div class="logo-box">
+      <span>⚡ ProjectHub</span>
+    </div>
+    <!-- Host Selector Pill (Единый Hub) -->
+    <div id="host-selector-pill" class="host-pill" title="Выбрать компьютер">
+      <span id="current-host-icon">💻</span>
+      <span id="current-host-name" class="host-name-truncate">Мой ПК</span>
+      <span id="current-host-dot" class="status-dot connected"></span>
+      <span style="font-size: 9px; opacity: 0.6;">▼</span>
+    </div>
+    <div class="status-badge">
+      <span id="conn-dot" class="status-dot"></span>
+      <span id="conn-text">Поиск</span>
+    </div>
+  </header>
+
+  <!-- Modal Sheet for Federation Hosts -->
+  <div id="host-modal-overlay" class="host-modal-overlay">
+    <div class="host-modal">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <div style="font-weight: 700; font-size: 14px;">🖥 Компьютеры разработчика (Единый Hub)</div>
+        <button id="btn-close-host-modal" class="secondary" style="padding: 4px 8px; font-size: 11px;">✕</button>
+      </div>
+      <div id="federation-hosts-list" style="margin-bottom: 14px;">
+        <!-- Заполняется динамически -->
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button id="btn-refresh-fed" class="secondary" style="flex: 1; font-size: 12px;">🔄 Обновить узлы</button>
+        <button id="btn-add-machine-qr" style="flex: 1; font-size: 12px;">📷 Добавить ПК</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- HITL Alert Box -->
+    <div id="hitl-container" style="display: none;" class="hitl-banner">
+      <div class="hitl-title">⚠️ Запрос подтверждения AI (HITL)</div>
+      <div id="hitl-desc" style="font-size: 12px; margin-bottom: 8px;">Команда требует разрешения</div>
+      <div style="display: flex; gap: 8px;">
+        <button id="hitl-allow" class="success" style="flex: 1;">Разрешить</button>
+        <button id="hitl-deny" class="danger" style="flex: 1;">Отклонить</button>
+      </div>
+    </div>
+
+    <!-- TAB 1: Проекты (Projects) -->
+    <div id="tab-projects" class="tab-content active">
+      <div class="card">
+        <div class="fed-switcher">
+          <button id="btn-view-current-host" class="fed-tab-btn active">💻 Текущий компьютер</button>
+          <button id="btn-view-all-hosts" class="fed-tab-btn">🌐 Все компьютеры</button>
+        </div>
+        <div class="card-title">
+          <span>Активный проект</span>
+          <button id="btn-scan-qr" class="secondary" style="padding: 4px 8px; font-size: 11px;">📷 QR-сканер</button>
+        </div>
+        <select id="project-select">
+          <option value="">Загрузка проектов...</option>
+        </select>
+        <div id="all-projects-container" style="display: none; margin-top: 10px;">
+          <!-- Сводный список проектов со всех компьютеров -->
+        </div>
+        <div id="project-meta" style="font-size: 12px; color: var(--muted); margin-top: 8px;">
+          Ветка: <span id="git-branch" style="color: var(--text); font-weight: 600;">—</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Состояние системы</div>
+        <div style="display: grid; grid-cols: 2; gap: 10px; font-size: 12px;">
+          <div>Проектов: <b id="stat-projects">—</b></div>
+          <div>Активных процессов: <b id="stat-processes">—</b></div>
+          <div>Режим: <b id="stat-mode">E2EE LAN/Relay</b></div>
+          <div>Права: <b id="stat-access">Полный доступ</b></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Настройки подключения</div>
+        <div style="font-size: 12px; margin-bottom: 8px; color: var(--muted);">
+          Укажите параметры или отсканируйте QR-код в ProjectHub:
+        </div>
+        <input id="input-host" type="text" placeholder="Host ID или IP (например 192.168.1.50)" style="margin-bottom: 6px;">
+        <input id="input-key" type="password" placeholder="Секретный ключ (AES-256)" style="margin-bottom: 8px;">
+        <button id="btn-reconnect" class="full">Подключиться к ПК</button>
+      </div>
+    </div>
+
+    <!-- TAB 2: Процессы (Processes) -->
+    <div id="tab-processes" class="tab-content">
+      <div class="card">
+        <div class="card-title">
+          <span>Процессы проекта</span>
+          <button id="btn-refresh-procs" class="secondary" style="padding: 4px 8px; font-size: 11px;">🔄 Обновить</button>
+        </div>
+        <div id="processes-list">
+          <div style="text-align: center; color: var(--muted); font-size: 12px; padding: 12px;">
+            Нет активных процессов
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>Живой терминал логов</span>
+          <button id="btn-clear-logs" class="secondary" style="padding: 4px 8px; font-size: 11px;">Очистить</button>
+        </div>
+        <div id="terminal-logs" class="terminal-box">Ожидание логов процессов...</div>
+      </div>
+    </div>
+
+    <!-- TAB 3: Задачи (Backlog) -->
+    <div id="tab-tasks" class="tab-content">
+      <div class="card">
+        <div class="card-title">
+          <span>Задачи Backlog.md</span>
+          <button id="btn-refresh-tasks" class="secondary" style="padding: 4px 8px; font-size: 11px;">🔄 Обновить</button>
+        </div>
+        <div style="display: flex; gap: 6px; margin-bottom: 10px; overflow-x: auto;">
+          <button class="filter-task-btn secondary active" data-filter="all" style="padding: 4px 8px; font-size: 11px;">Все</button>
+          <button class="filter-task-btn secondary" data-filter="To Do" style="padding: 4px 8px; font-size: 11px;">To Do</button>
+          <button class="filter-task-btn secondary" data-filter="In Progress" style="padding: 4px 8px; font-size: 11px;">In Progress</button>
+          <button class="filter-task-btn secondary" data-filter="Done" style="padding: 4px 8px; font-size: 11px;">Done</button>
+        </div>
+        <div id="tasks-list">
+          <div style="text-align: center; color: var(--muted); font-size: 12px; padding: 12px;">
+            Загрузка задач...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: AI Ассистент -->
+    <div id="tab-ai" class="tab-content">
+      <div class="card">
+        <div class="card-title">AI Studio Mobile</div>
+        <div id="ai-chat-box" style="height: 240px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px; font-size: 13px; margin-bottom: 8px;">
+          <div style="color: var(--muted); text-align: center; margin-top: 30px;">
+            Задайте вопрос или поручите задачу AI-ассистенту проекта
+          </div>
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <input id="ai-prompt-input" type="text" placeholder="Сообщение ассистенту..." style="flex: 1;">
+          <button id="ai-send-btn">Отправить</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Navigation -->
+  <nav class="nav-bar">
+    <button class="nav-btn active" data-tab="tab-projects">
+      <span class="nav-icon">📁</span>
+      <span>Проекты</span>
+    </button>
+    <button class="nav-btn" data-tab="tab-processes">
+      <span class="nav-icon">⚙️</span>
+      <span>Процессы</span>
+    </button>
+    <button class="nav-btn" data-tab="tab-tasks">
+      <span class="nav-icon">📋</span>
+      <span>Задачи</span>
+    </button>
+    <button class="nav-btn" data-tab="tab-ai">
+      <span class="nav-icon">🤖</span>
+      <span>AI Studio</span>
+    </button>
+  </nav>
+
+  <!-- Mini App Logic & Crypto -->
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      tg.enableClosingConfirmation();
+    }
+
+    function triggerHaptic(type = 'light') {
+      try {
+        if (tg?.HapticFeedback) {
+          if (type === 'success' || type === 'error' || type === 'warning') {
+            tg.HapticFeedback.notificationOccurred(type);
+          } else {
+            tg.HapticFeedback.impactOccurred(type);
+          }
+        }
+      } catch (e) {}
+    }
+
+    // --- Web Crypto E2EE (AES-256-GCM) ---
+    async function deriveCryptoKey(secretHex) {
+      const cleanHex = secretHex.replace(/[^0-9a-fA-F]/g, '');
+      const rawBytes = new Uint8Array(32);
+      for (let i = 0; i < Math.min(32, cleanHex.length / 2); i++) {
+        rawBytes[i] = parseInt(cleanHex.substr(i * 2, 2), 16);
+      }
+      return await crypto.subtle.importKey('raw', rawBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+    }
+
+    async function encryptData(payloadObj, secretHex) {
+      if (!secretHex) return payloadObj;
+      const key = await deriveCryptoKey(secretHex);
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const encoded = new TextEncoder().encode(JSON.stringify(payloadObj));
+      const cipherBuffer = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, encoded);
+      
+      const toB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+      return {
+        type: 'encrypted',
+        version: 1,
+        iv: toB64(iv),
+        payload: toB64(cipherBuffer)
+      };
+    }
+
+    async function decryptData(packet, secretHex) {
+      if (!packet || packet.type !== 'encrypted' || !secretHex) return packet;
+      const key = await deriveCryptoKey(secretHex);
+      const fromB64 = (b64) => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      const iv = fromB64(packet.iv);
+      const cipher = fromB64(packet.payload);
+      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, cipher);
+      return JSON.parse(new TextDecoder().decode(decrypted));
+    }
+
+    // --- State & Connection ---
+    let ws = null;
+    let rpcCounter = 1;
+    const pendingRpc = new Map();
+    let currentConfig = {
+      host: '',
+      key: '',
+      pin: '',
+      relay: 'ws://127.0.0.1:42055'
+    };
+    let activeProjectPath = '';
+    let cachedTasks = [];
+    let currentTaskFilter = 'all';
+
+    // Parse URL Hash & startapp parameter
+    function parseInitialParams() {
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const startParam = tg?.initDataUnsafe?.start_param || '';
+
+      if (hash.get('key')) currentConfig.key = hash.get('key');
+      if (hash.get('host')) currentConfig.host = hash.get('host');
+      if (hash.get('pin')) currentConfig.pin = hash.get('pin');
+      if (hash.get('relay')) currentConfig.relay = decodeURIComponent(hash.get('relay'));
+
+      // If start_param is passed (base64 encoded JSON or param string)
+      if (startParam) {
+        try {
+          const decoded = atob(startParam);
+          if (decoded.includes('key=')) {
+            const p = new URLSearchParams(decoded);
+            if (p.get('key')) currentConfig.key = p.get('key');
+            if (p.get('host')) currentConfig.host = p.get('host');
+          } else {
+            const parsed = JSON.parse(decoded);
+            currentConfig = { ...currentConfig, ...parsed };
+          }
+        } catch (e) {
+          // Plain hex key passed
+          if (startParam.length >= 32) currentConfig.key = startParam;
+        }
+      }
+
+      // Try reading from CloudStorage or localStorage
+      if (!currentConfig.key && window.localStorage) {
+        try {
+          const saved = JSON.parse(localStorage.getItem('ph_tg_session') || '{}');
+          currentConfig = { ...currentConfig, ...saved };
+        } catch (e) {}
+      }
+
+      document.getElementById('input-host').value = currentConfig.host || window.location.hostname || '127.0.0.1';
+      document.getElementById('input-key').value = currentConfig.key || '';
+    }
+
+    function saveSession() {
+      try {
+        localStorage.setItem('ph_tg_session', JSON.stringify(currentConfig));
+        if (tg?.CloudStorage) {
+          tg.CloudStorage.setItem('ph_session', JSON.stringify(currentConfig), () => {});
+        }
+      } catch (e) {}
+    }
+
+    function setStatus(connected, text) {
+      const dot = document.getElementById('conn-dot');
+      const label = document.getElementById('conn-text');
+      if (connected) {
+        dot.classList.add('connected');
+        label.textContent = text || 'Онлайн';
+      } else {
+        dot.classList.remove('connected');
+        label.textContent = text || 'Отключен';
+      }
+    }
+
+    let federationHosts = [];
+    let activeHostId = '';
+    let viewMode = 'current'; // 'current' | 'all'
+    let currentProjects = [];
+
+    function connectWs(overrideHost) {
+      if (ws) {
+        try { ws.close(); } catch (e) {}
+      }
+
+      const inputHost = document.getElementById('input-host').value.trim();
+      const host = overrideHost || inputHost || window.location.hostname || '127.0.0.1';
+      const key = document.getElementById('input-key').value.trim();
+      currentConfig.host = host;
+      currentConfig.key = key;
+      saveSession();
+
+      let wsUrl;
+      const isHttps = window.location.protocol === 'https:';
+      const wsProto = isHttps ? 'wss:' : 'ws:';
+      const defaultPort = window.location.port || (isHttps ? 443 : 42050);
+
+      if (host.startsWith('http://') || host.startsWith('https://')) {
+        const u = new URL(host);
+        const p = u.protocol === 'https:' ? 'wss:' : 'ws:';
+        wsUrl = `${p}//${u.host}/?key=${encodeURIComponent(key)}&deviceId=tg_${tg?.initDataUnsafe?.user?.id || 'client'}&name=${encodeURIComponent(tg?.initDataUnsafe?.user?.first_name || 'Telegram Mini App')}`;
+      } else {
+        const portStr = (defaultPort && defaultPort !== 80 && defaultPort !== 443 && !host.includes(':')) ? `:${defaultPort}` : '';
+        const hostHeader = (host && host !== '127.0.0.1' && host !== 'localhost') ? `${host}${portStr}` : (window.location.host || `${host}${portStr}`);
+        wsUrl = `${wsProto}//${hostHeader}/?key=${encodeURIComponent(key)}&deviceId=tg_${tg?.initDataUnsafe?.user?.id || 'client'}&name=${encodeURIComponent(tg?.initDataUnsafe?.user?.first_name || 'Telegram Mini App')}`;
+      }
+
+      setStatus(false, 'Подключение...');
+
+      try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = async () => {
+          setStatus(true, 'Онлайн');
+          triggerHaptic('success');
+          // Load projects and federation
+          await loadInitialData();
+        };
+
+        ws.onmessage = async (event) => {
+          try {
+            const raw = JSON.parse(event.data);
+            const data = await decryptData(raw, currentConfig.key);
+
+            if ((data.type === 'response' || data.type === 'rpc_res') && data.id) {
+              const p = pendingRpc.get(data.id);
+              if (p) {
+                pendingRpc.delete(data.id);
+                if (data.error) p.reject(new Error(data.error));
+                else p.resolve(data.result);
+              }
+            } else if (data.type === 'event') {
+              handleIncomingEvent(data.event, data.data);
+            }
+          } catch (err) {
+            console.error('WS packet error:', err);
+          }
+        };
+
+        ws.onerror = () => {
+          setStatus(false, 'Ошибка');
+        };
+
+        ws.onclose = () => {
+          setStatus(false, 'Отключен');
+        };
+      } catch (err) {
+        setStatus(false, 'Сбой');
+      }
+    }
+
+    async function callRpc(method, params = {}) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        throw new Error('Нет подключения к ProjectHub');
+      }
+      const id = String(rpcCounter++);
+      const plain = { type: 'request', id, method, params };
+      const packet = await encryptData(plain, currentConfig.key);
+
+      return new Promise((resolve, reject) => {
+        pendingRpc.set(id, { resolve, reject });
+        ws.send(JSON.stringify(packet));
+        setTimeout(() => {
+          if (pendingRpc.has(id)) {
+            pendingRpc.delete(id);
+            reject(new Error(`Timeout RPC ${method}`));
+          }
+        }, 15000);
+      });
+    }
+
+    function handleIncomingEvent(event, data) {
+      if (event === 'process:log') {
+        const term = document.getElementById('terminal-logs');
+        term.textContent += `[${data.name}] ${data.text}`;
+        term.scrollTop = term.scrollHeight;
+      } else if (event === 'process:statusChanged' || event === 'backlog:changed') {
+        refreshProcesses();
+        refreshTasks();
+      } else if (event === 'remote:hitlDecisionMade') {
+        document.getElementById('hitl-container').style.display = 'none';
+      }
+    }
+
+    // --- UI Navigation ---
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        triggerHaptic('light');
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        const target = btn.getAttribute('data-tab');
+        document.getElementById(target).classList.add('active');
+
+        if (target === 'tab-processes') refreshProcesses();
+        if (target === 'tab-tasks') refreshTasks();
+      });
+    });
+
+    // --- Federation & Multi-Host Management ---
+    async function loadFederation() {
+      try {
+        const fed = await callRpc('get_federation_hosts');
+        if (fed && Array.isArray(fed.hosts)) {
+          federationHosts = fed.hosts;
+          renderFederationModal();
+        }
+      } catch (e) {
+        console.warn('Federation query error:', e);
+      }
+    }
+
+    function updateCurrentHostBadge(status) {
+      const nameEl = document.getElementById('current-host-name');
+      const iconEl = document.getElementById('current-host-icon');
+      const dotEl = document.getElementById('current-host-dot');
+
+      const name = status.machineName || 'Мой компьютер';
+      nameEl.textContent = name;
+      iconEl.textContent = status.platform === 'darwin' ? '🍏' : status.platform === 'linux' ? '🐧' : '💻';
+      dotEl.classList.add('connected');
+    }
+
+    function renderFederationModal() {
+      const container = document.getElementById('federation-hosts-list');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (federationHosts.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: var(--muted); padding: 12px; font-size: 12px;">Активен только текущий компьютер</div>';
+        return;
+      }
+
+      federationHosts.forEach(h => {
+        const item = document.createElement('div');
+        const isActive = h.hostId === activeHostId;
+        item.className = `host-item ${isActive ? 'active' : ''}`;
+        const icon = h.platform === 'darwin' ? '🍏' : h.platform === 'linux' ? '🐧' : '💻';
+        const isOnline = h.isOnline !== false;
+
+        item.innerHTML = `
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 20px;">${icon}</span>
+            <div>
+              <div style="font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px;">
+                ${h.machineName || h.hostId}
+                <span class="status-dot ${isOnline ? 'connected' : ''}"></span>
+              </div>
+              <div style="font-size: 11px; color: var(--muted);">
+                ${h.projectsCount || 0} проектов • ${h.activeProcessesCount || 0} процессов
+                ${h.tunnelUrl ? ' • 🔒 HTTPS' : ''}
+              </div>
+            </div>
+          </div>
+          <div>
+            ${isActive ? '<span style="color: var(--primary); font-size: 12px; font-weight: 700;">Активен ✓</span>' : `<button class="secondary" style="font-size: 11px; padding: 4px 10px;" onclick="window.switchHost('${h.hostId}')">Выбрать</button>`}
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    window.switchHost = function(targetHostId) {
+      const target = federationHosts.find(h => h.hostId === targetHostId);
+      if (!target) return;
+      triggerHaptic('medium');
+      activeHostId = targetHostId;
+      toggleHostModal(false);
+
+      if (target.tunnelUrl) {
+        document.getElementById('input-host').value = target.tunnelUrl;
+        connectWs(target.tunnelUrl);
+      } else if (target.localIps?.[0]) {
+        document.getElementById('input-host').value = target.localIps[0];
+        connectWs(target.localIps[0]);
+      } else {
+        connectWs(target.hostId);
+      }
+    };
+
+    function toggleHostModal(open) {
+      triggerHaptic('light');
+      const overlay = document.getElementById('host-modal-overlay');
+      if (open) overlay.classList.add('open');
+      else overlay.classList.remove('open');
+    }
+
+    // Modal listeners
+    document.getElementById('host-selector-pill').onclick = () => toggleHostModal(true);
+    document.getElementById('btn-close-host-modal').onclick = () => toggleHostModal(false);
+    document.getElementById('btn-refresh-fed').onclick = async () => {
+      triggerHaptic('light');
+      await loadFederation();
+    };
+    document.getElementById('btn-add-machine-qr').onclick = () => {
+      toggleHostModal(false);
+      document.getElementById('btn-scan-qr').click();
+    };
+
+    // Mode Switcher listeners
+    document.getElementById('btn-view-current-host').onclick = () => {
+      triggerHaptic('light');
+      viewMode = 'current';
+      document.getElementById('btn-view-current-host').classList.add('active');
+      document.getElementById('btn-view-all-hosts').classList.remove('active');
+      renderProjectsList(currentProjects);
+    };
+    document.getElementById('btn-view-all-hosts').onclick = () => {
+      triggerHaptic('light');
+      viewMode = 'all';
+      document.getElementById('btn-view-all-hosts').classList.add('active');
+      document.getElementById('btn-view-current-host').classList.remove('active');
+      renderProjectsList(currentProjects);
+    };
+
+    // --- Data Loaders ---
+    async function loadInitialData() {
+      try {
+        const status = await callRpc('get_status');
+        activeHostId = status.hostId;
+        updateCurrentHostBadge(status);
+
+        document.getElementById('stat-projects').textContent = status.projectsCount;
+        document.getElementById('stat-processes').textContent = status.runningProcesses;
+        document.getElementById('stat-access').textContent = status.readOnly ? 'Только чтение' : 'Полный доступ';
+
+        // Загрузка федерации хостов
+        await loadFederation();
+
+        const projects = await callRpc('get_projects');
+        currentProjects = projects;
+        renderProjectsList(projects);
+
+        activeProjectPath = status.activeProjectPath || (projects[0]?.path || '');
+        if (activeProjectPath) {
+          updateGitStatus();
+        }
+      } catch (e) {
+        console.error('Initial load error:', e);
+      }
+    }
+
+    function renderProjectsList(projects) {
+      const select = document.getElementById('project-select');
+      const allContainer = document.getElementById('all-projects-container');
+
+      if (viewMode === 'current') {
+        select.style.display = 'block';
+        allContainer.style.display = 'none';
+        select.innerHTML = '';
+        projects.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.path;
+          opt.textContent = p.name;
+          if (p.path === activeProjectPath) opt.selected = true;
+          select.appendChild(opt);
+        });
+      } else {
+        select.style.display = 'none';
+        allContainer.style.display = 'block';
+        allContainer.innerHTML = '';
+
+        federationHosts.forEach(h => {
+          const hostHeader = document.createElement('div');
+          const icon = h.platform === 'darwin' ? '🍏' : h.platform === 'linux' ? '🐧' : '💻';
+          hostHeader.style.cssText = 'font-size: 12px; font-weight: 700; color: var(--muted); margin: 10px 0 6px; display: flex; align-items: center; gap: 6px;';
+          hostHeader.innerHTML = `${icon} ${h.machineName || h.hostId} ${h.hostId === activeHostId ? '<span style="color: var(--primary); font-size: 11px;">(текущий)</span>' : ''}`;
+          allContainer.appendChild(hostHeader);
+
+          const list = (h.hostId === activeHostId) ? projects : (h.projects || []);
+          if (list.length === 0) {
+            const empty = document.createElement('div');
+            empty.style.cssText = 'font-size: 11px; color: var(--muted); padding: 4px 8px;';
+            empty.textContent = 'Нет добавленных проектов';
+            allContainer.appendChild(empty);
+          } else {
+            list.forEach(p => {
+              const row = document.createElement('div');
+              row.className = 'host-item';
+              row.style.padding = '8px 10px';
+              row.style.marginBottom = '4px';
+              row.innerHTML = `
+                <div style="font-size: 12px; font-weight: 600;">📁 ${p.name}</div>
+                <button class="secondary" style="font-size: 10px; padding: 3px 8px;">${h.hostId === activeHostId && p.path === activeProjectPath ? 'Выбран ✓' : 'Открыть'}</button>
+              `;
+              row.onclick = () => {
+                if (h.hostId !== activeHostId) {
+                  window.switchHost(h.hostId);
+                } else {
+                  activeProjectPath = p.path;
+                  select.value = p.path;
+                  updateGitStatus();
+                  refreshProcesses();
+                  refreshTasks();
+                  triggerHaptic('light');
+                }
+              };
+              allContainer.appendChild(row);
+            });
+          }
+        });
+      }
+    }
+
+    document.getElementById('project-select').addEventListener('change', async (e) => {
+      activeProjectPath = e.target.value;
+      triggerHaptic('medium');
+      await callRpc('select_project', { projectPath: activeProjectPath });
+      updateGitStatus();
+      refreshProcesses();
+      refreshTasks();
+    });
+
+    async function updateGitStatus() {
+      try {
+        const git = await callRpc('get_git_status', { projectPath: activeProjectPath });
+        document.getElementById('git-branch').textContent = git?.branch || 'master';
+      } catch (e) {
+        document.getElementById('git-branch').textContent = '—';
+      }
+    }
+
+    async function refreshProcesses() {
+      if (!activeProjectPath) return;
+      try {
+        const list = await callRpc('get_processes', { projectPath: activeProjectPath });
+        const container = document.getElementById('processes-list');
+        if (!list || list.length === 0) {
+          container.innerHTML = '<div style="text-align:center; color:var(--muted); font-size:12px; padding:12px;">Нет запущенных процессов</div>';
+          return;
+        }
+
+        container.innerHTML = list.map(p => `
+          <div class="process-item">
+            <div class="process-meta">
+              <div class="process-name">
+                <span style="color: ${p.status === 'running' ? 'var(--success)' : 'var(--muted)'};">●</span>
+                ${p.name}
+              </div>
+              <div class="process-cmd">${p.command || ''}</div>
+            </div>
+            <div class="process-actions">
+              ${p.status === 'running' ? `
+                <button class="danger" style="padding:4px 8px; font-size:11px;" onclick="stopProc('${p.id}')">Стоп</button>
+                <button class="secondary" style="padding:4px 8px; font-size:11px;" onclick="restartProc('${p.id}')">🔄</button>
+              ` : `
+                <button class="success" style="padding:4px 8px; font-size:11px;" onclick="startProc('${p.command}', '${p.name}')">Старт</button>
+              `}
+            </div>
+          </div>
+        `).join('');
+      } catch (e) {
+        console.error('Processes error:', e);
+      }
+    }
+
+    window.stopProc = async (id) => {
+      triggerHaptic('medium');
+      await callRpc('stop_process', { processId: id });
+      refreshProcesses();
+    };
+
+    window.restartProc = async (id) => {
+      triggerHaptic('medium');
+      await callRpc('restart_process', { processId: id });
+      refreshProcesses();
+    };
+
+    window.startProc = async (cmd, name) => {
+      triggerHaptic('medium');
+      await callRpc('start_process', { projectPath: activeProjectPath, command: cmd, name });
+      refreshProcesses();
+    };
+
+    async function refreshTasks() {
+      if (!activeProjectPath) return;
+      try {
+        const tasks = await callRpc('get_tasks', { projectPath: activeProjectPath });
+        cachedTasks = tasks || [];
+        renderTasks();
+      } catch (e) {
+        console.error('Tasks error:', e);
+      }
+    }
+
+    function renderTasks() {
+      const container = document.getElementById('tasks-list');
+      const filtered = cachedTasks.filter(t => currentTaskFilter === 'all' || t.status === currentTaskFilter);
+      if (filtered.length === 0) {
+        container.innerHTML = '<div style="text-align:center; color:var(--muted); font-size:12px; padding:12px;">Задач в этом статусе нет</div>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(t => {
+        const badgeClass = t.status === 'Done' ? 'done' : t.status === 'In Progress' ? 'progress' : t.status === 'Review' ? 'review' : 'todo';
+        return `
+          <div class="task-card">
+            <span class="task-badge ${badgeClass}">${t.status}</span>
+            <div style="font-weight:600; font-size:13px; margin-bottom:4px;">${t.title}</div>
+            ${t.acceptanceCriteria?.length ? `
+              <div style="margin-top:6px; border-top:1px solid var(--border); padding-top:6px;">
+                ${t.acceptanceCriteria.map((ac, idx) => `
+                  <div class="ac-item ${ac.completed ? 'done' : ''}">
+                    <input type="checkbox" ${ac.completed ? 'checked' : ''} style="width:auto; margin:0;" onchange="toggleCriterion('${t.filePath}', ${idx}, this.checked)">
+                    <span>${ac.text}</span>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    window.toggleCriterion = async (filePath, index, completed) => {
+      triggerHaptic('light');
+      await callRpc('toggle_task_criterion', { projectPath: activeProjectPath, filePath, index, completed });
+      refreshTasks();
+    };
+
+    document.querySelectorAll('.filter-task-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        triggerHaptic('light');
+        document.querySelectorAll('.filter-task-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentTaskFilter = btn.getAttribute('data-filter');
+        renderTasks();
+      });
+    });
+
+    // --- QR Scanner Button via Telegram Native API ---
+    document.getElementById('btn-scan-qr').addEventListener('click', () => {
+      triggerHaptic('medium');
+      if (tg?.showScanQrPopup) {
+        tg.showScanQrPopup({ text: 'Наведите камеру на QR-код в ProjectHub' }, (scanned) => {
+          if (scanned) {
+            triggerHaptic('success');
+            tg.closeScanQrPopup();
+            // Parse scanned link
+            try {
+              if (scanned.includes('#')) {
+                const hash = new URLSearchParams(scanned.split('#')[1]);
+                if (hash.get('key')) document.getElementById('input-key').value = hash.get('key');
+                if (hash.get('host')) document.getElementById('input-host').value = hash.get('host');
+              }
+              connectWs();
+            } catch (e) {}
+            return true;
+          }
+        });
+      } else {
+        alert('QR-сканер доступен при открытии внутри мобильного приложения Telegram');
+      }
+    });
+
+    document.getElementById('btn-reconnect').addEventListener('click', () => {
+      triggerHaptic('medium');
+      connectWs();
+    });
+
+    document.getElementById('btn-clear-logs').addEventListener('click', () => {
+      document.getElementById('terminal-logs').textContent = '';
+      triggerHaptic('light');
+    });
+
+    document.getElementById('btn-refresh-procs').addEventListener('click', () => {
+      triggerHaptic('light');
+      refreshProcesses();
+    });
+
+    document.getElementById('btn-refresh-tasks').addEventListener('click', () => {
+      triggerHaptic('light');
+      refreshTasks();
+    });
+
+    // Start
+    parseInitialParams();
+    connectWs();
+  </script>
+</body>
+</html>

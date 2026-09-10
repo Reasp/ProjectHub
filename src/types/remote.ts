@@ -18,6 +18,28 @@ export interface RemoteControlConfig {
   relayServerUrl: string;
   requireApproval: boolean;
   readOnly: boolean;
+  useRelay?: boolean;
+  useP2P?: boolean;
+  machineName?: string;
+  autoStart?: boolean;
+  tunnelUrl?: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  telegramBotUsername?: string;
+  telegramMiniAppUrl?: string;
+}
+
+export interface FederationHost {
+  hostId: string;
+  machineName: string;
+  platform: 'win32' | 'darwin' | 'linux';
+  tunnelUrl?: string;
+  localIps?: string[];
+  isOnline: boolean;
+  projectsCount: number;
+  activeProcessesCount: number;
+  projects?: Array<{ id: string; name: string; path: string }>;
+  lastSeen: number;
 }
 
 export interface RemoteControlStatus {
@@ -27,6 +49,7 @@ export interface RemoteControlStatus {
   relayServerUrl: string;
   relayConnected: boolean;
   hostId: string;
+  machineName: string;
   pairingPin: string;
   secretKey: string;
   localIps: string[];
@@ -34,6 +57,19 @@ export interface RemoteControlStatus {
   requireApproval: boolean;
   readOnly: boolean;
   lastError: string | null;
+  autoStart: boolean;
+  tunnelUrl: string;
+  tunnelStatus: 'idle' | 'starting' | 'active' | 'error';
+  tunnelError: string | null;
+  federationHosts: FederationHost[];
+  useRelay?: boolean;
+  useP2P?: boolean;
+  localAddresses?: string[];
+  secretToken?: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  telegramBotUsername?: string;
+  telegramMiniAppUrl?: string;
 }
 
 export interface EncryptedPacket {
@@ -76,7 +112,8 @@ export type RemoteRpcMethod =
   | 'git_push'
   | 'send_ai_prompt'
   | 'hitl_decision'
-  | 'run_action';
+  | 'run_action'
+  | 'get_federation_hosts';
 
 export interface RemoteEventPayloads {
   'process:logChunk': { processId: string; text: string };

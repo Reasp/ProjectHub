@@ -1314,6 +1314,19 @@ ipcMain.handle('remote:approveDevice', async (_event, deviceId: string) => {
   return remoteControlService.approveDevice(deviceId);
 });
 
+ipcMain.handle('remote:testTelegramNotification', async (_event, text?: string) => {
+  return await remoteControlService.sendTelegramNotification(text || 'Тестовое уведомление от ProjectHub! 🚀');
+});
+
+ipcMain.handle('remote:startTunnel', async () => {
+  return await remoteControlService.startTunnel();
+});
+
+ipcMain.handle('remote:stopTunnel', async () => {
+  remoteControlService.stopTunnel();
+  return remoteControlService.getStatus();
+});
+
 let isCleaningUp = false;
 
 async function performGracefulShutdown() {
@@ -1432,6 +1445,10 @@ app.whenReady().then(() => {
   // Start Built-in Remote Control MCP Server on 127.0.0.1:42042
   mcpServerService.start().catch((err) => {
     console.error('[Main] Failed to auto-start Remote MCP server:', err);
+  });
+  // Auto-start Remote Control & Public HTTPS Tunnel if configured
+  remoteControlService.initOnStartup().catch((err) => {
+    console.error('[Main] Failed to auto-start Remote Control service:', err);
   });
 });
 

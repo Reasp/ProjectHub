@@ -353,6 +353,9 @@ const api: IElectronAPI = {
   regenerateRemoteToken: () => ipcRenderer.invoke('remote:regenerateToken'),
   disconnectRemoteDevice: (deviceId: string) => ipcRenderer.invoke('remote:disconnectDevice', deviceId),
   approveRemoteDevice: (deviceId: string) => ipcRenderer.invoke('remote:approveDevice', deviceId),
+  testTelegramNotification: (text?: string) => ipcRenderer.invoke('remote:testTelegramNotification', text),
+  startRemoteTunnel: () => ipcRenderer.invoke('remote:startTunnel'),
+  stopRemoteTunnel: () => ipcRenderer.invoke('remote:stopTunnel'),
   onRemoteControlStatusChanged: (callback: (status: any) => void) => {
     const handler = (_event: any, status: any) => callback(status);
     ipcRenderer.on('remote:statusChanged', handler);

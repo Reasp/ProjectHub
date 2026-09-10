@@ -31,6 +31,7 @@
     "mcp-server": "node scripts/mcp-server.mjs",
     "web": "node scripts/web.mjs",
     "remote-relay": "node scripts/remote-relay-server.mjs",
+    "telegram-bot": "node scripts/telegram-bot.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "check-bundle": "node scripts/check-bundle.mjs"

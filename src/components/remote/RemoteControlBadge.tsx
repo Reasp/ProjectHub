@@ -1,31 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import {
   Smartphone,
-  Radio,
   Copy,
   Check,
   RefreshCw,
   Power,
   Shield,
   ExternalLink,
-  Wifi,
-  Globe,
   Lock,
   X,
   UserCheck,
   UserX,
   Sliders,
-  QrCode
+  QrCode,
+  Send,
+  Bot,
+  AlertCircle,
+  Globe,
+  Laptop
 } from 'lucide-react';
 import QRCode from 'qrcode';
-import type { RemoteControlStatus, RemoteConfig } from '../../types/electron';
+import type { RemoteControlStatus } from '../../types/electron';
 
 export const RemoteControlBadge: React.FC = () => {
   const [status, setStatus] = useState<RemoteControlStatus | null>(null);
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'connect' | 'devices' | 'settings'>('connect');
+  const [activeTab, setActiveTab] = useState<'connect' | 'devices' | 'settings' | 'telegram'>('connect');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [qrTelegramDataUrl, setQrTelegramDataUrl] = useState<string>('');
 
   // Local settings state
   const [port, setPort] = useState<number>(49200);
@@ -34,7 +37,18 @@ export const RemoteControlBadge: React.FC = () => {
   const [useP2P, setUseP2P] = useState<boolean>(true);
   const [readOnly, setReadOnly] = useState<boolean>(false);
   const [requireApproval, setRequireApproval] = useState<boolean>(true);
+  const [machineName, setMachineName] = useState<string>('');
+  const [autoStart, setAutoStart] = useState<boolean>(false);
   const [savingSettings, setSavingSettings] = useState<boolean>(false);
+  const [startingTunnel, setStartingTunnel] = useState<boolean>(false);
+
+  // Telegram settings state
+  const [telegramBotToken, setTelegramBotToken] = useState<string>('');
+  const [telegramChatId, setTelegramChatId] = useState<string>('');
+  const [telegramBotUsername, setTelegramBotUsername] = useState<string>('');
+  const [telegramMiniAppUrl, setTelegramMiniAppUrl] = useState<string>('');
+  const [testNotificationResult, setTestNotificationResult] = useState<string | null>(null);
+  const [testingNotification, setTestingNotification] = useState<boolean>(false);
 
   const fetchStatus = async () => {
     if (window.api?.getRemoteStatus) {
@@ -45,6 +59,12 @@ export const RemoteControlBadge: React.FC = () => {
         setRelayUrl(st.relayUrl);
         setUseRelay(st.useRelay);
         setUseP2P(st.useP2P);
+        if (st.machineName !== undefined) setMachineName(st.machineName);
+        if (st.autoStart !== undefined) setAutoStart(st.autoStart);
+        if (st.telegramBotToken !== undefined) setTelegramBotToken(st.telegramBotToken);
+        if (st.telegramChatId !== undefined) setTelegramChatId(st.telegramChatId);
+        if (st.telegramBotUsername !== undefined) setTelegramBotUsername(st.telegramBotUsername);
+        if (st.telegramMiniAppUrl !== undefined) setTelegramMiniAppUrl(st.telegramMiniAppUrl);
       } catch (e) {
         console.error('Failed to get remote control status:', e);
       }
@@ -59,6 +79,12 @@ export const RemoteControlBadge: React.FC = () => {
       setRelayUrl(next.relayUrl);
       setUseRelay(next.useRelay);
       setUseP2P(next.useP2P);
+      if (next.machineName !== undefined) setMachineName(next.machineName);
+      if (next.autoStart !== undefined) setAutoStart(next.autoStart);
+      if (next.telegramBotToken !== undefined) setTelegramBotToken(next.telegramBotToken);
+      if (next.telegramChatId !== undefined) setTelegramChatId(next.telegramChatId);
+      if (next.telegramBotUsername !== undefined) setTelegramBotUsername(next.telegramBotUsername);
+      if (next.telegramMiniAppUrl !== undefined) setTelegramMiniAppUrl(next.telegramMiniAppUrl);
     });
     return () => {
       unsubscribe?.();
@@ -69,21 +95,32 @@ export const RemoteControlBadge: React.FC = () => {
   useEffect(() => {
     if (!status || !isOpen) return;
 
-    // Ссылка для подключения из QR кода
     const localIp = status.localAddresses?.[0] || 'localhost';
     const pairingUrl = `http://${localIp}:${status.port}/remote#host=${status.hostId}&key=${status.secretToken}&relay=${encodeURIComponent(status.relayUrl)}&mode=${status.useP2P ? 'p2p' : status.useRelay ? 'relay' : 'lan'}`;
 
     QRCode.toDataURL(pairingUrl, {
       margin: 2,
-      width: 260,
-      color: {
-        dark: '#0f172a',
-        light: '#f8fafc'
-      }
+      width: 240,
+      color: { dark: '#0f172a', light: '#f8fafc' }
     })
       .then((url) => setQrDataUrl(url))
       .catch((err) => console.error('QR code generation error:', err));
-  }, [status, isOpen]);
+
+    // QR код для Telegram Mini App (приоритет публичному HTTPS туннелю)
+    const effectiveTgUrl = status.tunnelUrl
+      ? `${status.tunnelUrl}/telegram`
+      : telegramBotUsername
+      ? `https://t.me/${telegramBotUsername}?startapp=k_${status.secretToken.slice(0, 32)}`
+      : `http://${localIp}:${status.port}/telegram#host=${status.hostId}&key=${status.secretToken}`;
+
+    QRCode.toDataURL(effectiveTgUrl, {
+      margin: 2,
+      width: 240,
+      color: { dark: '#0f172a', light: '#f8fafc' }
+    })
+      .then((url) => setQrTelegramDataUrl(url))
+      .catch(() => {});
+  }, [status, isOpen, telegramBotUsername]);
 
   const handleToggle = async () => {
     if (!status || !window.api?.toggleRemoteControl) return;
@@ -115,14 +152,52 @@ export const RemoteControlBadge: React.FC = () => {
         useRelay,
         useP2P,
         readOnly,
-        requireApproval
+        requireApproval,
+        machineName,
+        autoStart,
+        telegramBotToken,
+        telegramChatId,
+        telegramBotUsername,
+        telegramMiniAppUrl
       });
       setStatus(updated);
-      setActiveTab('connect');
+      setTestNotificationResult('Настройки успешно сохранены');
+      setTimeout(() => setTestNotificationResult(null), 3000);
     } catch (e) {
       console.error('Failed to update remote config:', e);
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const handleRestartTunnel = async () => {
+    if (!window.api?.startRemoteTunnel) return;
+    setStartingTunnel(true);
+    try {
+      await window.api.startRemoteTunnel();
+      await fetchStatus();
+    } catch (e) {
+      console.error('Failed to restart tunnel:', e);
+    } finally {
+      setStartingTunnel(false);
+    }
+  };
+
+  const handleTestNotification = async () => {
+    if (!window.api?.testTelegramNotification) return;
+    setTestingNotification(true);
+    setTestNotificationResult(null);
+    try {
+      const ok = await window.api.testTelegramNotification('🔔 *ProjectHub Test*: Связь с Telegram успешно установлена! Удаленное управление готово к работе. 🚀');
+      if (ok) {
+        setTestNotificationResult('✅ Сообщение успешно отправлено в Telegram!');
+      } else {
+        setTestNotificationResult('❌ Ошибка отправки. Проверьте Bot Token и Chat ID.');
+      }
+    } catch (e: any) {
+      setTestNotificationResult(`❌ Ошибка: ${e?.message || e}`);
+    } finally {
+      setTestingNotification(false);
     }
   };
 
@@ -158,6 +233,10 @@ export const RemoteControlBadge: React.FC = () => {
   const approvedCount = status.connectedDevices?.filter((d) => d.isApproved).length || 0;
   const primaryIp = status.localAddresses?.[0] || 'localhost';
   const webClientUrl = `http://${primaryIp}:${status.port}/remote#host=${status.hostId}&key=${status.secretToken}&relay=${encodeURIComponent(status.relayUrl)}`;
+  const telegramDirectUrl = `http://${primaryIp}:${status.port}/telegram#host=${status.hostId}&key=${status.secretToken}`;
+  const telegramBotDeepLink = telegramBotUsername
+    ? `https://t.me/${telegramBotUsername}?startapp=host_${status.hostId}`
+    : '';
 
   return (
     <>
@@ -170,7 +249,7 @@ export const RemoteControlBadge: React.FC = () => {
             ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
             : 'bg-slate-800/40 border-slate-700/50 text-slate-400 hover:bg-slate-800 hover:text-slate-300'
         }`}
-        title="Удаленное управление (Remote Control)"
+        title="Удаленное управление и Telegram Mini App"
       >
         <span className="relative flex h-2 w-2">
           {status.enabled && (
@@ -206,7 +285,7 @@ export const RemoteControlBadge: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                    Удаленное управление (Remote Control)
+                    Удаленное управление (Remote & Telegram)
                     {status.enabled ? (
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 font-mono font-normal">
                         АКТИВЕН
@@ -218,7 +297,7 @@ export const RemoteControlBadge: React.FC = () => {
                     )}
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    Управление процессами, задачами и AI через смартфон или браузер
+                    Управление проектами, процессами, задачами и AI со смартфона или Telegram Mini App
                   </p>
                 </div>
               </div>
@@ -262,6 +341,18 @@ export const RemoteControlBadge: React.FC = () => {
               </button>
               <button
                 type="button"
+                onClick={() => setActiveTab('telegram')}
+                className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 transition ${
+                  activeTab === 'telegram'
+                    ? 'border-sky-500 text-sky-400'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Send className="w-3.5 h-3.5" />
+                Telegram Mini App
+              </button>
+              <button
+                type="button"
                 onClick={() => setActiveTab('devices')}
                 className={`flex items-center gap-2 px-3 py-2 text-xs font-medium border-b-2 transition ${
                   activeTab === 'devices'
@@ -288,15 +379,15 @@ export const RemoteControlBadge: React.FC = () => {
 
             {/* Modal Body */}
             <div className="p-5 overflow-y-auto space-y-4 flex-1">
+              {/* TAB: ПОДКЛЮЧЕНИЕ */}
               {activeTab === 'connect' && (
                 <div className="space-y-4">
-                  {/* QR-код и инструкция */}
                   <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-xl bg-slate-950/60 border border-slate-800">
                     <div className="bg-white p-2.5 rounded-xl flex items-center justify-center shrink-0 shadow-lg">
                       {qrDataUrl ? (
-                        <img src={qrDataUrl} alt="Remote QR Code" className="w-36 h-36 rounded-lg" />
+                        <img src={qrDataUrl} alt="Remote QR Code" className="w-32 h-32 rounded-lg" />
                       ) : (
-                        <div className="w-36 h-36 flex items-center justify-center text-slate-400 text-xs">
+                        <div className="w-32 h-32 flex items-center justify-center text-slate-400 text-xs">
                           Генерация QR...
                         </div>
                       )}
@@ -307,7 +398,7 @@ export const RemoteControlBadge: React.FC = () => {
                         Сквозное шифрование E2EE (AES-256-GCM)
                       </div>
                       <p className="text-xs text-slate-400 leading-relaxed">
-                        Отсканируйте камерой смартфона в одной Wi-Fi сети или скопируйте ссылку для удаленного доступа через Relay / P2P.
+                        Отсканируйте камерой смартфона в одной локальной сети или используйте Telegram Mini App для мобильного доступа.
                       </p>
                       <div className="flex flex-wrap gap-1.5 pt-1">
                         <span className="px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-[10px] text-indigo-300">
@@ -389,9 +480,236 @@ export const RemoteControlBadge: React.FC = () => {
                       </button>
                     </div>
                   </div>
+
+                  {/* Имя компьютера в Едином Hub */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                      <Laptop className="w-3.5 h-3.5 text-indigo-400" />
+                      Имя этого компьютера (в Едином Hub)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="например, Рабочий ПК (Windows)"
+                      value={machineName}
+                      onChange={(e) => setMachineName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
                 </div>
               )}
 
+              {/* TAB: TELEGRAM MINI APP */}
+              {activeTab === 'telegram' && (
+                <div className="space-y-4">
+                  {/* Tunnel Status & Auto-start Banner */}
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5 text-sky-400" />
+                        Публичный HTTPS-туннель:
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        status?.tunnelStatus === 'active'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : status?.tunnelStatus === 'starting'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {status?.tunnelStatus === 'active' ? '🟢 АКТИВЕН' : status?.tunnelStatus === 'starting' ? '⏳ ПОДКЛЮЧЕНИЕ...' : '⚪ НЕ ЗАПУЩЕН'}
+                      </span>
+                    </div>
+
+                    {status?.tunnelUrl ? (
+                      <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg p-2 text-[11px] font-mono text-sky-300 overflow-hidden">
+                        <span className="truncate flex-1">{status.tunnelUrl}/telegram</span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(`${status.tunnelUrl}/telegram`, 'tg_tunnel')}
+                          className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white"
+                          title="Копировать адрес"
+                        >
+                          {copiedKey === 'tg_tunnel' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => window.api?.openExternal?.(`${status.tunnelUrl}/telegram`)}
+                          className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white"
+                          title="Открыть в браузере"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-slate-400">
+                        Zero-config Cloudflare Quick Tunnel с валидным SSL для Telegram WebApp.
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-1">
+                      <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={autoStart}
+                          onChange={(e) => setAutoStart(e.target.checked)}
+                          className="rounded bg-slate-900 border-slate-700 text-sky-500 focus:ring-0"
+                        />
+                        Автозапуск при старте ProjectHub
+                      </label>
+                      <button
+                        type="button"
+                        disabled={startingTunnel}
+                        onClick={handleRestartTunnel}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-200 transition disabled:opacity-50 flex items-center gap-1"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${startingTunnel ? 'animate-spin' : ''}`} />
+                        {status?.tunnelStatus === 'active' ? 'Перезапустить' : 'Запустить туннель'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Telegram QR & DeepLink */}
+                  <div className="flex flex-col sm:flex-row items-center gap-5 p-4 rounded-xl bg-sky-950/25 border border-sky-800/40">
+                    <div className="bg-white p-2.5 rounded-xl flex items-center justify-center shrink-0 shadow-lg">
+                      {qrTelegramDataUrl ? (
+                        <img src={qrTelegramDataUrl} alt="Telegram Mini App QR" className="w-32 h-32 rounded-lg" />
+                      ) : (
+                        <div className="w-32 h-32 flex items-center justify-center text-slate-400 text-xs">
+                          Генерация QR...
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-2 text-left">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-sky-300">
+                        <Send className="w-3.5 h-3.5 text-sky-400" />
+                        Telegram Mini App (TMA)
+                      </div>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        Управляйте процессами, задачами и общайтесь с AI прямо внутри Telegram с нативным Haptic Feedback и сканером QR.
+                      </p>
+                      <div className="pt-1 flex flex-wrap gap-2">
+                        {telegramBotDeepLink ? (
+                          <button
+                            type="button"
+                            onClick={() => window.api?.openExternal(telegramBotDeepLink)}
+                            className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold flex items-center gap-1.5 transition"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            Открыть в Telegram
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => window.api?.openExternal(telegramDirectUrl)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium flex items-center gap-1.5 transition border border-slate-700"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            Открыть Mini App в браузере
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Telegram Bot Settings */}
+                  <div className="space-y-3 pt-2 text-xs">
+                    <div>
+                      <label className="text-slate-300 font-medium block mb-1">
+                        Telegram Bot Token (из @BotFather)
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+                        value={telegramBotToken}
+                        onChange={(e) => setTelegramBotToken(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-slate-300 font-medium block mb-1">
+                          Юзернейм бота (без @)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="MyProjectHubBot"
+                          value={telegramBotUsername}
+                          onChange={(e) => setTelegramBotUsername(e.target.value.replace(/^@/, ''))}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-slate-300 font-medium block mb-1">
+                          Ваш Telegram Chat ID
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="например 12345678"
+                          value={telegramChatId}
+                          onChange={(e) => setTelegramChatId(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-slate-300 font-medium block mb-1">
+                        Публичный URL WebApp (если используется туннель Cloudflare/Vercel)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder={telegramDirectUrl}
+                        value={telegramMiniAppUrl}
+                        onChange={(e) => setTelegramMiniAppUrl(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono"
+                      />
+                    </div>
+
+                    {testNotificationResult && (
+                      <div className={`p-2.5 rounded-lg border text-xs flex items-center gap-2 ${
+                        testNotificationResult.startsWith('✅')
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                          : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                      }`}>
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{testNotificationResult}</span>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        type="button"
+                        disabled={savingSettings}
+                        onClick={handleSaveConfig}
+                        className="flex-1 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 font-semibold text-white transition disabled:opacity-50"
+                      >
+                        {savingSettings ? 'Сохранение...' : 'Сохранить настройки Telegram'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={testingNotification || !telegramBotToken || !telegramChatId}
+                        onClick={handleTestNotification}
+                        className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition disabled:opacity-40"
+                        title="Отправить тестовое сообщение"
+                      >
+                        <Bot className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* How to setup banner */}
+                    <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-1 text-slate-400 text-[11px] leading-relaxed">
+                      <div className="font-semibold text-slate-300">💡 Как подключить в Telegram:</div>
+                      <ol className="list-decimal pl-4 space-y-0.5">
+                        <li>Создайте бота в <b>@BotFather</b> через команду <code className="text-slate-200">/newbot</code>.</li>
+                        <li>Вставьте полученный токен и имя бота в поля выше.</li>
+                        <li>Нажмите <code className="text-slate-200">/newapp</code> в @BotFather, выберите вашего бота и укажите URL Mini App.</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: УСТРОЙСТВА */}
               {activeTab === 'devices' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs text-slate-400 px-1">
@@ -401,7 +719,7 @@ export const RemoteControlBadge: React.FC = () => {
 
                   {(!status.connectedDevices || status.connectedDevices.length === 0) ? (
                     <div className="p-8 text-center rounded-xl bg-slate-950/40 border border-slate-800 text-slate-500 text-xs">
-                      Нет активных подключений. Отсканируйте QR-код на вкладке "Подключение".
+                      Нет активных подключений. Отсканируйте QR-код на вкладке "Подключение" или откройте Telegram Mini App.
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -458,6 +776,7 @@ export const RemoteControlBadge: React.FC = () => {
                 </div>
               )}
 
+              {/* TAB: НАСТРОЙКИ СЕТИ */}
               {activeTab === 'settings' && (
                 <div className="space-y-4 text-xs">
                   <div className="grid grid-cols-2 gap-3">

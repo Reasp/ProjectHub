@@ -184,6 +184,19 @@ export interface McpServerStatus {
   lastError: string | null;
 }
 
+export interface FederationHost {
+  hostId: string;
+  machineName: string;
+  platform: 'win32' | 'darwin' | 'linux';
+  tunnelUrl?: string;
+  localIps?: string[];
+  isOnline: boolean;
+  projectsCount: number;
+  activeProcessesCount: number;
+  projects?: Array<{ id: string; name: string; path: string }>;
+  lastSeen: number;
+}
+
 /** Статус встроенного сервиса удаленного управления (TASK-51). */
 export interface RemoteControlStatus {
   enabled: boolean;
@@ -193,12 +206,22 @@ export interface RemoteControlStatus {
   useRelay: boolean;
   useP2P: boolean;
   hostId: string;
+  machineName?: string;
   secretToken: string;
   localAddresses: string[];
   connectedDevices: RemoteDevice[];
   qrPayload: string;
   webUrl: string;
   lastError: string | null;
+  autoStart?: boolean;
+  tunnelUrl?: string;
+  tunnelStatus?: 'idle' | 'starting' | 'active' | 'error';
+  tunnelError?: string | null;
+  federationHosts?: FederationHost[];
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  telegramBotUsername?: string;
+  telegramMiniAppUrl?: string;
 }
 
 export interface RemoteDevice {
@@ -223,6 +246,13 @@ export interface RemoteConfig {
   useRelay?: boolean;
   useP2P?: boolean;
   stunServers?: string[];
+  machineName?: string;
+  autoStart?: boolean;
+  tunnelUrl?: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  telegramBotUsername?: string;
+  telegramMiniAppUrl?: string;
 }
 
 export interface ManagedProcess {
@@ -579,6 +609,9 @@ export interface IElectronAPI {
   regenerateRemoteToken: () => Promise<string>;
   disconnectRemoteDevice: (deviceId: string) => Promise<boolean>;
   approveRemoteDevice: (deviceId: string) => Promise<boolean>;
+  testTelegramNotification: (text?: string) => Promise<boolean>;
+  startRemoteTunnel: () => Promise<string>;
+  stopRemoteTunnel: () => Promise<RemoteControlStatus>;
   onRemoteControlStatusChanged: (callback: (status: RemoteControlStatus) => void) => () => void;
   onRemoteHitlDecisionMade: (callback: (data: { sessionId: string; approved: boolean; byDevice: string }) => void) => () => void;
 }
