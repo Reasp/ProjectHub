@@ -1,8 +1,19 @@
-# ProjectHub — Контекст проекта и состояние системы (Context Dump)
+---
+id: doc-9
+title: Контекст проекта и состояние системы (Context Dump)
+type: specification
+created_date: '2026-09-10 04:30'
+tags:
+  - context
+  - architecture
+  - project-hub
+  - status
+  - git
+---
+# ProjectHub — Контекст проекта и состояние системы
 
-> **Официальный документ Backlog.md**: [doc-9](file:///f:/ProjectHub/backlog/docs/doc-9%20-%20%D0%9A%D0%BE%D0%BD%D1%82%D0%B5%D0%BA%D1%81%D1%82-%D0%BF%D1%80%D0%BE%D0%B5%D0%BA%D1%82%D0%B0-%D0%B8-%D1%81%D0%BE%D1%81%D1%82%D0%BE%D1%8F%D0%BD%D0%B8%D0%B5-%D1%81%D0%B8%D1%81%D1%82%D0%B5%D0%BC%D1%8B-Context-Dump.md)  
-> **Дата создания / обновления**: 2026-09-10  
-> **Статус**: Все базовые и продвинутые модули (включая Swarm Arena, Remote Control, Git Worktrees, модульную архитектуру IPC) реализованы и протестированы. Проект успешно собирается (`npm run pack:win`).  
+> **Дата создания / обновления**: "2026-09-10"  
+> **Статус**: Все базовые и продвинутые модули (включая Swarm Arena, Remote Control, Git Worktrees) реализованы и протестированы. Проект успешно собирается (`npm run pack:win`).  
 > **Назначение**: Единая десктопная панель управления проектами (по аналогии со SourceTree / GitHub Desktop), стандартизированными по шаблону `ProjectTemplate` (`Backlog.md`, `Git`, `Vector RAG`, `MCP`, `Env-tools`).
 
 ---
@@ -37,32 +48,23 @@
 12. **Сводная аналитика и активность проекта (Project Analytics Dashboard)** (`task-12`): полноэкранная вкладка в рабочей области проекта с графиками готовности задач, Acceptance Criteria, контрибьюторами Git, распределением тегов, майлстоунами и статистикой LanceDB (`Ctrl+A`).
 13. **AI-ассистент генерации описаний задач, коммитов и PR** (`task-13`): интеграция с локальной Ollama и встроенными шаблонами в `TaskDetailModal`, `GitInspector` and `CreatePRModal`.
 14. **Встроенный интерактивный мульти-терминал с поддержкой Claude Code и авто-отслеживанием Git** (`task-14`): полнофункциональный встроенный PTY-терминал (`node-pty` / `xterm.js`) с параллельными сессиями Claude Code и Shell в директории каждого проекта (`cwd`), горячей кнопкой в шапке, мульти-вкладками и авто-синхронизацией списка незакоммиченных файлов на вкладке Git в реальном времени.
-15. **Графическая панель AI-ассистента (Claude AI Studio & Multi-Provider Agent)** (`task-15`): встроенный полноэкранный GUI-ассистент с прямой поддержкой Anthropic Claude 3.7 Sonnet (Thinking process / reasoning budget), OpenRouter (РФ/Мир без ограничений), DeepSeek V3/R1, локальной Ollama и Custom OpenAI-совместимых эндпоинтов. Поддерживает интерактивные карточки Tool Use с генерацией построчных визуальных Diff изменений файлов, кнопки Принять/Отклонить правки, контекстные теги (`@Task`, `@GitStatus`, `@Docs`) и быструю навигацию по `Ctrl+I`.
+15. **Графическая панель AI-ассистента (Claude AI Studio & Multi-Provider Agent)** (`task-15`): встроенный полноэкранный GUI-ассистент с прямой поддержкой Anthropic Claude 3.7 Sonnet, OpenRouter, DeepSeek V3/R1, локальной Ollama и Custom OpenAI-совместимых эндпоинтов. Поддерживает интерактивные карточки Tool Use с генерацией построчных визуальных Diff изменений файлов, кнопки Принять/Отклонить правки, контекстные теги (`@Task`, `@GitStatus`, `@Docs`) и быструю навигацию по `Ctrl+I`.
 16. **Система мультиязычности и локализации (i18n)** (`task-16`): поддержка интерфейса на английском языке по умолчанию (`en`) и на русском (`ru`) с мгновенным переключением в шапке и сохранением настроек в `localStorage`.
 17. **Брендовая айдентика и сборка**: Сгенерирована официальная иконка (Neon Cyber Nexus) без рамок и надписей с повышенным контрастом в многослойном `.ico` и `.png` (256/128/64/48/32/16px), настроена иконка исполняемого файла `.exe`, заголовок окна и логотип в приложении.
 18. **Стандарты документации Backlog.md и вставки изображений**: Введена строгая валидация формата документов (`doc-<id> - <Title>.md`) и решений (`decision-<id> - <Title>.md`), а также единые стандарты вставки изображений (`infra-dev.md`, Правила 13 и 15).
 19. **Обязательная быстрая сборка распакованного десктопного приложения**: Введено Правило 14 (`infra-dev.md`), предписывающее собирать распакованный бинарник `release/win-unpacked/ProjectHub.exe` (`npm run pack:win`) без медленной портабл-упаковки.
 20. **Комплексное ревью, аудит безопасности и внедрение модулей v2.0** (`doc-6`): Реализованы и протестированы все 5 ключевых модулей нового поколения:
-    - **Git Diffs & Branches**: Менеджер веток (создание, checkout, merge, удаление, remote fetch/pull/push), построчный Split/Unified Diff Viewer с синтаксической подсветкой и сравнение произвольных веток.
-    - **Action Runner (Run / Deploy / Test)**: Конфигурируемые кнопки быстрого запуска dev-сервера, деплоя и тестов с сохранением настроек в `.projecthub.json` и модальным окном настроек.
-    - **Интерактивный File Explorer с Git-индикацией**: Дерево файлов с цветными бейджами `[M]`, `[A]`, `[D]`, `[?]`, счетчиками изменений в папках, быстрым редактором кода и встроенным Diff.
-    - **ProjectHub Native MCP Server**: Встроенный HTTP/SSE сервер MCP (`electron/services/mcpServerService.ts`), экспортирующий API ProjectHub для внешних AI-агентов (Claude Code, Antigravity, Cursor, Windsurf).
-    - **Голосовое управление (Voice Control STT/TTS)**: Распознавание русской и английской речи, голосовые команды навигации и запуска действий, синтез речи (TTS) и плавающий виджет `VoiceControlWidget` (`Ctrl+Shift+V`).
-21. **Модуль удаленного управления (Remote Control: Server Relay & WebRTC P2P)** (`task-51`):
-    - Сквозное шифрование E2EE (AES-256-GCM) для всех управляющих команд и потоков логов.
-    - Поддержка двух режимов связи: WebRTC DataChannel (Peer-to-Peer) и WebSocket Relay Server (`scripts/remote-relay-server.mjs`) для удаленного доступа через мобильный интернет и сложные корпоративные сети/NAT.
-    - Встроенный мобильный веб-клиент SPA (`src/remote-client/`) с адаптивным интерфейсом для управления проектами, задачами, процессами, живым терминалом и AI-ассистентом.
-    - Десктопный виджет и модальное окно `RemoteControlBadge` с генерацией QR-кода, одобрением подключенных устройств и режимом Read-Only.
+    - **Git Diffs & Branches**: Менеджер веток, построчный Split/Unified Diff Viewer с подсветкой.
+    - **Action Runner (Run / Deploy / Test)**: Конфигурируемые кнопки быстрого запуска с сохранением настроек в `.projecthub.json`.
+    - **Интерактивный File Explorer с Git-индикацией**: Дерево файлов с бейджами изменений и быстрым редактором.
+    - **ProjectHub Native MCP Server**: Встроенный HTTP/SSE сервер MCP (`electron/services/mcpServerService.ts`).
+    - **Голосовое управление (Voice Control STT/TTS)**: Распознавание речи, голосовые команды и плавающий виджет.
+21. **Модуль удаленного управления (Remote Control: Server Relay & WebRTC P2P)** (`task-51`): E2EE шифрование, WebRTC P2P + WebSocket Relay, мобильное SPA-клиент и виджет с QR-кодом.
 22. **Оркестрация параллельной работы разнородных AI-агентов (Multi-Agent Swarm, Fan-Out, Arena и Handoff)** (`task-54`):
-    - `AgentFleetService` (`electron/services/agentFleetService.ts`) — координатор параллельного (Fan-Out) и конвейерного (Handoff) выполнения задач CLI (Claude Code, Codex/Aider) и API-агентами (DeepSeek, OpenRouter, Ollama).
-    - Автоматическая изоляция каждого агента в выделенном Git Worktree (`.worktrees/swarm-<id>-<slotId>`, ветка `swarm/<id>/<agentSlug>`) без взаимных коллизий файлов.
-    - Состязательный экран Side-by-Side Swarm Arena (`SwarmArenaView.tsx`): параллельный просмотр статусов, метрик (токены, скорость, время), потоковых логов, Markdown-ответов и цветных git-диффов.
-    - Функция Pick Winner в 1 клик: автоматическое слияние ветки победителя (`worktreeService.mergeWorktree`), остановка сессий остальных агентов и очистка временных worktree-директорий.
-    - Интеграция с Канбан-доской Backlog: кнопка «⚡ В Swarm Arena» в `TaskDetailModal` с автоподстановкой описания задачи и пресетами дуэлей и конвейеров.
-23. **Модульная архитектура IPC и устранение дублей** (`task-46`):
-    - Декомпозиция монолитного `electron/main.ts` на изолированные доменные модули в `electron/ipc/` (`projectsIpc`, `backlogIpc`, `gitIpc`, `aiIpc`, `filesIpc`, `voiceIpc`, `mcpIpc`, `processIpc`).
-    - Устранение дублирующих IPC (`file:readFile`, `file:writeFile`) в пользу единых методов `files:*`.
-    - Удаление неиспользуемого stdio MCP сервера и мертвого компонента `ProcessTerminal.tsx`.
+    - `AgentFleetService` (`electron/services/agentFleetService.ts`) — координатор параллельного (Fan-Out) и конвейерного (Handoff) выполнения задач CLI и API-агентами.
+    - Автоматическая изоляция каждого агента в выделенном Git Worktree (`.worktrees/swarm-<id>-<slotId>`, ветка `swarm/<id>/<agentSlug>`).
+    - Состязательный экран Side-by-Side Swarm Arena (`SwarmArenaView.tsx`): параллельный просмотр статусов, метрик, потоковых логов и цветных диффов.
+    - Функция Pick Winner в 1 клик со слиянием ветки и очисткой временных каталогов.
 
 ---
 
@@ -72,7 +74,7 @@
 - **Git & Diff Движок**: **simple-git** + кастомный синтаксический Split/Unified diff-парсер + **Git Worktrees**.
 - **Стилизация и UI-система**: **Tailwind CSS v4 + Lucide React Icons** (премиальный темный интерфейс).
 - **Управление состоянием**: **Zustand** (хранилище проектов, задач, майлстоунов, PR, процессов, логов и мульти-агентных роев `useSwarmStore`).
-- **RAG & AI**: **LanceDB** + локальный коннектор **Ollama** (`http://127.0.0.1:11434/api/generate`) + Claude AI Studio (Anthropic, OpenRouter, DeepSeek) + **Agent Fleet Swarm Orchestrator**.
+- **RAG & AI**: **LanceDB** + локальный коннектор **Ollama** + Claude AI Studio + **Agent Fleet Swarm Orchestrator**.
 - **Voice & Multimodal (v2.0)**: **Web Speech API** (STT) + **SpeechSynthesis** (TTS) с парсером команд.
 - **Ecosystem & Interoperability (v2.0)**: **ProjectHub Native MCP Server** (`@modelcontextprotocol/sdk`).
 - **Remote Control & P2P**: **WebRTC DataChannel**, **WebSocket Relay** (`ws`), **E2EE (AES-256-GCM / Web Crypto)**.

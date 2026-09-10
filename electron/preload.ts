@@ -299,12 +299,6 @@ const api: IElectronAPI = {
     ipcRenderer.invoke('files:create', projectPath, relativePath, isDirectory),
   deleteFileOrFolder: (projectPath: string, relativePath: string) =>
     ipcRenderer.invoke('files:delete', projectPath, relativePath),
-  readFile: (projectPath: string, relativePath: string) =>
-    ipcRenderer.invoke('file:readFile', projectPath, relativePath),
-  writeFile: (projectPath: string, relativePath: string, content: string) =>
-    ipcRenderer.invoke('file:writeFile', projectPath, relativePath, content),
-  listFiles: (projectPath: string, subDir?: string) =>
-    ipcRenderer.invoke('file:listFiles', projectPath, subDir),
 
   // Local Whisper STT Engine
   // Float32Array уходит через IPC как есть (structured clone сохраняет TypedArray) — без Array.from

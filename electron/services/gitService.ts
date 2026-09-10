@@ -573,6 +573,35 @@ class GitService {
       return '';
     }
   }
+
+  async getLog(projectPath: string, maxCount = 30): Promise<GitCommit[]> {
+    try {
+      if (!existsSync(path.join(projectPath, '.git'))) return [];
+      const git = simpleGit(projectPath);
+      const log = await git.log({ maxCount });
+      return log.all.map((c) => ({
+        hash: c.hash,
+        date: c.date,
+        message: c.message,
+        author_name: c.author_name,
+        author_email: c.author_email
+      }));
+    } catch (e) {
+      console.error(`Git log error for ${projectPath}:`, e);
+      return [];
+    }
+  }
+
+  async getStatus(projectPath: string): Promise<any> {
+    try {
+      if (!existsSync(path.join(projectPath, '.git'))) return null;
+      const git = simpleGit(projectPath);
+      return await git.status();
+    } catch (e) {
+      console.error(`Git status error for ${projectPath}:`, e);
+      return null;
+    }
+  }
 }
 
 export const gitService = new GitService();
