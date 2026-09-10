@@ -468,7 +468,7 @@ export const KanbanBoard: React.FC = () => {
             onClick={(e) => {
               if (e.target === e.currentTarget) setIsCreateOpen(false);
             }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6 animate-in fade-in duration-150 select-text"
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-6 animate-in fade-in duration-150 select-text"
           >
             <form
               onSubmit={handleCreateTask}

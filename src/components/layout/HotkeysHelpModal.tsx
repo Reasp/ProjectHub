@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X, Keyboard, Navigation, Zap, Terminal } from 'lucide-react';
 import { useTranslation } from '../../i18n/useTranslation';
 
@@ -54,7 +55,7 @@ export const HotkeysHelpModal: React.FC<Props> = ({ isOpen, onClose }) => {
     }
   ];
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150">
       <div className="w-full max-w-2xl bg-[#161922] border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         {/* Header */}
@@ -127,6 +128,7 @@ export const HotkeysHelpModal: React.FC<Props> = ({ isOpen, onClose }) => {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

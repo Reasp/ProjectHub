@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertCircle, HelpCircle, Info, X } from 'lucide-react';
 import { useDialogStore } from '../../store/useDialogStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -75,8 +76,8 @@ export const DialogHost: React.FC = () => {
   const title = activeDialog.options.title || defaultTitle;
   const isDanger = activeDialog.type === 'confirm' && activeDialog.options.danger;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+  return createPortal(
+    <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div
         className="w-full max-w-md bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-150"
         role="dialog"
@@ -150,6 +151,7 @@ export const DialogHost: React.FC = () => {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

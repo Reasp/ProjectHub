@@ -162,6 +162,20 @@ Antigravity свой каталог скиллов, `.claude/skills/` он не 
     - Формат файла и frontmatter — по правилу 13, даты — по правилу 16; после создания ADR
       выполнять `npm run index-docs`, чтобы `search_docs` находил решение.
 
+19. **Стандарты модальных окон и оверлеев в UI (`createPortal` и шкала `z-index`) (decision-17)**:
+    - Любые модальные окна, диалоги и всплывающие полноэкранные оверлеи в React обязаны рендериться строго
+      через `createPortal(modalJsx, document.body)`. Запрещено рендерить модальные окна инлайн внутри
+      компонентов, особенно внутри шапки (`Header`), сайдбара, вкладок или таблиц: CSS-свойства предков
+      `backdrop-filter`, `transform` и `filter` создают изолированный stacking context, запирая `fixed`-окно
+      позади остального интерфейса (`ProjectWorkspace`, `TerminalPanel`).
+    - **Единая шкала z-index**:
+      - `z-[9999]` — стандартные модальные окна первого уровня (Remote Control, Mcp Server, Task Detail,
+        Settings, Analytics, New Swarm, Project Wizard, Hotkeys Help, OmniSearch, File Explorer).
+      - `z-[10000]` — плавающие глобальные контролы и контекстные меню (`VoiceControlWidget`, context menu).
+      - `z-[10001]` — модальные диалоги подтверждений, предупреждений и промптов (`DialogHost`), которые могут
+        вызываться изнутри уже открытых модалок `z-[9999]`.
+    - Запрещено использовать произвольные низкие индексы (`z-50`, `z-40`) для модальных окон.
+
 ## Быстрые команды
 
 ```bash

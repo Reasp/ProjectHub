@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Folder,
   FolderOpen,
@@ -582,8 +583,9 @@ export const FileExplorer: React.FC = () => {
       </div>
 
       {/* ─── MODAL: NEW FILE / FOLDER ─── */}
-      {showNewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      {showNewModal &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 max-w-md w-full shadow-2xl space-y-4">
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
               {showNewModal.isDir ? <FolderPlus className="w-4 h-4 text-amber-400" /> : <Plus className="w-4 h-4 text-indigo-400" />}
@@ -623,7 +625,8 @@ export const FileExplorer: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

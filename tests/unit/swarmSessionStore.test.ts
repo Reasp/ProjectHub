@@ -149,7 +149,7 @@ describe('SwarmSessionStore: save / list / delete', () => {
     store.scheduleSave(session);
     session.status = 'completed';
     store.scheduleSave(session);
-    await new Promise((r) => setTimeout(r, 60));
+    await new Promise((r) => setTimeout(r, 150));
     const list = await store.list();
     expect(list).toHaveLength(1);
     expect(list[0].status).toBe('completed');

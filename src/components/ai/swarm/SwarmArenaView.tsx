@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Zap,
   Play,
@@ -895,8 +896,9 @@ export const SwarmArenaView: React.FC = () => {
       </div>
 
       {/* Full transcript modal (TASK-56) */}
-      {transcript && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4" onClick={() => setTranscript(null)}>
+      {transcript &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={() => setTranscript(null)}>
           <div
             className="relative w-full max-w-4xl h-[85vh] rounded-xl border border-border bg-card shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
@@ -938,7 +940,8 @@ export const SwarmArenaView: React.FC = () => {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* New Swarm Modal */}

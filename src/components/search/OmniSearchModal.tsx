@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Search,
   X,
@@ -104,7 +105,7 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div
       onKeyDown={handleKeyDown}
       className="fixed inset-0 z-[9999] flex items-start justify-center pt-20 p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-100 select-none"
@@ -285,6 +286,7 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
           <span>{t.search.matchesFound}: {results.length}</span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

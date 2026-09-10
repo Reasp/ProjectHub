@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Server,
   Radio,
@@ -119,8 +120,9 @@ export const McpServerStatusBadge: React.FC = () => {
       </button>
 
       {/* Settings / Info Modal */}
-      {isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+      {isOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-lg bg-[#121522] border border-slate-700/80 rounded-2xl shadow-2xl p-6 space-y-5 text-slate-200 font-sans">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -289,7 +291,8 @@ export const McpServerStatusBadge: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
