@@ -487,13 +487,16 @@ export interface IElectronAPI {
   getGitLog: (projectPath: string, maxCount?: number) => Promise<GitCommit[]>;
   getGitStatus: (projectPath: string) => Promise<any>;
 
-  // Git Worktrees (TASK-53)
+  // Git Worktrees (TASK-53, TASK-55)
   listWorktrees: (projectPath: string) => Promise<GitWorktreeInfo[]>;
   addWorktree: (projectPath: string, options: AddWorktreeOptions) => Promise<GitWorktreeInfo>;
   removeWorktree: (projectPath: string, worktreePath: string, force?: boolean) => Promise<boolean>;
   pruneWorktrees: (projectPath: string) => Promise<boolean>;
-  getWorktreeDiff: (projectPath: string, worktreeBranch: string, baseBranch: string) => Promise<string>;
-  mergeWorktree: (projectPath: string, worktreeBranch: string, targetBranch: string) => Promise<{ success: boolean; error?: string }>;
+  getWorktreeDiff: (projectPath: string, worktreeBranch: string, baseBranch: string, worktreePath?: string) => Promise<string>;
+  mergeWorktree: (projectPath: string, worktreeBranch: string, targetBranch: string) => Promise<MergeWorktreeResult>;
+  checkoutWorktreeFiles: (projectPath: string, branch: string, filePaths: string[]) => Promise<{ success: boolean; error?: string; files?: string[] }>;
+  findOrphanedWorktrees: (projectPath: string, activeTaskIds: string[], activeSwarmIds: string[]) => Promise<OrphanedWorktreeScan>;
+  cleanOrphanedWorktrees: (projectPath: string, worktreePaths: string[], branches: string[]) => Promise<CleanOrphanedResult>;
 
   // Pull & Merge Requests
   getPRProviderInfo: (projectPath: string) => Promise<PRProviderInfo>;
@@ -812,6 +815,27 @@ export interface AddWorktreeOptions {
   customPath?: string;
 }
 
+export interface MergeWorktreeResult {
+  success: boolean;
+  error?: string;
+  conflictedFiles?: string[];
+  wasAborted?: boolean;
+  uncleanWorkingTree?: boolean;
+}
+
+export interface OrphanedWorktreeScan {
+  orphanedWorktrees: GitWorktreeInfo[];
+  orphanedPaths: string[];
+  orphanedBranches: string[];
+}
+
+export interface CleanOrphanedResult {
+  removedWorktrees: string[];
+  removedBranches: string[];
+  deletedBranches?: string[];
+  errors: string[];
+}
+
 export interface PtySession {
   id: string;
   projectPath: string;
@@ -937,6 +961,10 @@ export interface AgentSlotState {
   metrics: AgentSlotMetrics;
   winner?: boolean;
   error?: string;
+  commitHash?: string;
+  stashHash?: string;
+  commitStatus?: 'committed' | 'stashed' | 'no_changes' | 'pending';
+  lastCommitHash?: string;
 }
 
 export interface HandoffStageState {
@@ -958,6 +986,7 @@ export interface SwarmSession {
   prompt: string;
   baseBranch: string;
   useWorktrees: boolean;
+  autoCommitAgentResults?: boolean;
   status: SwarmStatus;
   createdAt: number;
   completedAt?: number;
@@ -975,6 +1004,7 @@ export interface StartFanOutOptions {
   taskTitle?: string;
   baseBranch?: string;
   useWorktrees?: boolean;
+  autoCommitAgentResults?: boolean;
   agents: AgentSlotConfig[];
 }
 
@@ -985,6 +1015,7 @@ export interface StartHandoffOptions {
   taskTitle?: string;
   baseBranch?: string;
   useWorktrees?: boolean;
+  autoCommitAgentResults?: boolean;
   stages: {
     role: string;
     agent: AgentSlotConfig;

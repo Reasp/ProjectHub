@@ -38,6 +38,8 @@ export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) =>
     createWorktreeAction,
     removeWorktreeAction,
     pruneWorktreesAction,
+    findOrphanedWorktreesAction,
+    cleanOrphanedWorktreesAction,
     createPtySessionAction
   } = useProjectStore();
 
@@ -47,6 +49,36 @@ export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) =>
   const [isCreating, setIsCreating] = useState(false);
   const [selectedCompleteWt, setSelectedCompleteWt] = useState<GitWorktreeInfo | null>(null);
   const [actionLoadingPath, setActionLoadingPath] = useState<string | null>(null);
+  const [isCleaningOrphaned, setIsCleaningOrphaned] = useState(false);
+
+  const handleCleanOrphaned = async () => {
+    setIsCleaningOrphaned(true);
+    try {
+      const scan = await findOrphanedWorktreesAction();
+      const totalFound = scan.orphanedPaths.length + scan.orphanedBranches.length;
+      if (totalFound === 0) {
+        await dialog.alert(t.worktrees.noOrphanedFound);
+        return;
+      }
+
+      const confirmed = await dialog.confirm(
+        t.worktrees.confirmCleanOrphaned
+          .replace('{worktrees}', String(scan.orphanedPaths.length))
+          .replace('{branches}', String(scan.orphanedBranches.length))
+      );
+
+      if (confirmed) {
+        const result = await cleanOrphanedWorktreesAction(scan.orphanedPaths, scan.orphanedBranches);
+        await dialog.alert(
+          t.worktrees.cleanedOrphanedSuccess
+            .replace('{worktrees}', String(result.removedWorktrees.length))
+            .replace('{branches}', String(result.removedBranches.length))
+        );
+      }
+    } finally {
+      setIsCleaningOrphaned(false);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,6 +164,21 @@ export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) =>
           >
             <Layers className="w-3.5 h-3.5 text-slate-400" />
             <span className="hidden sm:inline">{t.worktrees.pruneWorktrees}</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={isCleaningOrphaned}
+            onClick={handleCleanOrphaned}
+            title={t.worktrees.cleanOrphaned}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-amber-400 hover:text-amber-300 border border-slate-700/60 transition disabled:opacity-50"
+          >
+            {isCleaningOrphaned ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="w-3.5 h-3.5 text-amber-400" />
+            )}
+            <span className="hidden sm:inline">{t.worktrees.cleanOrphaned}</span>
           </button>
 
           <button

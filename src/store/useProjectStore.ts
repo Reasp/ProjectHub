@@ -17,6 +17,9 @@ import type {
   PtySession,
   GitWorktreeInfo,
   AddWorktreeOptions,
+  MergeWorktreeResult,
+  OrphanedWorktreeScan,
+  CleanOrphanedResult,
   ProjectAgentStatus,
   ProjectActionConfig,
   ProjectActionKind,
@@ -280,15 +283,18 @@ interface ProjectState {
   gitLoadFileDiff: (filePath: string, staged?: boolean) => Promise<void>;
   setGitSelectedFile: (filePath: string | null) => void;
 
-  // Git Worktrees (TASK-53)
+  // Git Worktrees (TASK-53, TASK-55)
   worktrees: GitWorktreeInfo[];
   activeWorktreePath: string | null;
   loadWorktreesAction: (projectPath?: string) => Promise<GitWorktreeInfo[]>;
   createWorktreeAction: (branch: string, newBranch?: boolean, baseCommitOrBranch?: string, customPath?: string) => Promise<GitWorktreeInfo | null>;
   removeWorktreeAction: (worktreePath: string, force?: boolean) => Promise<boolean>;
   pruneWorktreesAction: () => Promise<boolean>;
-  getWorktreeDiffAction: (worktreeBranch: string, baseBranch: string) => Promise<string>;
-  mergeWorktreeAction: (worktreeBranch: string, targetBranch: string) => Promise<{ success: boolean; error?: string }>;
+  getWorktreeDiffAction: (worktreeBranch: string, baseBranch: string, worktreePath?: string) => Promise<string>;
+  mergeWorktreeAction: (worktreeBranch: string, targetBranch: string) => Promise<MergeWorktreeResult>;
+  checkoutWorktreeFilesAction: (branch: string, filePaths: string[]) => Promise<{ success: boolean; error?: string; files?: string[] }>;
+  findOrphanedWorktreesAction: (activeTaskIds?: string[], activeSwarmIds?: string[]) => Promise<OrphanedWorktreeScan>;
+  cleanOrphanedWorktreesAction: (worktreePaths: string[], branches: string[]) => Promise<CleanOrphanedResult>;
 }
 
 
@@ -1689,11 +1695,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  getWorktreeDiffAction: async (worktreeBranch: string, baseBranch: string) => {
+  getWorktreeDiffAction: async (worktreeBranch: string, baseBranch: string, worktreePath?: string) => {
     const project = get().selectedProject;
     if (!window.api?.getWorktreeDiff || !project) return '';
     try {
-      return await window.api.getWorktreeDiff(project.path, worktreeBranch, baseBranch);
+      return await window.api.getWorktreeDiff(project.path, worktreeBranch, baseBranch, worktreePath);
     } catch (e: any) {
       console.error('Failed to get worktree diff:', e);
       return '';
@@ -1716,6 +1722,50 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     } catch (e: any) {
       console.error('Failed to merge worktree:', e);
       return { success: false, error: e.message || String(e) };
+    }
+  },
+
+  checkoutWorktreeFilesAction: async (branch: string, filePaths: string[]) => {
+    const project = get().selectedProject;
+    if (!window.api?.checkoutWorktreeFiles || !project) return { success: false, error: 'No project' };
+    try {
+      const res = await window.api.checkoutWorktreeFiles(project.path, branch, filePaths);
+      if (res.success) {
+        await get().loadGitRepoDetails(project);
+      }
+      return res;
+    } catch (e: any) {
+      console.error('Failed to checkout files from worktree branch:', e);
+      return { success: false, error: e.message || String(e) };
+    }
+  },
+
+  findOrphanedWorktreesAction: async (activeTaskIds: string[] = [], activeSwarmIds: string[] = []) => {
+    const project = get().selectedProject;
+    if (!window.api?.findOrphanedWorktrees || !project) {
+      return { orphanedWorktrees: [], orphanedPaths: [], orphanedBranches: [] };
+    }
+    try {
+      return await window.api.findOrphanedWorktrees(project.path, activeTaskIds, activeSwarmIds);
+    } catch (e: any) {
+      console.error('Failed to find orphaned worktrees:', e);
+      return { orphanedWorktrees: [], orphanedPaths: [], orphanedBranches: [] };
+    }
+  },
+
+  cleanOrphanedWorktreesAction: async (worktreePaths: string[], branches: string[]) => {
+    const project = get().selectedProject;
+    if (!window.api?.cleanOrphanedWorktrees || !project) {
+      return { removedWorktrees: [], removedBranches: [], errors: ['No project'] };
+    }
+    try {
+      const res = await window.api.cleanOrphanedWorktrees(project.path, worktreePaths, branches);
+      await get().loadWorktreesAction(project.path);
+      await get().loadGitRepoDetails(project);
+      return res;
+    } catch (e: any) {
+      console.error('Failed to clean orphaned worktrees:', e);
+      return { removedWorktrees: [], removedBranches: [], errors: [e.message || String(e)] };
     }
   },
 

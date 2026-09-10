@@ -18,7 +18,9 @@ import {
   Plus,
   ChevronRight,
   ExternalLink,
-  Bot
+  Bot,
+  GitCommit,
+  Bookmark
 } from 'lucide-react';
 import { useSwarmStore } from '../../../store/useSwarmStore';
 import { useProjectStore } from '../../../store/useProjectStore';
@@ -52,6 +54,8 @@ export const SwarmArenaView: React.FC = () => {
 
   const [activeTabByAgent, setActiveTabByAgent] = useState<Record<string, 'output' | 'logs' | 'diff'>>({});
   const [isMergingWinner, setIsMergingWinner] = useState<string | null>(null);
+  const [appliedFileMsg, setAppliedFileMsg] = useState<string | null>(null);
+  const [isApplyingFile, setIsApplyingFile] = useState(false);
 
   useEffect(() => {
     if (projectPath) {
@@ -69,10 +73,32 @@ export const SwarmArenaView: React.FC = () => {
     try {
       const res = await pickWinnerAction(currentSwarm.id, agentId, true);
       if (!res.success) {
-        await dialog.alert(t.swarm.mergeWinnerError.replace('{error}', res.error || ''));
+        if (res.conflictedFiles && res.conflictedFiles.length > 0) {
+          await dialog.alert(
+            `${t.swarm.mergeConflictTitle}\n\n${t.swarm.mergeConflictDesc}\n\n${res.conflictedFiles.join('\n')}`
+          );
+        } else {
+          await dialog.alert(t.swarm.mergeWinnerError.replace('{error}', res.error || ''));
+        }
       }
     } finally {
       setIsMergingWinner(null);
+    }
+  };
+
+  const handleApplyFile = async (branch: string, filePath: string) => {
+    if (!branch || !filePath || !projectPath) return;
+    setIsApplyingFile(true);
+    try {
+      const res = await window.api.checkoutWorktreeFiles(projectPath, branch, [filePath]);
+      if (res.success) {
+        setAppliedFileMsg(`${t.swarm.fileApplied}: ${filePath}`);
+        setTimeout(() => setAppliedFileMsg(null), 4000);
+      } else {
+        await dialog.alert(res.error || 'Failed to apply file');
+      }
+    } finally {
+      setIsApplyingFile(false);
     }
   };
 
@@ -360,11 +386,39 @@ export const SwarmArenaView: React.FC = () => {
 
                       {/* Worktree & Metrics Bar */}
                       <div className="px-4 py-2 bg-secondary/20 border-b border-border/60 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                        <div className="flex items-center gap-1.5 text-muted-foreground truncate">
-                          <GitFork className="w-3.5 h-3.5 text-primary shrink-0" />
-                          <span className="font-mono text-[10px] truncate" title={agent.worktreeBranch}>
-                            {agent.worktreeBranch || 'main'}
-                          </span>
+                        <div className="flex items-center gap-2 text-muted-foreground truncate">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <GitFork className="w-3.5 h-3.5 text-primary shrink-0" />
+                            <span className="font-mono text-[10px] truncate" title={agent.worktreeBranch}>
+                              {agent.worktreeBranch || 'main'}
+                            </span>
+                          </div>
+
+                          {/* Commit / Stash Badge */}
+                          {agent.commitHash ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono text-[10px]"
+                              title={`${t.swarm.statusCommitted}: ${agent.commitHash}`}
+                            >
+                              <GitCommit className="w-3 h-3 text-emerald-400" />
+                              {agent.commitHash.slice(0, 7)}
+                            </span>
+                          ) : agent.stashHash ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono text-[10px]"
+                              title={`${t.swarm.statusStashed}: ${agent.stashHash}`}
+                            >
+                              <Bookmark className="w-3 h-3 text-amber-400" />
+                              stash
+                            </span>
+                          ) : agent.commitStatus === 'no_changes' ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded bg-muted text-muted-foreground font-mono text-[10px]"
+                              title={t.swarm.statusNoChanges}
+                            >
+                              no-diff
+                            </span>
+                          ) : null}
                         </div>
 
                         <div className="flex items-center gap-3 text-muted-foreground">
@@ -472,39 +526,89 @@ export const SwarmArenaView: React.FC = () => {
                           </div>
                         )}
 
-                        {currentTab === 'diff' && (
-                          <div className="font-mono text-[11px] h-full overflow-y-auto select-text">
-                            {agent.diffSummary?.patch ? (
-                              <div className="space-y-0.5">
-                                {agent.diffSummary.patch.split('\n').map((l, i) => {
-                                  const isAdd = l.startsWith('+') && !l.startsWith('+++');
-                                  const isDel = l.startsWith('-') && !l.startsWith('---');
-                                  const isHeader = l.startsWith('diff ') || l.startsWith('index ') || l.startsWith('@@');
-                                  return (
+                        {currentTab === 'diff' && (() => {
+                          const changedFiles = (() => {
+                            if (!agent.diffSummary?.patch) return [];
+                            const files: string[] = [];
+                            for (const line of agent.diffSummary.patch.split('\n')) {
+                              if (line.startsWith('diff --git')) {
+                                const parts = line.split(' ');
+                                if (parts[2]) files.push(parts[2].replace(/^a\//, ''));
+                              }
+                            }
+                            return Array.from(new Set(files));
+                          })();
+
+                          return (
+                            <div className="flex flex-col h-full">
+                              {appliedFileMsg && (
+                                <div className="mb-2 px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded text-[11px] flex items-center gap-1.5 shrink-0">
+                                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                  <span>{appliedFileMsg}</span>
+                                </div>
+                              )}
+
+                              {changedFiles.length > 0 && (
+                                <div className="mb-2 p-2 bg-secondary/30 rounded border border-border/60 flex flex-wrap items-center gap-2 shrink-0">
+                                  <span className="text-[10px] font-medium text-muted-foreground">
+                                    {t.worktrees.applySelectedFiles} ({changedFiles.length}):
+                                  </span>
+                                  {changedFiles.map((file) => (
                                     <div
-                                      key={i}
-                                      className={`px-1 py-0.5 rounded-2xs whitespace-pre-wrap ${
-                                        isAdd
-                                          ? 'bg-emerald-500/10 text-emerald-400'
-                                          : isDel
-                                          ? 'bg-rose-500/10 text-rose-400'
-                                          : isHeader
-                                          ? 'text-primary font-bold'
-                                          : 'text-muted-foreground'
-                                      }`}
+                                      key={file}
+                                      className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-background border border-border text-[10px] font-mono"
                                     >
-                                      {l}
+                                      <span className="truncate max-w-[140px]" title={file}>
+                                        {file}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        disabled={isApplyingFile}
+                                        onClick={() => handleApplyFile(agent.worktreeBranch || '', file)}
+                                        className="text-emerald-400 hover:text-emerald-300 px-1 py-0.2 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-[9px] font-sans transition disabled:opacity-50"
+                                        title={t.swarm.applyFileTooltip}
+                                      >
+                                        {t.swarm.applyFile}
+                                      </button>
                                     </div>
-                                  );
-                                })}
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="font-mono text-[11px] flex-1 overflow-y-auto select-text">
+                                {agent.diffSummary?.patch ? (
+                                  <div className="space-y-0.5">
+                                    {agent.diffSummary.patch.split('\n').map((l, i) => {
+                                      const isAdd = l.startsWith('+') && !l.startsWith('+++');
+                                      const isDel = l.startsWith('-') && !l.startsWith('---');
+                                      const isHeader = l.startsWith('diff ') || l.startsWith('index ') || l.startsWith('@@');
+                                      return (
+                                        <div
+                                          key={i}
+                                          className={`px-1 py-0.5 rounded-2xs whitespace-pre-wrap ${
+                                            isAdd
+                                              ? 'bg-emerald-500/10 text-emerald-400'
+                                              : isDel
+                                              ? 'bg-rose-500/10 text-rose-400'
+                                              : isHeader
+                                              ? 'text-primary font-bold'
+                                              : 'text-muted-foreground'
+                                          }`}
+                                        >
+                                          {l}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <div className="h-full flex items-center justify-center text-muted-foreground">
+                                    {t.swarm.noChangesInWorktree}
+                                  </div>
+                                )}
                               </div>
-                            ) : (
-                              <div className="h-full flex items-center justify-center text-muted-foreground">
-                                {t.swarm.noChangesInWorktree}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   );

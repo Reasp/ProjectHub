@@ -169,10 +169,16 @@ const api: IElectronAPI = {
     ipcRenderer.invoke('git:worktree:remove', projectPath, worktreePath, force),
   pruneWorktrees: (projectPath: string) =>
     ipcRenderer.invoke('git:worktree:prune', projectPath),
-  getWorktreeDiff: (projectPath: string, worktreeBranch: string, baseBranch: string) =>
-    ipcRenderer.invoke('git:worktree:getDiff', projectPath, worktreeBranch, baseBranch),
+  getWorktreeDiff: (projectPath: string, worktreeBranch: string, baseBranch: string, worktreePath?: string) =>
+    ipcRenderer.invoke('git:worktree:getDiff', projectPath, worktreeBranch, baseBranch, worktreePath),
   mergeWorktree: (projectPath: string, worktreeBranch: string, targetBranch: string) =>
     ipcRenderer.invoke('git:worktree:merge', projectPath, worktreeBranch, targetBranch),
+  checkoutWorktreeFiles: (projectPath: string, branch: string, filePaths: string[]) =>
+    ipcRenderer.invoke('git:worktree:checkoutFiles', projectPath, branch, filePaths),
+  findOrphanedWorktrees: (projectPath: string, activeTaskIds: string[] = [], activeSwarmIds: string[] = []) =>
+    ipcRenderer.invoke('git:worktree:findOrphaned', projectPath, activeTaskIds, activeSwarmIds),
+  cleanOrphanedWorktrees: (projectPath: string, worktreePaths: string[], branches: string[]) =>
+    ipcRenderer.invoke('git:worktree:cleanOrphaned', projectPath, worktreePaths, branches),
 
   // Pull & Merge Requests
   getPRProviderInfo: (projectPath: string) => ipcRenderer.invoke('pr:getProviderInfo', projectPath),

@@ -28,7 +28,7 @@ interface SwarmState {
     swarmId: string,
     winnerAgentId: string,
     mergeIntoBase?: boolean
-  ) => Promise<{ success: boolean; error?: string }>;
+  ) => Promise<{ success: boolean; error?: string; mergedBranch?: string; conflictedFiles?: string[] }>;
   initSwarmEventListener: () => () => void;
 }
 

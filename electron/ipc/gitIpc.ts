@@ -106,14 +106,29 @@ export function registerGitIpc() {
     return await worktreeService.pruneWorktrees(safeProject);
   });
 
-  ipcMain.handle('git:worktree:getDiff', async (_event, projectPath: string, worktreeBranch: string, baseBranch: string) => {
+  ipcMain.handle('git:worktree:getDiff', async (_event, projectPath: string, worktreeBranch: string, baseBranch: string, worktreePath?: string) => {
     const safeProject = await assertRegisteredProject(projectPath);
-    return await worktreeService.getWorktreeDiff(safeProject, worktreeBranch, baseBranch);
+    return await worktreeService.getWorktreeDiff(safeProject, worktreeBranch, baseBranch, worktreePath);
   });
 
   ipcMain.handle('git:worktree:merge', async (_event, projectPath: string, worktreeBranch: string, targetBranch: string) => {
     const safeProject = await assertRegisteredProject(projectPath);
     return await worktreeService.mergeWorktree(safeProject, worktreeBranch, targetBranch);
+  });
+
+  ipcMain.handle('git:worktree:checkoutFiles', async (_event, projectPath: string, branch: string, filePaths: string[]) => {
+    const safeProject = await assertRegisteredProject(projectPath);
+    return await worktreeService.checkoutFilesFromBranch(safeProject, branch, filePaths);
+  });
+
+  ipcMain.handle('git:worktree:findOrphaned', async (_event, projectPath: string, activeTaskIds: string[] = [], activeSwarmIds: string[] = []) => {
+    const safeProject = await assertRegisteredProject(projectPath);
+    return await worktreeService.findOrphanedWorktreesAndBranches(safeProject, activeTaskIds, activeSwarmIds);
+  });
+
+  ipcMain.handle('git:worktree:cleanOrphaned', async (_event, projectPath: string, worktreePaths: string[], branches: string[]) => {
+    const safeProject = await assertRegisteredProject(projectPath);
+    return await worktreeService.cleanOrphanedWorktreesAndBranches(safeProject, worktreePaths, branches);
   });
 
   // Pull & Merge Requests

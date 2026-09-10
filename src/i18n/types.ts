@@ -1088,6 +1088,18 @@ export interface TranslationDictionary {
     openTaskInBacklog: string;
     launchClaude: string;
     openInVsCode: string;
+    applySelectedFiles: string;
+    applyFile: string;
+    fileAppliedSuccess: string;
+    mergeConflictDetected: string;
+    mergeAbortedSafe: string;
+    conflictedFilesList: string;
+    createPrInstead: string;
+    openInEditor: string;
+    cleanOrphaned: string;
+    noOrphanedFound: string;
+    confirmCleanOrphaned: string;
+    cleanedOrphanedSuccess: string;
   };
   dialogs: {
     confirmTitle: string;
@@ -1220,6 +1232,14 @@ export interface TranslationDictionary {
     waitingStart: string;
     noLogsRecorded: string;
     noChangesInWorktree: string;
+    applyFile: string;
+    fileApplied: string;
+    applyFileTooltip: string;
+    mergeConflictTitle: string;
+    mergeConflictDesc: string;
+    statusCommitted: string;
+    statusStashed: string;
+    statusNoChanges: string;
     presetDuelTitle: string;
     presetDuelDesc: string;
     roleContenderA: string;

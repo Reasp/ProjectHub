@@ -120,10 +120,10 @@ diff --git a/src/utils.ts b/src/utils.ts
       expect(session.agents[1].worktreePath).toContain('.worktrees');
     });
 
-    it('pickWinner: в 1 клик сливает ветку победителя и безопасно очищает проигравших (AC #5)', async () => {
+    it('pickWinner: в 1 клик сливает ветку победителя и безопасно очищает проигравших (AC #4, AC #5)', async () => {
       const mergeSpy = vi
         .spyOn(worktreeService, 'mergeWorktree')
-        .mockResolvedValue({ success: true });
+        .mockResolvedValue({ success: true, mergedBranch: 'swarm/test/winner' });
 
       const removeSpy = vi
         .spyOn(worktreeService, 'removeWorktree')
@@ -150,6 +150,7 @@ diff --git a/src/utils.ts b/src/utils.ts
             status: 'completed',
             worktreePath: 'F:/ProjectHub/.worktrees/winner',
             worktreeBranch: 'swarm/test/winner',
+            commitHash: 'c0ffee1',
             logs: [],
             liveOutput: 'solution A',
             metrics: { startTime: 100 }
@@ -160,6 +161,7 @@ diff --git a/src/utils.ts b/src/utils.ts
             status: 'running',
             worktreePath: 'F:/ProjectHub/.worktrees/loser',
             worktreeBranch: 'swarm/test/loser',
+            commitHash: 'deadbeef2',
             logs: [],
             liveOutput: 'solution B',
             metrics: { startTime: 100 }
@@ -168,6 +170,14 @@ diff --git a/src/utils.ts b/src/utils.ts
       };
 
       (fleetService as any).sessions.set(mockSession.id, mockSession);
+      vi.spyOn(fleetService as any, 'pathExists').mockReturnValue(true);
+      vi.spyOn(fleetService as any, 'getWorktreeGit').mockReturnValue({
+        raw: async (args: string[]) => {
+          if (args[0] === 'rev-parse') return 'deadbeef2\n';
+          return '';
+        },
+        status: async () => ({ isClean: () => true })
+      });
 
       const result = await fleetService.pickWinner(mockSession.id, 'winner-1', true);
 
@@ -179,7 +189,92 @@ diff --git a/src/utils.ts b/src/utils.ts
       expect(mockSession.winnerAgentId).toBe('winner-1');
       expect(mockSession.agents[0].winner).toBe(true);
       expect(mockSession.agents[1].status).toBe('stopped');
+      // Сохранен lastCommitHash проигравшего
+      expect(mockSession.agents[1].lastCommitHash).toBe('deadbeef2');
       expect(mockSession.status).toBe('completed');
+    });
+
+    it('materializeAgentResult: фиксирует изменения через git commit при autoCommitAgentResults = true (AC #1)', async () => {
+      const mockSession: SwarmSession = {
+        id: 'swarm-auto-commit',
+        projectPath: 'F:/ProjectHub',
+        mode: 'fan_out',
+        prompt: 'Тест коммита',
+        baseBranch: 'main',
+        useWorktrees: true,
+        autoCommitAgentResults: true,
+        status: 'running',
+        createdAt: Date.now(),
+        agents: []
+      };
+
+      const agentState: any = {
+        id: 'ag-1',
+        config: { id: 'ag-1', name: 'Agent 1', engine: 'api', role: 'Tester' },
+        status: 'completed',
+        worktreePath: 'F:/ProjectHub/.worktrees/ag-1',
+        worktreeBranch: 'swarm/ag-1',
+        logs: []
+      };
+
+      const gitCommands: string[][] = [];
+      const mockGit: any = {
+        status: async () => ({ isClean: () => false }),
+        raw: async (args: string[]) => {
+          gitCommands.push(args);
+          if (args[0] === 'rev-parse') return 'abc1234567890\n';
+          return '';
+        }
+      };
+      (fleetService as any).getWorktreeGit = () => mockGit;
+      vi.spyOn(fleetService as any, 'pathExists').mockReturnValue(true);
+
+      await (fleetService as any).materializeAgentResult(mockSession, agentState);
+
+      expect(agentState.commitHash).toBe('abc1234567890');
+      expect(agentState.commitStatus).toBe('committed');
+      expect(gitCommands.some((c) => c.includes('commit'))).toBe(true);
+    });
+
+    it('materializeAgentResult: создает git stash при autoCommitAgentResults = false (AC #1)', async () => {
+      const mockSession: SwarmSession = {
+        id: 'swarm-auto-commit-false',
+        projectPath: 'F:/ProjectHub',
+        mode: 'fan_out',
+        prompt: 'Тест stash',
+        baseBranch: 'main',
+        useWorktrees: true,
+        autoCommitAgentResults: false,
+        status: 'running',
+        createdAt: Date.now(),
+        agents: []
+      };
+
+      const agentState: any = {
+        id: 'ag-2',
+        config: { id: 'ag-2', name: 'Agent 2', engine: 'api', role: 'Coder' },
+        status: 'completed',
+        worktreePath: 'F:/ProjectHub/.worktrees/ag-2',
+        worktreeBranch: 'swarm/ag-2',
+        logs: []
+      };
+
+      const gitCommands: string[][] = [];
+      const mockGit: any = {
+        status: async () => ({ isClean: () => false }),
+        raw: async (args: string[]) => {
+          gitCommands.push(args);
+          if (args[0] === 'stash' && args[1] === 'create') return 'stashhash999\n';
+          return '';
+        }
+      };
+      (fleetService as any).getWorktreeGit = () => mockGit;
+      vi.spyOn(fleetService as any, 'pathExists').mockReturnValue(true);
+
+      await (fleetService as any).materializeAgentResult(mockSession, agentState);
+
+      expect(agentState.stashHash).toBe('stashhash999');
+      expect(agentState.commitStatus).toBe('stashed');
     });
 
     it('startHandoff: запускает сквозной конвейер ролей с передачей контекста (AC #6)', async () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -119,6 +119,146 @@ prunable gitdir file points to non-existent location
       const content = await fs.readFile(gitignore, 'utf-8');
       const matches = content.match(/\.worktrees/g);
       expect(matches).toHaveLength(1);
+    });
+  });
+
+  describe('mergeWorktree безопасное слияние (TASK-55, AC #3)', () => {
+    it('возвращает ошибку, если рабочее дерево содержит незакоммиченные изменения', async () => {
+      const svc = new WorktreeService();
+      const mockGit: any = {
+        status: async () => ({ isClean: () => false, current: 'master', conflicted: [] })
+      };
+      (svc as any).getGit = () => mockGit;
+
+      const res = await svc.mergeWorktree('F:/ProjectHub', 'task/task-55', 'master');
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('Working tree has uncommitted changes');
+    });
+
+    it('при возникновении конфликта выполняет merge --abort, восстанавливает ветку и возвращает список файлов', async () => {
+      const svc = new WorktreeService();
+      let aborted = false;
+      const checkouts: string[] = [];
+
+      const mockGit: any = {
+        status: async () => ({
+          isClean: () => true,
+          current: 'develop', // отличается от master, чтобы проверить switchedBranch
+          conflicted: ['src/index.ts', 'package.json']
+        }),
+        checkout: async (branch: string) => {
+          checkouts.push(branch);
+        },
+        raw: async (args: string[]) => {
+          if (args.includes('--abort')) {
+            aborted = true;
+            return '';
+          }
+          if (args[0] === 'merge') {
+            throw new Error('CONFLICT: Merge conflict in src/index.ts');
+          }
+          return '';
+        }
+      };
+      (svc as any).getGit = () => mockGit;
+
+      const res = await svc.mergeWorktree('F:/ProjectHub', 'swarm/agent-1', 'master');
+      expect(res.success).toBe(false);
+      expect(res.wasAborted).toBe(true);
+      expect(res.conflictedFiles).toEqual(['src/index.ts', 'package.json']);
+      expect(aborted).toBe(true);
+      expect(checkouts).toContain('develop');
+    });
+
+    it('при успешном слиянии коммитит и возвращает success: true', async () => {
+      const svc = new WorktreeService();
+      const rawCalls: string[][] = [];
+
+      const mockGit: any = {
+        status: async () => ({
+          isClean: () => true,
+          current: 'master',
+          conflicted: []
+        }),
+        checkout: async () => {},
+        raw: async (args: string[]) => {
+          rawCalls.push(args);
+          return '';
+        }
+      };
+      (svc as any).getGit = () => mockGit;
+
+      const res = await svc.mergeWorktree('F:/ProjectHub', 'swarm/agent-1', 'master');
+      expect(res.success).toBe(true);
+      expect(rawCalls.some((c) => c[0] === 'merge')).toBe(true);
+      expect(rawCalls.some((c) => c[0] === 'commit')).toBe(true);
+    });
+  });
+
+  describe('checkoutFilesFromBranch (TASK-55, AC #5)', () => {
+    it('вызывает git checkout с веткой и списком путей', async () => {
+      const svc = new WorktreeService();
+      let rawArgs: string[] = [];
+      const mockGit: any = {
+        raw: async (args: string[]) => {
+          rawArgs = args;
+          return '';
+        }
+      };
+      (svc as any).getGit = () => mockGit;
+
+      const res = await svc.checkoutFilesFromBranch('F:/ProjectHub', 'swarm/agent-1', ['src/app.ts', 'README.md']);
+      expect(res.success).toBe(true);
+      expect(rawArgs).toEqual(['checkout', 'swarm/agent-1', '--', 'src/app.ts', 'README.md']);
+    });
+  });
+
+  describe('findOrphanedWorktreesAndBranches и clean (TASK-55, AC #6)', () => {
+    let tmpRepo: string;
+
+    beforeEach(async () => {
+      tmpRepo = await fs.mkdtemp(path.join(os.tmpdir(), 'ph-gc-test-'));
+      // Создаем .worktrees с осиротевшей папкой
+      const wtDir = path.join(tmpRepo, '.worktrees');
+      await fs.mkdir(wtDir, { recursive: true });
+      await fs.mkdir(path.join(wtDir, 'orphaned-1'), { recursive: true });
+      await fs.mkdir(path.join(wtDir, 'valid-wt'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      try {
+        await fs.rm(tmpRepo, { recursive: true, force: true });
+      } catch {}
+    });
+
+    it('находит осиротевшие каталоги и ветки swarm/handoff/task', async () => {
+      const svc = new WorktreeService();
+      const validPath = path.join(tmpRepo, '.worktrees', 'valid-wt');
+
+      // Мокаем listWorktrees
+      vi.spyOn(svc, 'listWorktrees').mockResolvedValue([
+        {
+          path: validPath,
+          branch: 'task/active-task',
+          commit: '111',
+          isMain: false,
+          isDetached: false,
+          isLocked: false,
+          isPrunable: false
+        }
+      ]);
+
+      const mockGit: any = {
+        branchLocal: async () => ({
+          all: ['master', 'task/active-task', 'swarm/old-swarm', 'handoff/old-stage', 'feature/keep-me']
+        })
+      };
+      (svc as any).getGit = () => mockGit;
+
+      const scan = await svc.findOrphanedWorktreesAndBranches(tmpRepo);
+      expect(scan.orphanedPaths).toHaveLength(1);
+      expect(scan.orphanedPaths[0]).toContain('orphaned-1');
+      expect(scan.orphanedBranches).toEqual(['swarm/old-swarm', 'handoff/old-stage']);
     });
   });
 });

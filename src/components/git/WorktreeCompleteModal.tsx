@@ -10,7 +10,8 @@ import {
   RefreshCw,
   ArrowRight,
   Sparkles,
-  FileDiff
+  FileDiff,
+  FolderOpen
 } from 'lucide-react';
 import type { GitWorktreeInfo } from '../../types/electron';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -34,7 +35,9 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
     updateTaskStatusLocal,
     removeWorktreeAction,
     mergeWorktreeAction,
-    getWorktreeDiffAction
+    getWorktreeDiffAction,
+    checkoutWorktreeFilesAction,
+    setActiveTab
   } = useProjectStore();
 
   const [targetBranch, setTargetBranch] = useState(
@@ -46,6 +49,9 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
   const [isLoadingDiff, setIsLoadingDiff] = useState(true);
   const [isMerging, setIsMerging] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [conflictFiles, setConflictFiles] = useState<string[] | null>(null);
+  const [appliedFileMessage, setAppliedFileMessage] = useState<string | null>(null);
+  const [isApplyingFile, setIsApplyingFile] = useState(false);
 
   const matchingTask = worktree.taskId
     ? tasks.find((t) => t.id.toLowerCase() === worktree.taskId?.toLowerCase())
@@ -57,7 +63,7 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
       if (!worktree.branch) return;
       setIsLoadingDiff(true);
       try {
-        const diff = await getWorktreeDiffAction(worktree.branch, targetBranch);
+        const diff = await getWorktreeDiffAction(worktree.branch, targetBranch, worktree.path);
         if (!cancelled) setDiffText(diff);
       } catch (err: any) {
         if (!cancelled) setErrorMessage(err.message || t.worktrees.diffLoadError);
@@ -70,16 +76,54 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [worktree.branch, targetBranch]);
+  }, [worktree.branch, targetBranch, worktree.path]);
+
+  const changedFiles = React.useMemo(() => {
+    if (!diffText) return [];
+    const files: string[] = [];
+    const lines = diffText.split('\n');
+    for (const line of lines) {
+      if (line.startsWith('diff --git')) {
+        const parts = line.split(' ');
+        if (parts[2]) {
+          files.push(parts[2].replace(/^a\//, ''));
+        }
+      }
+    }
+    return Array.from(new Set(files));
+  }, [diffText]);
+
+  const handleApplySingleFile = async (filePath: string) => {
+    if (!worktree.branch) return;
+    setIsApplyingFile(true);
+    setAppliedFileMessage(null);
+    try {
+      const res = await checkoutWorktreeFilesAction(worktree.branch, [filePath]);
+      if (res.success) {
+        setAppliedFileMessage(`${t.worktrees.fileAppliedSuccess}: ${filePath}`);
+        // reload diff
+        const newDiff = await getWorktreeDiffAction(worktree.branch, targetBranch, worktree.path);
+        setDiffText(newDiff);
+      } else {
+        setErrorMessage(res.error || 'Failed to apply file');
+      }
+    } finally {
+      setIsApplyingFile(false);
+    }
+  };
 
   const handleMerge = async () => {
     if (!worktree.branch || !selectedProject) return;
 
     setIsMerging(true);
     setErrorMessage(null);
+    setConflictFiles(null);
     try {
       const res = await mergeWorktreeAction(worktree.branch, targetBranch);
       if (!res.success) {
+        if (res.conflictedFiles && res.conflictedFiles.length > 0) {
+          setConflictFiles(res.conflictedFiles);
+        }
         setErrorMessage(res.error || t.worktrees.mergeError);
         return;
       }
@@ -181,6 +225,81 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
           </div>
         </div>
 
+        {/* Conflict Resolution Banner if merge failed with conflicts */}
+        {conflictFiles && conflictFiles.length > 0 && (
+          <div className="p-4 bg-rose-950/50 border-b border-rose-800/60 flex flex-col gap-3 shrink-0">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h4 className="text-sm font-semibold text-rose-200">{t.worktrees.mergeConflictDetected}</h4>
+                <p className="text-xs text-rose-300/90 mt-0.5">{t.worktrees.mergeAbortedSafe}</p>
+                <div className="mt-2 text-xs font-mono bg-black/50 p-2 rounded border border-rose-900/60 max-h-32 overflow-y-auto space-y-1">
+                  {conflictFiles.map((file) => (
+                    <div key={file} className="text-rose-300 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                      <span>{file}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => window.api.openInExplorer(worktree.path)}
+                className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/90 hover:bg-slate-700 text-xs text-slate-200 transition flex items-center gap-1.5"
+              >
+                <FolderOpen className="w-3.5 h-3.5 text-slate-400" />
+                <span>{t.worktrees.openInEditor}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  setActiveTab('prs');
+                }}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white transition flex items-center gap-1.5"
+              >
+                <span>{t.worktrees.createPrInstead}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Applied file notification */}
+        {appliedFileMessage && (
+          <div className="px-6 py-2 bg-emerald-950/60 border-b border-emerald-800/60 text-xs text-emerald-300 flex items-center gap-2 shrink-0">
+            <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
+            <span>{appliedFileMessage}</span>
+          </div>
+        )}
+
+        {/* Changed Files Toolbar for partial checkout */}
+        {changedFiles.length > 0 && (
+          <div className="px-6 py-2 bg-[#13172b] border-b border-slate-800 flex items-center gap-3 overflow-x-auto text-xs text-slate-300 shrink-0">
+            <span className="text-slate-400 font-medium shrink-0 flex items-center gap-1">
+              <FileDiff className="w-3.5 h-3.5 text-indigo-400" />
+              {t.worktrees.applySelectedFiles} ({changedFiles.length}):
+            </span>
+            <div className="flex items-center gap-2 overflow-x-auto py-1">
+              {changedFiles.map((f) => (
+                <div key={f} className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#0d1122] border border-slate-700 text-[11px] font-mono shrink-0">
+                  <span className="text-slate-200 truncate max-w-[200px]" title={f}>{f}</span>
+                  <button
+                    type="button"
+                    disabled={isApplyingFile}
+                    onClick={() => handleApplySingleFile(f)}
+                    className="text-emerald-400 hover:text-emerald-300 ml-1 text-[10px] font-sans px-1.5 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 transition disabled:opacity-50"
+                    title={t.worktrees.applyFile}
+                  >
+                    {t.worktrees.applyFile}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Diff Content Viewport */}
         <div className="flex-1 overflow-hidden flex flex-col min-h-0 bg-[#0c0e17]">
           {isLoadingDiff ? (
@@ -212,7 +331,7 @@ export const WorktreeCompleteModal: React.FC<WorktreeCompleteModalProps> = ({
         </div>
 
         {/* Error message if any */}
-        {errorMessage && (
+        {errorMessage && !conflictFiles && (
           <div className="px-6 py-2.5 bg-rose-950/60 border-t border-rose-800/60 text-xs text-rose-300 flex items-center gap-2 shrink-0">
             <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
             <span>{errorMessage}</span>
