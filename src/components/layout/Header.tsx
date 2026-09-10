@@ -15,7 +15,8 @@ import {
   Globe,
   PanelLeft,
   PanelLeftOpen,
-  PanelLeftClose
+  PanelLeftClose,
+  FolderGit2
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -43,7 +44,8 @@ export const Header: React.FC = () => {
     setActivePtySessionId,
     setTerminalMode,
     setActiveTab,
-    projectAgentStatuses
+    projectAgentStatuses,
+    worktrees
   } = useProjectStore();
 
   if (!selectedProject) {
@@ -205,6 +207,20 @@ export const Header: React.FC = () => {
                 {selectedProject.uncommittedCount === 0 ? 'clean' : `${selectedProject.uncommittedCount} dirty`}
               </span>
             )}
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('git')}
+              title={`Git Worktrees (${worktrees.length}): управление изолированными деревьями задач на вкладке Git`}
+              className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded border font-mono whitespace-nowrap transition ${
+                worktrees.filter((w) => !w.isMain).length > 0
+                  ? 'text-cyan-300 bg-cyan-950/40 border-cyan-600/50 hover:bg-cyan-900/50 shadow-sm'
+                  : 'text-slate-400 bg-[#181c2b] border-slate-800 hover:text-slate-200'
+              }`}
+            >
+              <FolderGit2 className="w-3 h-3 text-cyan-400 shrink-0" />
+              <span>WT: {worktrees.filter((w) => !w.isMain).length}</span>
+            </button>
           </div>
         )}
       </div>

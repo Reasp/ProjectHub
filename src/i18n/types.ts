@@ -781,4 +781,30 @@ export interface TranslationDictionary {
     tasksCount: string;
     openProject: string;
   };
+  worktrees: {
+    title: string;
+    description: string;
+    activeWorktrees: string;
+    createWorktree: string;
+    newWorktreeTitle: string;
+    branchName: string;
+    branchPlaceholder: string;
+    baseBranch: string;
+    taskHint: string;
+    openInTerminal: string;
+    openInExplorer: string;
+    reviewAndMerge: string;
+    removeWorktree: string;
+    confirmRemove: string;
+    clean: string;
+    dirty: string;
+    mainWorktree: string;
+    noWorktrees: string;
+    pruneWorktrees: string;
+    pruneSuccess: string;
+    mergeSuccess: string;
+    diffTitle: string;
+    mergeInto: string;
+    completeTaskWorktree: string;
+  };
 }

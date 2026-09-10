@@ -70,7 +70,8 @@ class PtyService {
     };
 
     // Fallback — домашний каталог, а не process.cwd(): в упакованном приложении cwd произволен (TASK-43)
-    const cwd = existsSync(options.projectPath) ? options.projectPath : os.homedir();
+    const effectiveTarget = options.cwd && existsSync(options.cwd) ? options.cwd : options.projectPath;
+    const cwd = existsSync(effectiveTarget) ? effectiveTarget : os.homedir();
 
     const ptyProcess = pty.spawn(shell, args, {
       name: 'xterm-256color',
@@ -83,6 +84,8 @@ class PtyService {
     const info: PtySession = {
       id: sessionId,
       projectPath: options.projectPath,
+      cwd: options.cwd,
+      worktreeBranch: options.worktreeBranch,
       projectName,
       type: options.type,
       title,

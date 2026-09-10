@@ -487,6 +487,14 @@ export interface IElectronAPI {
   getGitLog: (projectPath: string, maxCount?: number) => Promise<GitCommit[]>;
   getGitStatus: (projectPath: string) => Promise<any>;
 
+  // Git Worktrees (TASK-53)
+  listWorktrees: (projectPath: string) => Promise<GitWorktreeInfo[]>;
+  addWorktree: (projectPath: string, options: AddWorktreeOptions) => Promise<GitWorktreeInfo>;
+  removeWorktree: (projectPath: string, worktreePath: string, force?: boolean) => Promise<boolean>;
+  pruneWorktrees: (projectPath: string) => Promise<boolean>;
+  getWorktreeDiff: (projectPath: string, worktreeBranch: string, baseBranch: string) => Promise<string>;
+  mergeWorktree: (projectPath: string, worktreeBranch: string, targetBranch: string) => Promise<{ success: boolean; error?: string }>;
+
   // Pull & Merge Requests
   getPRProviderInfo: (projectPath: string) => Promise<PRProviderInfo>;
   listPullRequests: (projectPath: string, state?: 'all' | 'open' | 'closed' | 'merged') => Promise<PullRequest[]>;
@@ -778,9 +786,31 @@ export interface AIStreamRequest {
   claudeCliSessionId?: string;
 }
 
+export interface GitWorktreeInfo {
+  path: string;
+  head: string;
+  branch: string | null;
+  isDetached: boolean;
+  isLocked: boolean;
+  lockReason?: string;
+  isPrunable: boolean;
+  pruneReason?: string;
+  isMain: boolean;
+  taskId?: string;
+}
+
+export interface AddWorktreeOptions {
+  branch: string;
+  newBranch?: boolean;
+  baseCommitOrBranch?: string;
+  customPath?: string;
+}
+
 export interface PtySession {
   id: string;
   projectPath: string;
+  cwd?: string;
+  worktreeBranch?: string;
   projectName: string;
   type: 'claude' | 'shell';
   title: string;
@@ -792,6 +822,8 @@ export interface PtySession {
 export interface CreatePtyOptions {
   sessionId?: string;
   projectPath: string;
+  cwd?: string;
+  worktreeBranch?: string;
   projectName?: string;
   type: 'claude' | 'shell';
   title?: string;

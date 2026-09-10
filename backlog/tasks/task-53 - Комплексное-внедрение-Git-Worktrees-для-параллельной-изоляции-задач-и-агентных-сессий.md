@@ -3,9 +3,11 @@ id: TASK-53
 title: >-
   Комплексное внедрение Git Worktrees для параллельной изоляции задач и агентных
   сессий
-status: To Do
-assignee: []
+status: Review
+assignee:
+  - '@antigravity'
 created_date: '2026-09-10 01:22'
+updated_date: '2026-09-10 02:53'
 labels:
   - git
   - worktrees
@@ -29,11 +31,29 @@ type: feature
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Реализован сервис worktreeService в Electron main-процессе с операциями list, add, remove, prune через simple-git
-- [ ] #2 Зарегистрированы типизированные IPC-хэндлеры git:worktree:* с обработкой ошибок и валидацией путей
-- [ ] #3 В UI на вкладке Git и в шапке добавлен селектор и панель управления активными Git Worktrees проекта
-- [ ] #4 В карточке задачи Backlog добавлено действие 'Открыть/создать Worktree' с автогенерацией ветки task/<id> и папки .worktrees/<id>
-- [ ] #5 Встроенный PTY-терминал поддерживает запуск вкладок Claude Code и Shell с cwd в директории соответствующего worktree
-- [ ] #6 Реализован интерфейс завершения задачи с просмотром диффа между worktree и базовой веткой и операцией безопасного слияния (Merge / PR)
-- [ ] #7 Папка .worktrees/ автоматически проверяется и добавляется в .gitignore при инициализации первого worktree
+- [x] #1 Реализован сервис worktreeService в Electron main-процессе с операциями list, add, remove, prune через simple-git
+- [x] #2 Зарегистрированы типизированные IPC-хэндлеры git:worktree:* с обработкой ошибок и валидацией путей
+- [x] #3 В UI на вкладке Git и в шапке добавлен селектор и панель управления активными Git Worktrees проекта
+- [x] #4 В карточке задачи Backlog добавлено действие 'Открыть/создать Worktree' с автогенерацией ветки task/<id> и папки .worktrees/<id>
+- [x] #5 Встроенный PTY-терминал поддерживает запуск вкладок Claude Code и Shell с cwd в директории соответствующего worktree
+- [x] #6 Реализован интерфейс завершения задачи с просмотром диффа между worktree и базовой веткой и операцией безопасного слияния (Merge / PR)
+- [x] #7 Папка .worktrees/ автоматически проверяется и добавляется в .gitignore при инициализации первого worktree
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Реализовать worktreeService в Electron с операциями list, add, remove, prune, merge, diff и автодобавлением .worktrees/ в .gitignore. 2. Зарегистрировать типизированные IPC-хэндлеры git:worktree:* с валидацией путей. 3. Расширить electron.d.ts и preload.ts. 4. Реализовать панель WorktreePanel и вкладку worktrees в GitInspector, а также селектор в Header. 5. Добавить действие создания/открытия Worktree в TaskDetailModal. 6. Поддержать cwd worktree в ptyService и бейджи в TerminalPanel. 7. Реализовать WorktreeCompleteModal для просмотра диффа и слияния. 8. Написать unit-тесты и выполнить npm test, npm run lint, npm run pack:win.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+1. Создан worktreeService.ts с операциями list, add, remove, prune, diff, merge и защитой .gitignore. 2. Добавлен игнор .worktrees в gitService. 3. Поддержаны PTY сессии с привязкой к worktree (cwd и worktreeBranch). 4. Зарегистрированы безопасные IPC-хэндлеры. 5. Создана панель управления WorktreePanel и модальное окно WorktreeCompleteModal. 6. Интегрировано создание worktree в TaskDetailModal. 7. Все 180 unit-тестов пройдены, ESLint 0 ошибок, pack:win собран успешно.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Реализован и всесторонне протестирован модуль Git Worktrees для параллельной изоляции задач и агентных сессий. Покрыты бэкенд-сервис, IPC, PTY-сессии, компоненты WorktreePanel, WorktreeCompleteModal, интеграция с доской задач и Header.
+<!-- SECTION:FINAL_SUMMARY:END -->

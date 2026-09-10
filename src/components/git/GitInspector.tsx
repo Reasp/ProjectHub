@@ -28,12 +28,14 @@ import {
   Upload,
   RotateCcw,
   SlidersHorizontal,
-  ChevronDown
+  ChevronDown,
+  FolderGit2
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { generateCommitMessage } from '../../services/aiAssistantService';
 import { SplitDiffViewer } from './SplitDiffViewer';
+import { WorktreePanel } from './WorktreePanel';
 
 // ─── File Status Badge ────────────────────────────────────────────────────────
 
@@ -51,7 +53,7 @@ const statusLabels: Record<string, string> = {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type GitTab = 'history' | 'branches' | 'working' | 'compare';
+type GitTab = 'history' | 'branches' | 'working' | 'compare' | 'worktrees';
 
 export const GitInspector: React.FC = () => {
   const { t } = useTranslation();
@@ -61,6 +63,7 @@ export const GitInspector: React.FC = () => {
     gitRepoDetails,
     gitSelectedFile,
     gitDiffContent,
+    worktrees,
     tasks,
     loadGitRepoDetails,
     gitCheckoutBranch,
@@ -291,6 +294,7 @@ export const GitInspector: React.FC = () => {
           {([
             { id: 'working', label: `Изменения (${details?.files.length ?? 0})`, icon: FileDiff },
             { id: 'branches', label: `Ветки (${details?.branches.length ?? 0})`, icon: GitBranch },
+            { id: 'worktrees', label: `Worktrees (${worktrees.length})`, icon: FolderGit2 },
             { id: 'history', label: `История (${gitLogs.length})`, icon: GitCommitIcon },
             { id: 'compare', label: 'Сравнение веток', icon: GitMerge }
           ] as { id: GitTab; label: string; icon: any }[]).map(tab => {
@@ -787,6 +791,9 @@ export const GitInspector: React.FC = () => {
           ))}
         </div>
       )}
+
+      {/* ═══════════════════════ TAB: WORKTREES ═══════════════════════ */}
+      {activeTab === 'worktrees' && <WorktreePanel />}
 
     </div>
   );

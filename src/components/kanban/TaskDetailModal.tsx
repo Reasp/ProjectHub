@@ -19,7 +19,8 @@ import {
   Target,
   Sparkles,
   Maximize2,
-  Minimize2
+  Minimize2,
+  FolderGit2
 } from 'lucide-react';
 import type { BacklogTask, TaskCriterion } from '../../types/electron';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -43,12 +44,20 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   onToggleCriterion
 }) => {
   const { t } = useTranslation();
-  const { milestones } = useProjectStore();
+  const {
+    milestones,
+    worktrees,
+    createWorktreeAction,
+    createPtySessionAction,
+    selectedProject,
+    updateTaskStatusLocal
+  } = useProjectStore();
 
   const [activeTab, setActiveTab] = useState<'editor' | 'raw'>('editor');
   const [previewMode, setPreviewMode] = useState(true);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [isWorktreeLoading, setIsWorktreeLoading] = useState(false);
 
   const [title, setTitle] = useState(task?.title || '');
   const [status, setStatus] = useState<BacklogTask['status']>(task?.status || 'To Do');
@@ -63,6 +72,48 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [isRawLoading, setIsRawLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
+
+  const taskIdNorm = task?.id?.toLowerCase() || '';
+  const existingWorktree = worktrees.find(
+    (w) =>
+      (w.taskId && w.taskId.toLowerCase() === taskIdNorm) ||
+      (w.branch && w.branch.toLowerCase().includes(taskIdNorm)) ||
+      w.path.toLowerCase().includes(taskIdNorm)
+  );
+
+  const handleOpenOrCreateWorktree = async () => {
+    if (!task || !selectedProject) return;
+    setIsWorktreeLoading(true);
+    try {
+      if (existingWorktree) {
+        await createPtySessionAction(
+          selectedProject.path,
+          'claude',
+          `[WT: ${task.id}] Claude`,
+          existingWorktree.path,
+          existingWorktree.branch || undefined
+        );
+      } else {
+        const branchName = `task/${taskIdNorm}`;
+        const wt = await createWorktreeAction(branchName, true, 'HEAD');
+        if (wt) {
+          if (status === 'To Do') {
+            setStatus('In Progress');
+            await updateTaskStatusLocal(task.id, 'In Progress');
+          }
+          await createPtySessionAction(
+            selectedProject.path,
+            'claude',
+            `[WT: ${task.id}] Claude`,
+            wt.path,
+            wt.branch || undefined
+          );
+        }
+      }
+    } finally {
+      setIsWorktreeLoading(false);
+    }
+  };
 
   const handleAIGenerate = async () => {
     if (!title.trim()) return;
@@ -534,14 +585,43 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         </div>
 
         {/* Modal Footer Actions */}
-        <div className="px-6 py-3.5 border-t border-slate-800 bg-[#171b2b]/70 flex items-center justify-between">
-          <button
-            onClick={handleDelete}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 border border-rose-900/40 transition text-xs font-medium"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            {t.taskDetail.deleteTask}
-          </button>
+        <div className="px-6 py-3.5 border-t border-slate-800 bg-[#171b2b]/70 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDelete}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 border border-rose-900/40 transition text-xs font-medium"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {t.taskDetail.deleteTask}
+            </button>
+
+            {/* Git Worktree Action (TASK-53) */}
+            {selectedProject?.hasGit && (
+              existingWorktree ? (
+                <button
+                  type="button"
+                  onClick={handleOpenOrCreateWorktree}
+                  disabled={isWorktreeLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-700/50 text-xs font-semibold shadow-sm transition"
+                  title={`Изолированное дерево активно: ${existingWorktree.path}. Нажмите для запуска сессии Claude в директории задачи.`}
+                >
+                  <FolderGit2 className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Worktree: {existingWorktree.branch || 'wt'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleOpenOrCreateWorktree}
+                  disabled={isWorktreeLoading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-700/50 text-xs font-semibold shadow-sm transition"
+                  title="Создать изолированное Git Worktree в .worktrees/<id> со своей веткой task/<id> и открыть терминал"
+                >
+                  <FolderGit2 className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>{isWorktreeLoading ? 'Создание...' : 'Открыть в Worktree'}</span>
+                </button>
+              )
+            )}
+          </div>
 
           <div className="flex items-center gap-2">
             <button

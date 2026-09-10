@@ -52,6 +52,7 @@ export const IGNORED_WORKING_TREE_DIRS = new Set([
   '.cache',
   '.idea',
   '.vs',
+  '.worktrees',
   'Binaries',
   'Intermediate',
   'DerivedDataCache',

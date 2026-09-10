@@ -780,5 +780,31 @@ export const en: TranslationDictionary = {
     noTasks: 'no tasks',
     tasksCount: 'tasks',
     openProject: 'Open'
+  },
+  worktrees: {
+    title: 'Git Worktrees',
+    description: 'Isolated working trees for parallel task execution and AI agent sessions',
+    activeWorktrees: 'Active Worktrees',
+    createWorktree: 'Create Worktree',
+    newWorktreeTitle: 'New Isolated Working Tree',
+    branchName: 'Branch Name',
+    branchPlaceholder: 'e.g.: task/task-53 or feature/xyz',
+    baseBranch: 'Base Branch',
+    taskHint: 'A folder .worktrees/<branch> will be created with its own Git branch',
+    openInTerminal: 'Terminal in Worktree',
+    openInExplorer: 'Open Folder',
+    reviewAndMerge: 'Complete / Merge',
+    removeWorktree: 'Remove Worktree',
+    confirmRemove: 'Are you sure you want to remove worktree {path}?',
+    clean: 'Clean',
+    dirty: 'Dirty',
+    mainWorktree: 'Main Project Tree',
+    noWorktrees: 'No additional working trees. Create a worktree for parallel task execution.',
+    pruneWorktrees: 'Prune Worktrees',
+    pruneSuccess: 'Stale worktrees successfully pruned',
+    mergeSuccess: 'Branch successfully merged into {targetBranch}',
+    diffTitle: 'Worktree Diff',
+    mergeInto: 'Merge into {targetBranch}',
+    completeTaskWorktree: 'Task Completion & Merge'
   }
 };

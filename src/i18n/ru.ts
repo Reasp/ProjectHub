@@ -780,5 +780,31 @@ export const ru: TranslationDictionary = {
     noTasks: 'нет задач',
     tasksCount: 'задач',
     openProject: 'Открыть'
+  },
+  worktrees: {
+    title: 'Git Worktrees',
+    description: 'Изолированные рабочие деревья для параллельной работы задач и AI-агентов',
+    activeWorktrees: 'Активные Worktrees',
+    createWorktree: 'Создать Worktree',
+    newWorktreeTitle: 'Новое изолированное рабочее дерево',
+    branchName: 'Имя ветки',
+    branchPlaceholder: 'например: task/task-53 или feature/xyz',
+    baseBranch: 'Базовая ветка',
+    taskHint: 'Будет создана папка .worktrees/<ветка> со своей веткой Git',
+    openInTerminal: 'Терминал в Worktree',
+    openInExplorer: 'Открыть папку',
+    reviewAndMerge: 'Завершить / Слияние',
+    removeWorktree: 'Удалить Worktree',
+    confirmRemove: 'Вы уверены, что хотите удалить рабочее дерево {path}?',
+    clean: 'Чисто',
+    dirty: 'Есть изменения',
+    mainWorktree: 'Основное дерево проекта',
+    noWorktrees: 'Нет дополнительных рабочих деревьев. Создайте worktree для параллельной работы над задачей.',
+    pruneWorktrees: 'Очистить устаревшие (Prune)',
+    pruneSuccess: 'Устаревшие worktrees успешно очищены',
+    mergeSuccess: 'Ветка успешно слита в {targetBranch}',
+    diffTitle: 'Дифф изменений Worktree',
+    mergeInto: 'Слить в {targetBranch}',
+    completeTaskWorktree: 'Завершение задачи и слияние'
   }
 };

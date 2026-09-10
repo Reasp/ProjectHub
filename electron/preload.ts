@@ -160,6 +160,20 @@ const api: IElectronAPI = {
     };
   },
 
+  // Git Worktrees (TASK-53)
+  listWorktrees: (projectPath: string) =>
+    ipcRenderer.invoke('git:worktree:list', projectPath),
+  addWorktree: (projectPath: string, options: any) =>
+    ipcRenderer.invoke('git:worktree:add', projectPath, options),
+  removeWorktree: (projectPath: string, worktreePath: string, force?: boolean) =>
+    ipcRenderer.invoke('git:worktree:remove', projectPath, worktreePath, force),
+  pruneWorktrees: (projectPath: string) =>
+    ipcRenderer.invoke('git:worktree:prune', projectPath),
+  getWorktreeDiff: (projectPath: string, worktreeBranch: string, baseBranch: string) =>
+    ipcRenderer.invoke('git:worktree:getDiff', projectPath, worktreeBranch, baseBranch),
+  mergeWorktree: (projectPath: string, worktreeBranch: string, targetBranch: string) =>
+    ipcRenderer.invoke('git:worktree:merge', projectPath, worktreeBranch, targetBranch),
+
   // Pull & Merge Requests
   getPRProviderInfo: (projectPath: string) => ipcRenderer.invoke('pr:getProviderInfo', projectPath),
   listPullRequests: (projectPath: string, state?: 'all' | 'open' | 'closed' | 'merged') =>

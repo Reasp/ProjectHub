@@ -26,6 +26,9 @@ import { gitService } from './services/gitService';
 import { windowStateService } from './services/windowStateService';
 import { aiSessionStore } from './services/aiSessionStore';
 import { assertInsideRegisteredProject, assertRegisteredProject } from './services/projectPathGuard';
+import { assertInsideProject } from './services/pathGuard';
+import { worktreeService } from './services/worktreeService';
+import type { AddWorktreeOptions } from '../src/types/electron';
 import { logger, parseLogLevel } from './services/logger';
 import { getUserDataDir } from './services/appPaths';
 
@@ -925,6 +928,41 @@ ipcMain.handle('git:discardFileChanges', async (_event, projectPath: string, fil
 
 ipcMain.handle('git:getDiffBetween', async (_event, projectPath: string, targetA: string, targetB?: string, filePath?: string) => {
   return await gitService.getDiffBetween(projectPath, targetA, targetB, filePath);
+});
+
+// Git Worktrees (TASK-53)
+ipcMain.handle('git:worktree:list', async (_event, projectPath: string) => {
+  const safeProject = await assertRegisteredProject(projectPath);
+  return await worktreeService.listWorktrees(safeProject);
+});
+
+ipcMain.handle('git:worktree:add', async (_event, projectPath: string, options: AddWorktreeOptions) => {
+  const safeProject = await assertRegisteredProject(projectPath);
+  if (options.customPath) {
+    assertInsideProject(safeProject, options.customPath);
+  }
+  return await worktreeService.addWorktree(safeProject, options);
+});
+
+ipcMain.handle('git:worktree:remove', async (_event, projectPath: string, worktreePath: string, force = false) => {
+  const safeProject = await assertRegisteredProject(projectPath);
+  assertInsideProject(safeProject, worktreePath);
+  return await worktreeService.removeWorktree(safeProject, worktreePath, force);
+});
+
+ipcMain.handle('git:worktree:prune', async (_event, projectPath: string) => {
+  const safeProject = await assertRegisteredProject(projectPath);
+  return await worktreeService.pruneWorktrees(safeProject);
+});
+
+ipcMain.handle('git:worktree:getDiff', async (_event, projectPath: string, worktreeBranch: string, baseBranch: string) => {
+  const safeProject = await assertRegisteredProject(projectPath);
+  return await worktreeService.getWorktreeDiff(safeProject, worktreeBranch, baseBranch);
+});
+
+ipcMain.handle('git:worktree:merge', async (_event, projectPath: string, worktreeBranch: string, targetBranch: string) => {
+  const safeProject = await assertRegisteredProject(projectPath);
+  return await worktreeService.mergeWorktree(safeProject, worktreeBranch, targetBranch);
 });
 
 // 7. Pull & Merge Requests

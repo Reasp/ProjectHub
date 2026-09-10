@@ -364,6 +364,15 @@ export const TerminalPanel: React.FC = () => {
                   }`}
                 />
 
+                {session.worktreeBranch && (
+                  <span
+                    className="text-[9px] font-mono px-1 rounded bg-cyan-950/70 border border-cyan-700/60 text-cyan-300 shrink-0 font-bold"
+                    title={`Worktree: ${session.worktreeBranch} (${session.cwd || ''})`}
+                  >
+                    WT
+                  </span>
+                )}
+
                 <span className="truncate max-w-[130px]">{session.title}</span>
 
                 <button

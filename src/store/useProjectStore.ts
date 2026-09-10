@@ -15,6 +15,8 @@ import type {
   Milestone,
   CreateMilestoneParams,
   PtySession,
+  GitWorktreeInfo,
+  AddWorktreeOptions,
   ProjectAgentStatus,
   ProjectActionConfig,
   ProjectActionKind,
@@ -246,7 +248,7 @@ interface ProjectState {
 
   // PTY Terminal Actions
   fetchPtySessions: () => Promise<void>;
-  createPtySessionAction: (projectPath: string, type: 'claude' | 'shell', title?: string) => Promise<PtySession | null>;
+  createPtySessionAction: (projectPath: string, type: 'claude' | 'shell', title?: string, cwd?: string, worktreeBranch?: string) => Promise<PtySession | null>;
   closePtySessionAction: (sessionId: string) => Promise<boolean>;
   setActivePtySessionId: (id: string | null) => void;
   setTerminalMode: (mode: 'pty' | 'process_logs') => void;
@@ -268,6 +270,16 @@ interface ProjectState {
   gitCommit: (message: string, stageAll?: boolean) => Promise<boolean>;
   gitLoadFileDiff: (filePath: string, staged?: boolean) => Promise<void>;
   setGitSelectedFile: (filePath: string | null) => void;
+
+  // Git Worktrees (TASK-53)
+  worktrees: GitWorktreeInfo[];
+  activeWorktreePath: string | null;
+  loadWorktreesAction: (projectPath?: string) => Promise<GitWorktreeInfo[]>;
+  createWorktreeAction: (branch: string, newBranch?: boolean, baseCommitOrBranch?: string, customPath?: string) => Promise<GitWorktreeInfo | null>;
+  removeWorktreeAction: (worktreePath: string, force?: boolean) => Promise<boolean>;
+  pruneWorktreesAction: () => Promise<boolean>;
+  getWorktreeDiffAction: (worktreeBranch: string, baseBranch: string) => Promise<string>;
+  mergeWorktreeAction: (worktreeBranch: string, targetBranch: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 
@@ -415,6 +427,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   gitRepoDetails: null,
   gitSelectedFile: null,
   gitDiffContent: '',
+  worktrees: [],
+  activeWorktreePath: null,
   activeTab: loadInitialActiveTab(),
   taskViewMode: loadInitialTaskViewMode(),
   selectedLabelFilter: loadInitialLabelFilter(),
@@ -793,14 +807,22 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  createPtySessionAction: async (projectPath: string, type: 'claude' | 'shell', title?: string) => {
+  createPtySessionAction: async (
+    projectPath: string,
+    type: 'claude' | 'shell',
+    title?: string,
+    cwd?: string,
+    worktreeBranch?: string
+  ) => {
     if (!window.api?.createPtySession) return null;
     try {
       set({ isTerminalOpen: true, terminalMode: 'pty' });
       const session = await window.api.createPtySession({
         projectPath,
         type,
-        title
+        title,
+        cwd,
+        worktreeBranch
       });
       if (session) {
         set((state) => ({
@@ -1335,6 +1357,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const isCurrent = get().selectedProject?.path === project.path;
       if (isCurrent) {
         set({ gitRepoDetails: details });
+        void get().loadWorktreesAction(project.path);
       }
       set((state) => {
         const cached = state.projectDataCache[project.path];
@@ -1578,6 +1601,113 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setGitSelectedFile: (filePath: string | null) => {
     set({ gitSelectedFile: filePath, gitDiffContent: '' });
+  },
+
+  // ─── Git Worktrees Actions (TASK-53) ───────────────────────────────────────
+
+  loadWorktreesAction: async (projectPath?: string) => {
+    const targetPath = projectPath || get().selectedProject?.path;
+    if (!window.api?.listWorktrees || !targetPath) return [];
+    try {
+      const list = await window.api.listWorktrees(targetPath);
+      set({ worktrees: list });
+      return list;
+    } catch (e) {
+      console.error('Failed to list worktrees:', e);
+      return [];
+    }
+  },
+
+  createWorktreeAction: async (
+    branch: string,
+    newBranch = true,
+    baseCommitOrBranch?: string,
+    customPath?: string
+  ) => {
+    const project = get().selectedProject;
+    if (!window.api?.addWorktree || !project) return null;
+    try {
+      const wt = await window.api.addWorktree(project.path, {
+        branch,
+        newBranch,
+        baseCommitOrBranch,
+        customPath
+      });
+      if (wt) {
+        get().addTerminalLog(`[Worktree] Создано рабочее дерево: ${wt.path} (${wt.branch || 'detached'})`);
+        await get().loadWorktreesAction(project.path);
+        await get().loadGitRepoDetails(project);
+      }
+      return wt;
+    } catch (e: any) {
+      console.error('Failed to create worktree:', e);
+      get().addTerminalLog(`[Worktree Error] Ошибка создания worktree: ${e.message || e}`);
+      return null;
+    }
+  },
+
+  removeWorktreeAction: async (worktreePath: string, force = false) => {
+    const project = get().selectedProject;
+    if (!window.api?.removeWorktree || !project) return false;
+    try {
+      const ok = await window.api.removeWorktree(project.path, worktreePath, force);
+      if (ok) {
+        get().addTerminalLog(`[Worktree] Удалено рабочее дерево: ${worktreePath}`);
+        await get().loadWorktreesAction(project.path);
+        await get().loadGitRepoDetails(project);
+      }
+      return ok;
+    } catch (e: any) {
+      console.error('Failed to remove worktree:', e);
+      get().addTerminalLog(`[Worktree Error] Ошибка удаления worktree: ${e.message || e}`);
+      return false;
+    }
+  },
+
+  pruneWorktreesAction: async () => {
+    const project = get().selectedProject;
+    if (!window.api?.pruneWorktrees || !project) return false;
+    try {
+      const ok = await window.api.pruneWorktrees(project.path);
+      if (ok) {
+        get().addTerminalLog(`[Worktree] Очищены устаревшие деревья (prune)`);
+        await get().loadWorktreesAction(project.path);
+      }
+      return ok;
+    } catch (e: any) {
+      console.error('Failed to prune worktrees:', e);
+      return false;
+    }
+  },
+
+  getWorktreeDiffAction: async (worktreeBranch: string, baseBranch: string) => {
+    const project = get().selectedProject;
+    if (!window.api?.getWorktreeDiff || !project) return '';
+    try {
+      return await window.api.getWorktreeDiff(project.path, worktreeBranch, baseBranch);
+    } catch (e: any) {
+      console.error('Failed to get worktree diff:', e);
+      return '';
+    }
+  },
+
+  mergeWorktreeAction: async (worktreeBranch: string, targetBranch: string) => {
+    const project = get().selectedProject;
+    if (!window.api?.mergeWorktree || !project) return { success: false, error: 'No project' };
+    try {
+      const res = await window.api.mergeWorktree(project.path, worktreeBranch, targetBranch);
+      if (res.success) {
+        get().addTerminalLog(`[Worktree] Ветка ${worktreeBranch} успешно слита в ${targetBranch}`);
+        await get().loadGitRepoDetails(project);
+        await get().loadWorktreesAction(project.path);
+      } else {
+        get().addTerminalLog(`[Worktree Error] Ошибка слияния: ${res.error}`);
+      }
+      return res;
+    } catch (e: any) {
+      console.error('Failed to merge worktree:', e);
+      return { success: false, error: e.message || String(e) };
+    }
   },
 
   // ─── PR Actions ───────────────────────────────────────────────────────────
