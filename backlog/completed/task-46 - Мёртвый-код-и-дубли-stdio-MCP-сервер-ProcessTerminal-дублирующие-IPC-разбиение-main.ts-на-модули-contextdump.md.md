@@ -3,10 +3,10 @@ id: TASK-46
 title: >-
   Мёртвый код и дубли: stdio MCP-сервер, ProcessTerminal, дублирующие IPC,
   разбиение main.ts на модули, contextdump.md
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:09'
-updated_date: '2026-09-10 04:31'
+updated_date: '2026-09-10 04:37'
 labels:
   - audit
   - refactoring
