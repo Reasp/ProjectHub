@@ -13,11 +13,14 @@ import {
   Trash2,
   CheckCircle2,
   ListTodo,
-  DollarSign
+  DollarSign,
+  TriangleAlert
 } from 'lucide-react';
 import { useSwarmStore } from '../../../store/useSwarmStore';
 import { useProjectStore } from '../../../store/useProjectStore';
+import { useRolesStore } from '../../../store/useRolesStore';
 import { useTranslation } from '../../../i18n';
+import { unsupportedRoleFeatures } from '../../../lib/engineCapabilities';
 import type { AgentSlotConfig, SwarmMode } from '../../../types/electron';
 
 interface PresetOption {
@@ -160,6 +163,12 @@ export const NewSwarmModal: React.FC = () => {
   const { isNewSwarmModalOpen, closeNewSwarmModal, initialNewSwarmConfig, startFanOutAction, startHandoffAction, isLoading } =
     useSwarmStore();
   const { selectedProject, tasks } = useProjectStore();
+  const { rolesByProject, loadRolesAction } = useRolesStore();
+  const roles = rolesByProject[selectedProject?.path || ''] || [];
+
+  useEffect(() => {
+    if (isNewSwarmModalOpen) void loadRolesAction(selectedProject?.path);
+  }, [isNewSwarmModalOpen, selectedProject?.path, loadRolesAction]);
 
   const [mode, setMode] = useState<SwarmMode>('fan_out');
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
@@ -227,6 +236,25 @@ export const NewSwarmModal: React.FC = () => {
     setAgents(
       agents.map((a, i) => (i === idx ? { ...a, ...updates } : a))
     );
+  };
+
+  /** Выбор роли (decision-9): предзаполняет движок/модель/бюджет слота, оставляя их редактируемыми. */
+  const handleSelectRole = (idx: number, slug: string) => {
+    if (!slug) {
+      handleUpdateAgent(idx, { roleSlug: undefined });
+      return;
+    }
+    const role = roles.find((r) => r.slug === slug);
+    if (!role) return;
+    handleUpdateAgent(idx, {
+      roleSlug: role.slug,
+      role: role.name,
+      engine: role.engine || agents[idx].engine,
+      budgetUsd: role.budgetUsd ?? agents[idx].budgetUsd,
+      ...(role.model || role.provider
+        ? { providerConfig: { provider: (role.provider as any) || agents[idx].providerConfig?.provider || 'anthropic', model: role.model || agents[idx].providerConfig?.model || 'default' } }
+        : {})
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -463,8 +491,32 @@ export const NewSwarmModal: React.FC = () => {
                     >
                       <option value="api">API Agent (LLM)</option>
                       <option value="claude-cli">Claude Code CLI</option>
-                      <option value="codex-cli">Codex / Aider CLI</option>
+                      <option value="codex-cli">Codex CLI</option>
+                      <option value="gemini-cli">Gemini CLI</option>
                     </select>
+
+                    <select
+                      value={agent.roleSlug || ''}
+                      onChange={(e) => handleSelectRole(idx, e.target.value)}
+                      className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs"
+                      title={t.swarm.roleRegistryTooltip}
+                    >
+                      <option value="">{t.swarm.roleRegistryNone}</option>
+                      {roles.map((r) => (
+                        <option key={r.slug} value={r.slug}>{r.name}</option>
+                      ))}
+                    </select>
+
+                    {agent.roleSlug && (() => {
+                      const role = roles.find((r) => r.slug === agent.roleSlug);
+                      const warnings = unsupportedRoleFeatures(agent.engine, role);
+                      if (warnings.length === 0) return null;
+                      return (
+                        <span title={`${t.swarm.roleUnsupportedPrefix}: ${warnings.join(', ')}`}>
+                          <TriangleAlert className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        </span>
+                      );
+                    })()}
 
                     {agent.engine === 'api' && (
                       <select
@@ -500,23 +552,21 @@ export const NewSwarmModal: React.FC = () => {
                       className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs w-32"
                     />
 
-                    {agent.engine !== 'codex-cli' && (
-                      <input
-                        type="text"
-                        value={agent.providerConfig?.model || ''}
-                        onChange={(e) =>
-                          handleUpdateAgent(idx, {
-                            providerConfig: {
-                              provider: agent.providerConfig?.provider || 'anthropic',
-                              ...agent.providerConfig,
-                              model: e.target.value
-                            }
-                          })
-                        }
-                        placeholder={t.swarm.modelPlaceholder}
-                        className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs w-36 font-mono"
-                      />
-                    )}
+                    <input
+                      type="text"
+                      value={agent.providerConfig?.model || ''}
+                      onChange={(e) =>
+                        handleUpdateAgent(idx, {
+                          providerConfig: {
+                            provider: agent.providerConfig?.provider || 'anthropic',
+                            ...agent.providerConfig,
+                            model: e.target.value
+                          }
+                        })
+                      }
+                      placeholder={t.swarm.modelPlaceholder}
+                      className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs w-36 font-mono"
+                    />
 
                     <input
                       type="number"

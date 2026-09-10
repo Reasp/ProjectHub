@@ -21,15 +21,21 @@ import {
   Maximize2,
   Minimize2,
   FolderGit2,
-  Zap
+  Zap,
+  Bot,
+  PlayCircle,
+  Loader2
 } from 'lucide-react';
 import type { BacklogTask, TaskCriterion } from '../../types/electron';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useSwarmStore } from '../../store/useSwarmStore';
+import { useRolesStore } from '../../store/useRolesStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
 import { generateTaskDraft } from '../../services/aiAssistantService';
 import { MarkdownViewer } from '../common/MarkdownViewer';
+
+const ACTIVE_AGENT_STATUSES = new Set(['pending', 'preparing', 'running']);
 
 interface TaskDetailModalProps {
   task: BacklogTask | null;
@@ -57,17 +63,21 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     updateTaskStatusLocal,
     setActiveTab: setMainTab
   } = useProjectStore();
-  const { openNewSwarmModal } = useSwarmStore();
+  const { openNewSwarmModal, swarms, runAssignedAgentAction } = useSwarmStore();
+  const { rolesByProject, loadRolesAction } = useRolesStore();
+  const roles = rolesByProject[selectedProject?.path || ''] || [];
 
   const [activeTab, setActiveTab] = useState<'editor' | 'raw'>('editor');
   const [previewMode, setPreviewMode] = useState(true);
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [isWorktreeLoading, setIsWorktreeLoading] = useState(false);
+  const [isRunningAssignedAgent, setIsRunningAssignedAgent] = useState(false);
 
   const [title, setTitle] = useState(task?.title || '');
   const [status, setStatus] = useState<BacklogTask['status']>(task?.status || 'To Do');
   const [milestone, setMilestone] = useState(task?.milestone || '');
+  const [assignee, setAssignee] = useState(task?.assignee?.[0] || '');
   const [description, setDescription] = useState(task?.description || '');
   const [labels, setLabels] = useState<string[]>(task?.labels || []);
   const [newLabelInput, setNewLabelInput] = useState('');
@@ -121,6 +131,35 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     }
   };
 
+  const assignedRoleSlug = assignee.startsWith('agent:') ? assignee.slice('agent:'.length).split('@')[0] : null;
+  const assignedHostId = assignee.includes('@') ? assignee.split('@')[1] : undefined;
+  const assignedRole = assignedRoleSlug ? roles.find((r) => r.slug === assignedRoleSlug) : undefined;
+  const projectSwarms = (selectedProject && swarms[selectedProject.path]) || [];
+  const activeAssignedSwarm = projectSwarms.find(
+    (s) => s.taskId === task?.id && ACTIVE_AGENT_STATUSES.has(s.status as string)
+  );
+  const lastAssignedSwarm = projectSwarms.find((s) => s.taskId === task?.id);
+
+  const handleRunAssignedAgent = async () => {
+    if (!task || !selectedProject || !assignedRoleSlug) return;
+    setIsRunningAssignedAgent(true);
+    try {
+      const result = await runAssignedAgentAction({
+        projectPath: selectedProject.path,
+        taskId: task.id,
+        taskTitle: task.title,
+        prompt: `[${task.id}]: ${task.title}\n\n${task.description || ''}`,
+        roleSlug: assignedRoleSlug,
+        hostId: assignedHostId
+      });
+      if (result && 'error' in result && typeof result.error === 'string') {
+        await dialog.alert({ message: result.error });
+      }
+    } finally {
+      setIsRunningAssignedAgent(false);
+    }
+  };
+
   const handleAIGenerate = async () => {
     if (!title.trim()) return;
     setIsGeneratingAI(true);
@@ -134,10 +173,15 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   };
 
   useEffect(() => {
+    if (selectedProject?.path) void loadRolesAction(selectedProject.path);
+  }, [selectedProject?.path, loadRolesAction]);
+
+  useEffect(() => {
     if (!task) return;
     setTitle(task.title || '');
     setStatus(task.status || 'To Do');
     setMilestone(task.milestone || '');
+    setAssignee(task.assignee?.[0] || '');
     setDescription(task.description || '');
     setLabels(task.labels || []);
     setCriteria(task.acceptanceCriteria || []);
@@ -231,6 +275,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         status,
         labels,
         milestone: milestone || undefined,
+        assignee: assignee.trim() ? [assignee.trim()] : [],
         description,
         acceptanceCriteria: criteria
       };
@@ -321,8 +366,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             <>
               {!isDescriptionExpanded && (
                 <>
-                  {/* Meta Row: Status, Milestone & Labels */}
-                  <div className="grid grid-cols-3 gap-3 p-4 rounded-xl bg-[#171b2b]/50 border border-slate-800">
+                  {/* Meta Row: Status, Milestone, Assignee & Labels */}
+                  <div className="grid grid-cols-4 gap-3 p-4 rounded-xl bg-[#171b2b]/50 border border-slate-800">
                 <div>
                   <label className="font-semibold text-slate-300 uppercase tracking-wider text-[11px] block mb-1.5">
                     {t.taskDetail.status}
@@ -356,6 +401,29 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-300 uppercase tracking-wider text-[11px] block mb-1.5 flex items-center gap-1">
+                    <Bot className="w-3 h-3 text-indigo-400" />
+                    {t.taskDetail.assignee}
+                  </label>
+                  <input
+                    type="text"
+                    list="task-assignee-roles"
+                    value={assignee}
+                    onChange={(e) => setAssignee(e.target.value)}
+                    placeholder={t.taskDetail.assigneePlaceholder}
+                    className="w-full bg-[#10121d] border border-slate-700 rounded-lg px-3 py-1.5 text-slate-200 text-xs font-medium focus:outline-none focus:border-indigo-500 select-text cursor-text"
+                  />
+                  <datalist id="task-assignee-roles">
+                    {roles.map((r) => (
+                      <option key={r.slug} value={`agent:${r.slug}`}>{r.name}</option>
+                    ))}
+                  </datalist>
+                  {assignedRoleSlug && !assignedRole && (
+                    <p className="text-[10px] text-amber-400 mt-1">{t.taskDetail.assigneeRoleNotFound}</p>
+                  )}
                 </div>
 
                 <div>
@@ -649,6 +717,41 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <Zap className="w-3.5 h-3.5 text-amber-400" />
               <span>{t.taskDetail.inSwarmArena}</span>
             </button>
+
+            {/* Запуск назначенного агента (decision-9, TASK-60) */}
+            {assignedRoleSlug && (
+              <button
+                type="button"
+                onClick={handleRunAssignedAgent}
+                disabled={isRunningAssignedAgent || Boolean(activeAssignedSwarm) || !assignedRole}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/50 text-xs font-semibold shadow-sm transition disabled:opacity-50"
+                title={assignedRole ? t.taskDetail.runAssignedAgentTooltip.replace('{role}', assignedRole.name) : t.taskDetail.assigneeRoleNotFound}
+              >
+                {isRunningAssignedAgent || activeAssignedSwarm ? (
+                  <Loader2 className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                ) : (
+                  <PlayCircle className="w-3.5 h-3.5 text-emerald-400" />
+                )}
+                <span>
+                  {activeAssignedSwarm
+                    ? t.taskDetail.assignedAgentRunning
+                    : t.taskDetail.runAssignedAgent}
+                </span>
+              </button>
+            )}
+            {!activeAssignedSwarm && lastAssignedSwarm && (
+              <span
+                className={`text-[11px] px-2 py-1 rounded-md border ${
+                  lastAssignedSwarm.status === 'completed'
+                    ? 'text-emerald-400 border-emerald-800 bg-emerald-950/40'
+                    : lastAssignedSwarm.status === 'failed'
+                    ? 'text-rose-400 border-rose-800 bg-rose-950/40'
+                    : 'text-slate-400 border-slate-700 bg-slate-900/40'
+                }`}
+              >
+                {lastAssignedSwarm.status}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

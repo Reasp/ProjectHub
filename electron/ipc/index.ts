@@ -8,6 +8,7 @@ import { registerVoiceIpc } from './voiceIpc';
 import { registerMcpIpc } from './mcpIpc';
 import { registerProcessIpc } from './processIpc';
 import { registerHitlIpc } from './hitlIpc';
+import { registerRolesIpc } from './rolesIpc';
 
 export type { IpcContext } from './types';
 
@@ -21,4 +22,5 @@ export function registerAllIpc(ctx: IpcContext) {
   registerMcpIpc();
   registerProcessIpc();
   registerHitlIpc(ctx);
+  registerRolesIpc();
 }

@@ -85,6 +85,21 @@ export function getModelsCacheDir(): string {
   return path.join(getUserDataDir(), 'models');
 }
 
+/** Глобальные роли агентов (decision-9, TASK-60): userData/roles/*.md. */
+export function getRolesDir(): string {
+  return path.join(getUserDataDir(), 'roles');
+}
+
+/** Проектные роли агентов (переопределяют глобальные по slug): <project>/.projecthub/roles/*.md. */
+export function getProjectRolesDir(projectPath: string): string {
+  return path.join(projectPath, '.projecthub', 'roles');
+}
+
+/** Каталог handoff-артефактов задачи (decision-9): <worktree>/.projecthub/handoff/*.md. */
+export function getHandoffReportsDir(worktreePath: string): string {
+  return path.join(worktreePath, '.projecthub', 'handoff');
+}
+
 /**
  * Устаревшие расположения кэша моделей (до TASK-43). При первом обращении содержимое
  * переносится в userData/models, чтобы не перекачивать сотни мегабайт.

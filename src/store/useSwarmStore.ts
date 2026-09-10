@@ -25,6 +25,15 @@ interface SwarmState {
   closeNewSwarmModal: () => void;
   startFanOutAction: (options: StartFanOutOptions) => Promise<SwarmSession | null>;
   startHandoffAction: (options: StartHandoffOptions) => Promise<SwarmSession | null>;
+  /** Запустить агента, назначенного на задачу через assignee (decision-9, TASK-60). */
+  runAssignedAgentAction: (options: {
+    projectPath: string;
+    taskId: string;
+    taskTitle?: string;
+    prompt: string;
+    roleSlug: string;
+    hostId?: string;
+  }) => Promise<SwarmSession | { error: string } | null>;
   stopSwarmAction: (swarmId: string) => Promise<boolean>;
   pickWinnerAction: (
     swarmId: string,
@@ -154,6 +163,33 @@ export const useSwarmStore = create<SwarmState>((set) => ({
       console.error('[SwarmStore] Failed to start Handoff:', err);
       set({ isLoading: false });
       return null;
+    }
+  },
+
+  runAssignedAgentAction: async (options) => {
+    if (!window.api?.runAssignedAgent) return null;
+    try {
+      set({ isLoading: true });
+      const result = await window.api.runAssignedAgent(options);
+      if (result && !('error' in result)) {
+        const projectPath = options.projectPath;
+        set((state) => {
+          const existing = state.swarms[projectPath] || [];
+          const filtered = existing.filter((s) => s.id !== result.id);
+          return {
+            swarms: { ...state.swarms, [projectPath]: [result, ...filtered] },
+            activeSwarmId: { ...state.activeSwarmId, [projectPath]: result.id },
+            isLoading: false
+          };
+        });
+      } else {
+        set({ isLoading: false });
+      }
+      return result;
+    } catch (err) {
+      console.error('[SwarmStore] Failed to run assigned agent:', err);
+      set({ isLoading: false });
+      return { error: err instanceof Error ? err.message : String(err) };
     }
   },
 

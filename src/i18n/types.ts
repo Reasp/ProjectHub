@@ -441,7 +441,34 @@ export interface TranslationDictionary {
     openInWorktree: string;
     swarmArenaTooltip: string;
     inSwarmArena: string;
+    assignee: string;
+    assigneePlaceholder: string;
+    assigneeRoleNotFound: string;
+    runAssignedAgent: string;
+    runAssignedAgentTooltip: string;
+    assignedAgentRunning: string;
     noDescription: string;
+  };
+  roles: {
+    title: string;
+    newRole: string;
+    slug: string;
+    name: string;
+    engine: string;
+    anyEngine: string;
+    model: string;
+    budgetUsd: string;
+    tools: string;
+    unsupportedWarning: string;
+    dod: string;
+    dodPlaceholder: string;
+    handoffTo: string;
+    handoffToPlaceholder: string;
+    systemPrompt: string;
+    delete: string;
+    copyToProject: string;
+    slugNameRequired: string;
+    saveFailed: string;
   };
   createTask: {
     title: string;
@@ -1325,6 +1352,9 @@ export interface TranslationDictionary {
     agentNamePlaceholder: string;
     providerOllamaLocal: string;
     rolePlaceholder: string;
+    roleRegistryNone: string;
+    roleRegistryTooltip: string;
+    roleUnsupportedPrefix: string;
     isolateInWorktreesTitle: string;
     isolateInWorktreesDesc: string;
     launchArena: string;

@@ -93,6 +93,8 @@ const api: IElectronAPI = {
       title: string;
       status: BacklogTask['status'];
       labels: string[];
+      milestone?: string;
+      assignee?: string[];
       description: string;
       criteria?: TaskCriterion[];
     }
@@ -116,6 +118,14 @@ const api: IElectronAPI = {
   createMilestone: (projectPath: string, params: any) => ipcRenderer.invoke('milestones:create', projectPath, params),
   saveMilestone: (filePath: string, params: any) => ipcRenderer.invoke('milestones:save', filePath, params),
   deleteMilestone: (filePath: string) => ipcRenderer.invoke('milestones:delete', filePath),
+
+  // Реестр ролей агентов (decision-9, TASK-60)
+  listRoles: (projectPath?: string) => ipcRenderer.invoke('roles:list', projectPath),
+  saveRole: (scope: 'global' | 'project', role: any, projectPath?: string) =>
+    ipcRenderer.invoke('roles:save', scope, role, projectPath),
+  deleteRole: (scope: 'global' | 'project', slug: string, projectPath?: string) =>
+    ipcRenderer.invoke('roles:delete', scope, slug, projectPath),
+  copyRoleToProject: (slug: string, projectPath: string) => ipcRenderer.invoke('roles:copyToProject', slug, projectPath),
 
   // Git
   getGitLog: (projectPath: string, maxCount?: number) => ipcRenderer.invoke('git:getLog', projectPath, maxCount),
@@ -241,6 +251,9 @@ const api: IElectronAPI = {
   // Multi-Agent Swarm & Fleet Orchestration (TASK-54)
   startSwarmFanOut: (options: any) => ipcRenderer.invoke('swarm:startFanOut', options),
   startSwarmHandoff: (options: any) => ipcRenderer.invoke('swarm:startHandoff', options),
+  // Запуск агента, назначенного на задачу через assignee (decision-9, TASK-60)
+  runAssignedAgent: (options: { projectPath: string; taskId: string; taskTitle?: string; prompt: string; roleSlug: string; hostId?: string }) =>
+    ipcRenderer.invoke('swarm:runAssigned', options),
   stopSwarm: (swarmId: string) => ipcRenderer.invoke('swarm:stop', swarmId),
   pickSwarmWinner: (swarmId: string, winnerAgentId: string, mergeIntoBase?: boolean) =>
     ipcRenderer.invoke('swarm:pickWinner', swarmId, winnerAgentId, mergeIntoBase),

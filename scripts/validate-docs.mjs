@@ -7,6 +7,8 @@ import { PROJECT_ROOT } from './config.mjs';
 const DOC_ROOTS = ['backlog/docs', 'backlog/decisions'];
 // Задачи и milestones: проверяется только frontmatter (id/title и типы значений, правило 16).
 const FRONTMATTER_ONLY_ROOTS = ['backlog/tasks', 'backlog/milestones'];
+// Проектные роли агентов (decision-9, TASK-60): frontmatter-only, свой набор обязательных полей.
+const ROLE_ROOTS = [{ path: '.projecthub/roles', requiredFields: ['slug', 'name'] }];
 const ROOT = PROJECT_ROOT;
 
 let hasErrors = false;
@@ -39,7 +41,7 @@ function collectTypedValueErrors(value, keyPath, errors) {
   totalFrontmatterFieldsChecked++;
 }
 
-function validateMarkdownFile(relPath, { frontmatterOnly = false } = {}) {
+function validateMarkdownFile(relPath, { frontmatterOnly = false, requiredFields = ['id', 'title'] } = {}) {
   const fullPath = path.join(ROOT, relPath);
   const content = fs.readFileSync(fullPath, 'utf-8');
   totalFilesChecked++;
@@ -56,8 +58,9 @@ function validateMarkdownFile(relPath, { frontmatterOnly = false } = {}) {
       errors.push('YAML Frontmatter не закрыт (отсутствует закрывающий "---")');
     } else {
       const frontmatter = content.substring(3, endMatch);
-      if (!frontmatter.includes('id:')) errors.push('Отсутствует поле "id" во frontmatter');
-      if (!frontmatter.includes('title:')) errors.push('Отсутствует поле "title" во frontmatter');
+      for (const field of requiredFields) {
+        if (!frontmatter.includes(`${field}:`)) errors.push(`Отсутствует поле "${field}" во frontmatter`);
+      }
 
       // 1b. Типы значений: тем же парсером, что и приложение (gray-matter), чтобы совпадало 1:1.
       try {
@@ -158,6 +161,7 @@ function walkMarkdown(root, options) {
 
 for (const docRoot of DOC_ROOTS) walkMarkdown(docRoot, {});
 for (const fmRoot of FRONTMATTER_ONLY_ROOTS) walkMarkdown(fmRoot, { frontmatterOnly: true });
+for (const roleRoot of ROLE_ROOTS) walkMarkdown(roleRoot.path, { frontmatterOnly: true, requiredFields: roleRoot.requiredFields });
 
 console.log(
   `\n📊 Проверено файлов: ${totalFilesChecked}, полей frontmatter: ${totalFrontmatterFieldsChecked}, изображений: ${totalImagesChecked}`

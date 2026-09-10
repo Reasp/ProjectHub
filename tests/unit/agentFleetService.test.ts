@@ -329,8 +329,8 @@ diff --git a/src/utils.ts b/src/utils.ts
       await new Promise((resolve) => setTimeout(resolve, 80));
 
       expect(promptsReceived).toHaveLength(2);
-      // Второй этап должен содержать артефакты первого этапа
-      expect(promptsReceived[1]).toContain('Артефакты и результат предыдущего этапа');
+      // Второй этап должен содержать артефакт (резюме) первого этапа (decision-9 п.5, TASK-60)
+      expect(promptsReceived[1]).toContain('[Артефакт предыдущего этапа]');
     });
 
     it('stopSwarm: прерывает выполнение всех активных процессов и потоков роя', () => {

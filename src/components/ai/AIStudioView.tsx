@@ -20,13 +20,15 @@ import {
   ListTodo,
   Rocket,
   GitCommit,
-  Zap
+  Zap,
+  Users
 } from 'lucide-react';
 import { useAIStudioStore, type AISession } from '../../store/useAIStudioStore';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
 import { AISettingsModal } from './AISettingsModal';
+import { RolesSettingsModal } from './roles/RolesSettingsModal';
 import { InteractiveApprovalCard } from './InteractiveApprovalCard';
 import { SubagentsPanel } from './SubagentsPanel';
 import { PromptInputArea } from './PromptInputArea';
@@ -86,6 +88,7 @@ export const AIStudioView: React.FC = () => {
 
   const [expandedThoughts, setExpandedThoughts] = useState<Record<string, boolean>>({});
   const [aiViewMode, setAiViewMode] = useState<'studio' | 'swarm'>('studio');
+  const [isRolesModalOpen, setIsRolesModalOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const projectPath = selectedProject?.path || '';
@@ -416,6 +419,15 @@ export const AIStudioView: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setIsRolesModalOpen(true)}
+            title={t.roles.title}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60 font-medium text-[11px] transition"
+          >
+            <Users className="w-3 h-3 text-indigo-400" />
+            <span className="hidden md:inline">{t.roles.title}</span>
+          </button>
+
+          <button
             onClick={() => setIsSettingsOpen(true)}
             title={t.aiStudio.settings}
             className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60 font-medium text-[11px] transition"
@@ -696,6 +708,8 @@ export const AIStudioView: React.FC = () => {
 
       {/* Settings Modal */}
       <AISettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      {/* Roles Registry (decision-9, TASK-60) */}
+      <RolesSettingsModal isOpen={isRolesModalOpen} onClose={() => setIsRolesModalOpen(false)} />
     </div>
   );
 };

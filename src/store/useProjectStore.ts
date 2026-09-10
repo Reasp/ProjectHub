@@ -1309,6 +1309,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         status: updatedTask.status,
         labels: updatedTask.labels,
         milestone: updatedTask.milestone,
+        assignee: updatedTask.assignee,
         description: updatedTask.description || '',
         criteria: updatedTask.acceptanceCriteria
       });

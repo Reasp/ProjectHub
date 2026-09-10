@@ -206,6 +206,18 @@ export function registerAiIpc(ctx: IpcContext) {
     return await agentFleetService.startHandoff({ ...options, projectPath: safeProject });
   });
 
+  // Запуск агента, назначенного на задачу через assignee (decision-9 п.4, TASK-60)
+  ipcMain.handle(
+    'swarm:runAssigned',
+    async (
+      _event,
+      options: { projectPath: string; taskId: string; taskTitle?: string; prompt: string; roleSlug: string; hostId?: string }
+    ) => {
+      const safeProject = await assertRegisteredProject(options.projectPath);
+      return await agentFleetService.startAssignedAgent({ ...options, projectPath: safeProject });
+    }
+  );
+
   ipcMain.handle('swarm:stop', async (_event, swarmId: string) => {
     return agentFleetService.stopSwarm(swarmId);
   });

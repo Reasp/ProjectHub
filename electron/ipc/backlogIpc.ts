@@ -79,6 +79,7 @@ export function registerBacklogIpc(ctx: IpcContext) {
             status: (fmString(data.status) as any) || 'To Do',
             labels: fmStringList(data.labels),
             milestone: fmString(data.milestone) || fmString(data.milestone_id) || undefined,
+            assignee: fmStringList(data.assignee),
             created: fmString(data.created_date) || fmString(data.created) || undefined,
             filePath: fullPath,
             description,
@@ -127,6 +128,7 @@ export function registerBacklogIpc(ctx: IpcContext) {
     status: BacklogTask['status'];
     labels: string[];
     milestone?: string;
+    assignee?: string[];
     description: string;
     criteria?: Array<{ text: string; completed: boolean }>;
   }) => {
@@ -143,6 +145,9 @@ export function registerBacklogIpc(ctx: IpcContext) {
       } else {
         delete frontmatter.milestone;
         delete frontmatter.milestone_id;
+      }
+      if (data.assignee !== undefined) {
+        frontmatter.assignee = data.assignee;
       }
 
       let body = applyDescription(content, data.description || '');

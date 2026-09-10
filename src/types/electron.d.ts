@@ -124,6 +124,8 @@ export interface BacklogTask {
   status: 'To Do' | 'In Progress' | 'Review' | 'Done';
   labels: string[];
   milestone?: string;
+  /** Человек (свободный текст) или агент/роль: `agent:<roleSlug>` / `agent:<roleSlug>@<hostId>` (TASK-60). */
+  assignee?: string[];
   created?: string;
   filePath: string;
   /** Сырой markdown-текст файла. В списке задач НЕ заполняется (TASK-38) — грузится по требованию через getTaskContent. */
@@ -450,6 +452,7 @@ export interface IElectronAPI {
       status: BacklogTask['status'];
       labels: string[];
       milestone?: string;
+      assignee?: string[];
       description: string;
       criteria?: TaskCriterion[];
     }
@@ -465,6 +468,12 @@ export interface IElectronAPI {
   createMilestone: (projectPath: string, params: CreateMilestoneParams) => Promise<Milestone | null>;
   saveMilestone: (filePath: string, params: Partial<CreateMilestoneParams>) => Promise<boolean>;
   deleteMilestone: (filePath: string) => Promise<boolean>;
+
+  // Реестр ролей агентов (decision-9, TASK-60)
+  listRoles: (projectPath?: string) => Promise<{ roles: RoleDefinition[]; errors: { error: string; filePath: string }[] }>;
+  saveRole: (scope: 'global' | 'project', role: RoleDefinition, projectPath?: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  deleteRole: (scope: 'global' | 'project', slug: string, projectPath?: string) => Promise<boolean>;
+  copyRoleToProject: (slug: string, projectPath: string) => Promise<RoleDefinition | null>;
 
   // Git Advanced
   getGitRepoDetails: (projectPath: string) => Promise<GitRepoDetails | null>;
@@ -560,6 +569,14 @@ export interface IElectronAPI {
   // Multi-Agent Swarm & Fleet Orchestration (TASK-54)
   startSwarmFanOut: (options: StartFanOutOptions) => Promise<SwarmSession>;
   startSwarmHandoff: (options: StartHandoffOptions) => Promise<SwarmSession>;
+  runAssignedAgent: (options: {
+    projectPath: string;
+    taskId: string;
+    taskTitle?: string;
+    prompt: string;
+    roleSlug: string;
+    hostId?: string;
+  }) => Promise<SwarmSession | { error: string }>;
   stopSwarm: (swarmId: string) => Promise<boolean>;
   pickSwarmWinner: (swarmId: string, winnerAgentId: string, mergeIntoBase?: boolean) => Promise<{ success: boolean; error?: string; mergedBranch?: string }>;
   getSwarm: (swarmId: string) => Promise<SwarmSession | undefined>;
@@ -797,6 +814,28 @@ export interface RolePermissions {
   commandTimeoutSec?: number;
   allowedTools?: string[];
   approvalTimeoutMin?: number;
+}
+
+// Реестр ролей агентов (decision-9, TASK-60). Зеркало `electron/services/roleTypes.ts`.
+export type RoleEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
+export type RoleSource = 'builtin' | 'global' | 'project';
+export type ToolCategory = 'read' | 'write' | 'command' | 'search' | 'subagent' | 'question';
+
+export interface RoleDefinition {
+  slug: string;
+  name: string;
+  engine?: RoleEngine;
+  provider?: string;
+  model?: string;
+  tools?: ToolCategory[];
+  permissions?: RolePermissions;
+  dod?: string[];
+  handoffTo?: string[];
+  maxTurns?: number;
+  budgetUsd?: number;
+  systemPrompt: string;
+  source: RoleSource;
+  filePath?: string;
 }
 
 export interface HitlAuditEntry {
@@ -1087,11 +1126,14 @@ export interface AgentUsage {
 export interface AgentSlotConfig {
   id: string;
   name: string;
-  engine: 'claude-cli' | 'codex-cli' | 'api';
+  engine: 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
+  /** Отображаемая метка роли (для UI/логов/HITL-карточек). */
   role?: string;
+  /** slug роли из реестра (decision-9, TASK-60) — предзаполняет engine/model/permissions в UI. */
+  roleSlug?: string;
   providerConfig?: AIProviderConfig;
+  /** Доп. инструкции слота поверх системного промпта роли. */
   systemPromptAddon?: string;
-  cliCommand?: string;
   /** Бюджет слота/роли в USD; при превышении агент останавливается. */
   budgetUsd?: number;
   /** Права роли для HITL: сужают глобальные настройки auto-approve (TASK-57). */
@@ -1148,7 +1190,14 @@ export interface HandoffStageState {
   status: 'pending' | 'running' | 'completed' | 'failed';
   inputPrompt: string;
   instructions?: string;
+  /** Сырой вывод агента (устаревшее; для новых сессий используйте summary+reportPath). */
   outputResult?: string;
+  /** Артефакт этапа (decision-9 п.5): усечённое резюме для промпта следующего этапа. */
+  summary?: string;
+  /** Путь к полному отчёту этапа в общем worktree. */
+  reportPath?: string;
+  /** Коммит, которым зафиксирован результат этапа. */
+  commitHash?: string;
   durationMs?: number;
 }
 
@@ -1157,6 +1206,8 @@ export interface SwarmSession {
   projectPath: string;
   taskId?: string;
   taskTitle?: string;
+  /** Источник запуска для HITL/аудита (TASK-60): по умолчанию выводится из `mode`. */
+  origin?: 'swarm' | 'assigned';
   mode: SwarmMode;
   prompt: string;
   baseBranch: string;
@@ -1186,6 +1237,8 @@ export interface StartFanOutOptions {
   autoCommitAgentResults?: boolean;
   budgetUsd?: number;
   agents: AgentSlotConfig[];
+  /** Источник запуска для HITL/аудита (TASK-60); по умолчанию 'swarm'. */
+  origin?: 'swarm' | 'assigned';
 }
 
 export interface StartHandoffOptions {

@@ -31,11 +31,15 @@ export type AgentSlotStatus =
 export interface AgentSlotConfig {
   id: string;
   name: string;
-  engine: 'claude-cli' | 'codex-cli' | 'api';
+  engine: 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
+  /** Отображаемая метка роли (для UI/логов/HITL-карточек). */
   role?: string;
+  /** slug роли из реестра (decision-9, TASK-60) — если задан, применяется системный промпт,
+   * модель, инструменты и лимиты роли через `roleEngineAdapter`. */
+  roleSlug?: string;
   providerConfig?: AIProviderConfig;
+  /** Доп. инструкции слота поверх системного промпта роли. */
   systemPromptAddon?: string;
-  cliCommand?: string;
   /** Бюджет роли/слота в USD; при превышении агент останавливается (decision-9, TASK-56). */
   budgetUsd?: number;
   /**
@@ -101,7 +105,14 @@ export interface HandoffStageState {
   inputPrompt: string;
   /** Инструкции этапа из настроек запуска — нужны для возобновления после перезапуска. */
   instructions?: string;
+  /** Сырой вывод агента (устаревшее; для новых сессий используйте summary+reportPath). */
   outputResult?: string;
+  /** Артефакт этапа (decision-9 п.5): усечённое резюме для промпта следующего этапа. */
+  summary?: string;
+  /** Путь к полному отчёту этапа `.projecthub/handoff/<n>-<roleSlug>.md` в общем worktree. */
+  reportPath?: string;
+  /** Коммит, которым зафиксирован результат этапа (TASK-55 `materializeAgentResult`). */
+  commitHash?: string;
   durationMs?: number;
 }
 
@@ -110,6 +121,8 @@ export interface SwarmSession {
   projectPath: string;
   taskId?: string;
   taskTitle?: string;
+  /** Источник запуска для HITL/аудита (decision-9/10, TASK-60): по умолчанию выводится из `mode`. */
+  origin?: 'swarm' | 'assigned';
   mode: SwarmMode;
   prompt: string;
   baseBranch: string;
@@ -143,6 +156,8 @@ export interface StartFanOutOptions {
   autoCommitAgentResults?: boolean;
   budgetUsd?: number;
   agents: AgentSlotConfig[];
+  /** Источник запуска для HITL/аудита (TASK-60); по умолчанию 'swarm'. */
+  origin?: 'swarm' | 'assigned';
 }
 
 export interface StartHandoffOptions {

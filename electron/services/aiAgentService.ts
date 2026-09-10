@@ -76,6 +76,10 @@ export interface AIStreamRequest {
   messages: AIMessage[];
   config: AIProviderConfig;
   mode: 'chat' | 'agent' | 'architect';
+  /** Системный промпт роли (decision-9, TASK-60) — дописывается к базовому промпту движка. */
+  roleSystemPrompt?: string;
+  /** Allow-список нативных имён инструментов API-движка (read_file/write_file/…); без поля — все. */
+  allowedToolNames?: string[];
 }
 
 export interface ClaudeAuthStatus {
@@ -282,7 +286,7 @@ class AIAgentService {
     this.activeControllers.set(req.sessionId, controller);
 
     try {
-      const systemPrompt = await this.buildSystemPrompt(req.projectPath, req.mode);
+      const systemPrompt = await this.buildSystemPrompt(req.projectPath, req.mode, req.roleSystemPrompt);
 
       if (req.config.provider === 'anthropic') {
         await this.streamAnthropic(req, systemPrompt, controller.signal, onChunk, onComplete, onError);
@@ -324,7 +328,7 @@ class AIAgentService {
         content: m.content
       }));
 
-    const tools = req.mode === 'agent' ? this.getAnthropicTools() : undefined;
+    const tools = req.mode === 'agent' ? this.getAnthropicTools(req.allowedToolNames) : undefined;
 
     const body: Record<string, any> = {
       model: req.config.model || 'claude-3-7-sonnet-20250219',
@@ -625,17 +629,18 @@ class AIAgentService {
   /**
    * System Prompt with Project Context
    */
-  private async buildSystemPrompt(projectPath: string, mode: 'chat' | 'agent' | 'architect'): Promise<string> {
-    return `You are Claude Code, Anthropic's official AI assistant for software development.
+  private async buildSystemPrompt(projectPath: string, mode: 'chat' | 'agent' | 'architect', roleSystemPrompt?: string): Promise<string> {
+    const base = `You are Claude Code, Anthropic's official AI assistant for software development.
 Working directory: "${projectPath}".
 Answer directly, clearly, and concisely as Claude Code. If the user addresses you in Russian, answer naturally in Russian while preserving technical terms, file paths, and code.`;
+    return roleSystemPrompt ? `${base}\n\n${roleSystemPrompt}` : base;
   }
 
   /**
-   * Anthropic Tool Definitions
+   * Anthropic Tool Definitions. `allowedToolNames` — allow-список роли (decision-9); без него — все.
    */
-  private getAnthropicTools() {
-    return [
+  private getAnthropicTools(allowedToolNames?: string[]) {
+    const all = [
       {
         name: 'read_file',
         description: 'Прочитать содержимое файла проекта',
@@ -723,6 +728,9 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
         }
       }
     ];
+    if (!allowedToolNames || allowedToolNames.length === 0) return all;
+    const allowed = new Set(allowedToolNames);
+    return all.filter((tool) => allowed.has(tool.name));
   }
 }
 

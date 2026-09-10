@@ -13,7 +13,10 @@ import { hitlService } from './hitlService.js';
 import { applyRolePermissions } from './hitlPolicy.js';
 import { appEventBus } from './eventBus.js';
 import type { HitlOrigin } from './hitlTypes.js';
-import { getUserDataDir } from './appPaths.js';
+import { getUserDataDir, getHandoffReportsDir } from './appPaths.js';
+import { loadRoles } from './roleService.js';
+import { buildEngineInvocation, apiToolNamesForCategories } from './roleEngineAdapter.js';
+import type { RoleDefinition } from './roleTypes.js';
 import { SwarmSessionStore } from './swarmSessionStore.js';
 import { appendLiveOutput, pushAgentLog, resetLiveOutput } from './swarmLogBuffer.js';
 import {
@@ -609,6 +612,7 @@ export class AgentFleetService extends EventEmitter {
       projectPath,
       taskId,
       taskTitle,
+      ...(options.origin ? { origin: options.origin } : {}),
       mode: 'fan_out',
       prompt,
       baseBranch,
@@ -629,6 +633,53 @@ export class AgentFleetService extends EventEmitter {
     void this.executeFanOut(session, false);
 
     return session;
+  }
+
+  /**
+   * Запуск агента, назначенного на задачу через `assignee: agent:<roleSlug>[@hostId]`
+   * (decision-9 п.4, TASK-60): один слот fan-out с ролью, помеченный `origin: 'assigned'` для
+   * HITL/аудита. `hostId` вне локального хоста пока не поддержан — федерация (TASK-66).
+   */
+  public async startAssignedAgent(options: {
+    projectPath: string;
+    taskId: string;
+    taskTitle?: string;
+    prompt: string;
+    roleSlug: string;
+    hostId?: string;
+    useWorktrees?: boolean;
+  }): Promise<SwarmSession | { error: string }> {
+    if (options.hostId && options.hostId !== hitlService.currentHostId) {
+      return { error: `Хост "${options.hostId}" недоступен — федерация между машинами ещё не реализована (TASK-66).` };
+    }
+    const { roles } = await loadRoles(options.projectPath);
+    const role = roles.find((r) => r.slug === options.roleSlug);
+    if (!role) {
+      return { error: `Роль "${options.roleSlug}" не найдена в реестре ролей.` };
+    }
+
+    const slot: AgentSlotConfig = {
+      id: `assigned-${options.taskId}-${Date.now().toString(36)}`,
+      name: role.name,
+      engine: role.engine || 'claude-cli',
+      role: role.name,
+      roleSlug: role.slug,
+      budgetUsd: role.budgetUsd,
+      permissions: role.permissions,
+      ...(role.model || role.provider
+        ? { providerConfig: { provider: (role.provider as AIProviderConfig['provider']) || 'anthropic', model: role.model || 'default' } }
+        : {})
+    };
+
+    return this.startFanOut({
+      projectPath: options.projectPath,
+      prompt: options.prompt,
+      taskId: options.taskId,
+      taskTitle: options.taskTitle,
+      useWorktrees: options.useWorktrees,
+      origin: 'assigned',
+      agents: [slot]
+    });
   }
 
   private async executeFanOut(session: SwarmSession, resume: boolean): Promise<void> {
@@ -694,6 +745,21 @@ export class AgentFleetService extends EventEmitter {
     this.emitSwarmEvent({ type: 'swarm_completed', swarmId: session.id, session });
   }
 
+  /** Роль слота из реестра (decision-9, TASK-60) — `undefined`, если `roleSlug` не задан/не найден. */
+  private async resolveRole(session: SwarmSession, agentState: AgentSlotState): Promise<RoleDefinition | undefined> {
+    const slug = agentState.config.roleSlug;
+    if (!slug) return undefined;
+    try {
+      const { roles } = await loadRoles(session.projectPath);
+      const role = roles.find((r) => r.slug === slug);
+      if (!role) this.log(session, agentState, `[Swarm] Роль "${slug}" не найдена в реестре — используется без роли.`);
+      return role;
+    } catch (err: any) {
+      console.warn(`[AgentFleetService] Failed to load role "${slug}":`, err);
+      return undefined;
+    }
+  }
+
   /**
    * Выполнение одного агента в его окружении (Worktree или основной проект).
    */
@@ -704,6 +770,22 @@ export class AgentFleetService extends EventEmitter {
   ): Promise<void> {
     const targetPath = agentState.worktreePath || session.projectPath;
     const promptToRun = customPrompt || session.prompt;
+    const role = await this.resolveRole(session, agentState);
+    if (role) {
+      const unsupported = buildEngineInvocation({
+        engine: agentState.config.engine,
+        role,
+        extraSystemPrompt: agentState.config.systemPromptAddon,
+        model: agentState.config.providerConfig?.model
+      }).unsupportedFeatures;
+      if (unsupported.length > 0) {
+        this.log(
+          session,
+          agentState,
+          `[Swarm] ⚠️ Движок "${agentState.config.engine}" не поддерживает нативно: ${unsupported.join(', ')} (роль "${role.name}") — применяется по возможности иначе.`
+        );
+      }
+    }
     const startTime = Date.now();
     agentState.metrics.startTime = startTime;
     agentState.metrics.endTime = undefined;
@@ -725,11 +807,13 @@ export class AgentFleetService extends EventEmitter {
 
     try {
       if (agentState.config.engine === 'claude-cli') {
-        await this.runClaudeCliAgent(session, agentState, targetPath, promptToRun);
+        await this.runClaudeCliAgent(session, agentState, targetPath, promptToRun, role);
       } else if (agentState.config.engine === 'codex-cli') {
-        await this.runCodexCliAgent(session, agentState, targetPath, promptToRun);
+        await this.runCodexCliAgent(session, agentState, targetPath, promptToRun, role);
+      } else if (agentState.config.engine === 'gemini-cli') {
+        await this.runGeminiCliAgent(session, agentState, targetPath, promptToRun, role);
       } else {
-        await this.runApiAgent(session, agentState, targetPath, promptToRun);
+        await this.runApiAgent(session, agentState, targetPath, promptToRun, role);
       }
 
       agentState.metrics.endTime = Date.now();
@@ -805,6 +889,7 @@ export class AgentFleetService extends EventEmitter {
   }
 
   private hitlOrigin(session: SwarmSession): HitlOrigin {
+    if (session.origin === 'assigned') return 'assigned';
     return session.mode === 'handoff' ? 'handoff' : 'swarm';
   }
 
@@ -871,7 +956,8 @@ export class AgentFleetService extends EventEmitter {
     session: SwarmSession,
     agentState: AgentSlotState,
     targetPath: string,
-    prompt: string
+    prompt: string,
+    role?: RoleDefinition
   ): Promise<void> {
     const config: AIProviderConfig = agentState.config.providerConfig || {
       provider: 'anthropic',
@@ -879,15 +965,16 @@ export class AgentFleetService extends EventEmitter {
       temperature: 0.2
     };
 
-    const sysAddon = agentState.config.systemPromptAddon
-      ? `\n\nИнструкции для роли: ${agentState.config.systemPromptAddon}`
-      : '';
+    // Системный промпт роли идёт отдельным полем (buildSystemPrompt), а не в тело сообщения —
+    // так он одинаково применяется независимо от того, есть ли у роли `tools` (decision-9).
+    const roleSystemPrompt = [role?.systemPrompt, agentState.config.systemPromptAddon].filter(Boolean).join('\n\n') || undefined;
+    const allowedToolNames = role?.tools && role.tools.length > 0 ? apiToolNamesForCategories(role.tools) : undefined;
 
     const messages: AIMessage[] = [
       {
         id: `msg-${Date.now()}-1`,
         role: 'user',
-        content: `${prompt}${sysAddon}`,
+        content: prompt,
         timestamp: new Date().toISOString()
       }
     ];
@@ -910,7 +997,9 @@ export class AgentFleetService extends EventEmitter {
           projectPath: targetPath,
           messages,
           config,
-          mode: 'agent'
+          mode: 'agent',
+          roleSystemPrompt,
+          allowedToolNames
         },
         (chunk) => {
           if (chunk.text) {
@@ -957,7 +1046,8 @@ export class AgentFleetService extends EventEmitter {
     session: SwarmSession,
     agentState: AgentSlotState,
     targetPath: string,
-    prompt: string
+    prompt: string,
+    role?: RoleDefinition
   ): Promise<void> {
     // Human-in-the-loop через единый контур (TASK-57): без --dangerously-skip-permissions,
     // кроме залогированного fallback при недоступном MCP-сервере и включённом auto-approve.
@@ -971,10 +1061,20 @@ export class AgentFleetService extends EventEmitter {
       hitlService.cancelSession(hitlSessionId, 'Процесс Claude CLI агента завершён');
     };
 
+    // Роль (decision-9, TASK-60): системный промпт, модель, allow-список инструментов, бюджет.
+    // Флаги подтверждены локально (`claude --help`); нативного лимита ходов у CLI нет — maxTurns
+    // роли обеспечивается ниже счётчиком `assistant`-событий.
+    const invocation = buildEngineInvocation({
+      engine: 'claude-cli',
+      role,
+      extraSystemPrompt: agentState.config.systemPromptAddon,
+      model: agentState.config.providerConfig?.model,
+      budgetUsd: agentState.config.budgetUsd
+    });
+    const maxTurns = role?.maxTurns && role.maxTurns > 0 ? role.maxTurns : undefined;
+
     return new Promise((resolve, reject) => {
-      const args = ['-p', '--output-format', 'stream-json', '--verbose', ...hitl.args];
-      const model = agentState.config.providerConfig?.model;
-      if (model && model !== 'default') args.push('--model', model);
+      const args = ['-p', '--output-format', 'stream-json', '--verbose', ...hitl.args, ...invocation.args];
 
       let child: ChildProcess;
       try {
@@ -990,8 +1090,8 @@ export class AgentFleetService extends EventEmitter {
         });
       } catch (e: any) {
         releaseHitl();
-        this.log(session, agentState, `[Swarm] Claude CLI недоступен напрямую (${e.message}), запуск через API fallback.`);
-        return this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
+        this.log(session, agentState, `[Swarm] ⚠️ Claude CLI недоступен напрямую (${e.message}), запуск через API fallback.`);
+        return this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
       }
 
       const procSet = this.activeProcesses.get(session.id);
@@ -1004,6 +1104,8 @@ export class AgentFleetService extends EventEmitter {
       let stdoutBuffer = '';
       let stderrTail = '';
       let turnUsage = emptyUsage();
+      let assistantTurns = 0;
+      let stoppedByTurnLimit = false;
       const finish = (fn: () => void) => {
         if (finished) return;
         finished = true;
@@ -1040,6 +1142,12 @@ export class AgentFleetService extends EventEmitter {
             const stopped = this.recordUsage(session, agentState, usage, 'add', usage.model);
             if (stopped) return;
             this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
+          }
+          assistantTurns += 1;
+          if (maxTurns && assistantTurns >= maxTurns && !stoppedByTurnLimit) {
+            stoppedByTurnLimit = true;
+            this.log(session, agentState, `[Swarm] Достигнут лимит ходов роли (${maxTurns}) — агент останавливается.`);
+            killProcessTree(child);
           }
           return;
         }
@@ -1099,8 +1207,8 @@ export class AgentFleetService extends EventEmitter {
 
       child.on('error', (err) => {
         finish(() => {
-          this.log(session, agentState, `[Swarm] Ошибка Claude CLI: ${err.message}. Пробуем API fallback.`);
-          this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
+          this.log(session, agentState, `[Swarm] ⚠️ Ошибка Claude CLI: ${err.message}. Пробуем API fallback.`);
+          this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
         });
       });
 
@@ -1119,6 +1227,11 @@ export class AgentFleetService extends EventEmitter {
               this.appendOutput(session, agentState, rest);
             }
           }
+          if (stoppedByTurnLimit) {
+            agentState.finalOutput = agentState.liveOutput;
+            resolve();
+            return;
+          }
           // Агент остановлен пользователем или по бюджету — результат уже зафиксирован в статусе.
           if (agentState.status !== 'running') {
             agentState.finalOutput = agentState.liveOutput;
@@ -1132,8 +1245,8 @@ export class AgentFleetService extends EventEmitter {
             agentState.finalOutput = agentState.liveOutput;
             resolve();
           } else {
-            this.log(session, agentState, `[Swarm] Claude CLI завершился с кодом ${code}${stderrTail ? `: ${stderrTail.trim().slice(-500)}` : ''}. Пробуем API fallback.`);
-            this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
+            this.log(session, agentState, `[Swarm] ⚠️ Claude CLI завершился с кодом ${code}${stderrTail ? `: ${stderrTail.trim().slice(-500)}` : ''}. Пробуем API fallback.`);
+            this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
           }
         });
       });
@@ -1148,11 +1261,49 @@ export class AgentFleetService extends EventEmitter {
     });
   }
 
+  /** Эффективные (суженные ролью) права для движков без собственного HITL-контура (codex/gemini). */
+  private async resolveEffectivePermissions(agentState: AgentSlotState): Promise<AIProviderConfig> {
+    let globalConfig: AIProviderConfig;
+    try {
+      globalConfig = await aiAgentService.getConfig();
+    } catch {
+      globalConfig = { provider: 'anthropic', model: 'default' };
+    }
+    return applyRolePermissions(globalConfig, agentState.config.permissions);
+  }
+
+  /** Best-effort извлечение текста из строки JSONL codex/gemini — схема событий не документирована. */
+  private extractCliJsonText(event: any): string | null {
+    if (!event || typeof event !== 'object') return null;
+    const candidates = [
+      event.text,
+      event.message,
+      event.msg,
+      event.delta,
+      event.content,
+      event.item?.text,
+      event.response?.text,
+      typeof event.response === 'string' ? event.response : undefined
+    ];
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.length > 0) return c;
+    }
+    return null;
+  }
+
+  /**
+   * Codex CLI: `codex exec` в неинтерактивном режиме (AC #3). Промпт роли — преамбулой перед
+   * промптом пользователя, через stdin (не argv — на Windows длинные/спецсимвольные аргументы
+   * ломаются экранированием shell). Флаги взяты из публичной документации Codex CLI
+   * (developers.openai.com/codex/noninteractive) — `codex` не установлен на машине разработки,
+   * синтаксис не проверен эмпирически (см. `implementationNotes` TASK-60); нужен ручной smoke-test.
+   */
   private async runCodexCliAgent(
     session: SwarmSession,
     agentState: AgentSlotState,
     targetPath: string,
-    prompt: string
+    prompt: string,
+    role?: RoleDefinition
   ): Promise<void> {
     const isWin = process.platform === 'win32';
     const cmd = isWin ? 'codex.cmd' : 'codex';
@@ -1161,18 +1312,30 @@ export class AgentFleetService extends EventEmitter {
       model: 'openai/gpt-4o',
       temperature: 0.2
     };
+    const effective = await this.resolveEffectivePermissions(agentState);
+    const invocation = buildEngineInvocation({
+      engine: 'codex-cli',
+      role,
+      extraSystemPrompt: agentState.config.systemPromptAddon,
+      model: agentState.config.providerConfig?.model,
+      autoApprove: effective.autoApprove,
+      allowFileWrite: effective.autoApproveRules?.allowFileWrite
+    });
+    const fullPrompt = invocation.promptPrefix ? `${invocation.promptPrefix}\n\n${prompt}` : prompt;
 
     return new Promise((resolve, reject) => {
       let child: ChildProcess;
       try {
-        child = spawn(cmd, ['-m', prompt], {
+        child = spawn(cmd, invocation.args, {
           cwd: targetPath,
           shell: true,
+          stdio: ['pipe', 'pipe', 'pipe'],
           env: { ...process.env, FORCE_COLOR: '0' }
         });
       } catch {
+        this.log(session, agentState, '[Swarm] ⚠️ Codex CLI не запустился (бинарник не найден) — используется API fallback (OpenRouter).');
         agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
-        return this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
+        return this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
       }
 
       const procSet = this.activeProcesses.get(session.id);
@@ -1180,6 +1343,8 @@ export class AgentFleetService extends EventEmitter {
       this.trackAgentProcess(agentState.id, child);
       let finished = false;
       let stderrTail = '';
+      let sawOutput = false;
+      let stdoutBuffer = '';
       const finish = (fn: () => void) => {
         if (finished) return;
         finished = true;
@@ -1189,7 +1354,30 @@ export class AgentFleetService extends EventEmitter {
       };
 
       child.stdout?.on('data', (d: Buffer) => {
-        this.appendOutput(session, agentState, d.toString('utf-8'));
+        stdoutBuffer += d.toString('utf-8');
+        const lines = stdoutBuffer.split('\n');
+        stdoutBuffer = lines.pop() || '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          if (trimmed.startsWith('{')) {
+            try {
+              const event = JSON.parse(trimmed);
+              const text = this.extractCliJsonText(event);
+              if (text) {
+                sawOutput = true;
+                this.appendOutput(session, agentState, text);
+              } else if (event.type) {
+                this.log(session, agentState, `[Codex] ${event.type}`);
+              }
+              continue;
+            } catch {
+              /* не JSON — как обычный текст */
+            }
+          }
+          sawOutput = true;
+          this.appendOutput(session, agentState, `${line}\n`);
+        }
       });
       child.stderr?.on('data', (d: Buffer) => {
         const text = d.toString('utf-8');
@@ -1198,11 +1386,13 @@ export class AgentFleetService extends EventEmitter {
       });
       child.stdout?.on('error', () => undefined);
       child.stderr?.on('error', () => undefined);
+      child.stdin?.on('error', (err) => this.log(session, agentState, `[Swarm] stdin error: ${err.message}`));
 
-      child.on('error', () => {
+      child.on('error', (err) => {
         finish(() => {
+          this.log(session, agentState, `[Swarm] ⚠️ Ошибка запуска Codex CLI (${err.message}) — используется API fallback (OpenRouter).`);
           agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
-          this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
+          this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
         });
       });
 
@@ -1213,19 +1403,159 @@ export class AgentFleetService extends EventEmitter {
             resolve();
             return;
           }
-          if (code === 0 || agentState.liveOutput.length > 0) {
+          if (code === 0 || sawOutput || agentState.liveOutput.length > 0) {
             agentState.finalOutput = agentState.liveOutput;
-            // Best-effort: итоговые строки CLI вида «tokens used: N» (AC #3).
             const parsed = parseCliUsageText(`${agentState.liveOutput.slice(-4000)}\n${stderrTail}`);
             if (parsed) {
               this.recordUsage(session, agentState, parsed, 'replace', agentState.config.providerConfig?.model);
             }
             resolve();
           } else {
-            this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
+            this.log(
+              session,
+              agentState,
+              `[Swarm] ⚠️ Codex CLI завершился с кодом ${code}${stderrTail ? `: ${stderrTail.trim().slice(-500)}` : ''} без вывода — используется API fallback (OpenRouter).`
+            );
+            agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
+            this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
           }
         });
       });
+
+      try {
+        child.stdin?.write(fullPrompt, 'utf-8');
+        child.stdin?.end();
+      } catch (err: any) {
+        this.log(session, agentState, `[Swarm] Не удалось передать промпт в Codex CLI: ${err?.message || String(err)}`);
+        killProcessTree(child);
+      }
+    });
+  }
+
+  /**
+   * Gemini CLI: неинтерактивный режим, промпт роли — преамбулой через stdin (см. Codex выше).
+   * `--output-format json` в headless-режиме возвращает один JSON-объект по завершении, не поток
+   * (geminicli.com/docs/cli/headless) — парсим весь stdout по закрытии процесса. Флаги из
+   * публичной документации, `gemini` не установлен на машине разработки — не проверено
+   * эмпирически (см. `implementationNotes` TASK-60).
+   */
+  private async runGeminiCliAgent(
+    session: SwarmSession,
+    agentState: AgentSlotState,
+    targetPath: string,
+    prompt: string,
+    role?: RoleDefinition
+  ): Promise<void> {
+    const isWin = process.platform === 'win32';
+    const cmd = isWin ? 'gemini.cmd' : 'gemini';
+    const fallbackConfig: AIProviderConfig = {
+      provider: 'openrouter',
+      model: 'google/gemini-2.0-flash-001',
+      temperature: 0.2
+    };
+    const effective = await this.resolveEffectivePermissions(agentState);
+    const invocation = buildEngineInvocation({
+      engine: 'gemini-cli',
+      role,
+      extraSystemPrompt: agentState.config.systemPromptAddon,
+      model: agentState.config.providerConfig?.model,
+      autoApprove: effective.autoApprove
+    });
+    const fullPrompt = invocation.promptPrefix ? `${invocation.promptPrefix}\n\n${prompt}` : prompt;
+
+    return new Promise((resolve, reject) => {
+      let child: ChildProcess;
+      try {
+        child = spawn(cmd, invocation.args, {
+          cwd: targetPath,
+          shell: true,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env, FORCE_COLOR: '0' }
+        });
+      } catch {
+        this.log(session, agentState, '[Swarm] ⚠️ Gemini CLI не запустился (бинарник не найден) — используется API fallback (OpenRouter).');
+        agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
+        return this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
+      }
+
+      const procSet = this.activeProcesses.get(session.id);
+      procSet?.add(child);
+      this.trackAgentProcess(agentState.id, child);
+      let finished = false;
+      let stdoutAll = '';
+      let stderrTail = '';
+      const finish = (fn: () => void) => {
+        if (finished) return;
+        finished = true;
+        procSet?.delete(child);
+        this.untrackAgentProcess(agentState.id, child);
+        fn();
+      };
+
+      child.stdout?.on('data', (d: Buffer) => {
+        stdoutAll += d.toString('utf-8');
+      });
+      child.stderr?.on('data', (d: Buffer) => {
+        const text = d.toString('utf-8');
+        stderrTail = (stderrTail + text).slice(-4000);
+        this.log(session, agentState, text.trimEnd());
+      });
+      child.stdout?.on('error', () => undefined);
+      child.stderr?.on('error', () => undefined);
+      child.stdin?.on('error', (err) => this.log(session, agentState, `[Swarm] stdin error: ${err.message}`));
+
+      child.on('error', (err) => {
+        finish(() => {
+          this.log(session, agentState, `[Swarm] ⚠️ Ошибка запуска Gemini CLI (${err.message}) — используется API fallback (OpenRouter).`);
+          agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
+          this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
+        });
+      });
+
+      child.on('close', (code) => {
+        finish(() => {
+          if (agentState.status !== 'running') {
+            agentState.finalOutput = agentState.liveOutput;
+            resolve();
+            return;
+          }
+          const trimmed = stdoutAll.trim();
+          let text = trimmed;
+          if (trimmed.startsWith('{')) {
+            try {
+              const parsed = JSON.parse(trimmed);
+              text = this.extractCliJsonText(parsed) || trimmed;
+            } catch {
+              /* оставляем как есть */
+            }
+          }
+          if (code === 0 || text.length > 0) {
+            if (text) this.appendOutput(session, agentState, text);
+            agentState.finalOutput = agentState.liveOutput;
+            const parsedUsage = parseCliUsageText(`${text.slice(-4000)}\n${stderrTail}`);
+            if (parsedUsage) {
+              this.recordUsage(session, agentState, parsedUsage, 'replace', agentState.config.providerConfig?.model);
+            }
+            resolve();
+          } else {
+            this.log(
+              session,
+              agentState,
+              `[Swarm] ⚠️ Gemini CLI завершился с кодом ${code}${stderrTail ? `: ${stderrTail.trim().slice(-500)}` : ''} без вывода — используется API fallback (OpenRouter).`
+            );
+            agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
+            this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
+          }
+        });
+      });
+
+      try {
+        child.stdin?.write(fullPrompt, 'utf-8');
+        child.stdin?.end();
+      } catch (err: any) {
+        this.log(session, agentState, `[Swarm] Не удалось передать промпт в Gemini CLI: ${err?.message || String(err)}`);
+        killProcessTree(child);
+      }
     });
   }
 
@@ -1285,6 +1615,65 @@ export class AgentFleetService extends EventEmitter {
     return session;
   }
 
+  /** Максимальная длина резюме этапа Handoff в промпте следующего этапа (decision-9 п.5). */
+  private static readonly HANDOFF_SUMMARY_LIMIT = 2000;
+
+  /**
+   * Артефакт этапа Handoff (decision-9 п.5): отчёт `.projecthub/handoff/<n>-<roleSlug>.md` в
+   * общем worktree, усечённое резюме и хэш коммита (уже собран в `materializeAgentResult`,
+   * TASK-55) — вместо передачи следующему этапу сырого stdout без лимита.
+   */
+  private async writeHandoffStageReport(
+    session: SwarmSession,
+    sharedWorktreePath: string,
+    stageIndex: number,
+    stageState: HandoffStageState,
+    agentState: AgentSlotState
+  ): Promise<void> {
+    const raw = stageState.outputResult || '';
+    stageState.summary =
+      raw.length > AgentFleetService.HANDOFF_SUMMARY_LIMIT
+        ? `${raw.slice(0, AgentFleetService.HANDOFF_SUMMARY_LIMIT)}\n…(усечено, полный вывод — в файле отчёта)`
+        : raw;
+    stageState.commitHash = agentState.commitHash;
+
+    if (!this.pathExists(sharedWorktreePath)) return;
+    const roleSlug = sanitizeSlug(stageState.role || `stage-${stageIndex + 1}`);
+    const reportsDir = getHandoffReportsDir(sharedWorktreePath);
+    const reportPath = path.join(reportsDir, `${stageIndex}-${roleSlug}.md`);
+    try {
+      await fs.mkdir(reportsDir, { recursive: true });
+      const report = [
+        `# Handoff — этап ${stageIndex + 1}: ${stageState.role}`,
+        '',
+        `- Статус: ${stageState.status}`,
+        `- Длительность: ${stageState.durationMs ? `${(stageState.durationMs / 1000).toFixed(1)} с` : '—'}`,
+        `- Коммит: ${stageState.commitHash || '—'}`,
+        '',
+        '## Входной промпт',
+        '',
+        stageState.inputPrompt,
+        '',
+        '## Результат',
+        '',
+        raw || '_(пусто)_'
+      ].join('\n');
+      await fs.writeFile(reportPath, report, 'utf-8');
+      stageState.reportPath = reportPath;
+    } catch (err) {
+      console.warn(`[AgentFleetService] Failed to write handoff report for stage ${stageIndex}:`, err);
+    }
+  }
+
+  /** Ссылка на артефакт этапа для промпта следующего этапа (резюме + путь к отчёту + коммит). */
+  private formatHandoffArtifactRef(stageState: HandoffStageState | undefined): string {
+    if (!stageState) return '';
+    const parts = [stageState.summary || stageState.outputResult || ''];
+    if (stageState.reportPath) parts.push(`Полный отчёт: ${stageState.reportPath}`);
+    if (stageState.commitHash) parts.push(`Коммит: ${stageState.commitHash}`);
+    return parts.filter(Boolean).join('\n');
+  }
+
   private async executeHandoff(session: SwarmSession, startIndex: number, resume: boolean): Promise<void> {
     session.status = 'running';
     this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
@@ -1314,7 +1703,7 @@ export class AgentFleetService extends EventEmitter {
       }
     }
 
-    let previousStageOutput = startIndex > 0 ? stages[startIndex - 1]?.outputResult || '' : '';
+    let previousStageArtifact = startIndex > 0 ? this.formatHandoffArtifactRef(stages[startIndex - 1]) : '';
 
     for (let i = startIndex; i < stages.length; i++) {
       if (session.status !== 'running') return;
@@ -1333,8 +1722,8 @@ export class AgentFleetService extends EventEmitter {
       if (stageState.instructions) {
         stagePrompt += `[Инструкции этапа (${stageState.role})]: ${stageState.instructions}\n\n`;
       }
-      if (previousStageOutput) {
-        stagePrompt += `[Артефакты и результат предыдущего этапа]:\n${previousStageOutput}\n\n`;
+      if (previousStageArtifact) {
+        stagePrompt += `[Артефакт предыдущего этапа]:\n${previousStageArtifact}\n\n`;
       }
       stagePrompt += `Выполни свою часть работы в рамках роли "${stageState.role}".`;
       if (resumingThisStage) stagePrompt += RESUME_PROMPT_SUFFIX;
@@ -1349,7 +1738,8 @@ export class AgentFleetService extends EventEmitter {
       stageState.durationMs = Date.now() - stageStart;
       stageState.status = agentState.status === 'completed' ? 'completed' : 'failed';
       stageState.outputResult = agentState.finalOutput || agentState.liveOutput;
-      previousStageOutput = stageState.outputResult;
+      await this.writeHandoffStageReport(session, sharedWorktreePath, i, stageState, agentState);
+      previousStageArtifact = this.formatHandoffArtifactRef(stageState);
 
       this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
 
