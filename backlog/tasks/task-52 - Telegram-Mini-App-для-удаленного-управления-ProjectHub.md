@@ -1,10 +1,10 @@
 ---
 id: TASK-52
 title: Telegram Mini App для удаленного управления ProjectHub
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-10 00:59'
-updated_date: '2026-09-10 01:16'
+updated_date: '2026-09-10 02:00'
 labels:
   - telegram
   - mini-app

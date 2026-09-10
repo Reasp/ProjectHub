@@ -3,10 +3,10 @@ id: TASK-38
 title: >-
   Стор рендерера: лимит terminalLogs и линейный вывод в TerminalPanel, LRU для
   projectDataCache, локальное состояние при перетаскивании панели
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:08'
-updated_date: '2026-09-06 19:49'
+updated_date: '2026-09-10 02:00'
 labels:
   - audit
   - memory-leak

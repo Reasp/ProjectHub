@@ -3,10 +3,10 @@ id: TASK-41
 title: >-
   docsService: создание документов и ADR в формате Backlog.md (doc-N /
   decision-N, правило 13)
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:08'
-updated_date: '2026-09-06 20:44'
+updated_date: '2026-09-10 02:00'
 labels:
   - audit
   - backlog
@@ -45,7 +45,7 @@ type: bug
 - [x] #1 createProjectDoc генерирует следующий свободный id (doc-N / decision-N), имя файла `doc-N - Title-Slug.md` / `decision-N - Title-Slug.md` и frontmatter по стандарту (id, title, type, created_date / id, title, date, status)
 - [x] #2 listProjectDocs использует id из frontmatter, если он есть
 - [x] #3 Созданный через GUI документ проходит npm run lint:docs и отображается в веб-интерфейсе Backlog.md
-- [ ] #4 Опционально: при наличии backlog.md CLI в проекте создание делегируется команде backlog doc create / decision create
+- [x] #4 Опционально: при наличии backlog.md CLI в проекте создание делегируется команде backlog doc create / decision create
 <!-- AC:END -->
 
 ## Implementation Plan

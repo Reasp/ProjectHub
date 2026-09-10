@@ -3,10 +3,10 @@ id: TASK-43
 title: >-
   Убрать зависимость от process.cwd() в упакованном приложении (шаблон, реестр,
   кэш моделей, воркер, скан диска)
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:09'
-updated_date: '2026-09-06 21:01'
+updated_date: '2026-09-10 02:00'
 labels:
   - audit
   - build

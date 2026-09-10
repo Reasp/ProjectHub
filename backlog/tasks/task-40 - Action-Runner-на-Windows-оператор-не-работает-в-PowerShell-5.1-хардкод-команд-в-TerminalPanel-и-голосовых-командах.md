@@ -3,10 +3,10 @@ id: TASK-40
 title: >-
   Action Runner на Windows: оператор && не работает в PowerShell 5.1, хардкод
   команд в TerminalPanel и голосовых командах
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:08'
-updated_date: '2026-09-06 20:36'
+updated_date: '2026-09-10 02:00'
 labels:
   - audit
   - process-manager

@@ -3,10 +3,10 @@ id: TASK-49
 title: >-
   Инфраструктура качества: vitest с первыми unit-тестами, ESLint, логирование в
   файл, проверка externals сборки
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:10'
-updated_date: '2026-09-07 00:47'
+updated_date: '2026-09-10 02:00'
 labels:
   - audit
   - testing

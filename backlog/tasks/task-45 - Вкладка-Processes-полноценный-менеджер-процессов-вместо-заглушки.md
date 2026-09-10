@@ -1,10 +1,10 @@
 ---
 id: TASK-45
 title: 'Вкладка Processes: полноценный менеджер процессов вместо заглушки'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:09'
-updated_date: '2026-09-06 21:28'
+updated_date: '2026-09-10 02:00'
 labels:
   - audit
   - process-manager

@@ -3,10 +3,10 @@ id: TASK-44
 title: >-
   Оптимизация старта и фоновых опросов: параллельный projects:list с кэшем,
   push-статус MCP, ожидание завершения index-docs
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:09'
-updated_date: '2026-09-06 21:15'
+updated_date: '2026-09-10 02:00'
 labels:
   - audit
   - performance

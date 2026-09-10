@@ -3,11 +3,11 @@ id: TASK-36
 title: >-
   Голосовой движок: восстановление воркера Whisper, передача Float32Array без
   копий, AudioWorklet, ленивая загрузка модели, рабочий WebSpeech
-status: Review
+status: Done
 assignee:
   - claude
 created_date: '2026-09-05 09:08'
-updated_date: '2026-09-06 18:53'
+updated_date: '2026-09-10 02:00'
 labels:
   - audit
   - voice

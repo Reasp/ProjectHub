@@ -3,10 +3,10 @@ id: TASK-47
 title: >-
   Собрать и закоммитить векторный индекс документации (.rag-index), MCP
   search_docs не работает
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:09'
-updated_date: '2026-09-06 23:56'
+updated_date: '2026-09-10 02:00'
 labels:
   - audit
   - rag
