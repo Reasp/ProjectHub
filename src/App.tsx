@@ -8,10 +8,12 @@ import { OmniSearchModal } from './components/search/OmniSearchModal';
 import { HotkeysHelpModal } from './components/layout/HotkeysHelpModal';
 import { VoiceControlWidget } from './components/voice/VoiceControlWidget';
 import { DialogHost } from './components/common/DialogHost';
+import { HitlCenterModal } from './components/hitl/HitlCenterModal';
 import { useProjectStore } from './store/useProjectStore';
 import { useAIStudioStore } from './store/useAIStudioStore';
+import { useHitlStore } from './store/useHitlStore';
 import { useTranslation } from './i18n/useTranslation';
-import { Bot } from 'lucide-react';
+import { Bot, ShieldAlert, X } from 'lucide-react';
 
 
 /** Фокус в элементе, где пользователь вводит текст: input/textarea/contentEditable или терминал xterm. */
@@ -44,10 +46,17 @@ export const App: React.FC = () => {
 
   const [isOmniSearchOpen, setIsOmniSearchOpen] = useState(false);
   const [remoteActionToast, setRemoteActionToast] = useState<string | null>(null);
+  const fallbackNotice = useHitlStore((s) => s.fallbackNotice);
+  const dismissFallbackNotice = useHitlStore((s) => s.dismissFallbackNotice);
 
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
+
+  // Единый HITL-контур: подписка на шину событий main и загрузка очереди (TASK-57)
+  useEffect(() => {
+    useHitlStore.getState().init();
+  }, []);
 
   // Sync state with built-in MCP server
   useEffect(() => {
@@ -95,14 +104,13 @@ export const App: React.FC = () => {
           }
         }
       } else if (action.type === 'approve_action') {
-        const { requestId, approved, reason } = action.payload || {};
-        if (selectedProject) {
-          const list = useAIStudioStore.getState().pendingApprovals[selectedProject.path] || [];
-          const top = requestId ? list.find((a) => a.id === requestId) : list[0];
-          if (top) {
-            useAIStudioStore.getState().sendApprovalResponse(selectedProject.path, top.id, approved, reason);
-            showRemoteToast(approved ? t.common.applied : t.common.rejected);
-          }
+        // Решение уже применено в main строго по requestId (hitlService.decide, TASK-57);
+        // здесь только уведомление. Одобрение «верхнего в очереди» не поддерживается.
+        const { requestId, approved, applied, reason } = action.payload || {};
+        if (applied) {
+          showRemoteToast((approved ? t.hitl.remoteApplied : t.hitl.remoteRejected).replace('{id}', String(requestId || '')));
+        } else {
+          showRemoteToast(t.hitl.remoteFailed.replace('{reason}', String(reason || requestId || '')));
         }
       }
     });
@@ -270,6 +278,20 @@ export const App: React.FC = () => {
           <span className="font-medium">{remoteActionToast}</span>
         </div>
       )}
+
+      {/* Предупреждение о запуске агента без проверки разрешений (fallback HITL, TASK-57) */}
+      {fallbackNotice && (
+        <div className="fixed bottom-6 right-6 z-[10000] max-w-md flex items-start gap-2.5 px-4 py-3 rounded-xl bg-rose-950/95 border border-rose-500/60 shadow-2xl text-xs text-rose-100 backdrop-blur-md">
+          <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          <span className="flex-1">{t.hitl.fallbackNotice.replace('{reason}', fallbackNotice)}</span>
+          <button type="button" onClick={dismissFallbackNotice} className="p-0.5 rounded hover:bg-rose-900/60 text-rose-300">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Центр решений HITL: очередь всех сессий и история (TASK-57) */}
+      <HitlCenterModal />
 
       {/* Global Promise-based Modals (ConfirmDialog, PromptDialog, AlertDialog) */}
       <DialogHost />

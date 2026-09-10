@@ -407,6 +407,22 @@ const api: IElectronAPI = {
     return () => {
       ipcRenderer.removeListener('remote:hitlDecisionMade', handler);
     };
+  },
+
+  // Единый HITL-контур (TASK-57)
+  listPendingApprovals: (filter?: { projectPath?: string; sessionId?: string }) => ipcRenderer.invoke('hitl:listPending', filter),
+  decideApproval: (requestId: string, response: { approved: boolean; text?: string }) =>
+    ipcRenderer.invoke('hitl:decide', requestId, response),
+  listHitlAudit: (query?: any) => ipcRenderer.invoke('hitl:listAudit', query),
+  listHitlAuditMonths: () => ipcRenderer.invoke('hitl:auditMonths'),
+  getHitlInfo: () => ipcRenderer.invoke('hitl:auditInfo'),
+  exportHitlAudit: (query?: any, format?: 'jsonl' | 'json' | 'csv') => ipcRenderer.invoke('hitl:exportAudit', query, format),
+  onBusEvent: (callback: (event: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('bus:event', handler);
+    return () => {
+      ipcRenderer.removeListener('bus:event', handler);
+    };
   }
 };
 

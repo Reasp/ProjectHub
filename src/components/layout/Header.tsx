@@ -26,6 +26,7 @@ import { RemoteControlBadge } from '../remote/RemoteControlBadge';
 import { VoiceControlHeader } from '../voice/VoiceControlHeader';
 import { ClaudeUsageButton } from '../ai/ClaudeUsageButton';
 import { VoiceBadge } from '../voice/VoiceBadge';
+import { HitlBadge } from '../hitl/HitlBadge';
 
 export const Header: React.FC = () => {
   const { language, setLanguage, t } = useTranslation();
@@ -69,6 +70,7 @@ export const Header: React.FC = () => {
           <span className="text-xs text-slate-500">{t.header.selectProjectHint}</span>
         </div>
         <div className="flex items-center gap-2">
+          <HitlBadge />
           <RemoteControlBadge />
           <McpServerStatusBadge />
           <VoiceControlHeader />
@@ -269,6 +271,9 @@ export const Header: React.FC = () => {
           <span className="hidden lg:inline">{t.header.console}</span>
           <VoiceBadge command={t.voice.voiceBadges.terminal} />
         </button>
+
+        {/* Единый HITL-контур: ожидающие решения всех сессий (TASK-57) */}
+        <HitlBadge />
 
         {/* Remote Control Status Badge (TASK-51) */}
         <RemoteControlBadge />

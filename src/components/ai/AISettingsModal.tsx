@@ -18,9 +18,12 @@ import {
   Trash2,
   SlidersHorizontal,
   Lock,
-  LogOut
+  LogOut,
+  Clock,
+  History
 } from 'lucide-react';
 import { useAIStudioStore, DEFAULT_AUTO_APPROVE_RULES } from '../../store/useAIStudioStore';
+import { useHitlStore } from '../../store/useHitlStore';
 import type { AIProviderConfig, AutoApproveRules } from '../../types/electron';
 import { useTranslation } from '../../i18n/useTranslation';
 
@@ -65,6 +68,7 @@ const MODEL_PRESETS: Record<string, string[]> = {
 export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
   const { config, saveConfig, claudeAuth, startClaudeLogin, claudeLogout, fetchClaudeAuth } = useAIStudioStore();
+  const openHitlCenter = useHitlStore((s) => s.openCenter);
 
   const [activeTab, setActiveTab] = useState<'general' | 'autoApprove'>('general');
   const [form, setForm] = useState<AIProviderConfig>({
@@ -525,6 +529,46 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                   />
                   <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
                 </label>
+              </div>
+
+              {/* Единый HITL-контур: таймаут ожидания решения и история решений (TASK-57) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                <div className="p-3 rounded-xl bg-[#141726] border border-slate-800 space-y-1.5">
+                  <label className="font-semibold text-slate-200 text-xs flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                    {t.hitl.timeoutMinLabel}
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={rules.approvalTimeoutMin ?? ''}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      updateRules({ approvalTimeoutMin: Number.isFinite(v) && v > 0 ? v : undefined });
+                    }}
+                    placeholder="1440"
+                    className="w-full bg-[#0c0e17] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-600 font-mono focus:outline-none focus:border-amber-500"
+                  />
+                  <p className="text-[10px] text-slate-400">{t.hitl.timeoutMinDesc}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-[#141726] border border-slate-800 flex flex-col justify-between gap-2">
+                  <div>
+                    <div className="font-semibold text-slate-200 text-xs flex items-center gap-1.5">
+                      <History className="w-3.5 h-3.5 text-indigo-400" />
+                      {t.hitl.openHistory}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{t.hitl.openHistoryDesc}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openHitlCenter('history')}
+                    className="self-start px-3 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 border border-indigo-500/40 text-xs font-medium transition flex items-center gap-1.5"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    {t.hitl.openHistory}
+                  </button>
+                </div>
               </div>
 
               {/* Action Types Permissions */}

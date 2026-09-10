@@ -7,6 +7,7 @@ import { registerFilesIpc } from './filesIpc';
 import { registerVoiceIpc } from './voiceIpc';
 import { registerMcpIpc } from './mcpIpc';
 import { registerProcessIpc } from './processIpc';
+import { registerHitlIpc } from './hitlIpc';
 
 export type { IpcContext } from './types';
 
@@ -19,4 +20,5 @@ export function registerAllIpc(ctx: IpcContext) {
   registerVoiceIpc(ctx);
   registerMcpIpc();
   registerProcessIpc();
+  registerHitlIpc(ctx);
 }

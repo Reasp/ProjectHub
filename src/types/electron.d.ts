@@ -636,7 +636,16 @@ export interface IElectronAPI {
   startRemoteTunnel: () => Promise<string>;
   stopRemoteTunnel: () => Promise<RemoteControlStatus>;
   onRemoteControlStatusChanged: (callback: (status: RemoteControlStatus) => void) => () => void;
-  onRemoteHitlDecisionMade: (callback: (data: { sessionId: string; approved: boolean; byDevice: string }) => void) => () => void;
+  onRemoteHitlDecisionMade: (callback: (data: { requestId: string; sessionId: string; approved: boolean; byDevice: string }) => void) => () => void;
+
+  // Единый HITL-контур: очередь, решения по requestId, аудит, шина событий (TASK-57)
+  listPendingApprovals: (filter?: { projectPath?: string; sessionId?: string }) => Promise<ApprovalRequest[]>;
+  decideApproval: (requestId: string, response: { approved: boolean; text?: string }) => Promise<HitlDecideResult>;
+  listHitlAudit: (query?: HitlAuditQuery) => Promise<HitlAuditEntry[]>;
+  listHitlAuditMonths: () => Promise<string[]>;
+  getHitlInfo: () => Promise<{ auditDir: string | null; queueDir: string | null; hostId: string }>;
+  exportHitlAudit: (query?: HitlAuditQuery, format?: 'jsonl' | 'json' | 'csv') => Promise<{ success: boolean; path?: string; error?: string; canceled?: boolean }>;
+  onBusEvent: (callback: (event: AppBusEvent) => void) => () => void;
 }
 
 export interface FileTreeNode {
@@ -692,6 +701,17 @@ export interface ApprovalRequest {
   };
   questionData?: QuestionData;
   createdAt: number;
+  /** Метаданные единого HITL-контура (TASK-57). */
+  origin?: HitlOrigin;
+  engine?: HitlEngine;
+  agentId?: string;
+  agentName?: string;
+  role?: string;
+  hostId?: string;
+  tool?: string;
+  expiresAt?: number;
+  /** Восстановлен после перезапуска: агент уже не ждёт ответа, решение попадёт только в аудит. */
+  orphaned?: boolean;
 }
 
 export interface SubagentInfo {
@@ -745,7 +765,117 @@ export interface AutoApproveRules {
   commandDenyList: string[];
   /** Таймаут команд агента (run_command) в секундах; по умолчанию 5 минут (TASK-33). */
   commandTimeoutSec?: number;
+  /** Таймаут ожидания решения человека в минутах; по умолчанию 24 часа (TASK-57). */
+  approvalTimeoutMin?: number;
+  /** Allow-список инструментов (права роли, decision-9); пустой — без ограничений. */
+  allowedTools?: string[];
 }
+
+// ─────────────────── Единый HITL-контур (TASK-57), зеркало electron/services/hitlTypes.ts ───────────────────
+
+export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned';
+export type HitlEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
+export type HitlDecisionSourceKind = 'local' | 'remote' | 'mcp' | 'auto' | 'timeout' | 'cancelled' | 'shutdown';
+export type HitlOutcome = 'executed' | 'failed' | 'not_executed' | 'session_gone';
+
+export interface HitlDecisionSource {
+  kind: HitlDecisionSourceKind;
+  deviceId?: string;
+  deviceName?: string;
+  rule?: string;
+}
+
+export interface RolePermissions {
+  autoApprove?: boolean;
+  allowCommands?: boolean;
+  allowFileWrite?: boolean;
+  allowFileRead?: boolean;
+  allowSubagents?: boolean;
+  writeExcludePatterns?: string[];
+  readExcludePatterns?: string[];
+  commandDenyList?: string[];
+  commandTimeoutSec?: number;
+  allowedTools?: string[];
+  approvalTimeoutMin?: number;
+}
+
+export interface HitlAuditEntry {
+  ts: string;
+  kind: 'decision' | 'outcome' | 'fallback';
+  requestId: string;
+  sessionId: string;
+  projectPath: string;
+  hostId?: string;
+  origin?: HitlOrigin;
+  engine?: HitlEngine;
+  agentId?: string;
+  agentName?: string;
+  role?: string;
+  tool?: string;
+  type?: ApprovalRequest['type'];
+  title?: string;
+  filePath?: string;
+  commandHash?: string;
+  commandPreview?: string;
+  decision?: 'allow' | 'deny';
+  decidedBy?: HitlDecisionSourceKind;
+  deviceId?: string;
+  deviceName?: string;
+  rule?: string;
+  comment?: string;
+  waitedMs?: number;
+  outcome?: HitlOutcome;
+  detail?: string;
+}
+
+export interface HitlAuditQuery {
+  month?: string;
+  sessionId?: string;
+  projectPath?: string;
+  decidedBy?: HitlDecisionSourceKind;
+  decision?: 'allow' | 'deny';
+  kind?: HitlAuditEntry['kind'];
+  origin?: HitlOrigin;
+  search?: string;
+  limit?: number;
+}
+
+export type HitlDecideResult =
+  | { ok: true; sessionId: string; projectPath: string }
+  | { ok: false; reason: 'not_found' | 'already_decided' };
+
+export interface AgentEventBase {
+  sessionId: string;
+  projectPath: string;
+  origin: HitlOrigin;
+  engine?: HitlEngine;
+  agentId?: string;
+  agentName?: string;
+  role?: string;
+  hostId?: string;
+  at: number;
+}
+
+export type AppBusEvent =
+  | { type: 'hitl:requested'; request: ApprovalRequest }
+  | { type: 'hitl:decided'; request: ApprovalRequest; approved: boolean; source: HitlDecisionSource; comment?: string }
+  | { type: 'hitl:expired'; request: ApprovalRequest }
+  | { type: 'hitl:cancelled'; request: ApprovalRequest; reason?: string }
+  | {
+      type: 'hitl:fallback';
+      sessionId: string;
+      projectPath: string;
+      origin: HitlOrigin;
+      engine: HitlEngine;
+      agentId?: string;
+      agentName?: string;
+      role?: string;
+      reason: string;
+      at: number;
+    }
+  | ({ type: 'agent:started' } & AgentEventBase)
+  | ({ type: 'agent:finished'; outcome: 'done' | 'aborted'; durationMs?: number } & AgentEventBase)
+  | ({ type: 'agent:failed'; error: string; durationMs?: number } & AgentEventBase);
 
 export interface AIProviderConfig {
   provider: 'anthropic' | 'openrouter' | 'deepseek' | 'ollama' | 'custom';
@@ -964,6 +1094,8 @@ export interface AgentSlotConfig {
   cliCommand?: string;
   /** Бюджет слота/роли в USD; при превышении агент останавливается. */
   budgetUsd?: number;
+  /** Права роли для HITL: сужают глобальные настройки auto-approve (TASK-57). */
+  permissions?: RolePermissions;
 }
 
 export interface AgentSlotDiffSummary {

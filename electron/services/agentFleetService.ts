@@ -8,6 +8,11 @@ import simpleGit from 'simple-git';
 import { worktreeService } from './worktreeService.js';
 import { aiAgentService, type AIProviderConfig, type AIMessage } from './aiAgentService.js';
 import { claudeUsageService } from './claudeUsageService.js';
+import { claudeBridgeService, CLI_MCP_TOOL_TIMEOUT_MS } from './claudeBridgeService.js';
+import { hitlService } from './hitlService.js';
+import { applyRolePermissions } from './hitlPolicy.js';
+import { appEventBus } from './eventBus.js';
+import type { HitlOrigin } from './hitlTypes.js';
 import { getUserDataDir } from './appPaths.js';
 import { SwarmSessionStore } from './swarmSessionStore.js';
 import { appendLiveOutput, pushAgentLog, resetLiveOutput } from './swarmLogBuffer.js';
@@ -706,6 +711,17 @@ export class AgentFleetService extends EventEmitter {
     agentState.status = 'running';
     this.log(session, agentState, `[Swarm] Старт агента "${agentState.config.name}" (движок: ${agentState.config.engine})...`);
     this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
+    const busBase = {
+      sessionId: this.hitlSessionId(agentState),
+      projectPath: session.projectPath,
+      origin: this.hitlOrigin(session),
+      engine: agentState.config.engine,
+      agentId: agentState.id,
+      agentName: agentState.config.name,
+      role: agentState.config.role,
+      hostId: hitlService.currentHostId
+    };
+    appEventBus.publish({ type: 'agent:started', ...busBase, at: startTime });
 
     try {
       if (agentState.config.engine === 'claude-cli') {
@@ -765,8 +781,90 @@ export class AgentFleetService extends EventEmitter {
         await this.materializeAgentResult(session, agentState);
       } catch { /* ignore */ }
     } finally {
+      // Агент больше не ждёт ответов: снимаем его запросы из очереди HITL (TASK-57).
+      hitlService.cancelSession(busBase.sessionId, `Агент "${agentState.config.name}" завершил работу`);
+      const durationMs = agentState.metrics.durationMs;
+      if (agentState.status === 'failed') {
+        appEventBus.publish({ type: 'agent:failed', ...busBase, at: Date.now(), durationMs, error: agentState.error || 'Ошибка агента' });
+      } else {
+        appEventBus.publish({
+          type: 'agent:finished',
+          ...busBase,
+          at: Date.now(),
+          durationMs,
+          outcome: agentState.status === 'completed' ? 'done' : 'aborted'
+        });
+      }
       this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
     }
+  }
+
+  /** sessionId агента в очереди HITL и событиях шины. */
+  private hitlSessionId(agentState: AgentSlotState): string {
+    return `swarm-${agentState.id}`;
+  }
+
+  private hitlOrigin(session: SwarmSession): HitlOrigin {
+    return session.mode === 'handoff' ? 'handoff' : 'swarm';
+  }
+
+  /**
+   * Готовит HITL для Claude CLI агента Swarm/Handoff (TASK-57, decision-10): тот же
+   * `--permission-prompt-tool` и встроенный MCP-сервер, что и в AI Studio; глобальные правила
+   * auto-approve сужаются правами роли слота. Если сервер поднять не удалось:
+   * при включённом (и не суженном ролью) auto-approve — залогированный fallback
+   * `--dangerously-skip-permissions`, иначе агент не запускается.
+   */
+  private async prepareAgentHitl(
+    session: SwarmSession,
+    agentState: AgentSlotState,
+    targetPath: string
+  ): Promise<{ args: string[]; env: Record<string, string>; cleanup: () => void } | { error: string }> {
+    let globalConfig: AIProviderConfig;
+    try {
+      globalConfig = await aiAgentService.getConfig();
+    } catch {
+      globalConfig = { provider: 'anthropic', model: 'default' };
+    }
+    const permissions = agentState.config.permissions;
+    const sessionId = this.hitlSessionId(agentState);
+    const meta = {
+      origin: this.hitlOrigin(session),
+      engine: 'claude-cli' as const,
+      agentId: agentState.id,
+      agentName: agentState.config.name,
+      role: agentState.config.role,
+      permissions
+    };
+    const onChunk = (chunk: { approvalRequest?: { title: string; type: string } }) => {
+      if (chunk.approvalRequest) {
+        this.log(session, agentState, `[HITL] Ожидает решения (${chunk.approvalRequest.type}): ${chunk.approvalRequest.title}`);
+        this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
+      }
+    };
+
+    const hitl = await claudeBridgeService.prepareCliPermissions(sessionId, targetPath, globalConfig, onChunk, meta);
+    if (hitl) {
+      const effective = applyRolePermissions(globalConfig, permissions);
+      this.log(
+        session,
+        agentState,
+        `[HITL] Разрешения через ProjectHub (auto-approve: ${effective.autoApprove ? 'вкл' : 'выкл'}${permissions ? ', права роли применены' : ''}).`
+      );
+      return hitl;
+    }
+
+    const effective = applyRolePermissions(globalConfig, permissions);
+    if (effective.autoApprove) {
+      const reason = 'Встроенный MCP-сервер недоступен, включено авто-одобрение: запуск с --dangerously-skip-permissions';
+      hitlService.recordFallback({ sessionId, projectPath: session.projectPath, ...meta, reason });
+      this.log(session, agentState, `[HITL] ⚠️ ${reason}. Списки исключений и запрещённых команд не применяются.`);
+      return { args: ['--dangerously-skip-permissions'], env: { MCP_TOOL_TIMEOUT: String(CLI_MCP_TOOL_TIMEOUT_MS) }, cleanup: () => undefined };
+    }
+    return {
+      error: 'Не удалось запустить встроенный MCP-сервер ProjectHub для подтверждений действий агента. '
+        + 'Включите сервер в настройках MCP (или освободите его порт) либо включите авто-одобрение в настройках AI Studio.'
+    };
   }
 
   private async runApiAgent(
@@ -861,8 +959,20 @@ export class AgentFleetService extends EventEmitter {
     targetPath: string,
     prompt: string
   ): Promise<void> {
+    // Human-in-the-loop через единый контур (TASK-57): без --dangerously-skip-permissions,
+    // кроме залогированного fallback при недоступном MCP-сервере и включённом auto-approve.
+    const hitl = await this.prepareAgentHitl(session, agentState, targetPath);
+    if ('error' in hitl) {
+      throw new Error(hitl.error);
+    }
+    const hitlSessionId = this.hitlSessionId(agentState);
+    const releaseHitl = () => {
+      hitl.cleanup();
+      hitlService.cancelSession(hitlSessionId, 'Процесс Claude CLI агента завершён');
+    };
+
     return new Promise((resolve, reject) => {
-      const args = ['-p', '--output-format', 'stream-json', '--verbose', '--dangerously-skip-permissions'];
+      const args = ['-p', '--output-format', 'stream-json', '--verbose', ...hitl.args];
       const model = agentState.config.providerConfig?.model;
       if (model && model !== 'default') args.push('--model', model);
 
@@ -874,10 +984,12 @@ export class AgentFleetService extends EventEmitter {
           stdio: ['pipe', 'pipe', 'pipe'],
           env: {
             ...process.env,
-            FORCE_COLOR: '0'
+            FORCE_COLOR: '0',
+            ...hitl.env
           }
         });
       } catch (e: any) {
+        releaseHitl();
         this.log(session, agentState, `[Swarm] Claude CLI недоступен напрямую (${e.message}), запуск через API fallback.`);
         return this.runApiAgent(session, agentState, targetPath, prompt).then(resolve).catch(reject);
       }
@@ -897,6 +1009,7 @@ export class AgentFleetService extends EventEmitter {
         finished = true;
         procSet?.delete(child);
         this.untrackAgentProcess(agentState.id, child);
+        releaseHitl();
         fn();
       };
 
@@ -905,6 +1018,11 @@ export class AgentFleetService extends EventEmitter {
           try {
             claudeUsageService.noteRateLimitEvent(event.rate_limit_info || event);
           } catch { /* ignore */ }
+          return;
+        }
+        if (event.type === 'user') {
+          // Результаты инструментов → аудит HITL по tool_use_id (TASK-57).
+          claudeBridgeService.noteCliUserEvent(event);
           return;
         }
         if (event.type === 'assistant' && event.message?.content) {

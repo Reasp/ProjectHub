@@ -2,7 +2,7 @@
 id: decision-10
 title: "Единый HITL-контур для всех агентов и аудит-лог решений"
 date: "2026-09-10 15:40"
-status: proposed
+status: accepted
 ---
 ## Context
 
@@ -50,3 +50,39 @@ Human-in-the-loop реализован серьёзно, но только дл�
   поставляются с разумными allow-списками (чтение, тесты, сборка без сети).
 - Минус: очередь и аудит увеличивают объём состояния на диске; нужны ротация и лимиты.
 - Реализация: TASK-57, удалённая часть в TASK-65, уведомления в TASK-63.
+
+## Реализация (TASK-57, 2026-09-10)
+
+Принято и реализовано; детали, уточнённые в ходе задачи:
+
+1. **Модули**: `electron/services/hitlService.ts` (очередь, таймауты, персистентность, аудит,
+   события), `hitlPolicy.ts` (чистые функции `applyRolePermissions`, `evaluateToolRequest`),
+   `hitlAudit.ts` (jsonl-лог, `redactSecrets`, `hashCommand`), `hitlTypes.ts` (общие типы),
+   `eventBus.ts` (шина `appEventBus`). `claudeBridgeService.requestApproval/sendApprovalResponse`
+   стали тонкими обёртками над `hitlService`; `prepareCliPermissions` публичный и используется
+   Swarm/Handoff с метаданными агента (`origin`, `agentId`, `role`, `permissions`).
+2. **Восстановление после перезапуска**: записи из `pending.json` возвращаются в очередь как
+   `orphaned` — агент уже не ждёт ответа, поэтому решение по ним попадает только в аудит
+   (`outcome: session_gone`), а просроченные закрываются как `timeout` сразу при старте. При
+   штатном выходе `hitlService.shutdown()` отклоняет промисы, но оставляет записи на диске.
+3. **Таймаут** по умолчанию 24 часа (совпадает с `MCP_TOOL_TIMEOUT` для Claude CLI), минимум
+   10 секунд, настраивается полем `autoApproveRules.approvalTimeoutMin` (AI Studio → Auto-approve);
+   роль может только уменьшить его.
+4. **Источники решений** (`decidedBy` в аудите): `local` (окно), `remote` (устройство Remote Control,
+   RPC `hitl_decision` теперь требует `requestId`), `mcp` (инструмент `projecthub_approve_action`
+   с обязательным `requestId`; добавлен `projecthub_list_pending_approvals`), `auto` (правило
+   политики: `auto-command`, `auto-write`, `outside-project`, `tool-not-allowed` …), `timeout`,
+   `cancelled`, `shutdown`.
+5. **Аудит**: одна строка `decision` на решение (включая авто-решения), отдельная строка `outcome`
+   с результатом выполнения (для Claude CLI — по `tool_use_id` из событий `tool_result`
+   stream-json, для API-движка — по коду выхода команды/успеху записи), строка `fallback` при
+   запуске с `--dangerously-skip-permissions`. Команда хранится как SHA-256 плюс превью до
+   160 символов с вырезанными токенами; дифф и содержимое файлов не пишутся.
+6. **Права роли** пока задаются полем `permissions` слота Swarm (`AgentSlotConfig.permissions`);
+   файлы ролей и их применение к остальным движкам — TASK-60. API-движок Swarm сейчас не
+   выполняет инструменты (только логирует `toolCall`), поэтому через контур не проходит; Codex CLI
+   и Gemini CLI получат обёртку подтверждений в TASK-60 вместе с исправлением их вызова.
+7. **UI**: «Центр решений» (`src/components/hitl/HitlCenterModal.tsx`, `createPortal`, `z-[9999]`)
+   с вкладками «Ожидают решения» (все сессии, все источники) и «История решений» (фильтры по
+   месяцу, источнику, решению, поиск; экспорт CSV/JSONL/JSON); бейдж в шапке и кнопка в сайдбаре;
+   карточка в AI Studio сохранена и снимается по событию `hitl:decided` с любого источника.

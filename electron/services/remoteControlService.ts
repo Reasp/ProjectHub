@@ -22,6 +22,8 @@ import { projectRegistry } from './projectRegistry.js';
 import { processManager } from './processManager.js';
 import { gitService } from './gitService.js';
 import { claudeBridgeService } from './claudeBridgeService.js';
+import { hitlService } from './hitlService.js';
+import { appEventBus } from './eventBus.js';
 import { logger } from './logger.js';
 import { getUserDataDir, getDevRepoRoot, getAppRootDir } from './appPaths.js';
 import matter from 'gray-matter';
@@ -169,7 +171,48 @@ class RemoteControlService {
     }
   }
 
+  /**
+   * Подписка на шину событий (TASK-57): запросы и решения HITL уходят доверенным устройствам как
+   * `ai:hitl` / `ai:hitlDecided`, события агентов — как `agent:*`. Без диффов и содержимого файлов.
+   */
+  private subscribeToEventBus(): void {
+    if (this.busUnsubscribe) return;
+    this.busUnsubscribe = appEventBus.subscribe((event) => {
+      if (!this.enabled) return;
+      if (event.type === 'hitl:requested') {
+        const r = event.request;
+        this.broadcastEvent('ai:hitl', {
+          requestId: r.id,
+          sessionId: r.sessionId,
+          projectPath: r.projectPath,
+          origin: r.origin,
+          agentName: r.agentName,
+          role: r.role,
+          tool: r.tool || r.type,
+          type: r.type,
+          description: r.title,
+          details: r.details,
+          command: r.command,
+          filePath: r.filePath,
+          expiresAt: r.expiresAt
+        });
+      } else if (event.type === 'hitl:decided' || event.type === 'hitl:expired' || event.type === 'hitl:cancelled') {
+        this.broadcastEvent('ai:hitlDecided', {
+          requestId: event.request.id,
+          sessionId: event.request.sessionId,
+          approved: event.type === 'hitl:decided' ? event.approved : false,
+          by: event.type === 'hitl:decided' ? event.source.kind : event.type.replace('hitl:', '')
+        });
+      } else if (event.type.startsWith('agent:')) {
+        this.broadcastEvent(event.type, event);
+      }
+    });
+  }
+
+  private busUnsubscribe: (() => void) | null = null;
+
   public async initOnStartup(): Promise<void> {
+    this.subscribeToEventBus();
     // Если включен autoStart или задан Telegram Bot Token, сервис и туннель стартуют автоматически
     if (this.autoStart || Boolean(this.telegramBotToken)) {
       try {
@@ -183,6 +226,11 @@ class RemoteControlService {
 
   public setActiveProject(projectPath: string | null) {
     this.activeProjectPath = projectPath;
+  }
+
+  /** Постоянный идентификатор этого хоста (decision-11); используется очередью HITL и аудитом. */
+  public getHostId(): string {
+    return this.hostId;
   }
 
   public getStatus(): RemoteControlStatus {
@@ -1122,16 +1170,46 @@ class RemoteControlService {
       }
 
       case 'hitl_decision': {
-        // Подтверждение/отклонение Human-In-The-Loop решения из удаленного клиента
-        if (!params.sessionId) throw new Error('sessionId is required');
-        // Передаем решение в claudeBridgeService
-        const decision = params.decision === 'allow' || params.decision === 'approve';
+        // Решение Human-in-the-Loop с удалённого устройства: строго по requestId через единый
+        // hitlService.decide (TASK-57). Одобрение «верхнего в очереди» не поддерживается.
+        const requestId = typeof params.requestId === 'string' ? params.requestId : '';
+        if (!requestId) throw new Error('requestId is required');
+        const approved = params.decision === 'allow' || params.decision === 'approve' || params.approved === true;
+        const result = hitlService.decide(
+          requestId,
+          { approved, text: typeof params.reason === 'string' ? params.reason : undefined },
+          { kind: 'remote', deviceId: device.id, deviceName: device.name }
+        );
+        if (!result.ok) {
+          return { ok: false, decision: approved, reason: result.reason };
+        }
         this.notifyRenderer('remote:hitlDecisionMade', {
-          sessionId: params.sessionId,
-          approved: decision,
+          requestId,
+          sessionId: result.request.sessionId,
+          approved,
           byDevice: device.name
         });
-        return { ok: true, decision };
+        return { ok: true, decision: approved, sessionId: result.request.sessionId };
+      }
+
+      case 'get_pending_approvals': {
+        return hitlService.listPending(params.projectPath ? { projectPath: String(params.projectPath) } : {}).map((r) => ({
+          requestId: r.id,
+          sessionId: r.sessionId,
+          projectPath: r.projectPath,
+          origin: r.origin,
+          agentName: r.agentName,
+          role: r.role,
+          tool: r.tool,
+          type: r.type,
+          title: r.title,
+          details: r.details,
+          command: r.command,
+          filePath: r.filePath,
+          createdAt: r.createdAt,
+          expiresAt: r.expiresAt,
+          orphaned: r.orphaned
+        }));
       }
 
       default:
@@ -1533,6 +1611,8 @@ class RemoteControlService {
           appendLog(msg.data.text);
         } else if (msg.event === 'ai:hitl') {
           showHitlRequest(msg.data);
+        } else if (msg.event === 'ai:hitlDecided') {
+          dropHitl(msg.data && msg.data.requestId);
         } else if (msg.event === 'backlog:changed') {
           fetchTasks();
         }
@@ -1618,25 +1698,43 @@ class RemoteControlService {
       document.getElementById('terminalLogs').textContent = '';
     };
 
+    // Очередь запросов HITL (TASK-57): решение отправляется строго по requestId.
+    const hitlQueue = [];
+    function renderHitl() {
+      const box = document.getElementById('hitlAlert');
+      const current = hitlQueue[0];
+      if (!current) { box.style.display = 'none'; return; }
+      const who = current.agentName ? \` [\${current.agentName}\${current.role ? ' / ' + current.role : ''}]\` : '';
+      const extra = current.command ? '\\n$ ' + current.command : current.filePath ? '\\n' + current.filePath : '';
+      const rest = hitlQueue.length > 1 ? \` (+\${hitlQueue.length - 1} в очереди)\` : '';
+      document.getElementById('hitlDescription').textContent = (current.description || 'Требуется подтверждение') + who + extra + rest;
+      box.style.display = 'block';
+    }
     function showHitlRequest(data) {
+      if (!data || !data.requestId) return;
       activeSessionId = data.sessionId;
-      document.getElementById('hitlDescription').textContent = data.description || 'Требуется подтверждение';
-      document.getElementById('hitlAlert').style.display = 'block';
+      if (!hitlQueue.some((r) => r.requestId === data.requestId)) hitlQueue.push(data);
+      renderHitl();
+    }
+    function dropHitl(requestId) {
+      const idx = hitlQueue.findIndex((r) => r.requestId === requestId);
+      if (idx >= 0) hitlQueue.splice(idx, 1);
+      renderHitl();
+    }
+    async function decideHitl(decision) {
+      const current = hitlQueue[0];
+      if (!current) return;
+      dropHitl(current.requestId);
+      try {
+        const res = await sendRpc('hitl_decision', { requestId: current.requestId, sessionId: current.sessionId, decision });
+        if (res && res.ok === false) appendLog('\\n[HITL] Запрос ' + current.requestId + ': ' + (res.reason === 'already_decided' ? 'уже решён' : 'не найден') + '\\n');
+      } catch (e) {
+        appendLog('\\n[HITL] Ошибка отправки решения: ' + (e && e.message ? e.message : e) + '\\n');
+      }
     }
 
-    document.getElementById('hitlApproveBtn').onclick = () => {
-      if (activeSessionId) {
-        sendRpc('hitl_decision', { sessionId: activeSessionId, decision: 'allow' });
-        document.getElementById('hitlAlert').style.display = 'none';
-      }
-    };
-
-    document.getElementById('hitlDenyBtn').onclick = () => {
-      if (activeSessionId) {
-        sendRpc('hitl_decision', { sessionId: activeSessionId, decision: 'deny' });
-        document.getElementById('hitlAlert').style.display = 'none';
-      }
-    };
+    document.getElementById('hitlApproveBtn').onclick = () => decideHitl('allow');
+    document.getElementById('hitlDenyBtn').onclick = () => decideHitl('deny');
 
     window.switchTab = function(tab) {
       currentTab = tab;

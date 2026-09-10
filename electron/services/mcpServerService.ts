@@ -17,6 +17,7 @@ import {
   type CliPermissionEndpoint
 } from './claudeBridgeService.js';
 import matter from 'gray-matter';
+import { hitlService } from './hitlService.js';
 
 export interface McpServerStatus {
   isRunning: boolean;
@@ -426,26 +427,69 @@ class McpServerService {
     // 6. Approve / Reject Human-in-the-Loop Action
     // ─────────────────────────────────────────────────────────────
     server.registerTool(
+      'projecthub_list_pending_approvals',
+      {
+        title: 'Ожидающие решения запросы агентов (Human-in-the-Loop)',
+        description:
+          'Возвращает очередь запросов, которые ждут решения человека: requestId, сессия, агент, инструмент, '
+          + 'команда или путь. Для ответа используйте projecthub_approve_action с requestId.',
+        inputSchema: {
+          projectPath: z.string().optional().describe('Ограничить проектом')
+        }
+      },
+      async ({ projectPath }) => {
+        const list = hitlService.listPending(projectPath ? { projectPath } : {}).map((r) => ({
+          requestId: r.id,
+          sessionId: r.sessionId,
+          projectPath: r.projectPath,
+          origin: r.origin,
+          agent: r.agentName || r.agentId,
+          role: r.role,
+          tool: r.tool,
+          type: r.type,
+          title: r.title,
+          command: r.command,
+          filePath: r.filePath,
+          createdAt: new Date(r.createdAt).toISOString(),
+          expiresAt: r.expiresAt ? new Date(r.expiresAt).toISOString() : undefined,
+          orphaned: r.orphaned || undefined
+        }));
+        return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+      }
+    );
+
+    server.registerTool(
       'projecthub_approve_action',
       {
         title: 'Одобрить или отклонить действие агента',
-        description: 'Отвечает на активный запрос подтверждения (Human-in-the-Loop) в карточке одобрений.',
+        description:
+          'Отвечает на запрос подтверждения (Human-in-the-Loop) строго по requestId (см. projecthub_list_pending_approvals). '
+          + 'Первый ответ по requestId выигрывает; повторный получает «уже решено».',
         inputSchema: {
-          requestId: z.string().optional().describe('ID запроса (если опущен, берется первый активный)'),
+          requestId: z.string().min(1).describe('ID запроса из очереди ожидающих решений'),
           approved: z.boolean().describe('Одобрить (true) или отклонить (false)'),
           reason: z.string().optional().describe('Опциональное текстовое пояснение или выбранный вариант')
         }
       },
       async ({ requestId, approved, reason }) => {
-        this.dispatchToRenderer({
-          type: 'approve_action',
-          payload: { requestId, approved, reason }
-        });
+        const result = hitlService.decide(requestId, { approved, text: reason }, { kind: 'mcp', deviceName: 'MCP-клиент' });
+        if (result.ok) {
+          this.dispatchToRenderer({
+            type: 'approve_action',
+            payload: { requestId, approved, reason, applied: true }
+          });
+        }
+        const text = result.ok
+          ? `Решение "${approved ? 'Одобрено' : 'Отклонено'}" применено к запросу ${requestId}.`
+          : result.reason === 'already_decided'
+            ? `Запрос ${requestId} уже решён ранее — повторное решение не применено.`
+            : `Запрос ${requestId} не найден в очереди ожидающих решений.`;
         return {
+          isError: !result.ok,
           content: [
             {
               type: 'text',
-              text: `Решение "${approved ? 'Одобрено' : 'Отклонено'}" отправлено агенту.`
+              text
             }
           ]
         };

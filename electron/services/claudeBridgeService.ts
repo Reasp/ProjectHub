@@ -17,6 +17,28 @@ import { isInsideProject } from './pathGuard.js';
 import { processManager } from './processManager.js';
 import { claudeUsageService } from './claudeUsageService.js';
 import { parseClaudeResultEvent, priceUsage, type AgentUsage } from './agentCost.js';
+import { hitlService, ApprovalCancelledError } from './hitlService.js';
+import { appEventBus } from './eventBus.js';
+import {
+  applyRolePermissions,
+  evaluateToolRequest,
+  isCommandDenied as policyIsCommandDenied,
+  isPathExcluded as policyIsPathExcluded,
+  CLI_WRITE_TOOLS
+} from './hitlPolicy.js';
+import type {
+  ApprovalResponse,
+  HitlDecisionSource,
+  HitlEngine,
+  HitlOrigin,
+  HitlRequest,
+  QuestionData,
+  QuestionOption,
+  RolePermissions
+} from './hitlTypes.js';
+
+export { ApprovalCancelledError };
+export type { ApprovalResponse, QuestionData, QuestionOption };
 
 export type AgentStatusType = 'idle' | 'running' | 'waiting_approval' | 'done' | 'error';
 
@@ -30,38 +52,8 @@ export interface ProjectAgentStatus {
   updatedAt: number;
 }
 
-export interface QuestionOption {
-  id: string;
-  label: string;
-  description?: string;
-}
-
-export interface QuestionData {
-  title: string;
-  subtitle?: string;
-  options: QuestionOption[];
-  isMultiSelect?: boolean;
-  allowOther?: boolean;
-}
-
-export interface ApprovalRequest {
-  id: string;
-  sessionId: string;
-  projectPath: string;
-  type: 'command' | 'file_write' | 'question' | 'subagent_dispatch';
-  title: string;
-  details?: string;
-  command?: string;
-  filePath?: string;
-  diff?: {
-    filePath: string;
-    oldContent: string;
-    newContent: string;
-    patch: string;
-  };
-  questionData?: QuestionData;
-  createdAt: number;
-}
+/** Карточка одобрения = запрос единого HITL-контура (TASK-57); сам тип описан в hitlTypes. */
+export type ApprovalRequest = HitlRequest;
 
 export interface SubagentInfo {
   id: string;
@@ -185,23 +177,6 @@ export const SUBPROCESS_DEFAULT_TIMEOUT_MS = 5 * 60_000;
 /** Лимит накопленного вывода команды агента: хранится только «хвост» этого размера. */
 export const SUBPROCESS_MAX_OUTPUT_BYTES = 1024 * 1024;
 
-export type ApprovalResponse = { approved: boolean; text?: string };
-
-/** Ожидание одобрения прервано (abortSession/clearSession/закрытие окна), а не отклонено пользователем. */
-export class ApprovalCancelledError extends Error {
-  constructor(message = 'Сессия прервана: ожидание одобрения отменено') {
-    super(message);
-    this.name = 'ApprovalCancelledError';
-  }
-}
-
-interface PendingApproval {
-  sessionId: string;
-  projectPath: string;
-  resolve: (response: ApprovalResponse) => void;
-  reject: (err: Error) => void;
-}
-
 export interface SubprocessOptions {
   /** Сессия-владелец: процесс убивается вместе с ней в abortSession/killAll. */
   sessionId?: string;
@@ -255,12 +230,22 @@ export const CLI_HITL_PERMISSION_TOOL = 'permission_prompt';
 /** Query-параметр SSE-URL, по которому MCP-сервер привязывает подключение CLI к сессии AI Studio. */
 export const CLI_HITL_QUERY_PARAM = 'phSession';
 /** Таймаут MCP-инструмента для CLI: одобрение может ждать человека часами. */
-const CLI_MCP_TOOL_TIMEOUT_MS = 24 * 60 * 60_000;
-/** Инструменты Claude Code, изменяющие файлы. */
-const CLI_WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit'];
+export const CLI_MCP_TOOL_TIMEOUT_MS = 24 * 60 * 60_000;
 
-interface CliPermissionContext {
+/** Кто запускает Claude CLI: нужно очереди HITL и аудиту, чтобы отличать AI Studio от Swarm. */
+export interface CliPermissionMeta {
+  origin?: HitlOrigin;
+  engine?: HitlEngine;
+  agentId?: string;
+  agentName?: string;
+  role?: string;
+  /** Права роли (decision-9): применяются поверх глобальных настроек и только сужают их. */
+  permissions?: RolePermissions;
+}
+
+interface CliPermissionContext extends CliPermissionMeta {
   projectPath: string;
+  /** Уже суженная правами роли конфигурация. */
   config: AIProviderConfig;
   onChunk: (chunk: ClaudeBridgeMessageChunk) => void;
 }
@@ -334,7 +319,6 @@ function killProcessTree(child: ChildProcess): void {
 
 class ClaudeBridgeService extends EventEmitter {
   private projectStatuses = new Map<string, ProjectAgentStatus>();
-  private pendingApprovals = new Map<string, PendingApproval>();
   private activeSubagents = new Map<string, SubagentInfo[]>();
   /** Процессы Claude CLI по sessionId. */
   private activeProcesses = new Map<string, ChildProcess>();
@@ -351,6 +335,11 @@ class ClaudeBridgeService extends EventEmitter {
   private cliPermissionBroker: CliPermissionBroker | null = null;
   /** Контексты сессий Claude CLI, ожидающих запросов разрешений: sessionId → правила и канал чанков. */
   private cliPermissionContexts = new Map<string, CliPermissionContext>();
+  /** tool_use_id Claude CLI → requestId HITL: чтобы результат инструмента попал в аудит (TASK-57). */
+  private cliToolUseRequests = new Map<string, string>();
+  /** Движок активных сессий AI Studio для событий agent:* (TASK-57). */
+  private sessionEngines = new Map<string, HitlEngine>();
+  private sessionStartedAt = new Map<string, number>();
 
   constructor() {
     super();
@@ -360,14 +349,19 @@ class ClaudeBridgeService extends EventEmitter {
     this.cliPermissionBroker = broker;
   }
 
-  /** Регистрирует сессию CLI как получателя запросов разрешений (публично ради unit-тестов). */
+  /**
+   * Регистрирует сессию CLI как получателя запросов разрешений (публично ради unit-тестов).
+   * `meta.permissions` (права роли) сужают `config` до сохранения контекста.
+   */
   public registerCliPermissionContext(
     sessionId: string,
     projectPath: string,
     config: AIProviderConfig,
-    onChunk: (chunk: ClaudeBridgeMessageChunk) => void
+    onChunk: (chunk: ClaudeBridgeMessageChunk) => void,
+    meta: CliPermissionMeta = {}
   ): void {
-    this.cliPermissionContexts.set(sessionId, { projectPath, config, onChunk });
+    const effective = applyRolePermissions(config, meta.permissions);
+    this.cliPermissionContexts.set(sessionId, { ...meta, projectPath, config: effective, onChunk });
   }
 
   public unregisterCliPermissionContext(sessionId: string): void {
@@ -379,30 +373,77 @@ class ClaudeBridgeService extends EventEmitter {
   }
 
   /**
+   * Результат инструмента Claude CLI (событие `user` → `tool_result` stream-json): если инструмент
+   * проходил через HITL, результат записывается в аудит по requestId.
+   */
+  public noteCliToolResult(toolUseId: string | undefined, isError: boolean, detail?: string): void {
+    if (!toolUseId) return;
+    const requestId = this.cliToolUseRequests.get(toolUseId);
+    if (!requestId) return;
+    this.cliToolUseRequests.delete(toolUseId);
+    hitlService.recordOutcome(requestId, isError ? 'failed' : 'executed', detail);
+  }
+
+  /** Разбирает событие stream-json Claude CLI типа `user` и передаёт tool_result в аудит. */
+  public noteCliUserEvent(event: any): void {
+    const content = event?.message?.content;
+    if (!Array.isArray(content)) return;
+    for (const item of content) {
+      if (item?.type !== 'tool_result') continue;
+      const text = typeof item.content === 'string'
+        ? item.content
+        : Array.isArray(item.content) ? item.content.map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join(' ') : '';
+      this.noteCliToolResult(item.tool_use_id, Boolean(item.is_error), text ? text.slice(0, 200) : undefined);
+    }
+  }
+
+  /**
    * Обработчик --permission-prompt-tool: вызывается MCP-сервером ProjectHub до выполнения
-   * инструмента Claude Code. Применяет autoApproveRules и при необходимости показывает
-   * карточку одобрения (requestApproval), возвращая CLI решение пользователя.
+   * инструмента Claude Code. Вердикт даёт политика (`evaluateToolRequest`, правила пользователя,
+   * суженные ролью); при `ask` показывается карточка через единую очередь `hitlService`.
+   * Авто-решения тоже попадают в аудит с именем правила.
    */
   public async handleCliPermissionRequest(sessionId: string, request: CliPermissionRequest): Promise<CliPermissionDecision> {
     const ctx = this.cliPermissionContexts.get(sessionId);
     if (!ctx) {
-      return { behavior: 'deny', message: 'ProjectHub: сессия AI Studio не найдена или уже завершена — запрос разрешения отклонён.' };
+      return { behavior: 'deny', message: 'ProjectHub: сессия агента не найдена или уже завершена — запрос разрешения отклонён.' };
     }
     const { projectPath, config, onChunk } = ctx;
     const rules = config.autoApproveRules;
-    const auto = Boolean(config.autoApprove);
     const toolName = String(request.tool_name || '');
     const input: Record<string, any> = request.input && typeof request.input === 'object' ? request.input : {};
+    const meta = {
+      origin: ctx.origin ?? 'studio',
+      engine: ctx.engine ?? 'claude-cli',
+      agentId: ctx.agentId,
+      agentName: ctx.agentName,
+      role: ctx.role,
+      tool: toolName
+    } as const;
+    const verdict = evaluateToolRequest(config, projectPath, toolName, input);
 
     const allow = (updatedInput: Record<string, any> = input): CliPermissionDecision => ({ behavior: 'allow', updatedInput });
     const deny = (message: string): CliPermissionDecision => ({ behavior: 'deny', message });
-    const newId = () => `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const newId = () => hitlService.newRequestId();
+    const filePathOf = () => String(input.file_path || input.notebook_path || input.path || '');
+    const commandOf = () => String(input.command || input.cmd || '');
+    const recordAuto = (decision: 'allow' | 'deny', type: ApprovalRequest['type'], extra: Partial<ApprovalRequest> = {}) => {
+      const id = hitlService.recordAutoDecision(
+        { sessionId, projectPath, type, title: `${toolName}: ${verdict.rule}`, ...meta, ...extra },
+        decision,
+        verdict.rule,
+        verdict.reason
+      );
+      if (request.tool_use_id && decision === 'allow') this.cliToolUseRequests.set(request.tool_use_id, id);
+    };
 
     /** Показывает карточку и ждёт ответа; null — ожидание отменено (abortSession/killAll). */
     const ask = async (approvalReq: ApprovalRequest): Promise<ApprovalResponse | null> => {
-      onChunk({ approvalRequest: approvalReq });
+      const req: ApprovalRequest = { ...meta, ...approvalReq };
+      if (request.tool_use_id) this.cliToolUseRequests.set(request.tool_use_id, req.id);
+      onChunk({ approvalRequest: req });
       try {
-        return await this.requestApproval(approvalReq);
+        return await this.requestApproval(req, { timeoutMs: this.approvalTimeoutMs(config) });
       } catch (err) {
         if (err instanceof ApprovalCancelledError) return null;
         throw err;
@@ -417,7 +458,14 @@ class ClaudeBridgeService extends EventEmitter {
       if (res.approved) return allow();
       return deny(`Пользователь отклонил ${what}${res.text ? `: ${res.text}` : ''}`);
     };
-    const filePathOf = () => String(input.file_path || input.notebook_path || input.path || '');
+
+    if (verdict.verdict === 'deny') {
+      recordAuto('deny', CLI_WRITE_TOOLS.includes(toolName) ? 'file_write' : 'command', {
+        filePath: filePathOf() || undefined,
+        command: commandOf() || undefined
+      });
+      return deny(verdict.reason || `Инструмент ${toolName} отклонён политикой (${verdict.rule}).`);
+    }
 
     if (toolName === 'AskUserQuestion') {
       const questions: any[] = Array.isArray(input.questions) ? input.questions : [];
@@ -454,14 +502,15 @@ class ClaudeBridgeService extends EventEmitter {
 
     if (toolName === 'Read' || toolName === 'NotebookRead') {
       const filePath = filePathOf();
-      const isExcluded = Boolean(rules?.readExcludePatterns && this.isPathExcluded(filePath, rules.readExcludePatterns));
-      const outside = Boolean(filePath) && !isInsideProject(projectPath, filePath);
-      if (!isExcluded && !outside && rules?.allowFileRead !== false) return allow();
-      const reason = isExcluded
+      if (verdict.verdict === 'allow') {
+        recordAuto('allow', 'question', { filePath });
+        return allow();
+      }
+      const reason = verdict.rule === 'read-excluded'
         ? `Файл ${filePath} находится в списке исключений для чтения.`
-        : outside ? `Файл ${filePath} находится вне корня проекта.` : 'Чтение файлов требует подтверждения по настройкам.';
+        : verdict.rule === 'read-outside' ? `Файл ${filePath} находится вне корня проекта.` : 'Чтение файлов требует подтверждения по настройкам.';
       const res = await ask({
-        id: newId(), sessionId, projectPath, type: 'question',
+        id: newId(), sessionId, projectPath, type: 'question', filePath,
         title: 'Чтение защищенного файла',
         details: `${reason} Разрешить Claude Code доступ?`,
         questionData: {
@@ -485,13 +534,12 @@ class ClaudeBridgeService extends EventEmitter {
 
     if (CLI_WRITE_TOOLS.includes(toolName)) {
       const filePath = filePathOf();
-      if (filePath && !isInsideProject(projectPath, filePath)) {
-        // Как в API-режиме (TASK-32): пути вне корня проекта отклоняются без карточки даже при auto-approve.
-        return deny(`Запись отклонена: путь "${filePath}" находится вне корня проекта "${projectPath}". `
-          + 'Разрешены только пути внутри проекта — укажи путь относительно его корня без выхода через "..".');
+      // Путь вне корня проекта уже отклонён политикой выше (rule `outside-project`, TASK-32).
+      const isExcluded = verdict.rule === 'write-excluded';
+      if (verdict.verdict === 'allow') {
+        recordAuto('allow', 'file_write', { filePath });
+        return allow();
       }
-      const isExcluded = Boolean(rules?.writeExcludePatterns && this.isPathExcluded(filePath, rules.writeExcludePatterns));
-      if (auto && !isExcluded && rules?.allowFileWrite !== false) return allow();
 
       const diff = await this.buildCliWriteDiff(projectPath, toolName, filePath, input);
       const res = await ask({
@@ -506,9 +554,12 @@ class ClaudeBridgeService extends EventEmitter {
     }
 
     if (toolName === 'Bash' || toolName === 'PowerShell') {
-      const cmd = String(input.command || input.cmd || '');
-      const isDenied = Boolean(rules?.commandDenyList && this.isCommandDenied(cmd, rules.commandDenyList));
-      if (auto && !isDenied && rules?.allowCommands !== false) return allow();
+      const cmd = commandOf();
+      const isDenied = verdict.rule === 'command-denied';
+      if (verdict.verdict === 'allow') {
+        recordAuto('allow', 'command', { command: cmd });
+        return allow();
+      }
       const res = await ask({
         id: newId(), sessionId, projectPath, type: 'command',
         title: isDenied ? `⚠️ Заблокированная команда требует подтверждения: ${cmd}` : `Разрешение на запуск команды: ${cmd}`,
@@ -520,7 +571,12 @@ class ClaudeBridgeService extends EventEmitter {
     }
 
     if (toolName === 'Agent' || toolName === 'Task') {
-      if (rules?.allowSubagents !== false) return allow();
+      // Подагенты: карточка только при allowSubagents=false (как до TASK-57); в ручном режиме
+      // каждый инструмент подагента всё равно пройдёт через этот же обработчик.
+      if (rules?.allowSubagents !== false) {
+        recordAuto('allow', 'subagent_dispatch');
+        return allow();
+      }
       const description = String(input.description || input.prompt || 'Подзадача').slice(0, 200);
       const res = await ask({
         id: newId(), sessionId, projectPath, type: 'subagent_dispatch',
@@ -532,7 +588,10 @@ class ClaudeBridgeService extends EventEmitter {
     }
 
     // Прочие инструменты (WebFetch, WebSearch, MCP-инструменты и т.п.).
-    if (auto) return allow();
+    if (verdict.verdict === 'allow') {
+      recordAuto('allow', 'command');
+      return allow();
+    }
     let inputPreview: string;
     try {
       inputPreview = JSON.stringify(input) ?? '';
@@ -626,32 +685,31 @@ class ClaudeBridgeService extends EventEmitter {
     this.emit('statusChanged', updated);
   }
 
-  public async requestApproval(request: ApprovalRequest): Promise<ApprovalResponse> {
-    return new Promise((resolve, reject) => {
-      this.pendingApprovals.set(request.id, {
-        sessionId: request.sessionId,
-        projectPath: request.projectPath,
-        resolve,
-        reject
-      });
-      this.setProjectStatus(request.projectPath, 'waiting_approval', request.title, request);
-    });
+  /** Таймаут ожидания решения из настроек (минуты) → мс; без настройки — умолчание hitlService. */
+  private approvalTimeoutMs(config: AIProviderConfig | undefined): number | undefined {
+    const min = config?.autoApproveRules?.approvalTimeoutMin;
+    return typeof min === 'number' && min > 0 ? min * 60_000 : undefined;
   }
 
-  public sendApprovalResponse(requestId: string, response: ApprovalResponse): boolean {
-    const pending = this.pendingApprovals.get(requestId);
-    if (pending) {
-      this.pendingApprovals.delete(requestId);
-      pending.resolve(response);
-      return true;
-    }
-    return false;
+  /**
+   * Ставит карточку в единую очередь HITL и ждёт решения (TASK-57). Ответ может прийти из окна,
+   * с телефона или от MCP-клиента — все они вызывают `hitlService.decide(requestId, …)`.
+   * Отмена сессии → reject {@link ApprovalCancelledError}; таймаут → `{ approved: false }`.
+   */
+  public async requestApproval(request: ApprovalRequest, options: { timeoutMs?: number } = {}): Promise<ApprovalResponse> {
+    const req: ApprovalRequest = { origin: 'studio', engine: 'api', ...request };
+    const promise = hitlService.request(req, options);
+    this.setProjectStatus(req.projectPath, 'waiting_approval', req.title, req);
+    return promise;
+  }
+
+  /** Локальное решение из окна ProjectHub; адресуется строго по requestId. */
+  public sendApprovalResponse(requestId: string, response: ApprovalResponse, source: HitlDecisionSource = { kind: 'local' }): boolean {
+    return hitlService.decide(requestId, response, source).ok;
   }
 
   public getPendingApprovalIds(sessionId?: string): string[] {
-    return Array.from(this.pendingApprovals.entries())
-      .filter(([, p]) => !sessionId || p.sessionId === sessionId)
-      .map(([id]) => id);
+    return hitlService.listPending(sessionId ? { sessionId } : {}).map((r) => r.id);
   }
 
   /**
@@ -659,17 +717,13 @@ class ClaudeBridgeService extends EventEmitter {
    * переводит статус проекта из waiting_approval в idle. Возвращает число отклонённых.
    */
   public rejectPendingApprovals(sessionId?: string, reason?: string): number {
-    let count = 0;
-    for (const [id, pending] of Array.from(this.pendingApprovals.entries())) {
-      if (sessionId && pending.sessionId !== sessionId) continue;
-      this.pendingApprovals.delete(id);
-      count++;
-      pending.reject(new ApprovalCancelledError(reason));
-      if (this.projectStatuses.get(pending.projectPath)?.status === 'waiting_approval') {
-        this.setProjectStatus(pending.projectPath, 'idle', 'Ожидание одобрения отменено');
+    const cancelled = sessionId ? hitlService.cancelSession(sessionId, reason) : hitlService.cancelAll(reason);
+    for (const req of cancelled) {
+      if (this.projectStatuses.get(req.projectPath)?.status === 'waiting_approval') {
+        this.setProjectStatus(req.projectPath, 'idle', 'Ожидание одобрения отменено');
       }
     }
-    return count;
+    return cancelled.length;
   }
 
   public getClaudeCliSessionId(sessionId: string): string | undefined {
@@ -680,13 +734,17 @@ class ClaudeBridgeService extends EventEmitter {
     return this.activeSessions.has(sessionId);
   }
 
-  private startSession(sessionId: string, projectPath: string): void {
+  private startSession(sessionId: string, projectPath: string, engine: HitlEngine): void {
     this.abortedSessions.delete(sessionId);
     this.activeSessions.set(sessionId, projectPath);
+    this.sessionEngines.set(sessionId, engine);
+    this.sessionStartedAt.set(sessionId, Date.now());
+    appEventBus.publish({ type: 'agent:started', sessionId, projectPath, origin: 'studio', engine, hostId: hitlService.currentHostId, at: Date.now() });
   }
 
   /**
-   * Единая точка завершения сессии: статус проекта, подагенты, снятие с учёта.
+   * Единая точка завершения сессии: статус проекта, подагенты, снятие с учёта, отмена ожидающих
+   * запросов HITL и событие `agent:finished|failed` в шину (TASK-57).
    * Вызывается ровно один раз на запуск runAgentTask (done/error/aborted).
    */
   private finishSession(
@@ -698,7 +756,19 @@ class ClaudeBridgeService extends EventEmitter {
     this.activeSessions.delete(sessionId);
     this.abortedSessions.delete(sessionId);
     this.finishSessionSubagents(sessionId, outcome === 'done' ? 'completed' : 'failed');
+    hitlService.cancelSession(sessionId, outcome === 'done' ? 'Сессия завершена' : message);
     this.setProjectStatus(projectPath, outcome === 'done' ? 'done' : outcome === 'error' ? 'error' : 'idle', message);
+
+    const engine = this.sessionEngines.get(sessionId) ?? 'api';
+    const startedAt = this.sessionStartedAt.get(sessionId);
+    this.sessionEngines.delete(sessionId);
+    this.sessionStartedAt.delete(sessionId);
+    const base = { sessionId, projectPath, origin: 'studio' as const, engine, hostId: hitlService.currentHostId, at: Date.now(), durationMs: startedAt ? Date.now() - startedAt : undefined };
+    if (outcome === 'error') {
+      appEventBus.publish({ type: 'agent:failed', ...base, error: message });
+    } else {
+      appEventBus.publish({ type: 'agent:finished', ...base, outcome });
+    }
   }
 
   public registerSubagent(subagent: SubagentInfo): void {
@@ -877,6 +947,9 @@ class ClaudeBridgeService extends EventEmitter {
     this.activeSubagents.clear();
     this.sessionClaudeCliIds.clear();
     this.cliPermissionContexts.clear();
+    this.cliToolUseRequests.clear();
+    this.sessionEngines.clear();
+    this.sessionStartedAt.clear();
   }
 
   /**
@@ -884,13 +957,17 @@ class ClaudeBridgeService extends EventEmitter {
    * подключения к sessionId через query-параметр) и файл настроек с правилами `permissions.ask`.
    * Файлы пишутся в ~/.projecthub/claude_config/hitl и удаляются по завершении процесса.
    * null — брокер не задан или сервер поднять не удалось.
+   *
+   * Публичный: тем же путём Swarm/Handoff запускают своих агентов (TASK-57), передавая в `meta`
+   * источник, роль и её права. `env` содержит MCP_TOOL_TIMEOUT для дочернего процесса.
    */
-  private async prepareCliPermissions(
+  public async prepareCliPermissions(
     sessionId: string,
     projectPath: string,
     config: AIProviderConfig,
-    onChunk: (chunk: ClaudeBridgeMessageChunk) => void
-  ): Promise<{ args: string[]; cleanup: () => void } | null> {
+    onChunk: (chunk: ClaudeBridgeMessageChunk) => void,
+    meta: CliPermissionMeta = {}
+  ): Promise<{ args: string[]; env: Record<string, string>; cleanup: () => void } | null> {
     if (!this.cliPermissionBroker) return null;
     let endpoint: CliPermissionEndpoint | null = null;
     try {
@@ -935,7 +1012,8 @@ class ClaudeBridgeService extends EventEmitter {
         '--permission-prompt-tool', `mcp__${CLI_HITL_MCP_SERVER_NAME}__${CLI_HITL_PERMISSION_TOOL}`
       ];
 
-      const settings = buildCliPermissionSettings(config);
+      const effective = applyRolePermissions(config, meta.permissions);
+      const settings = buildCliPermissionSettings(effective);
       if (settings) {
         const settingsPath = path.join(dir, `${safeId}.settings.json`);
         await fs.writeFile(settingsPath, JSON.stringify(settings), { encoding: 'utf-8', mode: 0o600 });
@@ -943,8 +1021,12 @@ class ClaudeBridgeService extends EventEmitter {
         args.push('--settings', quoteShellArg(settingsPath));
       }
 
-      this.registerCliPermissionContext(sessionId, projectPath, config, onChunk);
-      return { args, cleanup };
+      this.registerCliPermissionContext(sessionId, projectPath, effective, onChunk, meta);
+      const cleanupAll = () => {
+        this.cliPermissionContexts.delete(sessionId);
+        cleanup();
+      };
+      return { args, env: { MCP_TOOL_TIMEOUT: String(CLI_MCP_TOOL_TIMEOUT_MS) }, cleanup: cleanupAll };
     } catch (err) {
       console.error('[ClaudeBridge] Не удалось подготовить файлы HITL для Claude CLI:', err);
       cleanup();
@@ -1012,47 +1094,13 @@ class ClaudeBridgeService extends EventEmitter {
     };
   }
 
+  /** Реализация вынесена в чистый модуль hitlPolicy (TASK-57); методы оставлены для совместимости. */
   public isPathExcluded(filePath: string, patterns: string[] = []): boolean {
-    if (!filePath || !patterns || patterns.length === 0) return false;
-    const normalized = filePath.replace(/\\/g, '/').toLowerCase();
-    const baseName = path.basename(normalized);
-
-    const matches = (pattern: string): boolean => {
-      if (!pattern) return false;
-
-      if (pattern.startsWith('**/')) {
-        // `**/<sub>`: на любой глубине — сводим к проверке <sub> (в т.ч. `**/*.key`, `**/.env*`)
-        const sub = pattern.slice(3);
-        return matches(sub) || normalized.endsWith('/' + sub);
-      }
-      if (pattern.startsWith('./')) {
-        return matches(pattern.slice(2));
-      }
-      if (pattern.startsWith('*') && pattern.endsWith('*')) {
-        const sub = pattern.slice(1, -1);
-        return normalized.includes(sub);
-      }
-      if (pattern.startsWith('*')) {
-        const ext = pattern.slice(1);
-        return normalized.endsWith(ext);
-      }
-      if (pattern.endsWith('*')) {
-        const prefix = pattern.slice(0, -1);
-        return normalized.startsWith(prefix) || baseName.startsWith(prefix);
-      }
-      return normalized === pattern || baseName === pattern || normalized.endsWith('/' + pattern);
-    };
-
-    return patterns.some((rawPattern) => matches(rawPattern.trim().replace(/\\/g, '/').toLowerCase()));
+    return policyIsPathExcluded(filePath, patterns);
   }
 
   public isCommandDenied(command: string, denyList: string[] = []): boolean {
-    if (!command || !denyList || denyList.length === 0) return false;
-    const normCmd = command.trim().toLowerCase();
-    return denyList.some((denied) => {
-      const d = denied.trim().toLowerCase();
-      return d && normCmd.includes(d);
-    });
+    return policyIsCommandDenied(command, denyList);
   }
 
   /**
@@ -1079,11 +1127,12 @@ class ClaudeBridgeService extends EventEmitter {
     const canAutoRead = rules ? rules.allowFileRead !== false : true;
     const canAutoSubagents = isMasterAutoApprove && (rules ? rules.allowSubagents !== false : true);
 
-    this.startSession(sessionId, projectPath);
+    // If using Anthropic without API key, run directly via local Claude CLI subscription!
+    const useCli = req.config.provider === 'anthropic' && (!req.config.apiKey || !req.config.apiKey.trim());
+    this.startSession(sessionId, projectPath, useCli ? 'claude-cli' : 'api');
     this.setProjectStatus(projectPath, 'running', 'Агент анализирует задачу...');
 
-    // If using Anthropic without API key, run directly via local Claude CLI subscription!
-    if (req.config.provider === 'anthropic' && (!req.config.apiKey || !req.config.apiKey.trim())) {
+    if (useCli) {
       return this.runClaudeCliTask(req, onChunk, onComplete, onError);
     }
 
@@ -1191,12 +1240,17 @@ class ClaudeBridgeService extends EventEmitter {
   ): Promise<void> {
     const { sessionId, projectPath } = req;
     const { canAutoCommands, canAutoWrite } = perms;
+    const timeoutMs = this.approvalTimeoutMs(req.config);
+    const meta = { origin: 'studio' as const, engine: 'api' as const, tool: tc.name };
+    const autoInfo = (type: ApprovalRequest['type'], extra: Partial<ApprovalRequest> = {}) =>
+      ({ sessionId, projectPath, type, title: `${tc.name}`, ...meta, ...extra });
     if (tc.name === 'ask_question' || tc.name === 'AskUserQuestion') {
       const qData = this.parseQuestionData(tc.args);
       const approvalReq: ApprovalRequest = {
-        id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        id: hitlService.newRequestId(),
         sessionId,
         projectPath,
+        ...meta,
         type: 'question',
         title: qData.title || 'Вопрос от ассистента',
         details: qData.subtitle,
@@ -1205,7 +1259,7 @@ class ClaudeBridgeService extends EventEmitter {
       };
 
       onChunk({ approvalRequest: approvalReq });
-      const res = await this.requestApproval(approvalReq);
+      const res = await this.requestApproval(approvalReq, { timeoutMs });
       tc.status = res.approved ? 'accepted' : 'rejected';
       tc.result = res.text || (res.approved ? 'Подтверждено пользователем' : 'Отклонено пользователем');
       onChunk({ toolCall: tc });
@@ -1215,9 +1269,11 @@ class ClaudeBridgeService extends EventEmitter {
 
       if (isExcludedFromRead) {
         const approvalReq: ApprovalRequest = {
-          id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: hitlService.newRequestId(),
           sessionId,
           projectPath,
+          ...meta,
+          filePath,
           type: 'question',
           title: `Разрешение на чтение защищенного файла`,
           details: `Файл ${filePath} находится в списке исключений для чтения. Разрешить агенту доступ?`,
@@ -1235,7 +1291,7 @@ class ClaudeBridgeService extends EventEmitter {
         };
 
         onChunk({ approvalRequest: approvalReq });
-        const res = await this.requestApproval(approvalReq);
+        const res = await this.requestApproval(approvalReq, { timeoutMs });
         if (!res.approved || res.text?.includes('deny') || res.text?.includes('Запретить')) {
           tc.status = 'rejected';
           tc.result = `Доступ к чтению файла ${filePath} отклонен пользователем`;
@@ -1247,20 +1303,26 @@ class ClaudeBridgeService extends EventEmitter {
       const cmd = tc.args.command || tc.args.cmd || '';
       const isDenied = rules?.commandDenyList && this.isCommandDenied(cmd, rules.commandDenyList);
       const shouldAutoRun = canAutoCommands && !isDenied;
-
-      if (shouldAutoRun) {
+      const runApproved = async (requestId: string) => {
         try {
           await this.runCommandTool(tc, cmd, sessionId, projectPath, rules, onChunk);
+          hitlService.recordOutcome(requestId, tc.status === 'error' ? 'failed' : 'executed');
         } catch (e: any) {
           tc.status = 'error';
           tc.result = `Error: ${e.message}`;
           onChunk({ toolCall: tc });
+          hitlService.recordOutcome(requestId, 'failed', e?.message);
         }
+      };
+
+      if (shouldAutoRun) {
+        await runApproved(hitlService.recordAutoDecision(autoInfo('command', { command: cmd }), 'allow', 'auto-command'));
       } else {
         const approvalReq: ApprovalRequest = {
-          id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: hitlService.newRequestId(),
           sessionId,
           projectPath,
+          ...meta,
           type: 'command',
           title: isDenied ? `⚠️ Заблокированная команда требует подтверждения: ${cmd}` : `Разрешение на запуск команды: ${cmd}`,
           command: cmd,
@@ -1269,16 +1331,10 @@ class ClaudeBridgeService extends EventEmitter {
         };
 
         onChunk({ approvalRequest: approvalReq });
-        const res = await this.requestApproval(approvalReq);
+        const res = await this.requestApproval(approvalReq, { timeoutMs });
 
         if (res.approved) {
-          try {
-            await this.runCommandTool(tc, cmd, sessionId, projectPath, rules, onChunk);
-          } catch (e: any) {
-            tc.status = 'error';
-            tc.result = `Error: ${e.message}`;
-            onChunk({ toolCall: tc });
-          }
+          await runApproved(approvalReq.id);
         } else {
           tc.status = 'rejected';
           tc.result = `Отклонено пользователем: ${res.text || 'Без комментария'}`;
@@ -1292,6 +1348,19 @@ class ClaudeBridgeService extends EventEmitter {
       const isExcluded = rules?.writeExcludePatterns && this.isPathExcluded(filePath, rules.writeExcludePatterns);
       const shouldAutoWrite = canAutoWrite && !isExcluded;
 
+      const applyApproved = async (requestId: string, successMessage: string) => {
+        try {
+          await aiAgentService.applyDiff(projectPath, filePath, content);
+          tc.status = 'accepted';
+          tc.result = successMessage;
+          onChunk({ toolCall: tc });
+          hitlService.recordOutcome(requestId, 'executed');
+        } catch (e: any) {
+          hitlService.recordOutcome(requestId, 'failed', e?.message);
+          throw e;
+        }
+      };
+
       if (!isInsideProject(projectPath, filePath)) {
         // Абсолютный путь вне проекта или выход через `..` — отклоняем до любых
         // одобрений, даже при auto-approve, и объясняем модели причину (TASK-32).
@@ -1299,11 +1368,12 @@ class ClaudeBridgeService extends EventEmitter {
         tc.result = `Запись отклонена: путь "${filePath}" находится вне корня проекта "${projectPath}". `
           + 'Разрешены только пути внутри проекта — укажи путь относительно его корня без выхода через "..".';
         onChunk({ toolCall: tc });
+        hitlService.recordAutoDecision(autoInfo('file_write', { filePath }), 'deny', 'outside-project', tc.result);
       } else if (shouldAutoWrite) {
-        await aiAgentService.applyDiff(projectPath, filePath, content);
-        tc.status = 'accepted';
-        tc.result = `Файл ${filePath} успешно записан`;
-        onChunk({ toolCall: tc });
+        await applyApproved(
+          hitlService.recordAutoDecision(autoInfo('file_write', { filePath }), 'allow', 'auto-write'),
+          `Файл ${filePath} успешно записан`
+        );
       } else {
         let oldContent = '';
         const fullPath = path.resolve(projectPath, filePath);
@@ -1316,9 +1386,10 @@ class ClaudeBridgeService extends EventEmitter {
         tc.diff = { filePath, oldContent, newContent: content, patch };
 
         const approvalReq: ApprovalRequest = {
-          id: `appr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          id: hitlService.newRequestId(),
           sessionId,
           projectPath,
+          ...meta,
           type: 'file_write',
           title: isExcluded ? `⚠️ Файл в списке исключений: ${filePath}` : `Разрешение на запись файла: ${filePath}`,
           filePath,
@@ -1328,12 +1399,9 @@ class ClaudeBridgeService extends EventEmitter {
         };
 
         onChunk({ approvalRequest: approvalReq, toolCall: tc });
-        const res = await this.requestApproval(approvalReq);
+        const res = await this.requestApproval(approvalReq, { timeoutMs });
         if (res.approved) {
-          await aiAgentService.applyDiff(projectPath, filePath, content);
-          tc.status = 'accepted';
-          tc.result = `Файл ${filePath} успешно сохранен`;
-          onChunk({ toolCall: tc });
+          await applyApproved(approvalReq.id, `Файл ${filePath} успешно сохранен`);
         } else {
           tc.status = 'rejected';
           tc.result = `Отклонено пользователем: ${res.text || 'Без комментария'}`;
@@ -1410,7 +1478,7 @@ class ClaudeBridgeService extends EventEmitter {
     // Human-in-the-loop (TASK-42): разрешения запрашиваются через встроенный MCP-сервер
     // до выполнения инструмента. --dangerously-skip-permissions — только как запасной
     // вариант при auto-approve, если сервер поднять не удалось.
-    const hitl = await this.prepareCliPermissions(sessionId, projectPath, req.config, onChunk);
+    const hitl = await this.prepareCliPermissions(sessionId, projectPath, req.config, onChunk, { origin: 'studio', engine: 'claude-cli' });
     let hitlWarning = '';
     if (hitl) {
       cliArgs.push(...hitl.args);
@@ -1418,7 +1486,13 @@ class ClaudeBridgeService extends EventEmitter {
       cliArgs.push('--dangerously-skip-permissions');
       hitlWarning = '> ⚠️ Встроенный MCP-сервер ProjectHub недоступен: Claude Code запущен без проверки разрешений, '
         + 'списки исключений и запрещённых команд в этом ответе не применяются.\n\n';
-      console.warn(`[ClaudeBridge] HITL недоступен для сессии ${sessionId}, запуск с --dangerously-skip-permissions`);
+      hitlService.recordFallback({
+        sessionId,
+        projectPath,
+        origin: 'studio',
+        engine: 'claude-cli',
+        reason: 'Встроенный MCP-сервер недоступен, включено авто-одобрение: запуск с --dangerously-skip-permissions'
+      });
     } else {
       const message = 'Не удалось запустить встроенный MCP-сервер ProjectHub, через который Claude Code запрашивает '
         + 'подтверждения действий. Включите сервер в настройках MCP (или освободите его порт) либо включите авто-одобрение в настройках AI Studio.';
@@ -1432,6 +1506,7 @@ class ClaudeBridgeService extends EventEmitter {
       this.cliPermissionContexts.delete(sessionId);
       hitl?.cleanup();
     };
+    const hitlEnv = hitl?.env ?? { MCP_TOOL_TIMEOUT: String(CLI_MCP_TOOL_TIMEOUT_MS) };
 
     let child: ChildProcessWithoutNullStreams;
     try {
@@ -1447,7 +1522,7 @@ class ClaudeBridgeService extends EventEmitter {
             FORCE_COLOR: '0',
             CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR,
             // Инструмент разрешений ждёт человека — стандартный таймаут MCP-инструмента слишком мал.
-            MCP_TOOL_TIMEOUT: String(CLI_MCP_TOOL_TIMEOUT_MS)
+            ...hitlEnv
           }
         }
       );
@@ -1563,6 +1638,9 @@ class ClaudeBridgeService extends EventEmitter {
                 onChunk({ toolCall: tc });
               }
             }
+          } else if (event.type === 'user') {
+            // Результаты инструментов (tool_result) — в аудит HITL по tool_use_id (TASK-57).
+            this.noteCliUserEvent(event);
           } else if (event.type === 'result') {
             if (event.result && typeof event.result === 'string' && !accumulatedText) {
               accumulatedText = event.result;

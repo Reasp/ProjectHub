@@ -14,6 +14,7 @@ import { agentFleetService } from './services/agentFleetService';
 import { invalidateInspectCache } from './services/projectScanner';
 import { logger, parseLogLevel } from './services/logger';
 import { getUserDataDir } from './services/appPaths';
+import { hitlService } from './services/hitlService';
 import { registerAllIpc } from './ipc';
 
 // Логи main-процесса: stdout + файл userData/logs/main.log с ротацией (TASK-49).
@@ -343,6 +344,13 @@ async function performGracefulShutdown() {
   }
 
   try {
+    // Очередь HITL остаётся на диске (orphaned) и восстанавливается после перезапуска (TASK-57).
+    await hitlService.shutdown();
+  } catch (e) {
+    console.warn('[Main] Error persisting HITL queue:', e);
+  }
+
+  try {
     claudeBridgeService.killAll();
   } catch (e) {
     console.warn('[Main] Error cleaning up agent sessions:', e);
@@ -427,6 +435,14 @@ app.whenReady().then(() => {
 
   // Восстановление swarm-сессий с диска: незавершённые помечаются interrupted (TASK-56)
   void agentFleetService.init();
+
+  // Единый HITL-контур: очередь <userData>/hitl/pending.json и аудит <userData>/audit (TASK-57)
+  hitlService.configure({ hostId: remoteControlService.getHostId() });
+  hitlService
+    .init({ dir: path.join(getUserDataDir(), 'hitl'), auditDir: path.join(getUserDataDir(), 'audit') })
+    .catch((err) => {
+      console.error('[Main] Failed to init HITL service:', err);
+    });
 
   claudeBridgeService.setCliPermissionBroker({
     ensureEndpoint: () => mcpServerService.ensurePermissionEndpoint()

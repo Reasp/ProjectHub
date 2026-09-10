@@ -5,6 +5,7 @@
  */
 import type { AIProviderConfig } from './aiAgentService.js';
 import type { AgentUsage } from './agentCost.js';
+import type { RolePermissions } from './hitlTypes.js';
 
 export type SwarmMode = 'fan_out' | 'handoff';
 export type SwarmStatus =
@@ -37,6 +38,11 @@ export interface AgentSlotConfig {
   cliCommand?: string;
   /** Бюджет роли/слота в USD; при превышении агент останавливается (decision-9, TASK-56). */
   budgetUsd?: number;
+  /**
+   * Права роли для HITL (decision-10, TASK-57): применяются поверх глобальных настроек
+   * auto-approve и только сужают их. Без поля агент подчиняется глобальным настройкам.
+   */
+  permissions?: RolePermissions;
 }
 
 export interface AgentSlotDiffSummary {

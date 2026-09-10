@@ -13,6 +13,21 @@ tags:
 
 Документ описывает, как AI Studio ProjectHub запрашивает у пользователя подтверждение действий Claude Code, когда провайдер `anthropic` работает через локальный Claude CLI (без API-ключа). Механизм введён в TASK-42 по пункту 5.3 технического аудита (doc-7): раньше CLI запускался с `--dangerously-skip-permissions`, а карточки одобрения генерировались по событию `tool_use`, то есть уже после выполнения инструмента, и ни на что не влияли.
 
+> **TASK-57 (decision-10).** Механизм обобщён до единого HITL-контура для всех агентов: очередь запросов с `requestId` живёт в `hitlService`, через неё проходят AI Studio (CLI и API-движок), Swarm и Handoff; решения принимаются из окна, с удалённого устройства и от MCP-клиентов одним методом `decide(requestId, …)`; каждое решение пишется в аудит-лог. Раздел «Единый контур (TASK-57)» ниже описывает отличия; остальной документ про правила Claude CLI остаётся в силе.
+
+## Единый контур (TASK-57)
+
+- **Очередь** — `electron/services/hitlService.ts`: `request()` ставит карточку (`HitlRequest`, он же `ApprovalRequest` рендерера) в очередь и ждёт решения; `decide(requestId, response, source)` — единственная точка ответа для окна (`claudeBridge:sendApprovalResponse`, `hitl:decide`), Remote Control (RPC `hitl_decision` с обязательным `requestId`) и MCP-клиентов (`projecthub_approve_action`, обязательный `requestId`; список — `projecthub_list_pending_approvals`). Первый ответ выигрывает, повторный получает `already_decided`. Одобрение «верхнего в очереди» удалено из `App.tsx`.
+- **Персистентность** — `<userData>/hitl/pending.json`. После перезапуска записи восстанавливаются как `orphaned`: агент уже не ждёт ответа, они видны в панели, истекают по таймауту, решение по ним попадает только в аудит (`outcome: session_gone`).
+- **Таймаут** — по умолчанию 24 часа, минимум 10 секунд; настраивается в AI Studio → Auto-approve («Таймаут ожидания решения»). По истечении CLI/агент получает `deny`.
+- **Отмена** — `cancelSession(sessionId)` при завершении/прерывании сессии AI Studio (`finishSession`, `abortSession`) и при завершении процесса агента Swarm (`swarm-<agentId>`); при выходе из приложения `shutdown()` оставляет записи на диске.
+- **Политика** — `electron/services/hitlPolicy.ts`: `evaluateToolRequest(config, projectPath, tool, input)` даёт `allow | deny | ask` с именем правила; `applyRolePermissions(config, permissions)` сужает глобальные настройки правами роли (decision-9): `false` запрещает категорию, списки исключений и deny-list объединяются, таймауты берутся минимальные, `allowedTools` пересекаются. Запись вне корня проекта — `deny` при любой комбинации (`outside-project`).
+- **Swarm/Handoff** — `agentFleetService.runClaudeCliAgent` вызывает тот же `claudeBridgeService.prepareCliPermissions(sessionId, cwd, globalConfig, onChunk, meta)` с `meta = { origin, engine, agentId, agentName, role, permissions }` (права из `AgentSlotConfig.permissions`). Флаг `--dangerously-skip-permissions` остаётся только как fallback при недоступном MCP-сервере и включённом (и не суженном ролью) auto-approve: пишется строка `fallback` в аудит, событие `hitl:fallback` показывает предупреждение в окне; при выключенном auto-approve агент не стартует.
+- **Аудит** — `<userData>/audit/hitl-<yyyy-mm>.jsonl` (`electron/services/hitlAudit.ts`): строки `decision` (кто решил: `local`/`remote`+`deviceId`/`mcp`/`auto`+`rule`/`timeout`/`cancelled`/`shutdown`; инструмент, путь, SHA-256 команды и превью с вырезанными секретами, комментарий, время ожидания), `outcome` (результат выполнения: для CLI по `tool_use_id` из `tool_result`, для API-движка по коду выхода/успеху записи), `fallback`. Диффы и содержимое файлов не пишутся. Просмотр — «Центр решений» → «История решений» (фильтры, экспорт CSV/JSONL/JSON), кнопка также в настройках AI Studio.
+- **Шина событий** — `electron/services/eventBus.ts` (`appEventBus`): `hitl:requested|decided|expired|cancelled|fallback`, `agent:started|finished|failed`. Подписчики: рендерер (`bus:event` → `useHitlStore`), Remote Control (`ai:hitl`, `ai:hitlDecided`, `agent:*` доверенным устройствам), далее уведомления (TASK-63).
+- **UI** — бейдж в шапке и кнопка в сайдбаре с числом ожидающих запросов всех сессий; «Центр решений» (`src/components/hitl/HitlCenterModal.tsx`) показывает источник (AI Studio/Swarm/Handoff), агента и роль, проект, инструмент, команду или путь, время ожидания и срок; карточка `InteractiveApprovalCard` переиспользуется для вопросов и диффов. Карточка в AI Studio снимается по событию `hitl:decided` независимо от того, откуда пришёл ответ.
+- **Тесты** — `tests/unit/hitlService.test.ts` (очередь, адресация, таймауты, отмена, персистентность, аудит), `hitlPolicy.test.ts` (сужение правами роли, вердикты), `hitlAudit.test.ts` (формат jsonl, ротация по месяцам, редактирование секретов, экспорт).
+
 ## Общая схема
 
 1. `claudeBridgeService.runClaudeCliTask` запускает `claude -p … --output-format stream-json` **без** `--dangerously-skip-permissions`. В режиме `-p` стартовый режим разрешений Claude Code — «Manual»: любой инструмент, который не разрешён allow-правилом, требует подтверждения.
@@ -57,7 +72,11 @@ Claude Code вызывает инструмент разрешений толь�
 
 ## Ключевые места в коде
 
-- `electron/services/claudeBridgeService.ts`: `handleCliPermissionRequest`, `buildCliPermissionSettings`, `prepareCliPermissions`, `isPathExcluded`, константы `CLI_HITL_*`.
-- `electron/services/mcpServerService.ts`: инструмент `permission_prompt`, `ensurePermissionEndpoint`, `createMcpServer(hitlSessionId)`.
-- `electron/main.ts`: `claudeBridgeService.setCliPermissionBroker(...)` — внедрение адреса MCP-сервера.
-- Тесты: `tests/unit/claudeCliHitl.test.ts`.
+- `electron/services/claudeBridgeService.ts`: `handleCliPermissionRequest` (вердикт через `evaluateToolRequest`, карточки через `hitlService`), `buildCliPermissionSettings`, `prepareCliPermissions` (публичный, с `meta` агента), `noteCliUserEvent` (результаты инструментов в аудит), константы `CLI_HITL_*`.
+- `electron/services/hitlService.ts`, `hitlPolicy.ts`, `hitlAudit.ts`, `hitlTypes.ts`, `eventBus.ts` — единый контур (TASK-57).
+- `electron/services/agentFleetService.ts`: `prepareAgentHitl`, `runClaudeCliAgent` — Swarm/Handoff через тот же контур.
+- `electron/services/mcpServerService.ts`: инструмент `permission_prompt`, `ensurePermissionEndpoint`, `createMcpServer(hitlSessionId)`, `projecthub_list_pending_approvals`, `projecthub_approve_action`.
+- `electron/ipc/hitlIpc.ts`: `hitl:listPending`, `hitl:decide`, `hitl:listAudit`, `hitl:exportAudit`, трансляция `bus:event`.
+- `electron/main.ts`: `claudeBridgeService.setCliPermissionBroker(...)` — внедрение адреса MCP-сервера; `hitlService.init(...)` и `hitlService.shutdown()`.
+- Рендерер: `src/store/useHitlStore.ts`, `src/components/hitl/HitlCenterModal.tsx`, `HitlBadge.tsx`.
+- Тесты: `tests/unit/claudeCliHitl.test.ts`, `hitlService.test.ts`, `hitlPolicy.test.ts`, `hitlAudit.test.ts`.

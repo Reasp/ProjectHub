@@ -20,6 +20,10 @@ export interface AutoApproveRules {
   commandDenyList: string[];
   /** Таймаут команд агента (run_command) в секундах; по умолчанию 5 минут (TASK-33). */
   commandTimeoutSec?: number;
+  /** Таймаут ожидания решения человека в минутах; по умолчанию 24 часа (TASK-57). */
+  approvalTimeoutMin?: number;
+  /** Allow-список инструментов (заполняется правами роли, decision-9); пустой — без ограничений. */
+  allowedTools?: string[];
 }
 
 export interface AIProviderConfig {

@@ -112,6 +112,7 @@ export type RemoteRpcMethod =
   | 'git_push'
   | 'send_ai_prompt'
   | 'hitl_decision'
+  | 'get_pending_approvals'
   | 'run_action'
   | 'get_federation_hosts';
 
@@ -119,13 +120,23 @@ export interface RemoteEventPayloads {
   'process:logChunk': { processId: string; text: string };
   'process:statusChanged': any;
   'ai:chunk': { text: string };
+  /** Запрос HITL (TASK-57): решение отправляется RPC `hitl_decision` строго с `requestId`. */
   'ai:hitl': {
+    requestId: string;
     sessionId: string;
+    projectPath: string;
+    origin?: string;
+    agentName?: string;
+    role?: string;
     tool: string;
+    type?: string;
     description: string;
-    diff?: string;
-    params?: any;
+    details?: string;
+    command?: string;
+    filePath?: string;
+    expiresAt?: number;
   };
+  'ai:hitlDecided': { requestId: string; sessionId: string; approved: boolean; by: string };
   'projects:changed': void;
   'backlog:changed': { projectPath: string };
 }

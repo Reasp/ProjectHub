@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "199a5712ae87124984d359447550dcafbd07c3f56f1a762a8d7df57846dbbc4c",
+  "docsHash": "a8e65645a327d2efc413c1711310a5ebdce0b0ab63228de235e700c45a54352e",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -32,6 +32,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 212,
-  "builtAt": "2026-09-10T12:04:54.788Z"
+  "chunks": 223,
+  "builtAt": "2026-09-10T12:51:43.924Z"
 }

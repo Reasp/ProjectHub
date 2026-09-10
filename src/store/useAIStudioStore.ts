@@ -45,6 +45,8 @@ interface AIStudioState {
   setIsActivitySidebarOpen: (open: boolean) => void;
   clearLiveOutput: (projectPath: string) => void;
   sendApprovalResponse: (projectPath: string, requestId: string, approved: boolean, text?: string) => Promise<void>;
+  /** Убирает карточку, решённую из другого места (Центр решений, телефон, MCP-клиент, таймаут) — TASK-57. */
+  removePendingApproval: (projectPath: string, requestId: string) => void;
   fetchSubagents: (projectPath: string) => Promise<void>;
   dismissRateLimitWarning: (projectPath: string) => void;
 
@@ -211,19 +213,26 @@ export const useAIStudioStore = create<AIStudioState>()(
         }
       },
 
+      removePendingApproval: (projectPath: string, requestId: string) => {
+        set((state) => {
+          const current = state.pendingApprovals[projectPath] || [];
+          if (!current.some((r) => r.id === requestId)) return state;
+          return {
+            pendingApprovals: {
+              ...state.pendingApprovals,
+              [projectPath]: current.filter((r) => r.id !== requestId)
+            }
+          };
+        });
+      },
+
       sendApprovalResponse: async (projectPath: string, requestId: string, approved: boolean, text?: string) => {
         if (window.api?.sendApprovalResponse) {
           try {
+            // Решение уходит в единую очередь HITL по requestId (TASK-57); карточка снимается
+            // сразу — если запрос уже решён с другого устройства, main вернёт false.
             await window.api.sendApprovalResponse(requestId, { approved, text });
-            set((state) => {
-              const current = state.pendingApprovals[projectPath] || [];
-              return {
-                pendingApprovals: {
-                  ...state.pendingApprovals,
-                  [projectPath]: current.filter((r) => r.id !== requestId)
-                }
-              };
-            });
+            get().removePendingApproval(projectPath, requestId);
           } catch (e) {
             console.error('Failed to send approval response:', e);
           }
