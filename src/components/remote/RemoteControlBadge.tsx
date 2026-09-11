@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useTranslation } from '../../i18n';
-import type { RemoteControlStatus } from '../../types/electron';
+import type { RemoteControlStatus, DeviceRights } from '../../types/electron';
 
 export const RemoteControlBadge: React.FC = () => {
   const { t } = useTranslation();
@@ -97,7 +97,10 @@ export const RemoteControlBadge: React.FC = () => {
 
     const localIp = status.localAddresses?.[0] || 'localhost';
     const secretTokenForQr = status.secretToken ?? '';
-    const pairingUrl = `http://${localIp}:${status.port}/remote#host=${status.hostId}&key=${secretTokenForQr}&relay=${encodeURIComponent(status.relayServerUrl)}&mode=${status.mode}`;
+    // `hostId` — идентификатор машины (нужен для подключения через relay), `host` — сетевой адрес
+    // прямого LAN-подключения. Раньше в `host` уезжал hostId, и клиент пытался коннектиться к
+    // `ph_host_...` как к хосту сети (TASK-65).
+    const pairingUrl = `http://${localIp}:${status.port}/remote#hostId=${status.hostId}&key=${secretTokenForQr}&relay=${encodeURIComponent(status.relayServerUrl)}&mode=${status.mode}`;
 
     QRCode.toDataURL(pairingUrl, {
       margin: 2,
@@ -112,7 +115,7 @@ export const RemoteControlBadge: React.FC = () => {
       ? `${status.tunnelUrl}/telegram`
       : telegramBotUsername
       ? `https://t.me/${telegramBotUsername}?startapp=k_${secretTokenForQr.slice(0, 32)}`
-      : `http://${localIp}:${status.port}/telegram#host=${status.hostId}&key=${secretTokenForQr}`;
+      : `http://${localIp}:${status.port}/telegram#hostId=${status.hostId}&host=${localIp}:${status.port}&key=${secretTokenForQr}&relay=${encodeURIComponent(status.relayServerUrl)}&mode=${status.mode}`;
 
     QRCode.toDataURL(effectiveTgUrl, {
       margin: 2,
@@ -211,6 +214,28 @@ export const RemoteControlBadge: React.FC = () => {
     }
   };
 
+  // Права конкретного устройства (TASK-65, decision-11 п.1): до этого права выводились только из
+  // глобального readOnly в момент выдачи токена — сузить доступ одному устройству было нельзя.
+  const handleSetDeviceRights = async (deviceId: string, rights: DeviceRights) => {
+    if (!window.api?.setRemoteDeviceRights) return;
+    try {
+      const next = await window.api.setRemoteDeviceRights(deviceId, rights);
+      setStatus(next);
+    } catch (e) {
+      console.error('Failed to set device rights:', e);
+    }
+  };
+
+  const handleRevokeDevice = async (deviceId: string) => {
+    if (!window.api?.revokeRemoteDevice) return;
+    try {
+      const next = await window.api.revokeRemoteDevice(deviceId);
+      setStatus(next);
+    } catch (e) {
+      console.error('Failed to revoke device token:', e);
+    }
+  };
+
   const handleDisconnectDevice = async (deviceId: string) => {
     if (!window.api?.disconnectRemoteDevice) return;
     try {
@@ -231,10 +256,12 @@ export const RemoteControlBadge: React.FC = () => {
 
   const secretToken = status.secretToken ?? '';
   const connectedCount = status.connectedDevices?.length || 0;
+  // Спаренные, но сейчас не подключённые устройства: их права/токен тоже должны быть управляемы.
+  const offlinePairedDevices = (status.pairedDevices || []).filter((p) => !p.connected);
   const approvedCount = status.connectedDevices?.filter((d) => d.isApproved).length || 0;
   const primaryIp = status.localAddresses?.[0] || 'localhost';
-  const webClientUrl = `http://${primaryIp}:${status.port}/remote#host=${status.hostId}&key=${secretToken}&relay=${encodeURIComponent(status.relayServerUrl)}`;
-  const telegramDirectUrl = `http://${primaryIp}:${status.port}/telegram#host=${status.hostId}&key=${secretToken}`;
+  const webClientUrl = `http://${primaryIp}:${status.port}/remote#hostId=${status.hostId}&key=${secretToken}&relay=${encodeURIComponent(status.relayServerUrl)}&mode=${status.mode}`;
+  const telegramDirectUrl = `http://${primaryIp}:${status.port}/telegram#hostId=${status.hostId}&host=${primaryIp}:${status.port}&key=${secretToken}&relay=${encodeURIComponent(status.relayServerUrl)}&mode=${status.mode}`;
   const telegramBotDeepLink = telegramBotUsername
     ? `https://t.me/${telegramBotUsername}?startapp=host_${status.hostId}`
     : '';
@@ -748,6 +775,16 @@ export const RemoteControlBadge: React.FC = () => {
                           </div>
 
                           <div className="flex items-center gap-2">
+                            <select
+                              value={dev.rights || 'full'}
+                              onChange={(e) => handleSetDeviceRights(dev.id, e.target.value as DeviceRights)}
+                              title={t.remote.deviceRightsHint}
+                              className="bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-[11px] text-slate-200"
+                            >
+                              <option value="readOnly">{t.remote.rightsReadOnly}</option>
+                              <option value="hitl">{t.remote.rightsHitl}</option>
+                              <option value="full">{t.remote.rightsFull}</option>
+                            </select>
                             {!dev.isApproved ? (
                               <button
                                 type="button"
@@ -767,6 +804,51 @@ export const RemoteControlBadge: React.FC = () => {
                               onClick={() => handleDisconnectDevice(dev.id)}
                               className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition"
                               title={t.remote.disconnectDevice}
+                            >
+                              <UserX className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Спаренные устройства не в сети: права и отзыв токена доступны и офлайн */}
+                  {offlinePairedDevices.length > 0 && (
+                    <div className="space-y-2 pt-2">
+                      <div className="text-xs text-slate-400 px-1">
+                        {t.remote.pairedDevicesTitle} ({offlinePairedDevices.length})
+                      </div>
+                      {offlinePairedDevices.map((paired) => (
+                        <div
+                          key={paired.deviceId}
+                          className="flex items-center justify-between p-3 rounded-xl bg-slate-950/40 border border-slate-800/60"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-lg bg-slate-800/60 text-slate-500">
+                              <Smartphone className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-semibold text-slate-300">{paired.name}</div>
+                              <div className="text-[11px] text-slate-500">{t.remote.deviceOffline}</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={paired.rights}
+                              onChange={(e) => handleSetDeviceRights(paired.deviceId, e.target.value as DeviceRights)}
+                              title={t.remote.deviceRightsHint}
+                              className="bg-slate-950 border border-slate-800 rounded px-1.5 py-1 text-[11px] text-slate-200"
+                            >
+                              <option value="readOnly">{t.remote.rightsReadOnly}</option>
+                              <option value="hitl">{t.remote.rightsHitl}</option>
+                              <option value="full">{t.remote.rightsFull}</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => handleRevokeDevice(paired.deviceId)}
+                              className="p-1.5 rounded text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition"
+                              title={t.remote.revokeDeviceToken}
                             >
                               <UserX className="w-3.5 h-3.5" />
                             </button>

@@ -3,11 +3,11 @@ id: TASK-55
 title: >-
   Материализация работы агентов в git: авто-коммит в worktree, дифф по рабочему
   дереву, безопасное слияние и очистка веток
-status: Review
+status: Done
 assignee:
   - '@antigravity'
 created_date: '2026-09-10 07:14'
-updated_date: '2026-09-10 08:00'
+updated_date: '2026-09-11 02:38'
 labels:
   - ade-roadmap
   - swarm

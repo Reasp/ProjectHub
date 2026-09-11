@@ -3,10 +3,10 @@ id: TASK-48
 title: >-
   Довести i18n (40 компонентов с захардкоженным русским) и заменить нативные
   confirm/prompt/alert на модальные диалоги
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:10'
-updated_date: '2026-09-10 07:36'
+updated_date: '2026-09-11 02:38'
 labels:
   - audit
   - i18n

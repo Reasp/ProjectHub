@@ -12,6 +12,7 @@ import type {
   RemoteControlConfig,
   RemoteControlStatus,
   RemoteDevice,
+  PairedDevice,
   DeviceRights,
   RemotePacket,
   EncryptedPacket,
@@ -68,6 +69,8 @@ interface DeviceTokenRecord {
   rights: DeviceRights;
   deviceName: string;
   createdAt: number;
+  /** Права назначены вручную из UI: пересопряжение по PIN их не сбрасывает (TASK-65). */
+  rightsExplicit?: boolean;
 }
 
 const PIN_MAX_ATTEMPTS = 5;
@@ -266,14 +269,20 @@ class RemoteControlService {
     this.pinAttempts.delete(ip);
   }
 
-  /** Новый per-device токен при первом сопряжении (PIN/ключ); переподключения — уже по токену. */
+  /**
+   * Новый per-device токен при первом сопряжении (PIN/ключ); переподключения — уже по токену.
+   * Права, назначенные вручную из UI (`setDeviceRights`), переживают пересопряжение — иначе
+   * достаточно было бы переподключиться с PIN, чтобы вернуть себе полный доступ.
+   */
   private issueDeviceToken(deviceId: string, deviceName: string): DeviceTokenRecord {
-    const rights: DeviceRights = this.readOnly ? 'readOnly' : 'full';
+    const previous = this.deviceTokens.get(deviceId);
+    const rights: DeviceRights = previous?.rightsExplicit ? previous.rights : this.readOnly ? 'readOnly' : 'full';
     const record: DeviceTokenRecord = {
       token: crypto.randomBytes(32).toString('hex'),
       rights,
       deviceName,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      ...(previous?.rightsExplicit ? { rightsExplicit: true } : {})
     };
     this.deviceTokens.set(deviceId, record);
     this.persistDeviceTokens().catch(() => {});
@@ -291,6 +300,46 @@ class RemoteControlService {
     if (this.deviceTokens.delete(deviceId)) {
       this.persistDeviceTokens().catch(() => {});
     }
+  }
+
+  /**
+   * Назначение прав конкретному устройству (TASK-65, decision-11 п.1): раньше права выводились
+   * только из глобального `readOnly` в момент выдачи токена, то есть одному устройству нельзя было
+   * дать более узкий доступ (например, только решения HITL), чем у хоста в целом.
+   * Права применяются сразу и к уже открытой сессии устройства, и к его сохранённому токену.
+   */
+  public setDeviceRights(deviceId: string, rights: DeviceRights): RemoteControlStatus {
+    const record = this.deviceTokens.get(deviceId);
+    if (record) {
+      record.rights = rights;
+      record.rightsExplicit = true;
+      this.persistDeviceTokens().catch(() => {});
+    }
+
+    const device = this.connectedDevices.get(deviceId);
+    if (device) {
+      device.rights = rights;
+      // Клиент обновляет свой индикатор прав тем же пакетом, что и при сопряжении.
+      this.sendToDevice(deviceId, {
+        type: 'handshake_ack',
+        result: { approved: device.isApproved, readOnly: this.readOnly, hostId: this.hostId, rights, lastEventId: this.eventLogNextId - 1 }
+      });
+    }
+
+    this.notifyStatusChanged();
+    return this.getStatus();
+  }
+
+  /** Спаренные устройства (по выданным токенам), включая офлайн — для UI управления правами. */
+  public getPairedDevices(): PairedDevice[] {
+    return Array.from(this.deviceTokens.entries()).map(([deviceId, record]) => ({
+      deviceId,
+      name: record.deviceName,
+      rights: record.rights,
+      createdAt: record.createdAt,
+      rightsExplicit: record.rightsExplicit,
+      connected: this.connectedDevices.has(deviceId)
+    }));
   }
 
   public async refreshLocalProjects(): Promise<void> {
@@ -447,6 +496,7 @@ class RemoteControlService {
       secretKey: this.secretKey,
       localIps,
       connectedDevices: Array.from(this.connectedDevices.values()),
+      pairedDevices: this.getPairedDevices(),
       requireApproval: this.requireApproval,
       readOnly: this.readOnly,
       lastError: this.lastError,
@@ -605,7 +655,7 @@ class RemoteControlService {
       // Оповещаем клиента о разрешении доступа
       this.sendToDevice(deviceId, {
         type: 'handshake_ack',
-        result: { approved: true, readOnly: this.readOnly }
+        result: { approved: true, readOnly: this.readOnly, hostId: this.hostId, rights: dev.rights, lastEventId: this.eventLogNextId - 1 }
       });
     }
     return this.getStatus();
@@ -1101,6 +1151,9 @@ class RemoteControlService {
             readOnly: this.readOnly,
             hostId: this.hostId,
             rights,
+            // Клиент запоминает точку в потоке событий, чтобы после разрыва догнать с неё, а не
+            // проигрывать заново весь кольцевой буфер (decision-11 п.6).
+            lastEventId: this.eventLogNextId - 1,
             ...(issuedToken ? { deviceToken: issuedToken } : {})
           }
         })
@@ -1261,6 +1314,11 @@ class RemoteControlService {
     this.relayConnected = false;
   }
 
+  /** Ответ клиенту в том же виде, в каком пришёл запрос: зашифрованным, если запрос был зашифрован. */
+  private replyMaybeEncrypted(reply: (resp: RemotePacket) => void, isEncrypted: boolean, payload: PlainPacket): void {
+    reply(isEncrypted ? encryptPayload(payload, this.secretKey) : payload);
+  }
+
   /**
    * Обработка сообщения от клиента (распаковка E2EE при наличии и диспетчеризация RPC).
    */
@@ -1304,7 +1362,16 @@ class RemoteControlService {
       if (existingRecord) {
         device.isApproved = !this.requireApproval || device.isApproved;
         device.rights = existingRecord.rights;
-        reply({ type: 'handshake_ack', result: { approved: device.isApproved, readOnly: this.readOnly, hostId: this.hostId, rights: device.rights } });
+        this.replyMaybeEncrypted(reply, isEncrypted, {
+          type: 'handshake_ack',
+          result: {
+            approved: device.isApproved,
+            readOnly: this.readOnly,
+            hostId: this.hostId,
+            rights: device.rights,
+            lastEventId: this.eventLogNextId - 1
+          }
+        });
         this.notifyStatusChanged();
         return;
       }
@@ -1324,9 +1391,18 @@ class RemoteControlService {
       const issued = this.issueDeviceToken(deviceId, device.name);
       device.isApproved = !this.requireApproval;
       device.rights = issued.rights;
-      reply({
+      // Ответ шифруется тем же ключом, что и запрос: через релей `deviceToken` иначе уехал бы
+      // открытым текстом через чужой сервер (decision-11 п.3 — релей не видит содержимого).
+      this.replyMaybeEncrypted(reply, isEncrypted, {
         type: 'handshake_ack',
-        result: { approved: device.isApproved, readOnly: this.readOnly, hostId: this.hostId, rights: issued.rights, deviceToken: issued.token }
+        result: {
+          approved: device.isApproved,
+          readOnly: this.readOnly,
+          hostId: this.hostId,
+          rights: issued.rights,
+          deviceToken: issued.token,
+          lastEventId: this.eventLogNextId - 1
+        }
       });
       this.notifyStatusChanged();
       return;
@@ -1759,15 +1835,18 @@ class RemoteControlService {
   public broadcastEvent(event: string, data: any) {
     if (!this.enabled) return;
 
+    // Догон пропущенных во время разрыва событий (TASK-65, decision-11 п.6): кольцевой буфер,
+    // клиент запоминает `eventId` последнего полученного события и после переподключения
+    // запрашивает `get_events_since` с ним — поэтому id едет и в самом live-пакете.
+    const eventId = this.eventLogNextId++;
     const payload: PlainPacket = {
       type: 'event',
       event,
-      data
+      data,
+      eventId
     };
 
-    // Догон пропущенных во время разрыва событий (TASK-65, decision-11 п.6): кольцевой буфер,
-    // клиент запрашивает `get_events_since` с последним увиденным id после reconnect.
-    this.eventLog.push({ id: this.eventLogNextId++, event, data });
+    this.eventLog.push({ id: eventId, event, data });
     if (this.eventLog.length > EVENT_LOG_MAX) this.eventLog.shift();
 
     // Отправка локальным клиентам
@@ -1973,20 +2052,43 @@ class RemoteControlService {
     let activeSessionId = null;
     let projects = [];
 
-    // Чтение параметров из URL hash (#pin=...&key=...&host=...)
+    // Значения самого хоста, отдавшего эту страницу: клиент умеет подключаться и напрямую, и через
+    // relay к тому же hostId, не спрашивая их у пользователя (TASK-65, decision-11 п.2).
+    const HOST_DEFAULTS = ${JSON.stringify({ hostId: this.hostId, relayUrl: this.relayServerUrl, mode: this.mode })};
+
+    // Чтение параметров из URL hash (#pin=...&key=...&hostId=...&relay=...&mode=...)
     const hashParams = new URLSearchParams(window.location.hash.slice(1));
     const pinParam = hashParams.get('pin');
     const keyParam = hashParams.get('key');
-    const modeParam = hashParams.get('mode') || 'lan';
+    const modeParam = hashParams.get('mode') || HOST_DEFAULTS.mode || 'lan';
+    const hostIdParam = hashParams.get('hostId') || hashParams.get('host') || HOST_DEFAULTS.hostId;
+    const relayParam = hashParams.get('relay') || HOST_DEFAULTS.relayUrl || '';
+    const useRelay = modeParam === 'relay' && Boolean(relayParam) && Boolean(hostIdParam);
 
     if (pinParam) document.getElementById('pinInput').value = pinParam;
     if (keyParam) document.getElementById('keyInput').value = keyParam;
+    document.getElementById('modeBadge').textContent = useRelay ? 'RELAY' : 'LAN';
 
     document.getElementById('connectBtn').addEventListener('click', () => { reconnectAttempt = 0; connect(); });
 
     let currentKey = '';
     let reconnectAttempt = 0;
     let reconnectTimer = null;
+    let isReady = false;
+    let awaitingApproval = false;
+
+    // Идентичность и per-device токен переживают перезагрузку страницы: переподключение идёт по
+    // токену, а не по PIN (TASK-65, decision-5 п.5).
+    function storageGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+    function storageSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+    let deviceId = storageGet('ph_remote_device_id');
+    if (!deviceId) {
+      deviceId = 'web_' + Math.random().toString(36).slice(2, 10);
+      storageSet('ph_remote_device_id', deviceId);
+    }
+    let deviceToken = storageGet('ph_remote_device_token');
+    // Последнее увиденное событие: после разрыва клиент догоняет пропущенное (decision-11 п.6).
+    let lastEventId = 0;
 
     // E2EE через общий канонический модуль (window.RemoteCrypto из /remote-crypto.js);
     // формат {e2ee:true, iv, tag, data} в hex (decision-11 п.3). Без ключа — plain JSON.
@@ -2006,30 +2108,61 @@ class RemoteControlService {
       reconnectTimer = setTimeout(connect, delay);
     }
 
+    /**
+     * LAN: сокет открывается прямо к хосту, аутентификация — в query (PIN/ключ/токен).
+     * Relay: сокет открывается к relay-серверу (?role=client&hostId=...), а PIN/ключ/токен уезжают
+     * хосту отдельным зашифрованным пакетом handshake после relay_ack — сам relay ничего не
+     * аутентифицирует и содержимого пакетов не видит (decision-11 п.2, п.3).
+     */
+    function buildWsUrl(pin, key) {
+      if (useRelay) {
+        const u = new URL(relayParam.replace(/^http/, 'ws'));
+        u.searchParams.set('role', 'client');
+        u.searchParams.set('hostId', hostIdParam);
+        u.searchParams.set('clientId', deviceId);
+        u.searchParams.set('name', 'Mobile Browser');
+        return u.toString();
+      }
+      const loc = window.location;
+      const wsProto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+      const q = new URLSearchParams({ pin: pin, key: key, deviceId: deviceId, name: 'Mobile Browser' });
+      if (deviceToken) q.set('token', deviceToken);
+      return \`\${wsProto}//\${loc.host}/?\${q.toString()}\`;
+    }
+
     function connect() {
       if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       const pin = document.getElementById('pinInput').value.trim();
       const key = document.getElementById('keyInput').value.trim();
       currentKey = key;
+      isReady = false;
 
-      const loc = window.location;
-      const wsProto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = \`\${wsProto}//\${loc.host}/?pin=\${encodeURIComponent(pin)}&key=\${encodeURIComponent(key)}&name=Mobile+Browser\`;
-
-      ws = new WebSocket(wsUrl);
+      ws = new WebSocket(buildWsUrl(pin, key));
 
       ws.onopen = () => {
         reconnectAttempt = 0;
         document.getElementById('statusDot').classList.add('connected');
-        document.getElementById('pairingSection').style.display = 'none';
-        document.getElementById('mainContent').style.display = 'block';
-        document.getElementById('navBar').style.display = 'flex';
-        fetchProjects();
+        // В LAN хост присылает handshake_ack сам по факту апгрейда сокета (в нём права и точка в
+        // потоке событий); через relay сначала нужно дождаться relay_ack и предъявить PIN/ключ/
+        // токен пакетом handshake. Фолбэк на случай хоста без handshake_ack — только для LAN, где
+        // сокет открылся лишь после успешной проверки PIN/ключа в query.
+        if (!useRelay) setTimeout(() => { if (!awaitingApproval) onConnectionReady(); }, 2000);
       };
 
       ws.onmessage = async (event) => {
         try {
           const raw = JSON.parse(event.data);
+
+          // Служебные сообщения самого relay идут открытым текстом — он не знает ключа.
+          if (raw && raw.type === 'relay_ack' && raw.role === 'client') {
+            await sendHandshake();
+            return;
+          }
+          if (raw && (raw.type === 'error' || raw.type === 'host_disconnected')) {
+            appendLog('\\n[Relay] ' + (raw.error || 'Хост отключился') + '\\n');
+            return;
+          }
+
           const msg = await decryptIn(raw);
           handleMessage(msg);
         } catch (e) {
@@ -2038,6 +2171,7 @@ class RemoteControlService {
       };
 
       ws.onclose = () => {
+        isReady = false;
         document.getElementById('statusDot').classList.remove('connected');
         appendLog('\\n[Соединение разорвано. Переподключение через ' + Math.round(Math.min(30000, 1000 * Math.pow(2, reconnectAttempt)) / 1000) + 'с...]\\n');
         scheduleReconnect();
@@ -2048,14 +2182,53 @@ class RemoteControlService {
       };
     }
 
+    async function sendHandshake() {
+      const data = { pin: document.getElementById('pinInput').value.trim(), key: currentKey };
+      if (deviceToken) data.token = deviceToken;
+      const packet = await encryptOut({ type: 'handshake', data: data });
+      ws.send(JSON.stringify(packet));
+    }
+
+    function onConnectionReady() {
+      if (isReady) return;
+      isReady = true;
+      document.getElementById('pairingSection').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'block';
+      document.getElementById('navBar').style.display = 'flex';
+      catchUpEvents().then(fetchProjects, fetchProjects);
+    }
+
+    /** Догон событий, пропущенных за время разрыва (кольцевой буфер хоста, decision-11 п.6). */
+    async function catchUpEvents() {
+      if (!lastEventId) return;
+      try {
+        const res = await sendRpc('get_events_since', { sinceId: lastEventId });
+        if (!res) return;
+        (res.events || []).forEach((e) => {
+          if (e.id > lastEventId) lastEventId = e.id;
+          applyEvent(e.event, e.data);
+        });
+        if (typeof res.lastEventId === 'number' && res.lastEventId > lastEventId) lastEventId = res.lastEventId;
+      } catch (e) {
+        console.error('Events catch-up failed:', e);
+      }
+    }
+
     function sendRpc(method, params = {}) {
       return new Promise((resolve) => {
         const id = 'req_' + Math.random().toString(36).slice(2, 9);
+        // Хост может ответить не rpc_res, а ошибкой уровня соединения (например, устройство ещё не
+        // одобрено) — без таймаута такой вызов повис бы навсегда и заблокировал загрузку UI.
+        const timer = setTimeout(() => {
+          ws.removeEventListener('message', listener);
+          resolve(null);
+        }, 15000);
         const listener = async (event) => {
           try {
             const raw = JSON.parse(event.data);
             const msg = await decryptIn(raw);
             if (msg.type === 'rpc_res' && msg.id === id) {
+              clearTimeout(timer);
               ws.removeEventListener('message', listener);
               resolve(msg.result);
             }
@@ -2067,16 +2240,39 @@ class RemoteControlService {
     }
 
     function handleMessage(msg) {
-      if (msg.type === 'event') {
-        if (msg.event === 'process:logChunk') {
-          appendLog(msg.data.text);
-        } else if (msg.event === 'ai:hitl') {
-          showHitlRequest(msg.data);
-        } else if (msg.event === 'ai:hitlDecided') {
-          dropHitl(msg.data && msg.data.requestId);
-        } else if (msg.event === 'backlog:changed') {
-          fetchTasks();
+      if (msg.type === 'handshake_ack') {
+        const result = msg.result || {};
+        if (result.deviceToken) {
+          deviceToken = result.deviceToken;
+          storageSet('ph_remote_device_token', deviceToken);
         }
+        // Первое подключение — просто запоминаем точку в потоке событий (проигрывать историю
+        // незачем); при последующих с неё догоняем пропущенное в onConnectionReady().
+        if (!lastEventId && typeof result.lastEventId === 'number') lastEventId = result.lastEventId;
+        if (result.approved === false) {
+          awaitingApproval = true;
+          appendLog('\\n[Ожидание подтверждения устройства на десктопе...]\\n');
+          return;
+        }
+        awaitingApproval = false;
+        onConnectionReady();
+        return;
+      }
+      if (msg.type === 'event') {
+        if (typeof msg.eventId === 'number' && msg.eventId > lastEventId) lastEventId = msg.eventId;
+        applyEvent(msg.event, msg.data);
+      }
+    }
+
+    function applyEvent(event, data) {
+      if (event === 'process:logChunk') {
+        appendLog(data.text);
+      } else if (event === 'ai:hitl') {
+        showHitlRequest(data);
+      } else if (event === 'ai:hitlDecided') {
+        dropHitl(data && data.requestId);
+      } else if (event === 'backlog:changed') {
+        fetchTasks();
       }
     }
 

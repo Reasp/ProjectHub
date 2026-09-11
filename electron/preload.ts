@@ -406,6 +406,9 @@ const api: IElectronAPI = {
   regenerateRemoteToken: () => ipcRenderer.invoke('remote:regenerateToken'),
   disconnectRemoteDevice: (deviceId: string) => ipcRenderer.invoke('remote:disconnectDevice', deviceId),
   approveRemoteDevice: (deviceId: string) => ipcRenderer.invoke('remote:approveDevice', deviceId),
+  setRemoteDeviceRights: (deviceId: string, rights: 'readOnly' | 'hitl' | 'full') =>
+    ipcRenderer.invoke('remote:setDeviceRights', deviceId, rights),
+  revokeRemoteDevice: (deviceId: string) => ipcRenderer.invoke('remote:revokeDevice', deviceId),
   testTelegramNotification: (text?: string) => ipcRenderer.invoke('remote:testTelegramNotification', text),
   startRemoteTunnel: () => ipcRenderer.invoke('remote:startTunnel'),
   stopRemoteTunnel: () => ipcRenderer.invoke('remote:stopTunnel'),

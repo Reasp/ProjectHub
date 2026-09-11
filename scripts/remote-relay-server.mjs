@@ -2,7 +2,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
-import { decodePubkey, verifySignature, isHijackAttempt } from './remoteRelayAuth.mjs';
+import { decodePubkey, verifySignature, isHijackAttempt, isRelayApiAuthorized } from './remoteRelayAuth.mjs';
 
 /**
  * ProjectHub Remote Relay Server
@@ -18,6 +18,8 @@ import { decodePubkey, verifySignature, isHijackAttempt } from './remoteRelayAut
 const PORT = parseInt(process.env.RELAY_PORT || process.env.PORT || '42055', 10);
 const HOST = process.env.RELAY_HOST || '0.0.0.0';
 const AUTH_TIMEOUT_MS = 5000;
+/** Токен HTTP-каталога хостов; не задан — каталог выключен, а не открыт всем (TASK-65 п.6). */
+const API_TOKEN = process.env.RELAY_API_TOKEN || '';
 
 // Хранилище подключений
 // hostId -> { hostWs, hostId, hostPubkey, hostMeta, clients: Map<clientId, {...}> }
@@ -45,8 +47,22 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // GET /api/federation/hosts - список всех активных хостов в федерации на этом релее
+  // GET /api/federation/hosts - список всех активных хостов в федерации на этом релее.
+  // Каталог раскрывает имена машин, поэтому требует Bearer-токен; без `RELAY_API_TOKEN` он
+  // выключен целиком (раньше отдавался анонимно любому, кто знает адрес релея).
   if (req.url === '/api/federation/hosts') {
+    if (!isRelayApiAuthorized(req.headers.authorization, API_TOKEN)) {
+      res.writeHead(API_TOKEN ? 401 : 403, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          error: API_TOKEN ? 'unauthorized' : 'catalog_disabled',
+          message: API_TOKEN
+            ? 'Требуется заголовок Authorization: Bearer <RELAY_API_TOKEN>'
+            : 'Каталог хостов выключен: задайте RELAY_API_TOKEN на relay-сервере'
+        })
+      );
+      return;
+    }
     const hosts = [];
     for (const s of sessions.values()) {
       if (s.authenticated && s.hostWs && s.hostWs.readyState === WebSocket.OPEN) {

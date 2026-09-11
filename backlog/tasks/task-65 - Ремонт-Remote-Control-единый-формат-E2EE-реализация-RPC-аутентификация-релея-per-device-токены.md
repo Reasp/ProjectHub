@@ -7,7 +7,7 @@ status: Review
 assignee:
   - 'agent:implementer'
 created_date: '2026-09-10 07:20'
-updated_date: '2026-09-11 06:37'
+updated_date: '2026-09-11 07:03'
 labels:
   - ade-roadmap
   - remote
@@ -46,6 +46,8 @@ modified_files:
   - deploy/relay/README.md
   - deploy/relay/package.json
   - electron/ipc/backlogIpc.ts
+  - electron/ipc/mcpIpc.ts
+  - electron/preload.ts
   - electron/services/backlogTaskCreate.ts
   - electron/services/remoteControlService.ts
   - public/remote-crypto.js
@@ -57,7 +59,6 @@ modified_files:
   - src/i18n/en.ts
   - src/i18n/ru.ts
   - src/i18n/types.ts
-  - src/telegram-mini-app/index.html
   - src/types/electron.d.ts
   - src/types/remote.ts
   - tests/unit/remoteControlAuth.test.ts
@@ -101,7 +102,7 @@ type: bug
 - [x] #2 Все методы RemoteRpcMethod реализованы в dispatchRpc; логи процессов и AI Studio в Mini App работают или удалены из UI
 - [x] #3 Запрос HITL появляется на телефоне и в Mini App, решение применяется по requestId и закрывает запрос на десктопе
 - [x] #4 Устройства имеют собственные токены с правами и отзывом, PIN защищён rate-limit и константным сравнением, секреты хранятся через safeStorage
-- [ ] #5 Релей не позволяет занять чужой hostId, требует подпись хоста и аутентификацию клиента; есть Dockerfile и инструкция self-hosted деплоя
+- [x] #5 Релей не позволяет занять чужой hostId, требует подпись хоста и аутентификацию клиента; есть Dockerfile и инструкция self-hosted деплоя
 - [x] #6 Эндпоинты /api/* недоступны без токена, пути проектов и имя машины не раскрываются анонимно
 - [x] #7 Выбор режима и адрес релея из UI применяются, QR и deep-link содержат корректные данные
 - [x] #8 README и документация не упоминают WebRTC как реализованный режим
@@ -277,23 +278,88 @@ TASK-66, не эта задача.
 3. Права per-device токена не настраиваются отдельно от глобального `readOnly` через UI.
 4. Каталог `/api/federation/hosts` НА САМОМ relay (не на хосте) остаётся без токена — там же, где
    TASK-66 будет строить каталог хостов, есть смысл добавить аутентификацию заодно.
+
+## Вторая итерация (2026-09-11): закрыты осознанные остатки, AC#5 полностью
+
+**1. Клиенты умеют подключаться к хосту ЧЕРЕЗ relay (закрывает AC#5).**
+Оба статических клиента (`public/telegram-mini-app/index.html`, встроенный веб-клиент в
+`getEmbeddedWebClientHtml`) получили общий паттерн `buildWsUrl`: в relay-режиме сокет открывается
+к самому relay (`?role=client&hostId=...&clientId=...`), а PIN/ключ/токен предъявляются хосту
+отдельным зашифрованным пакетом `handshake` после `relay_ack`; в LAN — как раньше, через query.
+Встроенный клиент знает `hostId`/`relayServerUrl`/`mode` самого хоста (инжектится в HTML как
+`HOST_DEFAULTS`), Mini App получает их из deep-link/QR (`#hostId=...&relay=...&mode=...`,
+`startapp=host_<hostId>`) или из новых полей настроек (адрес relay + Host ID + чекбокс режима).
+
+Попутно исправлено: `handshake_ack` теперь шифруется, если запрос был зашифрован — через relay
+per-device токен уезжал бы открытым текстом через чужой сервер; в QR/deep-link `hostId` уезжал в
+параметре `host`, из-за чего Mini App подставляла `ph_host_...` как сетевой адрес и не могла
+подключиться; сохранённая сессия Mini App читалась только при пустом ключе, поэтому deviceId и
+токен терялись, если ключ приезжал из deep-link; в `sendRpc` встроенного клиента не было
+таймаута — ответ не-`rpc_res` (например, ошибка «устройство не одобрено») вешал загрузку UI.
+Оба клиента теперь запоминают `deviceId`/`deviceToken` и переподключаются по токену, а не по PIN.
+
+**2. Догон событий работает end-to-end.** Live-события несут монотонный `eventId`, а
+`handshake_ack` — текущий `lastEventId`. Клиент запоминает последний увиденный id (на первом
+подключении просто берёт точку из ack, не проигрывая историю) и после переподключения вызывает
+`get_events_since`, проигрывая пропущенное тем же обработчиком, что и live-события.
+
+**3. Права per-device токена настраиваются из UI.** `remoteControlService.setDeviceRights()` +
+IPC `remote:setDeviceRights`/`remote:revokeDevice`, в статусе появился `pairedDevices` (все
+устройства с выданным токеном, включая офлайн). В бейдже Remote Control на вкладке «Устройства» —
+селектор прав (`readOnly`/`hitl`/`full`) у каждого устройства и отдельный блок спаренных, но не
+подключённых устройств с правами и отзывом токена. Права применяются сразу к открытой сессии и
+переживают пересопряжение по PIN (флаг `rightsExplicit`), иначе достаточно было бы
+переподключиться с PIN, чтобы вернуть себе полный доступ.
+
+**4. Каталог хостов на самом relay закрыт токеном.** `GET /api/federation/hosts` требует
+`Authorization: Bearer $RELAY_API_TOKEN`; пока токен не задан, каталог отключён (`403
+catalog_disabled`), а не открыт анонимно — он раскрывает имена машин, а relay стоит в открытом
+интернете. Логика — чистая функция `isRelayApiAuthorized` (константное сравнение) в
+`scripts/remoteRelayAuth.mjs`, задокументировано в `deploy/relay/README.md`.
+
+**Тесты и проверки.** `tests/unit/remoteControlAuth.test.ts` +12 тестов (назначение прав и их
+сохранение при пересопряжении, `eventId` в live-событиях и кольцевом буфере, `get_events_since`
+от последнего увиденного id, зашифрованный `handshake_ack` без утечки токена),
+`tests/unit/remoteRelayAuth.test.ts` +4 (`isRelayApiAuthorized`). Всего 365 тестов, 41 файл.
+`npm run build` чист (0 ошибок ESLint; предупреждений 513 против 514 на HEAD — baseline не вырос),
+`npm run pack:win` выполнен. Дополнительно прогнаны разовые проверки (вне репозитория): разбор
+JS обоих статических клиентов (они не покрываются tsc/vite) и живой smoke-тест relay-транспорта —
+регистрация хоста по подписи, `relay_ack` клиенту, проброс зашифрованного handshake хосту с
+`fromClientId`, адресный ответ обратно клиенту, 401/200 каталога по токену.
+
+**Что осознанно осталось за рамками:** hub-режим (ProjectHub как клиент другого ProjectHub,
+назначение `agent:<role>@<hostId>`) и каталог хостов федерации как продукт — это TASK-66;
+decision-11 остаётся `proposed` до неё.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Контур Remote Control починен end-to-end: единый формат E2EE на всех трёх клиентах (Mini App,
+Контур Remote Control починен end-to-end: единый формат E2EE на всех клиентах (Telegram Mini App,
 встроенный веб-клиент, хост), все объявленные RPC реализованы, HITL и AI Studio работают в
 Mini App, UI-бейдж больше не расходится по полям с сервисом. Security-контур приведён к
 decision-5: Ed25519 identity, per-device токены с правами и отзывом, секреты только через
 safeStorage, PIN с rate-limit и константным сравнением, `/api/*` за токеном, `/api/qr` (протекал
 мастер-секрет без проверки) удалён, CORS `*` снят. Relay защищён от захвата hostId
-challenge-response подписью и получил Dockerfile с инструкцией self-hosted деплоя. Попутно найден
-и исправлен независимый продакшен-баг: Telegram Mini App физически не попадала в packaged-сборку
-(жила в `src/`, а не в `public/`/`dist/`) — в проде всегда работал только fallback-клиент.
+challenge-response подписью, получил Dockerfile с инструкцией self-hosted деплоя, а его каталог
+хостов (`/api/federation/hosts`) закрыт токеном `RELAY_API_TOKEN` и по умолчанию выключен.
 
-Статус — Review, не Done: AC#5 выполнен частично (см. implementation notes, п.1) — relay-сторона
-защищена, но существующие статические клиенты ещё не умеют подключаться к хосту ЧЕРЕЗ relay
-(говорить на его `role=client` протоколе), это остаётся для hub-режима TASK-66. Остальные 8 AC
-выполнены полностью, `npm run build` и `npm run pack:win` пройдены.
+Вторая итерация закрыла AC#5 полностью: оба статических клиента теперь умеют подключаться к хосту
+ЧЕРЕЗ relay (`?role=client&hostId=...` + зашифрованный пакет `handshake` с PIN/ключом/токеном),
+`handshake_ack` шифруется и больше не отдаёт per-device токен открытым текстом через чужой сервер,
+догон пропущенных событий работает end-to-end (`eventId` в live-пакетах, `lastEventId` в ack,
+`get_events_since` при переподключении), а права конкретного устройства (`readOnly`/`hitl`/`full`)
+назначаются и отзываются из UI, в том числе для устройств не в сети, и переживают пересопряжение
+по PIN.
+
+Попутно найдены и исправлены независимые баги: Telegram Mini App физически не попадала в
+packaged-сборку (жила в `src/`, а не в `public/`/`dist/`) — в проде всегда работал только
+fallback-клиент; в QR/deep-link `hostId` уезжал в параметре `host`, и Mini App пыталась
+подключиться к `ph_host_...` как к сетевому адресу; сохранённая сессия Mini App терялась, если
+ключ приезжал из deep-link; RPC встроенного клиента без таймаута вешал загрузку UI на ответе,
+отличном от `rpc_res`.
+
+Все 9 AC выполнены. `npm run build` (lint 0 ошибок, 365 тестов, tsc, vite, check-bundle) и
+`npm run pack:win` проходят. Hub-режим и каталог хостов федерации как продукт — вне этой задачи,
+это TASK-66; decision-11 остаётся `proposed` до неё.
 <!-- SECTION:FINAL_SUMMARY:END -->

@@ -3,10 +3,10 @@ id: TASK-57
 title: >-
   Единый HITL-контур для всех агентов: очередь запросов с requestId, политики по
   роли, аудит-лог решений, отказ от skip-permissions в Swarm
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-10 07:15'
-updated_date: '2026-09-10 12:54'
+updated_date: '2026-09-11 02:38'
 labels:
   - ade-roadmap
   - hitl

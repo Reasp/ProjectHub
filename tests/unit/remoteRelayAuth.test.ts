@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import crypto from 'node:crypto';
 // @ts-expect-error - plain .mjs script, no type declarations
-import { decodePubkey, verifySignature, isHijackAttempt } from '../../scripts/remoteRelayAuth.mjs';
+import { decodePubkey, verifySignature, isHijackAttempt, isRelayApiAuthorized } from '../../scripts/remoteRelayAuth.mjs';
 
 /**
  * Аутентификация хоста на Remote Relay (TASK-65, decision-11 п.2): challenge-response на
@@ -67,5 +67,25 @@ describe('remoteRelayAuth: isHijackAttempt (защита hostId от захва�
 
   it('считает захватом регистрацию другим ключом поверх уже занятого hostId', () => {
     expect(isHijackAttempt('pem-a', 'pem-b')).toBe(true);
+  });
+});
+
+describe('remoteRelayAuth: isRelayApiAuthorized (каталог хостов на релее, TASK-65 п.6)', () => {
+  it('отказывает всем, пока RELAY_API_TOKEN не задан (каталог выключен, а не открыт)', () => {
+    expect(isRelayApiAuthorized('Bearer whatever', '')).toBe(false);
+    expect(isRelayApiAuthorized(undefined, '')).toBe(false);
+  });
+
+  it('принимает верный Bearer-токен', () => {
+    expect(isRelayApiAuthorized('Bearer s3cret-token', 's3cret-token')).toBe(true);
+  });
+
+  it('принимает токен и без префикса Bearer', () => {
+    expect(isRelayApiAuthorized('s3cret-token', 's3cret-token')).toBe(true);
+  });
+
+  it('отклоняет неверный токен и отсутствующий заголовок', () => {
+    expect(isRelayApiAuthorized('Bearer wrong-token', 's3cret-token')).toBe(false);
+    expect(isRelayApiAuthorized(undefined, 's3cret-token')).toBe(false);
   });
 });

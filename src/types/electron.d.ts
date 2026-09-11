@@ -223,7 +223,7 @@ export interface UpdaterStatus {
 // собственные, разошедшиеся с рантаймом определения (`relayUrl`, `qrPayload`, `clientType`,
 // `connectionMode`, ...) — IPC фактически всегда отдавал форму из `./remote`, из-за чего
 // `RemoteControlBadge.tsx` читал несуществующие поля (decision-11, TASK-65 п.7).
-export type { FederationHost, RemoteDevice, RemoteControlStatus } from './remote';
+export type { FederationHost, RemoteDevice, RemoteControlStatus, PairedDevice, DeviceRights } from './remote';
 export type { RemoteControlConfig as RemoteConfig } from './remote';
 
 export interface ManagedProcess {
@@ -624,6 +624,8 @@ export interface IElectronAPI {
   regenerateRemoteToken: () => Promise<RemoteControlStatus>;
   disconnectRemoteDevice: (deviceId: string) => Promise<boolean>;
   approveRemoteDevice: (deviceId: string) => Promise<boolean>;
+  setRemoteDeviceRights: (deviceId: string, rights: DeviceRights) => Promise<RemoteControlStatus>;
+  revokeRemoteDevice: (deviceId: string) => Promise<RemoteControlStatus>;
   testTelegramNotification: (text?: string) => Promise<boolean>;
   startRemoteTunnel: () => Promise<string>;
   stopRemoteTunnel: () => Promise<RemoteControlStatus>;

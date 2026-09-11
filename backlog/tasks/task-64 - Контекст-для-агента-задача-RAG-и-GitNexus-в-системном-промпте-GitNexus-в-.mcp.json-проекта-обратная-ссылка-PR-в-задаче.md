@@ -3,11 +3,11 @@ id: TASK-64
 title: >-
   Контекст для агента: задача, RAG и GitNexus в системном промпте, GitNexus в
   .mcp.json проекта, обратная ссылка PR в задаче
-status: Review
+status: Done
 assignee:
   - veshiy666@gmail.com
 created_date: '2026-09-10 07:19'
-updated_date: '2026-09-11 01:49'
+updated_date: '2026-09-11 02:38'
 labels:
   - ade-roadmap
   - ai-studio

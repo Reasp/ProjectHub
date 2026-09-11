@@ -3,10 +3,10 @@ id: TASK-56
 title: >-
   Персистентность swarm-сессий, лимит буферов логов и реальный учёт стоимости
   агентов
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-10 07:14'
-updated_date: '2026-09-10 10:50'
+updated_date: '2026-09-11 02:38'
 labels:
   - ade-roadmap
   - swarm

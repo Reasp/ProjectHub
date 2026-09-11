@@ -2,6 +2,7 @@ import { ipcMain, shell } from 'electron';
 import { mcpServerService } from '../services/mcpServerService';
 import { remoteControlService } from '../services/remoteControlService';
 import { secretStorageService } from '../services/secretStorageService';
+import type { DeviceRights } from '../../src/types/remote';
 
 function isOpenExternalAllowed(url: string): boolean {
   try {
@@ -100,6 +101,16 @@ export function registerMcpIpc() {
 
   ipcMain.handle('remote:approveDevice', async (_event, deviceId: string) => {
     return remoteControlService.approveDevice(deviceId);
+  });
+
+  // Права конкретного устройства (TASK-65): уже, чем глобальный readOnly хоста.
+  ipcMain.handle('remote:setDeviceRights', async (_event, deviceId: string, rights: DeviceRights) => {
+    return remoteControlService.setDeviceRights(deviceId, rights);
+  });
+
+  ipcMain.handle('remote:revokeDevice', async (_event, deviceId: string) => {
+    remoteControlService.revokeDeviceToken(deviceId);
+    return remoteControlService.getStatus();
   });
 
   ipcMain.handle('remote:testTelegramNotification', async (_event, text?: string) => {

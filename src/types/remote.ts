@@ -17,6 +17,20 @@ export interface RemoteDevice {
   rights?: DeviceRights;
 }
 
+/**
+ * Спаренное устройство (per-device токен) — видно в UI даже когда устройство офлайн: права
+ * назначаются и отзываются между сессиями, а не только у подключённых прямо сейчас (TASK-65).
+ */
+export interface PairedDevice {
+  deviceId: string;
+  name: string;
+  rights: DeviceRights;
+  createdAt: number;
+  /** Права заданы вручную из UI — пересопряжение по PIN их не перетирает глобальным `readOnly`. */
+  rightsExplicit?: boolean;
+  connected: boolean;
+}
+
 export interface RemoteControlConfig {
   enabled: boolean;
   port: number;
@@ -67,6 +81,8 @@ export interface RemoteControlStatus {
   secretKey: string;
   localIps: string[];
   connectedDevices: RemoteDevice[];
+  /** Все устройства с выданным per-device токеном (включая офлайн), с правами и временем выдачи. */
+  pairedDevices: PairedDevice[];
   requireApproval: boolean;
   readOnly: boolean;
   lastError: string | null;
@@ -101,6 +117,11 @@ export interface PlainPacket {
   error?: string;
   event?: string;
   data?: any;
+  /**
+   * Монотонный id события (только для `type:'event'`): клиент запоминает последний увиденный и
+   * после переподключения догоняет пропущенное через RPC `get_events_since` (decision-11 п.6).
+   */
+  eventId?: number;
 }
 
 export type RemotePacket = PlainPacket | EncryptedPacket;

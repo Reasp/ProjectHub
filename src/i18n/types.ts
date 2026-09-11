@@ -1449,6 +1449,13 @@ export interface TranslationDictionary {
     noActiveConnections: string;
     approvedBadge: string;
     disconnectDevice: string;
+    deviceRightsHint: string;
+    rightsReadOnly: string;
+    rightsHitl: string;
+    rightsFull: string;
+    pairedDevicesTitle: string;
+    deviceOffline: string;
+    revokeDeviceToken: string;
     localServerPort: string;
     wsRelayUrl: string;
     useWsRelay: string;

@@ -408,7 +408,15 @@
         <div style="font-size: 12px; margin-bottom: 8px; color: var(--muted);">
           Укажите параметры или отсканируйте QR-код в ProjectHub:
         </div>
-        <input id="input-host" type="text" placeholder="Host ID или IP (например 192.168.1.50)" style="margin-bottom: 6px;">
+        <input id="input-host" type="text" placeholder="IP или URL ПК (например 192.168.1.50)" style="margin-bottom: 6px;">
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 6px;">
+          <input id="input-use-relay" type="checkbox" style="width: auto; margin: 0;">
+          <span>Подключаться через relay-сервер (ПК вне локальной сети)</span>
+        </label>
+        <div id="relay-fields" style="display: none;">
+          <input id="input-relay" type="text" placeholder="Адрес relay (ws://relay.example.com)" style="margin-bottom: 6px;">
+          <input id="input-host-id" type="text" placeholder="Host ID (ph_host_...)" style="margin-bottom: 6px;">
+        </div>
         <input id="input-key" type="password" placeholder="Секретный ключ (AES-256)" style="margin-bottom: 8px;">
         <button id="btn-reconnect" class="full">Подключиться к ПК</button>
       </div>
@@ -537,7 +545,13 @@
       host: '',
       key: '',
       pin: '',
-      relay: 'ws://127.0.0.1:42055'
+      relay: '',
+      // hostId нужен для подключения ЧЕРЕЗ relay (`?role=client&hostId=...`) — это идентификатор
+      // машины, а не сетевой адрес: `host` остаётся IP/URL прямого LAN-подключения (TASK-65).
+      hostId: '',
+      mode: '',
+      deviceId: '',
+      deviceToken: ''
     };
     let activeProjectPath = '';
     let cachedTasks = [];
@@ -550,12 +564,25 @@
 
       if (hash.get('key')) currentConfig.key = hash.get('key');
       if (hash.get('host')) currentConfig.host = hash.get('host');
+      if (hash.get('hostId')) currentConfig.hostId = hash.get('hostId');
       if (hash.get('pin')) currentConfig.pin = hash.get('pin');
       if (hash.get('relay')) currentConfig.relay = decodeURIComponent(hash.get('relay'));
+      if (hash.get('mode')) currentConfig.mode = hash.get('mode');
 
-      // Deep-link из QR RemoteControlBadge: `startapp=k_<hex>` — чистый hex-ключ с префиксом.
+      // Совместимость со старыми ссылками, где в `host` уезжал идентификатор машины, а не адрес:
+      // `ph_host_...` — это hostId, подключаться по нему как по hostname бессмысленно.
+      if (!currentConfig.hostId && currentConfig.host.startsWith('ph_host_')) {
+        currentConfig.hostId = currentConfig.host;
+        currentConfig.host = '';
+      }
+
+      // Deep-link из QR RemoteControlBadge: `startapp=k_<hex>` — чистый hex-ключ с префиксом,
+      // `startapp=host_<hostId>` — идентификатор машины для подключения через relay.
       if (startParam.startsWith('k_')) {
         currentConfig.key = startParam.slice(2);
+      } else if (startParam.startsWith('host_')) {
+        currentConfig.hostId = startParam.slice(5);
+        currentConfig.mode = 'relay';
       } else if (startParam) {
         try {
           const decoded = atob(startParam);
@@ -573,16 +600,37 @@
         }
       }
 
-      // Try reading from CloudStorage or localStorage
-      if (!currentConfig.key && window.localStorage) {
+      // Сохранённая сессия дополняет то, чего нет в ссылке (раньше она читалась только при
+      // полностью пустом ключе — и deviceId/токен терялись, если ключ приехал из deep-link).
+      if (window.localStorage) {
         try {
           const saved = JSON.parse(localStorage.getItem('ph_tg_session') || '{}');
-          currentConfig = { ...currentConfig, ...saved };
+          for (const [k, v] of Object.entries(saved)) {
+            if (v && !currentConfig[k]) currentConfig[k] = v;
+          }
         } catch (e) {}
+      }
+
+      // Сохранённые между запусками идентичность и per-device токен: переподключение идёт по
+      // токену, а не по PIN (TASK-65, decision-5 п.5).
+      currentConfig.mode = currentConfig.mode || 'lan';
+      if (!currentConfig.deviceId) {
+        currentConfig.deviceId = 'tg_' + (tg?.initDataUnsafe?.user?.id || Math.random().toString(36).slice(2, 10));
       }
 
       document.getElementById('input-host').value = currentConfig.host || window.location.hostname || '127.0.0.1';
       document.getElementById('input-key').value = currentConfig.key || '';
+      document.getElementById('input-relay').value = currentConfig.relay || '';
+      document.getElementById('input-host-id').value = currentConfig.hostId || '';
+      document.getElementById('input-use-relay').checked = currentConfig.mode === 'relay';
+      toggleRelayFields();
+    }
+
+    /** Поля relay видны только в relay-режиме — в LAN они не участвуют в подключении. */
+    function toggleRelayFields() {
+      const on = document.getElementById('input-use-relay').checked;
+      document.getElementById('relay-fields').style.display = on ? 'block' : 'none';
+      document.getElementById('input-host').style.display = on ? 'none' : 'block';
     }
 
     function saveSession() {
@@ -615,6 +663,10 @@
     let reconnectAttempt = 0;
     let reconnectTimer = null;
     let manualDisconnect = false;
+    let isReady = false;
+    let awaitingApproval = false;
+    /** Последнее увиденное событие: после разрыва пропущенное догоняется RPC `get_events_since`. */
+    let lastEventId = 0;
 
     function scheduleReconnect() {
       if (manualDisconnect) return;
@@ -625,6 +677,95 @@
       reconnectTimer = setTimeout(() => connectWs(), delay);
     }
 
+    /** Предъявление хосту ключа/PIN/токена через relay — тот же контроль, что и в LAN-query. */
+    async function sendHandshake() {
+      const data = { key: currentConfig.key };
+      if (currentConfig.pin) data.pin = currentConfig.pin;
+      if (currentConfig.deviceToken) data.token = currentConfig.deviceToken;
+      const packet = await encryptData({ type: 'handshake', data: data }, currentConfig.key);
+      ws.send(JSON.stringify(packet));
+    }
+
+    async function handleHandshakeAck(result) {
+      if (result.deviceToken) {
+        currentConfig.deviceToken = result.deviceToken;
+        saveSession();
+      }
+      if (result.rights) {
+        document.getElementById('stat-access').textContent =
+          result.rights === 'readOnly' ? 'Только чтение' : result.rights === 'hitl' ? 'Только решения HITL' : 'Полный доступ';
+      }
+      // Первое подключение — просто запоминаем точку в потоке событий (проигрывать историю
+      // незачем); при последующих с неё догоняется пропущенное.
+      if (!lastEventId && typeof result.lastEventId === 'number') lastEventId = result.lastEventId;
+      if (result.approved === false) {
+        awaitingApproval = true;
+        setStatus(false, 'Ожидает подтверждения на ПК');
+        return;
+      }
+      awaitingApproval = false;
+      await onConnectionReady();
+    }
+
+    async function onConnectionReady() {
+      if (isReady) return;
+      isReady = true;
+      setStatus(true, 'Онлайн');
+      await catchUpEvents();
+      await loadInitialData();
+    }
+
+    /** Догон событий, пропущенных за время разрыва (кольцевой буфер хоста, decision-11 п.6). */
+    async function catchUpEvents() {
+      if (!lastEventId) return;
+      try {
+        const res = await callRpc('get_events_since', { sinceId: lastEventId });
+        if (!res) return;
+        (res.events || []).forEach((e) => {
+          if (e.id > lastEventId) lastEventId = e.id;
+          handleIncomingEvent(e.event, e.data);
+        });
+        if (typeof res.lastEventId === 'number' && res.lastEventId > lastEventId) lastEventId = res.lastEventId;
+      } catch (e) {
+        console.error('Events catch-up failed:', e);
+      }
+    }
+
+    const clientDisplayName = () => tg?.initDataUnsafe?.user?.first_name || 'Telegram Mini App';
+
+    /**
+     * LAN: сокет открывается прямо к хосту, аутентификация — в query (ключ/PIN/per-device токен).
+     * Relay: сокет открывается к relay-серверу (`?role=client&hostId=...`), а ключ/PIN/токен уезжают
+     * хосту отдельным зашифрованным пакетом `handshake` после `relay_ack` — сам relay ничего не
+     * аутентифицирует и содержимого пакетов не видит (TASK-65, decision-11 п.2, п.3).
+     */
+    function buildWsUrl(host, key) {
+      if (currentConfig.mode === 'relay' && currentConfig.relay && currentConfig.hostId) {
+        const u = new URL(currentConfig.relay.replace(/^http/, 'ws'));
+        u.searchParams.set('role', 'client');
+        u.searchParams.set('hostId', currentConfig.hostId);
+        u.searchParams.set('clientId', currentConfig.deviceId);
+        u.searchParams.set('name', clientDisplayName());
+        return u.toString();
+      }
+
+      const isHttps = window.location.protocol === 'https:';
+      const wsProto = isHttps ? 'wss:' : 'ws:';
+      const defaultPort = window.location.port || (isHttps ? 443 : 42050);
+      const q = new URLSearchParams({ key: key, deviceId: currentConfig.deviceId, name: clientDisplayName() });
+      if (currentConfig.pin) q.set('pin', currentConfig.pin);
+      if (currentConfig.deviceToken) q.set('token', currentConfig.deviceToken);
+
+      if (host.startsWith('http://') || host.startsWith('https://')) {
+        const u = new URL(host);
+        const p = u.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${p}//${u.host}/?${q.toString()}`;
+      }
+      const portStr = (defaultPort && defaultPort !== 80 && defaultPort !== 443 && !host.includes(':')) ? `:${defaultPort}` : '';
+      const hostHeader = (host && host !== '127.0.0.1' && host !== 'localhost') ? `${host}${portStr}` : (window.location.host || `${host}${portStr}`);
+      return `${wsProto}//${hostHeader}/?${q.toString()}`;
+    }
+
     function connectWs(overrideHost) {
       manualDisconnect = false;
       if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
@@ -632,47 +773,60 @@
         try { ws.close(); } catch (e) {}
       }
 
+      isReady = false;
       const inputHost = document.getElementById('input-host').value.trim();
       const host = overrideHost || inputHost || window.location.hostname || '127.0.0.1';
       const key = document.getElementById('input-key').value.trim();
       currentConfig.host = host;
       currentConfig.key = key;
+      currentConfig.mode = document.getElementById('input-use-relay').checked ? 'relay' : 'lan';
+      currentConfig.relay = document.getElementById('input-relay').value.trim() || currentConfig.relay;
+      currentConfig.hostId = document.getElementById('input-host-id').value.trim() || currentConfig.hostId;
       saveSession();
 
-      let wsUrl;
-      const isHttps = window.location.protocol === 'https:';
-      const wsProto = isHttps ? 'wss:' : 'ws:';
-      const defaultPort = window.location.port || (isHttps ? 443 : 42050);
-
-      if (host.startsWith('http://') || host.startsWith('https://')) {
-        const u = new URL(host);
-        const p = u.protocol === 'https:' ? 'wss:' : 'ws:';
-        wsUrl = `${p}//${u.host}/?key=${encodeURIComponent(key)}&deviceId=tg_${tg?.initDataUnsafe?.user?.id || 'client'}&name=${encodeURIComponent(tg?.initDataUnsafe?.user?.first_name || 'Telegram Mini App')}`;
-      } else {
-        const portStr = (defaultPort && defaultPort !== 80 && defaultPort !== 443 && !host.includes(':')) ? `:${defaultPort}` : '';
-        const hostHeader = (host && host !== '127.0.0.1' && host !== 'localhost') ? `${host}${portStr}` : (window.location.host || `${host}${portStr}`);
-        wsUrl = `${wsProto}//${hostHeader}/?key=${encodeURIComponent(key)}&deviceId=tg_${tg?.initDataUnsafe?.user?.id || 'client'}&name=${encodeURIComponent(tg?.initDataUnsafe?.user?.first_name || 'Telegram Mini App')}`;
+      const usingRelay = currentConfig.mode === 'relay' && Boolean(currentConfig.relay) && Boolean(currentConfig.hostId);
+      if (currentConfig.mode === 'relay' && !usingRelay) {
+        setStatus(false, 'Для relay нужны адрес сервера и Host ID');
+        return;
       }
+      document.getElementById('stat-mode').textContent = usingRelay ? 'E2EE Relay' : 'E2EE LAN';
+      const wsUrl = buildWsUrl(host, key);
 
       setStatus(false, 'Подключение...');
 
       try {
         ws = new WebSocket(wsUrl);
 
-        ws.onopen = async () => {
+        ws.onopen = () => {
           reconnectAttempt = 0;
-          setStatus(true, 'Онлайн');
           triggerHaptic('success');
-          // Load projects and federation
-          await loadInitialData();
+          setStatus(true, 'Рукопожатие...');
+          // В LAN хост сам присылает handshake_ack по факту апгрейда сокета (в нём права и точка в
+          // потоке событий); через relay сначала нужно дождаться relay_ack и предъявить хосту
+          // ключ/PIN/токен пакетом handshake. Таймер — фолбэк для хоста без handshake_ack, только
+          // в LAN, где сокет открылся лишь после успешной проверки ключа в query.
+          if (!usingRelay) setTimeout(() => { if (!awaitingApproval) onConnectionReady(); }, 2000);
         };
 
         ws.onmessage = async (event) => {
           try {
             const raw = JSON.parse(event.data);
+
+            // Служебные сообщения самого relay идут открытым текстом — он не знает ключа.
+            if (raw && raw.type === 'relay_ack' && raw.role === 'client') {
+              await sendHandshake();
+              return;
+            }
+            if (raw && (raw.type === 'error' || raw.type === 'host_disconnected')) {
+              setStatus(false, raw.error || 'Хост отключился');
+              return;
+            }
+
             const data = await decryptData(raw, currentConfig.key);
 
-            if ((data.type === 'response' || data.type === 'rpc_res') && data.id) {
+            if (data.type === 'handshake_ack') {
+              await handleHandshakeAck(data.result || {});
+            } else if ((data.type === 'response' || data.type === 'rpc_res') && data.id) {
               const p = pendingRpc.get(data.id);
               if (p) {
                 pendingRpc.delete(data.id);
@@ -680,6 +834,7 @@
                 else p.resolve(data.result);
               }
             } else if (data.type === 'event') {
+              if (typeof data.eventId === 'number' && data.eventId > lastEventId) lastEventId = data.eventId;
               handleIncomingEvent(data.event, data.data);
             }
           } catch (err) {
@@ -692,6 +847,7 @@
         };
 
         ws.onclose = () => {
+          isReady = false;
           setStatus(false, 'Отключен');
           scheduleReconnect();
         };
@@ -1187,6 +1343,12 @@
                 const hash = new URLSearchParams(scanned.split('#')[1]);
                 if (hash.get('key')) document.getElementById('input-key').value = hash.get('key');
                 if (hash.get('host')) document.getElementById('input-host').value = hash.get('host');
+                if (hash.get('hostId')) document.getElementById('input-host-id').value = hash.get('hostId');
+                if (hash.get('relay')) document.getElementById('input-relay').value = decodeURIComponent(hash.get('relay'));
+                if (hash.get('mode')) {
+                  document.getElementById('input-use-relay').checked = hash.get('mode') === 'relay';
+                  toggleRelayFields();
+                }
               }
               connectWs();
             } catch (e) {}
@@ -1200,8 +1362,11 @@
 
     document.getElementById('btn-reconnect').addEventListener('click', () => {
       triggerHaptic('medium');
+      reconnectAttempt = 0;
       connectWs();
     });
+
+    document.getElementById('input-use-relay').addEventListener('change', toggleRelayFields);
 
     document.getElementById('btn-clear-logs').addEventListener('click', () => {
       document.getElementById('terminal-logs').textContent = '';

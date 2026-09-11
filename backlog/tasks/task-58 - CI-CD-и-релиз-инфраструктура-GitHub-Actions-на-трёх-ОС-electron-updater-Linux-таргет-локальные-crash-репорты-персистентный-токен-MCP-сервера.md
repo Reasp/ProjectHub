@@ -3,11 +3,11 @@ id: TASK-58
 title: >-
   CI/CD и релиз-инфраструктура: GitHub Actions на трёх ОС, electron-updater,
   Linux-таргет, локальные crash-репорты, персистентный токен MCP-сервера
-status: Review
+status: Done
 assignee:
   - veshiy666@gmail.com
 created_date: '2026-09-10 07:16'
-updated_date: '2026-09-10 23:56'
+updated_date: '2026-09-11 02:38'
 labels:
   - ade-roadmap
   - ci

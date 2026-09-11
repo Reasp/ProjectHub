@@ -32,3 +32,18 @@ export function verifySignature(publicKeyObject, nonce, signatureHex) {
 export function isHijackAttempt(existingPubkeyPem, presentedPubkeyPem) {
   return Boolean(existingPubkeyPem) && existingPubkeyPem !== presentedPubkeyPem;
 }
+
+/**
+ * Доступ к HTTP-каталогу хостов релея (`GET /api/federation/hosts`, TASK-65 п.6): каталог выдаёт
+ * имена машин и их онлайн-статус, поэтому требует `Authorization: Bearer <RELAY_API_TOKEN>`.
+ * Если токен на релее не задан, каталог считается выключенным — публиковать список машин в
+ * открытый интернет «по умолчанию» нельзя (decision-5 п.5). Сравнение — константное по времени.
+ */
+export function isRelayApiAuthorized(authorizationHeader, configuredToken) {
+  if (!configuredToken) return false;
+  const presented = String(authorizationHeader || '').replace(/^Bearer\s+/i, '');
+  const a = Buffer.from(presented, 'utf8');
+  const b = Buffer.from(configuredToken, 'utf8');
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}

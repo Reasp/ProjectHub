@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import nodeCrypto from 'node:crypto';
-import type { DeviceRights, RemoteDevice } from '../../src/types/remote';
+import type { DeviceRights, EncryptedPacket, PlainPacket, RemoteDevice } from '../../src/types/remote';
+import { encryptPayload, decryptPayload } from '../../src/utils/remoteCryptoNode';
 
 /**
  * Поверхность безопасности Remote Control (TASK-58, decision-14 п.8): PIN/ключ сопряжения,
@@ -43,6 +44,14 @@ interface RemoteControlServiceInternal {
   revokeDeviceToken: (deviceId: string) => void;
   checkPinRateLimit: (ip: string) => { allowed: boolean; retryAfterMs?: number };
   recordPinFailure: (ip: string) => void;
+  requireApproval: boolean;
+  enabled: boolean;
+  eventLog: Array<{ id: number; event: string; data: unknown }>;
+  eventLogNextId: number;
+  localClients: Map<
+    string,
+    { id: string; ws: { readyState: number; send: (raw: string) => void }; device: RemoteDevice; isEncrypted: boolean }
+  >;
 }
 
 const svc = remoteControlService as unknown as RemoteControlServiceInternal;
@@ -345,5 +354,121 @@ describe('remoteControlService: handshake через relay-пакет (TASK-65, 
 
     expect(second[0].type).toBe('handshake_ack');
     expect(second[0].result.approved).toBe(true);
+  });
+});
+
+describe('remoteControlService: назначение прав конкретному устройству (TASK-65)', () => {
+  const deviceId = 'dev-rights-ui';
+
+  afterEach(() => {
+    svc.deviceTokens.delete(deviceId);
+    svc.connectedDevices.delete(deviceId);
+    svc.readOnly = false;
+  });
+
+  it('setDeviceRights сужает права уже спаренного устройства и попадает в статус', () => {
+    svc.issueDeviceToken(deviceId, 'Phone');
+    remoteControlService.setDeviceRights(deviceId, 'hitl');
+
+    expect(svc.deviceTokens.get(deviceId)?.rights).toBe('hitl');
+    const paired = remoteControlService.getStatus().pairedDevices.find((d) => d.deviceId === deviceId);
+    expect(paired?.rights).toBe('hitl');
+    expect(paired?.connected).toBe(false);
+  });
+
+  it('setDeviceRights применяется к открытой сессии устройства сразу', () => {
+    svc.issueDeviceToken(deviceId, 'Phone');
+    svc.connectedDevices.set(deviceId, fakeDevice(deviceId, true, { rights: 'full' }));
+
+    remoteControlService.setDeviceRights(deviceId, 'readOnly');
+    expect(svc.connectedDevices.get(deviceId)?.rights).toBe('readOnly');
+  });
+
+  it('назначенные вручную права переживают пересопряжение по PIN (новый токен — те же права)', () => {
+    svc.issueDeviceToken(deviceId, 'Phone');
+    remoteControlService.setDeviceRights(deviceId, 'hitl');
+
+    const reissued = svc.issueDeviceToken(deviceId, 'Phone');
+    expect(reissued.rights).toBe('hitl');
+  });
+
+  it('без ручного назначения права по-прежнему выводятся из глобального readOnly', () => {
+    svc.readOnly = true;
+    expect(svc.issueDeviceToken(deviceId, 'Phone').rights).toBe('readOnly');
+  });
+});
+
+describe('remoteControlService: догон событий после разрыва (TASK-65, decision-11 п.6)', () => {
+  const deviceId = 'dev-events';
+
+  beforeEach(() => {
+    svc.eventLog.length = 0;
+    svc.eventLogNextId = 1;
+    svc.enabled = true;
+  });
+
+  afterEach(() => {
+    svc.enabled = false;
+    svc.eventLog.length = 0;
+    svc.eventLogNextId = 1;
+  });
+
+  it('событие уезжает клиенту с монотонным eventId и попадает в кольцевой буфер', () => {
+    const sent: PlainPacket[] = [];
+    svc.localClients.set(deviceId, {
+      id: deviceId,
+      ws: { readyState: 1, send: (raw: string) => sent.push(JSON.parse(raw)) },
+      device: fakeDevice(deviceId, true),
+      isEncrypted: false
+    });
+
+    remoteControlService.broadcastEvent('process:logChunk', { processId: 'p1', text: 'a' });
+    remoteControlService.broadcastEvent('process:logChunk', { processId: 'p1', text: 'b' });
+    svc.localClients.delete(deviceId);
+
+    expect(sent.map((p) => p.eventId)).toEqual([1, 2]);
+    expect(svc.eventLog.map((e) => e.id)).toEqual([1, 2]);
+  });
+
+  it('get_events_since отдаёт только события новее последнего увиденного', async () => {
+    remoteControlService.broadcastEvent('process:logChunk', { processId: 'p1', text: 'a' });
+    remoteControlService.broadcastEvent('process:logChunk', { processId: 'p1', text: 'b' });
+    remoteControlService.broadcastEvent('process:logChunk', { processId: 'p1', text: 'c' });
+
+    const res = await svc.dispatchRpc('get_events_since', { sinceId: 1 }, fakeDevice(deviceId, true));
+    expect(res.events.map((e: { id: number }) => e.id)).toEqual([2, 3]);
+    expect(res.lastEventId).toBe(3);
+  });
+});
+
+describe('remoteControlService: handshake_ack не утекает токен через relay (TASK-65)', () => {
+  const deviceId = 'dev-encrypted-ack';
+
+  beforeEach(() => {
+    svc.connectedDevices.set(deviceId, fakeDevice(deviceId, false));
+    svc.requireApproval = false;
+  });
+
+  afterEach(() => {
+    svc.connectedDevices.delete(deviceId);
+    svc.deviceTokens.delete(deviceId);
+    svc.requireApproval = true;
+  });
+
+  it('на зашифрованный handshake отвечает зашифрованным пакетом (deviceToken не в открытом виде)', async () => {
+    const { pairingPin, secretKey } = remoteControlService.getStatus();
+    const handshake: PlainPacket = { type: 'handshake', data: { pin: pairingPin } };
+    const encryptedHandshake = encryptPayload(handshake, secretKey);
+
+    const replies: EncryptedPacket[] = [];
+    await svc.handleIncomingClientMessage(deviceId, Buffer.from(JSON.stringify(encryptedHandshake)), (r) => replies.push(r));
+
+    expect(replies[0].e2ee).toBe(true);
+    expect(JSON.stringify(replies[0])).not.toContain('deviceToken');
+
+    const decrypted: PlainPacket = decryptPayload(replies[0], secretKey);
+    expect(decrypted.type).toBe('handshake_ack');
+    expect(decrypted.result.deviceToken).toMatch(/^[0-9a-f]{64}$/);
+    expect(typeof decrypted.result.lastEventId).toBe('number');
   });
 });
