@@ -436,6 +436,20 @@ const api: IElectronAPI = {
     return () => {
       ipcRenderer.removeListener('bus:event', handler);
     };
+  },
+
+  // Диагностика и автообновление (TASK-58)
+  getDiagnosticsInfo: () => ipcRenderer.invoke('diagnostics:getInfo'),
+  collectDiagnosticsArchive: () => ipcRenderer.invoke('diagnostics:collectArchive'),
+  getUpdaterStatus: () => ipcRenderer.invoke('updater:getStatus'),
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  installUpdateNow: () => ipcRenderer.invoke('updater:installNow'),
+  onUpdaterStatusChanged: (callback: (status: any) => void) => {
+    const handler = (_event: any, status: any) => callback(status);
+    ipcRenderer.on('updater:statusChanged', handler);
+    return () => {
+      ipcRenderer.removeListener('updater:statusChanged', handler);
+    };
   }
 };
 

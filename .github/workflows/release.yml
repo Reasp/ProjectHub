@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: release (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache electron-builder
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-builder-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            electron-builder-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Quality gate (lint, tests, tsc, vite build, check-bundle)
+        run: npm run build
+
+      # electron-builder --publish always: собирает установщики/архивы и публикует их вместе
+      # с latest.yml/latest-mac.yml/latest-linux.yml в GitHub Release тега, создавая релиз при
+      # необходимости (см. package.json -> build.publish, decision-14). Токен GITHUB_TOKEN
+      # достаточен: репозиторий и релиз принадлежат тому же owner/repo, что и Actions-раннер.
+      # Иконка патчится отдельным скриптом только для локальной быстрой сборки (`pack:win`,
+      # CLAUDE.md п.14) и в CI (ci.yml) — там она нужна ДО загрузки артефакта. Здесь `--publish
+      # always` собирает и публикует installer/portable одной командой, патчить после публикации
+      # уже поздно, а патчить и пересобирать заново — пустая трата времени раннера.
+      - name: Build & publish (Windows: nsis + portable)
+        if: runner.os == 'Windows'
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & publish (macOS: dmg + zip, unsigned)
+        if: runner.os == 'macOS'
+        run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & publish (Linux: AppImage)
+        if: runner.os == 'Linux'
+        run: npx electron-builder --linux --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

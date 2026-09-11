@@ -186,6 +186,34 @@ export interface McpServerStatus {
   lastError: string | null;
 }
 
+/** Сведения экрана «Диагностика» (TASK-58): версии, пути, уровень логирования. */
+export interface DiagnosticsInfo {
+  appVersion: string;
+  electronVersion: string;
+  chromeVersion: string;
+  nodeVersion: string;
+  platform: string;
+  arch: string;
+  isPackaged: boolean;
+  userDataDir: string;
+  logsDir: string;
+  crashDumpsDir: string;
+  logLevel: string;
+}
+
+export type UpdaterState = 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+
+/** Статус проверки обновлений (TASK-58, decision-14 п.2): push из main через onUpdaterStatusChanged. */
+export interface UpdaterStatus {
+  state: UpdaterState;
+  currentVersion: string;
+  latestVersion?: string;
+  percent?: number;
+  releaseUrl?: string;
+  error?: string;
+  supportsAutoInstall: boolean;
+}
+
 export interface FederationHost {
   hostId: string;
   machineName: string;
@@ -663,6 +691,14 @@ export interface IElectronAPI {
   getHitlInfo: () => Promise<{ auditDir: string | null; queueDir: string | null; hostId: string }>;
   exportHitlAudit: (query?: HitlAuditQuery, format?: 'jsonl' | 'json' | 'csv') => Promise<{ success: boolean; path?: string; error?: string; canceled?: boolean }>;
   onBusEvent: (callback: (event: AppBusEvent) => void) => () => void;
+
+  // Диагностика и автообновление (TASK-58)
+  getDiagnosticsInfo: () => Promise<DiagnosticsInfo>;
+  collectDiagnosticsArchive: () => Promise<{ success: boolean; path?: string; error?: string; canceled?: boolean }>;
+  getUpdaterStatus: () => Promise<UpdaterStatus>;
+  checkForUpdates: () => Promise<UpdaterStatus>;
+  installUpdateNow: () => Promise<boolean>;
+  onUpdaterStatusChanged: (callback: (status: UpdaterStatus) => void) => () => void;
 }
 
 export interface FileTreeNode {

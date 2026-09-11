@@ -40,6 +40,13 @@ export interface FederationHost {
   activeProcessesCount: number;
   projects?: Array<{ id: string; name: string; path: string }>;
   lastSeen: number;
+  /**
+   * Версия протокола федерации (TASK-58, задел для TASK-66). Хосты со старой/новой несовместимой
+   * версией отклоняются при регистрации с понятной ошибкой вместо молчаливой порчи данных.
+   */
+  protocolVersion?: number;
+  /** Заполняется на принимающей стороне, если версия хоста несовместима с локальной. */
+  protocolIncompatible?: boolean;
 }
 
 export interface RemoteControlStatus {

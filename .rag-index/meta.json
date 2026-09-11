@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "ee766b611c828718ce1ff00f9f0d48f78be911a4fcf40f04ff6417cbad73664f",
+  "docsHash": "8addbf28b097a5c5849667a68d7e5f59bf9d4634d279e051083e7951f4e2c9c9",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -33,5 +33,5 @@
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
   "chunks": 225,
-  "builtAt": "2026-09-10T20:44:01.676Z"
+  "builtAt": "2026-09-10T23:51:04.108Z"
 }

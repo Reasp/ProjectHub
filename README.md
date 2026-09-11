@@ -182,6 +182,42 @@ npm run index-docs    # пересобрать векторный индекс �
 
 ---
 
+## CI/CD и релизы
+
+CI (`.github/workflows/ci.yml`) гоняет полный локальный гейт (`npm run build`: validate-docs,
+check-index, ESLint, Vitest, `tsc`, `vite build`, `check-bundle`) на матрице
+`windows-latest` / `macos-latest` / `ubuntu-latest` на каждый PR и push в `master`, плюс
+собирает распакованный `--dir`-билд на каждой ОС как артефакт (для быстрой ручной проверки, не
+для распространения).
+
+Релиз (`.github/workflows/release.yml`) запускается на тег `v*` (например `v0.2.0`): на каждой
+ОС проходит тот же гейт, затем `electron-builder --publish always` собирает и публикует
+дистрибутивы в GitHub Release тега вместе с `latest.yml` / `latest-mac.yml` / `latest-linux.yml`,
+по которым `electron-updater` проверяет обновления:
+
+| ОС | Форматы | Автообновление |
+|---|---|---|
+| Windows | `nsis` (установщик), `portable` | да (nsis) |
+| macOS | `dmg`, `zip` | нет — сборка без подписи (decision-14); приложение показывает ссылку на релиз вместо автоустановки |
+| Linux | `AppImage` | да |
+
+Чтобы выпустить релиз: поднять `version` в `package.json`, закоммитить, поставить тег
+(`git tag v0.2.0 && git push origin v0.2.0`) — остальное делает workflow. Токен репозитория
+(`GITHUB_TOKEN`) для публикации в Releases пробрасывается Actions автоматически, отдельно
+настраивать нечего.
+
+**Защита ветки `master`**: включить в GitHub → Settings → Branches → правило для `master` —
+`Require a pull request before merging` и `Require status checks to pass` с обязательной
+проверкой `build (ubuntu-latest)` / `build (windows-latest)` / `build (macos-latest)` из CI.
+Слияние в `master` идёт только через PR с зелёным CI; агент не коммитит и не мержит в `master`
+самостоятельно (правило 9 CLAUDE.md) — это делает пользователь.
+
+Диагностика на месте: вкладка «Диагностика» (иконка в шапке рядом с MCP) показывает версию,
+проверяет обновления по кнопке и на старте, и собирает архив логов (`main.log` + ротации +
+локальные crash-дампы, без отправки куда-либо — decision-7) для приложения к багрепорту.
+
+---
+
 ## Структура репозитория
 
 ```

@@ -16,6 +16,7 @@
     "pack:mac": "node scripts/pack-mac.mjs",
     "dist:win": "npm run build && electron-builder --win portable && node scripts/patch-exe-icon.mjs",
     "dist:mac": "node scripts/pack-mac.mjs --dist",
+    "dist:linux": "npm run build && electron-builder --linux",
     "dist": "npm run build && electron-builder --win && node scripts/patch-exe-icon.mjs",
     "setup": "node scripts/setup.mjs",
     "index-docs": "node scripts/rag/index-docs.mjs",
@@ -47,6 +48,11 @@
       "dist-electron/**/*"
     ],
     "npmRebuild": false,
+    "publish": {
+      "provider": "github",
+      "owner": "Reasp",
+      "repo": "ProjectHub"
+    },
     "win": {
       "icon": "build/icon.ico",
       "target": [
@@ -58,6 +64,31 @@
         },
         {
           "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Development",
+      "target": [
+        {
+          "target": "AppImage",
           "arch": [
             "x64"
           ]
@@ -136,6 +167,7 @@
     "chokidar": "^5.0.0",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.14",
+    "electron-updater": "^6.8.9",
     "gray-matter": "^4.0.3",
     "lucide-react": "^1.34.0",
     "mermaid": "^11.17.2",

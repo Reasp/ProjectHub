@@ -1517,6 +1517,29 @@ export interface TranslationDictionary {
     copyCurl: string;
     localOnlyNotice: string;
   };
+  diagnostics: {
+    badgeTooltip: string;
+    modalTitle: string;
+    modalDesc: string;
+    appVersion: string;
+    platform: string;
+    userDataDir: string;
+    logsDir: string;
+    checkUpdates: string;
+    checkingUpdates: string;
+    updateAvailable: string;
+    updateNotAvailable: string;
+    updateDownloading: string;
+    updateDownloaded: string;
+    updateError: string;
+    installNow: string;
+    viewRelease: string;
+    collectArchive: string;
+    collectingArchive: string;
+    archiveSaved: string;
+    archiveError: string;
+    autoInstallUnsupportedMac: string;
+  };
   hitl: {
     badgeTooltip: string;
     badgePending: string;

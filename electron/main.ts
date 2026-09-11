@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, session } from 'electron';
+import { app, BrowserWindow, shell, session, crashReporter } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -15,7 +15,13 @@ import { invalidateInspectCache } from './services/projectScanner';
 import { logger, parseLogLevel } from './services/logger';
 import { getUserDataDir } from './services/appPaths';
 import { hitlService } from './services/hitlService';
+import { updaterService } from './services/updaterService';
 import { registerAllIpc } from './ipc';
+
+// Локальные crash-репорты (TASK-58, decision-14 п.4, decision-7): дампы падений остаются на диске
+// пользователя (`app.getPath('crashDumps')`) и собираются в архив только вручную из «Диагностики» —
+// никуда не отправляются (`uploadToServer: false`).
+crashReporter.start({ uploadToServer: false, compress: true });
 
 // Логи main-процесса: stdout + файл userData/logs/main.log с ротацией (TASK-49).
 logger.init({
@@ -448,11 +454,22 @@ app.whenReady().then(() => {
     ensureEndpoint: () => mcpServerService.ensurePermissionEndpoint()
   });
 
-  mcpServerService.start().catch((err) => {
-    console.error('[Main] Failed to auto-start Remote MCP server:', err);
-  });
+  mcpServerService
+    .init()
+    .then(() => mcpServerService.start())
+    .catch((err) => {
+      console.error('[Main] Failed to auto-start Remote MCP server:', err);
+    });
 
   remoteControlService.initOnStartup().catch((err) => {
     console.error('[Main] Failed to auto-start Remote Control service:', err);
   });
+
+  // Проверка обновлений при старте (decision-14 п.2): с задержкой, чтобы не конкурировать
+  // за сеть с восстановлением swarm-сессий и стартом MCP/Remote Control выше.
+  setTimeout(() => {
+    updaterService.checkForUpdates().catch((err) => {
+      console.warn('[Main] Update check failed:', err);
+    });
+  }, 5000).unref();
 });

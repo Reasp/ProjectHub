@@ -44,6 +44,13 @@ export function getLocalIpAddresses(): string[] {
   return addresses;
 }
 
+/**
+ * Версия протокола федерации/Remote Control (TASK-58, задел для TASK-66). Увеличивается при
+ * несовместимом изменении формата `FederationHost`/RPC. Хосты сверяют версию при регистрации
+ * (`/api/federation/register`) и получают понятную ошибку вместо тихой порчи данных при рассинхроне.
+ */
+export const REMOTE_FEDERATION_PROTOCOL_VERSION = 1;
+
 interface ClientConnection {
   id: string;
   ws: WebSocket;
@@ -233,6 +240,11 @@ class RemoteControlService {
     return this.hostId;
   }
 
+  /** PIN или секретный ключ подходят для сопряжения нового устройства (TASK-58: вынесено для unit-тестов). */
+  public isValidPairingCredentials(pin: string | null | undefined, key: string | null | undefined): boolean {
+    return (Boolean(pin) && pin === this.pairingPin) || (Boolean(key) && key === this.secretKey);
+  }
+
   public getStatus(): RemoteControlStatus {
     const localIps = getLocalIpAddresses();
     return {
@@ -419,8 +431,14 @@ class RemoteControlService {
       projectsCount: projects.length,
       activeProcessesCount: running.length,
       projects: projects.map((p) => ({ id: p.id, name: p.name, path: p.path })),
-      lastSeen: Date.now()
+      lastSeen: Date.now(),
+      protocolVersion: REMOTE_FEDERATION_PROTOCOL_VERSION
     };
+  }
+
+  /** Совместима ли версия протокола удалённого хоста с локальной (TASK-58, задел для TASK-66). */
+  public isProtocolCompatible(peer: Pick<FederationHost, 'protocolVersion'>): boolean {
+    return (peer.protocolVersion ?? 1) === REMOTE_FEDERATION_PROTOCOL_VERSION;
   }
 
   public getFederationHostsList(): FederationHost[] {
@@ -441,6 +459,7 @@ class RemoteControlService {
     if (peer.hostId && peer.hostId !== this.hostId) {
       peer.lastSeen = Date.now();
       peer.isOnline = true;
+      peer.protocolIncompatible = !this.isProtocolCompatible(peer);
       this.knownFederationHosts.set(peer.hostId, peer);
       this.notifyStatusChanged();
     }
@@ -742,6 +761,20 @@ class RemoteControlService {
       req.on('end', () => {
         try {
           const peer = JSON.parse(body) as FederationHost;
+          if (!this.isProtocolCompatible(peer)) {
+            res.writeHead(409, { 'Content-Type': 'application/json' });
+            res.end(
+              JSON.stringify({
+                error: 'protocol_version_mismatch',
+                message:
+                  `Версия протокола федерации хоста "${peer.machineName || peer.hostId}" (${peer.protocolVersion ?? 1}) `
+                  + `несовместима с локальной (${REMOTE_FEDERATION_PROTOCOL_VERSION}). Обновите ProjectHub на обеих машинах.`,
+                localProtocolVersion: REMOTE_FEDERATION_PROTOCOL_VERSION,
+                peerProtocolVersion: peer.protocolVersion ?? 1
+              })
+            );
+            return;
+          }
           this.registerPeerHost(peer);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, hosts: this.getFederationHostsList() }));
@@ -804,10 +837,9 @@ class RemoteControlService {
       const ip = req.socket.remoteAddress || '127.0.0.1';
 
       // Проверка пин-кода или ключа
-      const isPinValid = pin === this.pairingPin;
       const isKeyValid = key === this.secretKey;
 
-      if (!isPinValid && !isKeyValid) {
+      if (!this.isValidPairingCredentials(pin, key)) {
         ws.send(JSON.stringify({ type: 'error', error: 'Invalid pairing PIN or secret key' }));
         ws.close(1008, 'Authentication failed');
         return;

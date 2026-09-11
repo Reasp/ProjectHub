@@ -18,6 +18,10 @@ import {
 } from './claudeBridgeService.js';
 import matter from 'gray-matter';
 import { hitlService } from './hitlService.js';
+import { secretStorageService } from './secretStorageService.js';
+
+/** Ключ персистентного токена MCP-сервера в safeStorage (TASK-58): переживает перезапуск приложения. */
+const MCP_TOKEN_SECRET_KEY = 'mcp_server_token';
 
 export interface McpServerStatus {
   isRunning: boolean;
@@ -78,6 +82,25 @@ class McpServerService {
     this.token = `ph_mcp_${crypto.randomBytes(12).toString('hex')}`;
   }
 
+  /**
+   * Загружает персистентный токен из safeStorage (TASK-58), если он уже был сгенерирован раньше;
+   * иначе сохраняет токен, сгенерированный в конструкторе, как первый постоянный. Вызывается один
+   * раз при старте приложения, до `start()` — иначе внешний конфиг Claude Code/Cursor протухает
+   * при каждом перезапуске ProjectHub.
+   */
+  public async init(): Promise<void> {
+    try {
+      const stored = await secretStorageService.getSecret(MCP_TOKEN_SECRET_KEY);
+      if (stored) {
+        this.token = stored;
+      } else {
+        await secretStorageService.setSecret(MCP_TOKEN_SECRET_KEY, this.token);
+      }
+    } catch (err) {
+      console.warn('[MCPServer] Не удалось загрузить персистентный токен, используется временный:', err);
+    }
+  }
+
   public setAppState(state: { activeProject?: any; activeTab?: string }) {
     if (state.activeProject !== undefined) this.currentAppState.activeProject = state.activeProject;
     if (state.activeTab !== undefined) this.currentAppState.activeTab = state.activeTab;
@@ -102,6 +125,9 @@ class McpServerService {
 
   public regenerateToken(): string {
     this.token = `ph_mcp_${crypto.randomBytes(12).toString('hex')}`;
+    secretStorageService.setSecret(MCP_TOKEN_SECRET_KEY, this.token).catch((err) => {
+      console.warn('[MCPServer] Не удалось сохранить новый токен:', err);
+    });
     this.broadcastStatus();
     return this.token;
   }

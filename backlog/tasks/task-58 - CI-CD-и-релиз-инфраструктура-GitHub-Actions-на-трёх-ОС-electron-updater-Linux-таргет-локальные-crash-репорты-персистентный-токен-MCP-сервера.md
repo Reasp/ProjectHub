@@ -3,9 +3,11 @@ id: TASK-58
 title: >-
   CI/CD и релиз-инфраструктура: GitHub Actions на трёх ОС, electron-updater,
   Linux-таргет, локальные crash-репорты, персистентный токен MCP-сервера
-status: To Do
-assignee: []
+status: Review
+assignee:
+  - veshiy666@gmail.com
 created_date: '2026-09-10 07:16'
+updated_date: '2026-09-10 23:56'
 labels:
   - ade-roadmap
   - ci
@@ -28,6 +30,36 @@ documentation:
   - >-
     backlog/decisions/decision-7 -
     Local-first-хранение-состояния-и-отсутствие-телеметрии.md
+modified_files:
+  - .github/workflows/ci.yml
+  - .github/workflows/release.yml
+  - package.json
+  - package-lock.json
+  - electron/main.ts
+  - electron/preload.ts
+  - electron/ipc/index.ts
+  - electron/ipc/diagnosticsIpc.ts
+  - electron/services/mcpServerService.ts
+  - electron/services/remoteControlService.ts
+  - electron/services/updaterService.ts
+  - electron/services/versionCompare.ts
+  - electron/services/diagnosticsService.ts
+  - electron/services/zipWriter.ts
+  - src/types/electron.d.ts
+  - src/types/remote.ts
+  - src/components/layout/Header.tsx
+  - src/components/diagnostics/DiagnosticsBadge.tsx
+  - src/i18n/types.ts
+  - src/i18n/ru.ts
+  - src/i18n/en.ts
+  - tests/unit/mcpServerAuth.test.ts
+  - tests/unit/remoteControlAuth.test.ts
+  - tests/unit/zipWriter.test.ts
+  - tests/unit/updaterVersion.test.ts
+  - README.md
+  - >-
+    backlog/decisions/decision-14 -
+    Релиз-инфраструктура-GitHub-Actions-автообновление-crash-репорты-и-Linux-таргет.md
 priority: medium
 type: chore
 ---
@@ -58,11 +90,31 @@ type: chore
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Workflow CI на трёх ОС выполняет полный npm run build на каждый PR и push в master, артефакты pack сохраняются; сборка зелёная
-- [ ] #2 Workflow release по тегу v* публикует GitHub Release с бинарниками Windows (nsis, portable), macOS (dmg, zip) и Linux (AppImage) и файлами latest*.yml
-- [ ] #3 electron-updater проверяет обновления при старте и по кнопке, устанавливает на Windows/Linux, на macOS без сертификата показывает уведомление со ссылкой
-- [ ] #4 crashReporter включён без отправки на сервер; экран «Диагностика» собирает архив логов и дампов без секретов
-- [ ] #5 Токен MCP-сервера персистентен через safeStorage, переживает перезапуск, отзывается и пересоздаётся из UI; внешний конфиг Claude Code продолжает работать после рестарта
-- [ ] #6 Добавлены unit-тесты на аутентификацию mcpServerService и на аутентификацию/формат пакетов remoteControlService
-- [ ] #7 README описывает процесс релиза и защиту ветки master
+- [x] #1 Workflow CI на трёх ОС выполняет полный npm run build на каждый PR и push в master, артефакты pack сохраняются; сборка зелёная
+- [x] #2 Workflow release по тегу v* публикует GitHub Release с бинарниками Windows (nsis, portable), macOS (dmg, zip) и Linux (AppImage) и файлами latest*.yml
+- [x] #3 electron-updater проверяет обновления при старте и по кнопке, устанавливает на Windows/Linux, на macOS без сертификата показывает уведомление со ссылкой
+- [x] #4 crashReporter включён без отправки на сервер; экран «Диагностика» собирает архив логов и дампов без секретов
+- [x] #5 Токен MCP-сервера персистентен через safeStorage, переживает перезапуск, отзывается и пересоздаётся из UI; внешний конфиг Claude Code продолжает работать после рестарта
+- [x] #6 Добавлены unit-тесты на аутентификацию mcpServerService и на аутентификацию/формат пакетов remoteControlService
+- [x] #7 README описывает процесс релиза и защиту ветки master
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Реализовано:
+1. `.github/workflows/ci.yml` — матрица windows/macos/ubuntu-latest, `npm ci` + `npm run build` (полный локальный гейт) на PR и push в master, `--dir`-сборка + upload-artifact на каждой ОС.
+2. `.github/workflows/release.yml` — на тег `v*` тот же гейт + `electron-builder --publish always` на каждой ОС (публикация в GitHub Release тега вместе с latest*.yml).
+3. `package.json`: добавлен таргет `nsis` для Windows (portable/dir сохранены), секция `linux.target: AppImage`, `build.publish` (github, Reasp/ProjectHub), конфиг `nsis`.
+4. `electron/services/updaterService.ts` (+ `versionCompare.ts` для чистой функции сравнения версий): electron-updater для win/linux (проверка на старте с задержкой 5с и по кнопке, автозагрузка, `quitAndInstall`), для macOS — сверка версии через GitHub Releases API и ссылка на релиз без автоустановки (Squirrel.Mac требует подписи).
+5. Версия протокола федерации `REMOTE_FEDERATION_PROTOCOL_VERSION` в `remoteControlService.ts`: включена в `FederationHost`, проверяется в `/api/federation/register` (409 + понятное сообщение при несовпадении), несовместимые пиры помечаются `protocolIncompatible` — задел для TASK-66.
+6. `crashReporter.start({ uploadToServer: false, compress: true })` в main.ts; `electron/services/diagnosticsService.ts` + собственный `zipWriter.ts` (без внешней зависимости) собирают архив `main.log` + ротации + crash-дампы + info.json; экран «Диагностика» (`DiagnosticsBadge.tsx`) в хедере — версия/пути, проверка обновлений, кнопка «Собрать архив логов».
+7. `mcpServerService.init()` — токен грузится/сохраняется через существующий `secretStorageService` (safeStorage), переживает перезапуск; UI копирования/отзыва токена уже существовал (`McpServerStatusBadge`), теперь опирается на персистентный токен.
+8. Юнит-тесты: `mcpServerAuth.test.ts` (8, реальный HTTP на 127.0.0.1: Origin/Host/Bearer/regenerate), `remoteControlAuth.test.ts` (12, PIN/ключ + `handleIncomingClientMessage` с замоканными сокетами/устройствами: не-JSON, неодобренное устройство, ping/pong, read-only, версия протокола), `zipWriter.test.ts` (4), `updaterVersion.test.ts` (4).
+9. README: раздел «CI/CD и релизы» — таблица форматов по ОС, инструкция релиза по тегу, включение branch protection для master, описание экрана «Диагностика».
+10. decision-14 переведён в `accepted` (реализовано), `.rag-index` пересобран.
+
+Проверено локально: `npm run build` (lint/test/tsc/vite build/check-bundle) зелёный, 313 unit-тестов проходят, `npm run pack:win` пересобирает `release/win-unpacked/ProjectHub.exe`. Живым запуском (`npm run dev`, реальный Electron) подтверждено: приложение стартует, MCP-сервер поднимается, апдейтер корректно определяет dev/unpacked режим, бейдж «Диагностика» рендерится в хедере рядом с MCP-бейджем. По ходу живого теста найден и исправлен реальный баг: `electron-updater` — CJS-пакет, именованный экспорт `autoUpdater` не проходит через Node ESM-загрузчик main-процесса; исправлено на default-импорт с деструктуризацией.
+
+Не проверено (не выполнимо в этой среде): реальный прогон `ci.yml`/`release.yml` на GitHub Actions (нет пуша/тега), сквозной цикл электрон-апдейтера (скачивание/quitAndInstall) — для этого нужен опубликованный релиз; включение branch protection в GitHub UI — это ручное действие пользователя, описано в README.
+<!-- SECTION:NOTES:END -->

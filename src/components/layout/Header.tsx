@@ -22,6 +22,7 @@ import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { ActionRunnerBar } from '../actions/ActionRunnerBar';
 import { McpServerStatusBadge } from '../mcp/McpServerStatusBadge';
+import { DiagnosticsBadge } from '../diagnostics/DiagnosticsBadge';
 import { RemoteControlBadge } from '../remote/RemoteControlBadge';
 import { VoiceControlHeader } from '../voice/VoiceControlHeader';
 import { ClaudeUsageButton } from '../ai/ClaudeUsageButton';
@@ -73,6 +74,7 @@ export const Header: React.FC = () => {
           <HitlBadge />
           <RemoteControlBadge />
           <McpServerStatusBadge />
+          <DiagnosticsBadge />
           <VoiceControlHeader />
           <ClaudeUsageButton />
           {/* Language Switcher */}
@@ -280,6 +282,9 @@ export const Header: React.FC = () => {
 
         {/* MCP Remote Control Status Badge */}
         <McpServerStatusBadge />
+
+        {/* Диагностика: версия, автообновление, сбор логов (TASK-58) */}
+        <DiagnosticsBadge />
 
         {/* Global Voice Control Header Bar */}
         <VoiceControlHeader />
