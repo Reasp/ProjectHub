@@ -1,6 +1,8 @@
 import { ipcMain, shell } from 'electron';
 import { mcpServerService } from '../services/mcpServerService';
 import { remoteControlService } from '../services/remoteControlService';
+import { telegramService } from '../services/telegramService';
+import { notificationService } from '../services/notificationService';
 import { secretStorageService } from '../services/secretStorageService';
 import type { DeviceRights } from '../../src/types/remote';
 
@@ -88,7 +90,14 @@ export function registerMcpIpc() {
   });
 
   ipcMain.handle('remote:updateConfig', async (_event, config) => {
-    return await remoteControlService.updateConfig(config);
+    const status = await remoteControlService.updateConfig(config);
+    // Токен/чат Telegram сменились — приводим демона бота к новому состоянию (TASK-63):
+    // иначе он продолжал бы работать со старым токеном до перезапуска приложения.
+    if (config && typeof config === 'object' && ('telegramBotToken' in config || 'telegramChatId' in config)) {
+      await telegramService.stopBot();
+      await telegramService.sync(notificationService.getSettings().telegramBotAutoStart);
+    }
+    return status;
   });
 
   ipcMain.handle('remote:regenerateToken', async () => {

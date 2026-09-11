@@ -1631,5 +1631,52 @@ export interface TranslationDictionary {
     openHistoryDesc: string;
     sidebarPending: string;
   };
+  notifications: {
+    badgeTooltip: string;
+    badgeMuted: string;
+    title: string;
+    subtitle: string;
+    enabled: string;
+    enabledDesc: string;
+    matrixTitle: string;
+    colEvent: string;
+    channel: Record<'tray' | 'os' | 'sound' | 'telegram' | 'remote', string>;
+    kind: Record<
+      | 'hitl'
+      | 'agentFinished'
+      | 'agentFailed'
+      | 'swarmFinished'
+      | 'processCrashed'
+      | 'prCreated'
+      | 'prChecksFailed'
+      | 'deviceConnected',
+      string
+    >;
+    osActionsUnsupported: string;
+    unsupportedOs: string;
+    telegramNotConfigured: string;
+    trayUnavailable: string;
+    quietTitle: string;
+    quietEnabled: string;
+    quietFrom: string;
+    quietTo: string;
+    quietAllowCritical: string;
+    quietDesc: string;
+    volume: string;
+    dedup: string;
+    dedupDesc: string;
+    minimizeToTray: string;
+    telegramTitle: string;
+    telegramAutoStart: string;
+    botRunning: string;
+    botStopped: string;
+    botStart: string;
+    botStop: string;
+    historyTitle: string;
+    historyEmpty: string;
+    test: string;
+    clearHistory: string;
+    serviceProcesses: string;
+  };
 }
 

@@ -29,6 +29,7 @@ import { WorktreeSwitcher } from '../git/WorktreeSwitcher';
 import { ClaudeUsageButton } from '../ai/ClaudeUsageButton';
 import { VoiceBadge } from '../voice/VoiceBadge';
 import { HitlBadge } from '../hitl/HitlBadge';
+import { NotificationsBadge } from '../notifications/NotificationsBadge';
 
 export const Header: React.FC = () => {
   const { language, setLanguage, t } = useTranslation();
@@ -75,6 +76,7 @@ export const Header: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <HitlBadge />
+          <NotificationsBadge />
           <RemoteControlBadge />
           <McpServerStatusBadge />
           <DiagnosticsBadge />
@@ -290,6 +292,9 @@ export const Header: React.FC = () => {
 
         {/* Единый HITL-контур: ожидающие решения всех сессий (TASK-57) */}
         <HitlBadge />
+
+        {/* Уведомления: трей, ОС, звук, Telegram (TASK-63) */}
+        <NotificationsBadge />
 
         {/* Remote Control Status Badge (TASK-51) */}
         <RemoteControlBadge />

@@ -115,11 +115,11 @@ function normalizeFsPath(p: string): string {
   return process.platform === 'win32' ? norm.toLowerCase() : norm;
 }
 
-function isActiveAgentStatus(status: AgentSlotState['status']): boolean {
+export function isActiveAgentStatus(status: AgentSlotState['status']): boolean {
   return status === 'pending' || status === 'preparing' || status === 'running';
 }
 
-function isActiveSwarmStatus(status: SwarmSession['status']): boolean {
+export function isActiveSwarmStatus(status: SwarmSession['status']): boolean {
   return status === 'preparing' || status === 'running';
 }
 
@@ -740,10 +740,36 @@ export class AgentFleetService extends EventEmitter {
       session.status = 'failed';
       session.error = session.error || `Бюджет сессии ${formatUsd(session.budgetUsd)} превышен`;
       this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
+      this.publishSwarmFinished(session);
       return;
     }
     session.status = 'completed';
     this.emitSwarmEvent({ type: 'swarm_completed', swarmId: session.id, session });
+    this.publishSwarmFinished(session);
+  }
+
+  /**
+   * Завершение сессии в шину событий (TASK-63, decision-13 п.1) — для трея, системного
+   * уведомления и Telegram. Отдельные агенты публикуют `agent:*` сами; здесь итог по сессии.
+   */
+  private publishSwarmFinished(session: SwarmSession): void {
+    const agentsFailed = session.agents.filter((a) => a.status === 'failed').length;
+    const outcome: 'completed' | 'failed' | 'stopped' =
+      session.status === 'completed' ? 'completed' : session.status === 'stopped' ? 'stopped' : 'failed';
+    appEventBus.publish({
+      type: 'swarm:finished',
+      swarmId: session.id,
+      projectPath: session.projectPath,
+      name: session.taskTitle || session.taskId || session.id,
+      mode: session.mode === 'handoff' ? 'handoff' : 'fan-out',
+      outcome,
+      agentsTotal: session.agents.length,
+      agentsFailed,
+      totalCostUsd: session.totalCostUsd,
+      durationMs: session.completedAt ? session.completedAt - session.createdAt : undefined,
+      hostId: hitlService.currentHostId,
+      at: session.completedAt || Date.now()
+    });
   }
 
   /** Роль слота из реестра (decision-9, TASK-60) — `undefined`, если `roleSlug` не задан/не найден. */
@@ -1937,6 +1963,7 @@ export class AgentFleetService extends EventEmitter {
         session
       });
     }
+    if (wasActive) this.publishSwarmFinished(session);
 
     return true;
   }

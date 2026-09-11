@@ -7,6 +7,10 @@ import type {
   CreateProjectOptions,
   ManagedProcess,
   McpServerStatus,
+  NotificationAction,
+  NotificationDelivery,
+  NotificationSettings,
+  NotificationSeverity,
   RagSearchOptions,
   StartProcessOptions
 } from '../src/types/electron';
@@ -444,6 +448,37 @@ const api: IElectronAPI = {
     ipcRenderer.on('bus:event', handler);
     return () => {
       ipcRenderer.removeListener('bus:event', handler);
+    };
+  },
+
+  // Уведомления: трей, ОС, звук, Telegram (TASK-63)
+  getNotificationSettings: () => ipcRenderer.invoke('notifications:getSettings'),
+  updateNotificationSettings: (patch: Partial<NotificationSettings>) =>
+    ipcRenderer.invoke('notifications:updateSettings', patch),
+  testNotification: () => ipcRenderer.invoke('notifications:test'),
+  notificationNavigate: (action: NotificationAction) => ipcRenderer.invoke('notifications:navigate', action),
+  startTelegramBot: () => ipcRenderer.invoke('notifications:startBot'),
+  stopTelegramBot: () => ipcRenderer.invoke('notifications:stopBot'),
+  listServiceProcesses: () => ipcRenderer.invoke('process:listService'),
+  onNotificationDelivered: (callback: (delivery: NotificationDelivery) => void) => {
+    const handler = (_event: unknown, data: NotificationDelivery) => callback(data);
+    ipcRenderer.on('notify:delivered', handler);
+    return () => {
+      ipcRenderer.removeListener('notify:delivered', handler);
+    };
+  },
+  onNotificationSound: (callback: (data: { severity: NotificationSeverity; volume: number }) => void) => {
+    const handler = (_event: unknown, data: { severity: NotificationSeverity; volume: number }) => callback(data);
+    ipcRenderer.on('notify:sound', handler);
+    return () => {
+      ipcRenderer.removeListener('notify:sound', handler);
+    };
+  },
+  onNotificationNavigate: (callback: (action: NotificationAction) => void) => {
+    const handler = (_event: unknown, data: NotificationAction) => callback(data);
+    ipcRenderer.on('notify:navigate', handler);
+    return () => {
+      ipcRenderer.removeListener('notify:navigate', handler);
     };
   },
 

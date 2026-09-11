@@ -9,9 +9,11 @@ import { HotkeysHelpModal } from './components/layout/HotkeysHelpModal';
 import { VoiceControlWidget } from './components/voice/VoiceControlWidget';
 import { DialogHost } from './components/common/DialogHost';
 import { HitlCenterModal } from './components/hitl/HitlCenterModal';
+import { NotificationSettingsModal } from './components/notifications/NotificationSettingsModal';
 import { useProjectStore } from './store/useProjectStore';
 import { useAIStudioStore } from './store/useAIStudioStore';
 import { useHitlStore } from './store/useHitlStore';
+import { useNotificationStore } from './store/useNotificationStore';
 import { useTranslation } from './i18n/useTranslation';
 import { Bot, ShieldAlert, X } from 'lucide-react';
 
@@ -57,6 +59,48 @@ export const App: React.FC = () => {
   useEffect(() => {
     useHitlStore.getState().init();
   }, []);
+
+  // Уведомления: журнал доставок, звук и настройки каналов (TASK-63)
+  useEffect(() => {
+    useNotificationStore.getState().init();
+  }, []);
+
+  /**
+   * Переход по клику на уведомлении ОС или пункте меню трея (TASK-63, decision-13 п.1).
+   * Окно уже показано и сфокусировано в main — здесь только выбор проекта и вкладки.
+   */
+  useEffect(() => {
+    if (!window.api?.onNotificationNavigate) return;
+    return window.api.onNotificationNavigate((action) => {
+      if (!action) return;
+      const focusProject = (projectPath?: string) => {
+        if (!projectPath) return;
+        const match = projects.find((p) => p.path === projectPath);
+        if (match) selectProject(match);
+      };
+      switch (action.type) {
+        case 'openHitl':
+          useHitlStore.getState().openCenter('queue');
+          break;
+        case 'openSwarm':
+          focusProject(action.projectPath);
+          setActiveTab('ai');
+          break;
+        case 'openProcesses':
+          focusProject(action.projectPath);
+          setActiveTab('processes');
+          break;
+        case 'openPrs':
+          focusProject(action.projectPath);
+          setActiveTab('prs');
+          break;
+        case 'openRemote':
+        case 'openApp':
+        default:
+          break;
+      }
+    });
+  }, [projects, selectProject, setActiveTab]);
 
   // Sync state with built-in MCP server
   useEffect(() => {
@@ -292,6 +336,9 @@ export const App: React.FC = () => {
 
       {/* Центр решений HITL: очередь всех сессий и история (TASK-57) */}
       <HitlCenterModal />
+
+      {/* Настройки уведомлений: каналы, тихие часы, Telegram-бот (TASK-63) */}
+      <NotificationSettingsModal />
 
       {/* Global Promise-based Modals (ConfirmDialog, PromptDialog, AlertDialog) */}
       <DialogHost />

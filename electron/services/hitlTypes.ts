@@ -203,6 +203,57 @@ export type AppBusEvent =
     }
   | ({ type: 'agent:started' } & AgentEventBase)
   | ({ type: 'agent:finished'; outcome: 'done' | 'aborted'; durationMs?: number } & AgentEventBase)
-  | ({ type: 'agent:failed'; error: string; durationMs?: number } & AgentEventBase);
+  | ({ type: 'agent:failed'; error: string; durationMs?: number } & AgentEventBase)
+  // ── События уведомлений (TASK-63, decision-13 п.1) ──
+  | {
+      type: 'swarm:finished';
+      swarmId: string;
+      projectPath: string;
+      name: string;
+      mode: 'fan-out' | 'handoff';
+      outcome: 'completed' | 'failed' | 'stopped';
+      agentsTotal: number;
+      agentsFailed: number;
+      totalCostUsd?: number;
+      durationMs?: number;
+      hostId?: string;
+      at: number;
+    }
+  | {
+      type: 'process:crashed';
+      processId: string;
+      name: string;
+      projectPath: string;
+      exitCode?: number;
+      hostId?: string;
+      at: number;
+    }
+  | {
+      type: 'pr:created';
+      projectPath: string;
+      number: number;
+      title: string;
+      url: string;
+      hostId?: string;
+      at: number;
+    }
+  | {
+      type: 'pr:checksFailed';
+      projectPath: string;
+      number: number;
+      title: string;
+      url: string;
+      hostId?: string;
+      at: number;
+    }
+  | {
+      type: 'remote:deviceConnected';
+      deviceId: string;
+      deviceName: string;
+      mode: string;
+      isApproved: boolean;
+      hostId?: string;
+      at: number;
+    };
 
 export type AppBusEventType = AppBusEvent['type'];

@@ -3,9 +3,10 @@ id: TASK-63
 title: >-
   Уведомления через шину событий: системный трей, OS-уведомления с кнопками
   HITL, звук, Telegram-push, автозапуск бота
-status: To Do
+status: Review
 assignee: []
 created_date: '2026-09-10 07:18'
+updated_date: '2026-09-11 08:57'
 labels:
   - ade-roadmap
   - notifications
@@ -21,6 +22,41 @@ references:
   - electron/services/processManager.ts
   - src/components/remote/RemoteControlBadge.tsx
 documentation:
+  - >-
+    backlog/decisions/decision-13 -
+    Уведомления-через-единую-шину-событий-трей-системные-уведомления-звук-и-Telegram.md
+modified_files:
+  - electron/services/notificationTypes.ts
+  - electron/services/notificationRules.ts
+  - electron/services/notificationService.ts
+  - electron/services/trayService.ts
+  - electron/services/trayIcons.ts
+  - electron/services/telegramService.ts
+  - electron/services/hitlTypes.ts
+  - electron/services/processManager.ts
+  - electron/services/agentFleetService.ts
+  - electron/services/prService.ts
+  - electron/services/remoteControlService.ts
+  - electron/ipc/notificationsIpc.ts
+  - electron/ipc/index.ts
+  - electron/ipc/mcpIpc.ts
+  - electron/workers/telegramBot.mjs
+  - electron/main.ts
+  - electron/preload.ts
+  - scripts/telegram-bot.mjs
+  - scripts/gen-tray-icons.mjs
+  - src/types/electron.d.ts
+  - src/store/useNotificationStore.ts
+  - src/lib/notificationSound.ts
+  - src/components/notifications/NotificationSettingsModal.tsx
+  - src/components/notifications/NotificationsBadge.tsx
+  - src/components/layout/Header.tsx
+  - src/components/processes/ProcessesView.tsx
+  - src/App.tsx
+  - src/i18n/ru.ts
+  - src/i18n/en.ts
+  - src/i18n/types.ts
+  - tests/unit/notificationRules.test.ts
   - >-
     backlog/decisions/decision-13 -
     Уведомления-через-единую-шину-событий-трей-системные-уведомления-звук-и-Telegram.md
@@ -53,10 +89,33 @@ type: feature
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Системный трей показывает состояние приложения, очередь HITL и активные сессии; закрытие окна сворачивает в трей, выход спрашивает подтверждение при активных агентах
-- [ ] #2 OS-уведомление о запросе HITL содержит кнопки решения (где поддерживается) и открывает окно по клику; завершение и падение агента приходят уведомлением
+- [x] #1 Системный трей показывает состояние приложения, очередь HITL и активные сессии; закрытие окна сворачивает в трей, выход спрашивает подтверждение при активных агентах
+- [x] #2 OS-уведомление о запросе HITL содержит кнопки решения (где поддерживается) и открывает окно по клику; завершение и падение агента приходят уведомлением
 - [ ] #3 Telegram получает push о HITL с inline-кнопками, решение с кнопки применяется по requestId; push о завершении агента и PR настраиваемы
 - [ ] #4 Telegram-бот запускается и останавливается приложением при заданном токене и виден в менеджере процессов
-- [ ] #5 Настройки доставки по типу события и каналу, тихие часы и дедупликация работают; решение с одного канала закрывает уведомления на других
-- [ ] #6 Unit-тесты на правила доставки и дедупликацию, npm run build проходит
+- [x] #5 Настройки доставки по типу события и каналу, тихие часы и дедупликация работают; решение с одного канала закрывает уведомления на других
+- [x] #6 Unit-тесты на правила доставки и дедупликацию, npm run build проходит
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Реализовано: `notificationTypes.ts` + `notificationRules.ts` (чистый модуль: матрица «событие × канал», тихие часы, дедупликация, `describeBusEvent`, тексты Telegram — 27 unit-тестов в `tests/unit/notificationRules.test.ts`) и `notificationService.ts` — единственный подписчик шины, исполняющий доставку; настройки в `<userData>/notifications.json`.
+
+Шина (`appEventBus` из TASK-57) дополнена типами `swarm:finished` (публикует `agentFleetService.finishSession`/`stopSwarm`), `process:crashed` (`processManager.broadcastStatus` при статусе `failed`), `pr:created`/`pr:checksFailed` (`prService`), `remote:deviceConnected` (`remoteControlService`). Прежняя точечная отправка Telegram о падении процесса из `remoteControlService` удалена — теперь всё идёт через матрицу каналов.
+
+Трей: `trayService.ts` + `trayIcons.ts` (PNG 32×32 вшиты base64, генератор `scripts/gen-tray-icons.mjs`). Иконка idle/working/attention, меню с очередью HITL, активными сессиями и быстрыми действиями; закрытие окна сворачивает в трей (`minimizeToTray`), выход — из меню с нативным `dialog.showMessageBox` при активных агентах.
+
+Telegram: `telegramService.ts` шлёт push с inline-кнопками `hitl:<allow|deny>:<requestId>` и снимает клавиатуру, когда запрос решён любым каналом; демон бота переехал в `electron/workers/telegramBot.mjs` (только воркеры попадают в `app.asar`), запускается `processManager` через `process.execPath` + `ELECTRON_RUN_AS_NODE`, секреты передаются окружением. Нажатия кнопок бот применяет через новые авторизованные эндпоинты Remote Control `POST /api/hitl/decide` и `GET /api/hitl/pending` — тем же `hitlService.decide`, что и окно (повтор получает 409). `scripts/telegram-bot.mjs` остался обёрткой для `npm run telegram-bot`.
+
+UI: бейдж в шапке + модалка `NotificationSettingsModal` (createPortal, `z-[9999]`, правило 19) с матрицей, тихими часами, громкостью, окном дедупликации, сворачиванием в трей, управлением ботом и журналом доставок; звук — синтез WebAudio (`src/lib/notificationSound.ts`); клик по уведомлению/пункту трея ведёт в нужную вкладку (`notify:navigate` → `App.tsx`). Служебные процессы (`<userData>/services`) показываются отдельной секцией во вкладке «Процессы». i18n ru/en/types дополнены секцией `notifications`. decision-13 переведён в `accepted` с разделом «Уточнения по факту реализации».
+
+Проверено вживую на собранном `release/win-unpacked/ProjectHub.exe`: трей создаётся (`[Tray] System tray initialised`), меню трея открывается с корректным состоянием, «Выход» даёт штатный graceful shutdown, закрытие окна сворачивает в трей (процесс жив, лог `Window hidden to tray`), модалка настроек открывается и «Проверить» реально показывает системное уведомление Windows и пишет запись в журнал. Запуск воркера бота из `app.asar` проверен отдельно (`ELECTRON_RUN_AS_NODE` + путь внутри asar — скрипт стартует и доходит до вызова Bot API).
+
+Не сделано / известные ограничения:
+- AC #3 и #4 не закрыты: на машине реализации нет токена Telegram-бота и нет доступа к `api.telegram.org` (`fetch failed`), поэтому push с inline-кнопками, применение решения по нажатию и старт/останов демона приложением проверены только по коду и по пути запуска воркера. Нужен ручной smoke-test с настоящим ботом.
+- Кнопки «Разрешить/Отклонить» внутри системного уведомления доступны только на macOS (`Notification.actions`); на Windows/Linux клик открывает Центр решений. Ограничение показано в UI (`capabilities.osActions`) и зафиксировано в decision-13.
+- Рассылка уведомлений в канал `remote` ограничена доверенными устройствами текущего хоста; федеративные хосты — TASK-66.
+
+`npm run build` (lint 0 ошибок / 510 предупреждений — ниже базовой линии 513, test 410/410, tsc, vite, check-bundle), `npm run lint:docs` и `npm run pack:win` зелёные; `.rag-index` пересобран.
+<!-- SECTION:NOTES:END -->

@@ -8,6 +8,7 @@ import matter from 'gray-matter';
 import type { PullRequest, PRCreateOptions, PRProviderInfo } from '../../src/types/electron';
 import { findTaskFile } from './taskFileLookup.js';
 import { normalizeFrontmatter, withUpdatedDate } from './backlogTaskFormat.js';
+import { appEventBus } from './eventBus.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -123,7 +124,7 @@ class PRService {
         if (!raw) return [];
         const parsed = JSON.parse(raw);
 
-        return parsed.map((item: any) => {
+        const prs: PullRequest[] = parsed.map((item: any) => {
           let checksStatus: PullRequest['checksStatus'] = 'NONE';
           if (item.statusCheckRollup && item.statusCheckRollup.length > 0) {
             const hasFailures = item.statusCheckRollup.some(
@@ -159,6 +160,24 @@ class PRService {
             commentsCount: item.comments?.length || 0
           };
         });
+
+        // Упавшие проверки уходят в шину (TASK-63, decision-13 п.1). Список PR опрашивается
+        // периодически, поэтому дубликаты снимает дедупликация `notificationRules` по
+        // ключу `pr:checks:<project>:<number>`, а не какое-либо состояние здесь.
+        for (const pr of prs) {
+          if (pr.state === 'OPEN' && pr.checksStatus === 'FAILURE') {
+            appEventBus.publish({
+              type: 'pr:checksFailed',
+              projectPath,
+              number: pr.number,
+              title: pr.title,
+              url: pr.url,
+              at: Date.now()
+            });
+          }
+        }
+
+        return prs;
       }
 
       return [];
@@ -206,7 +225,7 @@ class PRService {
       );
       const item = JSON.parse(raw);
 
-      return {
+      const created: PullRequest = {
         id: item.number,
         number: item.number,
         title: item.title,
@@ -222,6 +241,17 @@ class PRService {
         checksStatus: 'NONE',
         provider: 'github'
       };
+
+      appEventBus.publish({
+        type: 'pr:created',
+        projectPath,
+        number: created.number,
+        title: created.title,
+        url: created.url,
+        at: Date.now()
+      });
+
+      return created;
     } catch (err: any) {
       console.error(`Failed to create PR in ${projectPath}:`, err);
       throw err;

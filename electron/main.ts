@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, session, crashReporter } from 'electron';
+import { app, BrowserWindow, dialog, shell, session, crashReporter } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -10,12 +10,15 @@ import { processManager } from './services/processManager';
 import { ptyService } from './services/ptyService';
 import { gitService } from './services/gitService';
 import { windowStateService } from './services/windowStateService';
-import { agentFleetService } from './services/agentFleetService';
+import { agentFleetService, isActiveAgentStatus, isActiveSwarmStatus } from './services/agentFleetService';
 import { invalidateInspectCache } from './services/projectScanner';
 import { logger, parseLogLevel } from './services/logger';
 import { getUserDataDir } from './services/appPaths';
 import { hitlService } from './services/hitlService';
 import { updaterService } from './services/updaterService';
+import { notificationService } from './services/notificationService';
+import { trayService } from './services/trayService';
+import { telegramService } from './services/telegramService';
 import { registerAllIpc } from './ipc';
 
 // Локальные crash-репорты (TASK-58, decision-14 п.4, decision-7): дампы падений остаются на диске
@@ -231,14 +234,22 @@ function createWindow() {
   }
 
   win.on('close', (e) => {
-    if (!isCleaningUp) {
+    if (isCleaningUp) return;
+    // Закрытие окна сворачивает приложение в трей, а не прерывает агентов (TASK-63,
+    // decision-13 п.4). Полный выход — «Выход» в меню трея (там же подтверждение при
+    // активных агентах) или явный app.quit(); в обоих случаях isQuitRequested уже true.
+    if (!isQuitRequested && notificationService.getSettings().minimizeToTray && trayService.isAvailable) {
       e.preventDefault();
-      performGracefulShutdown();
-      setTimeout(() => {
-        app.exit(0);
-        process.exit(0);
-      }, 1500).unref();
+      win?.hide();
+      notifyMinimizedToTray();
+      return;
     }
+    e.preventDefault();
+    performGracefulShutdown();
+    setTimeout(() => {
+      app.exit(0);
+      process.exit(0);
+    }, 1500).unref();
   });
 
   win.on('closed', () => {
@@ -307,6 +318,96 @@ registerAllIpc({
   getVoiceOverlayWindow: () => voiceOverlayWin,
   createVoiceOverlayWindow
 });
+
+// ─────────────────── Трей, уведомления и Telegram (TASK-63, decision-13) ───────────────────
+
+/** Выход подтверждён (меню трея или app.quit): следующее закрытие окна уже не сворачивает в трей. */
+let isQuitRequested = false;
+let trayBalloonShown = false;
+
+function showMainWindow(): void {
+  if (!win || win.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  if (win.isMinimized()) win.restore();
+  if (!win.isVisible()) win.show();
+  win.focus();
+}
+
+/** Разовая подсказка при первом сворачивании в трей: иначе окно «пропадает» без объяснений. */
+function notifyMinimizedToTray(): void {
+  if (trayBalloonShown) return;
+  trayBalloonShown = true;
+  logger.info('[Main] Window hidden to tray; app keeps running');
+}
+
+/** Активные сессии агентов для меню трея и подтверждения выхода. */
+function collectActiveSessions() {
+  return agentFleetService
+    .listSwarms()
+    .filter((session) => isActiveSwarmStatus(session.status))
+    .map((session) => ({
+      id: session.id,
+      title: session.taskTitle || session.taskId || session.id,
+      projectPath: session.projectPath,
+      activeAgents: session.agents.filter((a) => isActiveAgentStatus(a.status)).length
+    }));
+}
+
+function setupTrayAndNotifications(): void {
+  trayService.configure({
+    getPendingHitl: () => hitlService.listPending(),
+    getActiveSessions: collectActiveSessions,
+    showWindow: showMainWindow,
+    navigate: (action) => notificationService.sendNavigate(action),
+    quit: () => {
+      isQuitRequested = true;
+      app.quit();
+    },
+    confirmQuit: async (activeAgents) => {
+      const options = {
+        type: 'warning' as const,
+        buttons: ['Отмена', 'Выйти'],
+        defaultId: 0,
+        cancelId: 0,
+        title: 'Выход из ProjectHub',
+        message: `Сейчас работают агенты: ${activeAgents}`,
+        detail: 'При выходе их работа будет прервана, а незавершённые запросы на решение отменены. Продолжить?'
+      };
+      const result =
+        win && !win.isDestroyed()
+          ? await dialog.showMessageBox(win, options)
+          : await dialog.showMessageBox(options);
+      return result.response === 1;
+    }
+  });
+  trayService.init();
+
+  notificationService.configure({
+    getWindow: () => win,
+    // Доверенные устройства Remote Control получают то же уведомление отдельным событием шины.
+    remoteBroadcast: (notification) => remoteControlService.broadcastEvent('notification', notification)
+  });
+
+  telegramService.configure(() => {
+    const status = remoteControlService.getStatus();
+    return {
+      botToken: status.telegramBotToken || '',
+      chatId: status.telegramChatId || '',
+      miniAppUrl: status.telegramMiniAppUrl || '',
+      hostToken: status.secretToken || '',
+      hubPort: status.port
+    };
+  });
+
+  notificationService
+    .init()
+    .then((settings) => telegramService.sync(settings.telegramBotAutoStart))
+    .catch((err) => {
+      console.error('[Main] Failed to init notifications:', err);
+    });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -394,12 +495,29 @@ async function performGracefulShutdown() {
     console.warn('[Main] Error stopping Remote Control service:', e);
   }
 
+  try {
+    // Демон Telegram-бота — обычный процесс processManager, но остановить его надо явно:
+    // cleanupAll уже прошёл выше, а бот мог быть запущен позже (TASK-63).
+    await telegramService.stopBot();
+  } catch (e) {
+    console.warn('[Main] Error stopping Telegram bot:', e);
+  }
+
+  try {
+    notificationService.dispose();
+    trayService.destroy();
+  } catch (e) {
+    console.warn('[Main] Error disposing tray/notifications:', e);
+  }
+
   console.log('[Main] Graceful shutdown completed successfully.');
   app.exit(0);
   process.exit(0);
 }
 
 app.on('before-quit', (event) => {
+  // Явный выход (меню трея, app.quit, обновление): окно больше не сворачивается в трей.
+  isQuitRequested = true;
   if (!isCleaningUp) {
     event.preventDefault();
     performGracefulShutdown();
@@ -438,6 +556,9 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+
+  // Трей, доставка уведомлений по каналам и демон Telegram-бота (TASK-63, decision-13)
+  setupTrayAndNotifications();
 
   // Восстановление swarm-сессий с диска: незавершённые помечаются interrupted (TASK-56)
   void agentFleetService.init();

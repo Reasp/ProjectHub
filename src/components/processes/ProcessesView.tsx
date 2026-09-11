@@ -61,6 +61,9 @@ export const ProcessesView: React.FC = () => {
   const [busy, setBusy] = useState<Record<string, 'stop' | 'restart' | undefined>>({});
   const [startingKey, setStartingKey] = useState<string | null>(null);
   const [releasingPort, setReleasingPort] = useState<number | null>(null);
+  // Служебные процессы самого ProjectHub (демон Telegram-бота, TASK-63): к проекту не привязаны,
+  // поэтому приходят отдельным IPC и показываются собственной секцией.
+  const [serviceProcesses, setServiceProcesses] = useState<ManagedProcess[]>([]);
   const dialog = useDialog();
 
   const projectPath = selectedProject?.path;
@@ -82,6 +85,18 @@ export const ProcessesView: React.FC = () => {
     const timer = window.setInterval(() => void fetchProcesses(projectPath), REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [projectPath, loadActionConfig, refresh, fetchProcesses]);
+
+  useEffect(() => {
+    if (!window.api?.listServiceProcesses) return;
+    const load = () => {
+      window.api!.listServiceProcesses!()
+        .then(setServiceProcesses)
+        .catch(() => setServiceProcesses([]));
+    };
+    load();
+    const timer = window.setInterval(load, REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, []);
 
   if (!selectedProject) return null;
 
@@ -375,6 +390,27 @@ export const ProcessesView: React.FC = () => {
           </table>
         )}
       </div>
+
+      {serviceProcesses.length > 0 && (
+        <div className="border-t border-slate-800/70 bg-[#0b0e16]">
+          <div className="px-5 py-2 text-[11px] uppercase tracking-wide text-slate-500 font-semibold flex items-center gap-1.5">
+            <Server className="w-3.5 h-3.5" />
+            {t.notifications.serviceProcesses}
+          </div>
+          <ul className="px-5 pb-3 space-y-1">
+            {serviceProcesses.map((proc) => (
+              <li key={proc.id} className="flex items-center gap-3 text-xs text-slate-300">
+                <span
+                  className={`w-2 h-2 rounded-full ${proc.status === 'running' ? 'bg-emerald-400' : 'bg-slate-600'}`}
+                />
+                <span className="font-medium">{proc.name}</span>
+                <span className="text-[11px] text-slate-500">{t.processes.colPid}: {proc.pid ?? '—'}</span>
+                <span className="text-[11px] text-slate-500">{formatStartedAt(proc.startedAt, language)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <ActionConfigModal
         isOpen={isConfigOpen}

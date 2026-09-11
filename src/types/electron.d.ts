@@ -688,6 +688,18 @@ export interface IElectronAPI {
   exportHitlAudit: (query?: HitlAuditQuery, format?: 'jsonl' | 'json' | 'csv') => Promise<{ success: boolean; path?: string; error?: string; canceled?: boolean }>;
   onBusEvent: (callback: (event: AppBusEvent) => void) => () => void;
 
+  // Уведомления: трей, ОС, звук, Telegram (TASK-63)
+  getNotificationSettings: () => Promise<NotificationSettingsState>;
+  updateNotificationSettings: (patch: Partial<NotificationSettings>) => Promise<NotificationSettings>;
+  testNotification: () => Promise<NotificationDelivery>;
+  notificationNavigate: (action: NotificationAction) => Promise<boolean>;
+  startTelegramBot: () => Promise<{ ok: boolean; error?: string; running: boolean; processId: string | null }>;
+  stopTelegramBot: () => Promise<{ ok: boolean; running: boolean; processId: string | null }>;
+  listServiceProcesses: () => Promise<ManagedProcess[]>;
+  onNotificationDelivered: (callback: (delivery: NotificationDelivery) => void) => () => void;
+  onNotificationSound: (callback: (data: { severity: NotificationSeverity; volume: number }) => void) => () => void;
+  onNotificationNavigate: (callback: (action: NotificationAction) => void) => () => void;
+
   // Диагностика и автообновление (TASK-58)
   getDiagnosticsInfo: () => Promise<DiagnosticsInfo>;
   collectDiagnosticsArchive: () => Promise<{ success: boolean; path?: string; error?: string; canceled?: boolean }>;
@@ -946,7 +958,110 @@ export type AppBusEvent =
     }
   | ({ type: 'agent:started' } & AgentEventBase)
   | ({ type: 'agent:finished'; outcome: 'done' | 'aborted'; durationMs?: number } & AgentEventBase)
-  | ({ type: 'agent:failed'; error: string; durationMs?: number } & AgentEventBase);
+  | ({ type: 'agent:failed'; error: string; durationMs?: number } & AgentEventBase)
+  // События уведомлений (TASK-63, decision-13 п.1)
+  | {
+      type: 'swarm:finished';
+      swarmId: string;
+      projectPath: string;
+      name: string;
+      mode: 'fan-out' | 'handoff';
+      outcome: 'completed' | 'failed' | 'stopped';
+      agentsTotal: number;
+      agentsFailed: number;
+      totalCostUsd?: number;
+      durationMs?: number;
+      hostId?: string;
+      at: number;
+    }
+  | { type: 'process:crashed'; processId: string; name: string; projectPath: string; exitCode?: number; hostId?: string; at: number }
+  | { type: 'pr:created'; projectPath: string; number: number; title: string; url: string; hostId?: string; at: number }
+  | { type: 'pr:checksFailed'; projectPath: string; number: number; title: string; url: string; hostId?: string; at: number }
+  | {
+      type: 'remote:deviceConnected';
+      deviceId: string;
+      deviceName: string;
+      mode: string;
+      isApproved: boolean;
+      hostId?: string;
+      at: number;
+    };
+
+// ─────────────────── Уведомления (TASK-63, decision-13) — зеркало electron/services/notificationTypes.ts ───────────────────
+
+export type NotificationChannel = 'tray' | 'os' | 'sound' | 'telegram' | 'remote';
+
+export type NotificationKind =
+  | 'hitl'
+  | 'agentFinished'
+  | 'agentFailed'
+  | 'swarmFinished'
+  | 'processCrashed'
+  | 'prCreated'
+  | 'prChecksFailed'
+  | 'deviceConnected';
+
+export type NotificationSeverity = 'info' | 'success' | 'warning' | 'critical';
+
+export type NotificationAction =
+  | { type: 'openHitl'; requestId?: string }
+  | { type: 'openSwarm'; projectPath?: string; sessionId?: string }
+  | { type: 'openProcesses'; projectPath?: string }
+  | { type: 'openPrs'; projectPath?: string; url?: string }
+  | { type: 'openRemote' }
+  | { type: 'openApp' };
+
+export interface AppNotification {
+  id: string;
+  kind: NotificationKind;
+  severity: NotificationSeverity;
+  title: string;
+  body: string;
+  at: number;
+  dedupKey: string;
+  projectPath?: string;
+  projectName?: string;
+  hostId?: string;
+  requestId?: string;
+  sessionId?: string;
+  action?: NotificationAction;
+}
+
+export interface QuietHoursSettings {
+  enabled: boolean;
+  from: string;
+  to: string;
+  allowCritical: boolean;
+}
+
+export interface NotificationSettings {
+  enabled: boolean;
+  channels: Record<NotificationKind, NotificationChannel[]>;
+  quietHours: QuietHoursSettings;
+  soundVolume: number;
+  dedupWindowMs: number;
+  minimizeToTray: boolean;
+  telegramBotAutoStart: boolean;
+}
+
+export interface NotificationCapabilities {
+  osNotifications: boolean;
+  /** Кнопки «Разрешить/Отклонить» прямо в системном уведомлении (только macOS). */
+  osActions: boolean;
+  tray: boolean;
+  telegram: boolean;
+}
+
+export interface NotificationDelivery {
+  notification: AppNotification;
+  channels: NotificationChannel[];
+}
+
+export interface NotificationSettingsState {
+  settings: NotificationSettings;
+  capabilities: NotificationCapabilities;
+  bot: { running: boolean; processId: string | null; configured: boolean };
+}
 
 export interface AIProviderConfig {
   provider: 'anthropic' | 'openrouter' | 'deepseek' | 'ollama' | 'custom';

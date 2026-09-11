@@ -5,6 +5,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import treeKill from 'tree-kill';
 import { BrowserWindow, shell } from 'electron';
 import type { ManagedProcess } from '../../src/types/electron';
+import { appEventBus } from './eventBus.js';
 import {
   findFreePort,
   findPortOwners,
@@ -318,18 +319,31 @@ class HubProcessManager {
     }
   }
 
-  private broadcastStatus(process: ManagedProcess) {
+  private broadcastStatus(proc: ManagedProcess) {
     for (const listener of this.statusListeners) {
       try {
-        listener(process);
+        listener(proc);
       } catch {
         // ignore
       }
     }
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) {
-        win.webContents.send('process:statusChanged', process);
+        win.webContents.send('process:statusChanged', proc);
       }
+    }
+    // Аварийное завершение уходит в шину событий (TASK-63, decision-13 п.1): трей, системное
+    // уведомление и Telegram подписаны на неё, а не на этот сервис. Статус `failed` ставится
+    // только при ненулевом коде выхода или ошибке запуска — остановка пользователем сюда не попадает.
+    if (proc.status === 'failed') {
+      appEventBus.publish({
+        type: 'process:crashed',
+        processId: proc.id,
+        name: proc.name,
+        projectPath: proc.workspaceRoot || proc.cwd,
+        exitCode: proc.exitCode,
+        at: Date.now()
+      });
     }
   }
 
@@ -713,6 +727,28 @@ class HubProcessManager {
     const result: ManagedProcess[] = [];
     for (const item of this.activeProcesses.values()) {
       if (item.info.status === 'running') {
+        result.push({ ...item.info, autoOpenUrl: item.options.autoOpenUrl || undefined });
+      }
+    }
+    return result;
+  }
+
+  /** Запущен ли процесс с таким id прямо сейчас (TASK-63: демон Telegram-бота). */
+  isRunning(id: string): boolean {
+    return this.activeProcesses.get(id)?.info.status === 'running';
+  }
+
+  /**
+   * Служебные процессы самого ProjectHub (TASK-63): всё, что запущено из каталога
+   * `<userData>/services` — например, демон Telegram-бота. В отличие от процессов проекта,
+   * они не привязаны ни к какому репозиторию, поэтому вкладка «Процессы» показывает их
+   * отдельной секцией независимо от выбранного проекта.
+   */
+  listServiceProcesses(serviceRoot: string): ManagedProcess[] {
+    const normalized = path.normalize(serviceRoot);
+    const result: ManagedProcess[] = [];
+    for (const item of this.activeProcesses.values()) {
+      if (path.normalize(item.info.cwd) === normalized) {
         result.push({ ...item.info, autoOpenUrl: item.options.autoOpenUrl || undefined });
       }
     }

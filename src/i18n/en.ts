@@ -1674,6 +1674,58 @@ export const en: TranslationDictionary = {
     openHistory: 'Decision history',
     openHistoryDesc: 'Audit log of approvals and denials for all agents with filters and export (no secrets or file contents).',
     sidebarPending: 'Awaiting decision: {count}'
+  },
+  notifications: {
+    badgeTooltip: 'Notifications: tray, system alerts, sound and Telegram',
+    badgeMuted: 'Notifications are off — tray only',
+    title: 'Notifications',
+    subtitle: 'What to report and where, when the window is hidden or you are at another computer',
+    enabled: 'Notifications enabled',
+    enabledDesc: 'Turning this off leaves only the tray icon',
+    matrixTitle: 'Delivery matrix: event × channel',
+    colEvent: 'Event',
+    channel: {
+      tray: 'Tray',
+      os: 'System',
+      sound: 'Sound',
+      telegram: 'Telegram',
+      remote: 'Devices'
+    },
+    kind: {
+      hitl: 'Human decision required (HITL)',
+      agentFinished: 'Agent finished',
+      agentFailed: 'Agent failed',
+      swarmFinished: 'Swarm/Handoff session finished',
+      processCrashed: 'Process crashed',
+      prCreated: 'Pull Request created',
+      prChecksFailed: 'Pull Request checks failed',
+      deviceConnected: 'Device connected'
+    },
+    osActionsUnsupported: 'Decision buttons inside the system notification are macOS-only. On Windows and Linux clicking the notification opens the decision center.',
+    unsupportedOs: 'System notifications are unavailable on this OS',
+    telegramNotConfigured: 'Set the bot token and chat ID in remote access settings',
+    trayUnavailable: 'System tray is unavailable in this environment',
+    quietTitle: 'Quiet hours',
+    quietEnabled: 'Enable quiet hours',
+    quietFrom: 'from',
+    quietTo: 'to',
+    quietAllowCritical: 'Let critical through (HITL, failures)',
+    quietDesc: 'During quiet hours system alerts, sound and Telegram stay silent; the tray icon still shows state.',
+    volume: 'Sound volume',
+    dedup: 'Deduplication window, seconds',
+    dedupDesc: 'The same event is not delivered to one channel more often than this',
+    minimizeToTray: 'Closing the window minimizes the app to tray (agents keep running)',
+    telegramTitle: 'Telegram',
+    telegramAutoStart: 'Start the bot with the app when a token is set',
+    botRunning: 'Bot is running',
+    botStopped: 'Bot is stopped',
+    botStart: 'Start',
+    botStop: 'Stop',
+    historyTitle: 'Recent notifications',
+    historyEmpty: 'No notifications yet',
+    test: 'Send test',
+    clearHistory: 'Clear',
+    serviceProcesses: 'ProjectHub service processes'
   }
 };
 

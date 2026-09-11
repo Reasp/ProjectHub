@@ -452,6 +452,19 @@ class RemoteControlService {
 
   private busUnsubscribe: (() => void) | null = null;
 
+  /** Подключение устройства в шину (TASK-63): трей и журнал уведомлений показывают его как событие. */
+  private publishDeviceConnected(device: RemoteDevice): void {
+    appEventBus.publish({
+      type: 'remote:deviceConnected',
+      deviceId: device.id,
+      deviceName: device.name,
+      mode: device.mode,
+      isApproved: Boolean(device.isApproved),
+      hostId: this.hostId,
+      at: Date.now()
+    });
+  }
+
   public async initOnStartup(): Promise<void> {
     this.subscribeToEventBus();
     await this.loadPersistedSecrets();
@@ -1040,6 +1053,77 @@ class RemoteControlService {
       }
     }
 
+    // HITL по HTTP (TASK-63): демон Telegram-бота живёт отдельным процессом и применяет нажатия
+    // inline-кнопок здесь, строго по `requestId` — через тот же `hitlService.decide`, что и окно
+    // приложения (decision-10 п.5: первый ответ выигрывает). Токен обязателен, как и для федерации.
+    if (url.pathname.startsWith('/api/hitl/')) {
+      if (!this.isAuthorizedApiRequest(req, url)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+
+      if (url.pathname === '/api/hitl/pending' && req.method === 'GET') {
+        // Без диффов и содержимого файлов — наружу уходит только то, что нужно для решения.
+        const pending = hitlService.listPending().map((r) => ({
+          id: r.id,
+          sessionId: r.sessionId,
+          projectPath: r.projectPath,
+          type: r.type,
+          title: r.title,
+          details: r.details,
+          command: r.command,
+          filePath: r.filePath,
+          agentName: r.agentName,
+          role: r.role,
+          origin: r.origin,
+          createdAt: r.createdAt,
+          expiresAt: r.expiresAt
+        }));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ pending }));
+        return;
+      }
+
+      if (url.pathname === '/api/hitl/decide' && req.method === 'POST') {
+        let body = '';
+        req.on('data', (chunk) => {
+          body += chunk;
+          if (body.length > 64 * 1024) req.destroy();
+        });
+        req.on('end', () => {
+          try {
+            const payload = JSON.parse(body || '{}') as {
+              requestId?: string;
+              approved?: boolean;
+              comment?: string;
+              deviceName?: string;
+            };
+            if (typeof payload.requestId !== 'string' || !payload.requestId) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ ok: false, error: 'requestId required' }));
+              return;
+            }
+            const result = hitlService.decide(
+              payload.requestId,
+              { approved: Boolean(payload.approved), text: typeof payload.comment === 'string' ? payload.comment : undefined },
+              { kind: 'remote', deviceName: typeof payload.deviceName === 'string' ? payload.deviceName : 'Telegram' }
+            );
+            res.writeHead(result.ok ? 200 : 409, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(result.ok ? { ok: true, requestId: payload.requestId } : { ok: false, reason: result.reason }));
+          } catch {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'Invalid JSON' }));
+          }
+        });
+        return;
+      }
+
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not Found' }));
+      return;
+    }
+
     // GET /remote-crypto.js - канонический браузерный E2EE-модуль (TASK-65, decision-11 п.3),
     // общий для Mini App и встроенного веб-клиента (оба без сборщика).
     if (url.pathname === '/remote-crypto.js') {
@@ -1162,6 +1246,7 @@ class RemoteControlService {
 
       // Уведомление в десктоп
       this.notifyRenderer('remote:deviceConnected', device);
+      this.publishDeviceConnected(device);
 
       ws.on('message', async (raw: any) => {
         device.lastSeenAt = Date.now();
@@ -1242,6 +1327,7 @@ class RemoteControlService {
             this.connectedDevices.set(msg.clientId, dev);
             this.notifyStatusChanged();
             this.notifyRenderer('remote:deviceConnected', dev);
+            this.publishDeviceConnected(dev);
             return;
           }
 
@@ -1835,9 +1921,9 @@ class RemoteControlService {
     });
     processManager.onStatusChanged((proc) => {
       this.broadcastEvent('process:statusChanged', proc);
-      if (proc.status === 'stopped' && (proc as any).exitCode && (proc as any).exitCode !== 0) {
-        this.sendTelegramNotification(`🚨 *Внимание!* Процесс \`${proc.name}\` аварийно завершился с кодом \`${(proc as any).exitCode}\`.`);
-      }
+      // Уведомление о падении процесса больше не отправляется отсюда: `processManager` публикует
+      // `process:crashed` в шину, а доставкой (трей, ОС, звук, Telegram) заведует
+      // `notificationService` по настраиваемой матрице каналов (TASK-63, decision-13).
     });
   }
 

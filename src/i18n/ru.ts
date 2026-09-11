@@ -1674,6 +1674,58 @@ export const ru: TranslationDictionary = {
     openHistory: 'История решений',
     openHistoryDesc: 'Аудит-лог одобрений и отклонений всех агентов с фильтрами и экспортом (без секретов и содержимого файлов).',
     sidebarPending: 'Ожидают решения: {count}'
+  },
+  notifications: {
+    badgeTooltip: 'Уведомления: трей, системные сообщения, звук и Telegram',
+    badgeMuted: 'Уведомления отключены — доставка только в трей',
+    title: 'Уведомления',
+    subtitle: 'Куда и о чём сообщать, когда окно свёрнуто или вы за другим компьютером',
+    enabled: 'Уведомления включены',
+    enabledDesc: 'Выключение оставляет только иконку трея',
+    matrixTitle: 'Матрица доставки: событие × канал',
+    colEvent: 'Событие',
+    channel: {
+      tray: 'Трей',
+      os: 'Система',
+      sound: 'Звук',
+      telegram: 'Telegram',
+      remote: 'Устройства'
+    },
+    kind: {
+      hitl: 'Нужно решение человека (HITL)',
+      agentFinished: 'Агент завершил работу',
+      agentFailed: 'Агент завершился с ошибкой',
+      swarmFinished: 'Сессия Swarm/Handoff завершена',
+      processCrashed: 'Процесс аварийно завершился',
+      prCreated: 'Создан Pull Request',
+      prChecksFailed: 'Проверки Pull Request упали',
+      deviceConnected: 'Подключено устройство'
+    },
+    osActionsUnsupported: 'Кнопки решения прямо в системном уведомлении поддерживает только macOS. На Windows и Linux клик по уведомлению открывает Центр решений.',
+    unsupportedOs: 'Системные уведомления недоступны в этой ОС',
+    telegramNotConfigured: 'Укажите токен бота и chat ID в настройках удалённого доступа',
+    trayUnavailable: 'Системный трей недоступен в этой среде',
+    quietTitle: 'Тихие часы',
+    quietEnabled: 'Включить тихие часы',
+    quietFrom: 'с',
+    quietTo: 'до',
+    quietAllowCritical: 'Пропускать важные (HITL, ошибки)',
+    quietDesc: 'В тихие часы молчат система, звук и Telegram; иконка трея продолжает показывать состояние.',
+    volume: 'Громкость звука',
+    dedup: 'Окно дедупликации, секунд',
+    dedupDesc: 'Одно и то же событие не приходит в один канал чаще этого интервала',
+    minimizeToTray: 'Закрытие окна сворачивает приложение в трей (агенты продолжают работать)',
+    telegramTitle: 'Telegram',
+    telegramAutoStart: 'Запускать бота вместе с приложением, когда задан токен',
+    botRunning: 'Бот запущен',
+    botStopped: 'Бот остановлен',
+    botStart: 'Запустить',
+    botStop: 'Остановить',
+    historyTitle: 'Последние уведомления',
+    historyEmpty: 'Уведомлений пока не было',
+    test: 'Проверить',
+    clearHistory: 'Очистить',
+    serviceProcesses: 'Служебные процессы ProjectHub'
   }
 };
 

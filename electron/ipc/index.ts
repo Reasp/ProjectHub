@@ -10,6 +10,7 @@ import { registerProcessIpc } from './processIpc';
 import { registerHitlIpc } from './hitlIpc';
 import { registerRolesIpc } from './rolesIpc';
 import { registerDiagnosticsIpc } from './diagnosticsIpc';
+import { registerNotificationsIpc } from './notificationsIpc';
 
 export type { IpcContext } from './types';
 
@@ -25,4 +26,5 @@ export function registerAllIpc(ctx: IpcContext) {
   registerHitlIpc(ctx);
   registerRolesIpc();
   registerDiagnosticsIpc();
+  registerNotificationsIpc();
 }
