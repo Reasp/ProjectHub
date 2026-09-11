@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTimers } from '../../hooks/useTimeoutState';
 import { createPortal } from 'react-dom';
 import { Settings, Play, Rocket, FlaskConical, Plus, Trash2, Check, Save, Globe, Terminal, RefreshCw } from 'lucide-react';
 import type { ProjectActionConfig, ActionDefinition } from '../../types/electron';
@@ -48,6 +49,8 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
   const [config, setConfig] = useState<ProjectActionConfig | null>(initialConfig || null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  // Отложенное закрытие после сохранения: таймер снимается при размонтировании (TASK-50)
+  const { setTimer } = useTimers();
   const [activeSubTab, setActiveSubTab] = useState<'run' | 'deploy' | 'test' | 'custom'>('run');
   // Текст env-полей хранится отдельно от конфига: иначе строка «KEY=» терялась бы при
   // перепарсинге на каждом нажатии клавиши.
@@ -111,7 +114,7 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
       await window.api.saveActionConfig(projectPath, config);
       setSaveSuccess(true);
       if (onSaved) onSaved();
-      setTimeout(() => {
+      setTimer(() => {
         setSaveSuccess(false);
         onClose();
       }, 1000);

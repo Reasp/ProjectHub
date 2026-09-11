@@ -537,6 +537,8 @@ export interface IElectronAPI {
   listPtySessions: () => Promise<PtySession[]>;
   onPtyData: (callback: (data: { sessionId: string; data: string }) => void) => () => void;
   onPtyExit: (callback: (data: { sessionId: string; exitCode: number }) => void) => () => void;
+  /** Завершившаяся PTY-сессия удалена автоматически по TTL (TASK-50). */
+  onPtyRemoved: (callback: (data: { sessionId: string; title: string; reason: 'ttl' }) => void) => () => void;
 
   // AI Studio & Claude Bridge Engine
   getAIConfig: () => Promise<AIProviderConfig>;

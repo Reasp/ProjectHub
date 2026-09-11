@@ -23,6 +23,7 @@ import {
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
+import { useTimers } from '../../hooks/useTimeoutState';
 import { PtyTabTerminal } from './PtyTabTerminal';
 
 export const TerminalPanel: React.FC = () => {
@@ -56,6 +57,8 @@ export const TerminalPanel: React.FC = () => {
   const processLogContainerRef = useRef<HTMLDivElement>(null);
   const processXtermRef = useRef<XTerm | null>(null);
   const processFitAddonRef = useRef<FitAddon | null>(null);
+  // Отложенные refit после ресайза/разворота: таймеры снимаются при размонтировании (TASK-50)
+  const { setTimer } = useTimers();
   // Сколько строк terminalLogs уже записано в xterm в режиме системного лога (TASK-38):
   // при новых записях дописываем только хвост, а не перерисовываем всё с нуля.
   const writtenLogCountRef = useRef(0);
@@ -272,7 +275,7 @@ export const TerminalPanel: React.FC = () => {
       window.removeEventListener('mouseup', onMouseUp);
       setIsDragging(false);
       setTerminalHeight(Math.round(currentHeight));
-      setTimeout(() => {
+      setTimer(() => {
         try {
           processFitAddonRef.current?.fit();
         } catch (err) {}
@@ -493,7 +496,7 @@ export const TerminalPanel: React.FC = () => {
           <button
             onClick={() => {
               setIsMaximized(!isMaximized);
-              setTimeout(() => {
+              setTimer(() => {
                 processFitAddonRef.current?.fit();
               }, 100);
             }}

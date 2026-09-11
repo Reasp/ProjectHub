@@ -332,6 +332,7 @@ let watcherCleanup: (() => void) | null = null;
 let processStatusCleanup: (() => void) | null = null;
 let gitChangedCleanup: (() => void) | null = null;
 let ptyExitCleanup: (() => void) | null = null;
+let ptyRemovedCleanup: (() => void) | null = null;
 
 let agentStatusCleanup: (() => void) | null = null;
 
@@ -930,6 +931,31 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
                 s.id === sessionId ? { ...s, status: 'exited', exitCode } : s
               )
             }));
+          });
+        }
+
+        // Автоудаление завершившейся сессии по TTL в main: убираем вкладку вместе с
+        // её xterm-буфером и сообщаем об этом в системный лог терминала (TASK-50).
+        if (!ptyRemovedCleanup && window.api.onPtyRemoved) {
+          ptyRemovedCleanup = window.api.onPtyRemoved(({ sessionId, title }) => {
+            let existed = false;
+            set((state) => {
+              existed = state.ptySessions.some((s) => s.id === sessionId);
+              if (!existed) return {};
+              const remaining = state.ptySessions.filter((s) => s.id !== sessionId);
+              const nextActive =
+                state.activePtySessionId === sessionId
+                  ? remaining.length > 0
+                    ? remaining[remaining.length - 1].id
+                    : null
+                  : state.activePtySessionId;
+              return { ptySessions: remaining, activePtySessionId: nextActive };
+            });
+            if (existed) {
+              get().addTerminalLog(
+                formatLog(getDictionary(get().language).terminalLogs.sessionAutoClosed, { title })
+              );
+            }
           });
         }
 

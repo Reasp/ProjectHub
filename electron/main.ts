@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { claudeBridgeService } from './services/claudeBridgeService';
 import { localWhisperService } from './services/localWhisperService';
+import { ragWorkerClient } from './services/ragWorkerClient';
 import { mcpServerService } from './services/mcpServerService';
 import { remoteControlService } from './services/remoteControlService';
 import { federationClientService } from './services/federationClientService';
@@ -482,6 +483,12 @@ async function performGracefulShutdown() {
     await localWhisperService.dispose();
   } catch (e) {
     console.warn('[Main] Error disposing whisper service:', e);
+  }
+
+  try {
+    await ragWorkerClient.dispose();
+  } catch (e) {
+    console.warn('[Main] Error disposing RAG search worker:', e);
   }
 
   try {

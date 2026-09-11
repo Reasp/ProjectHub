@@ -26,6 +26,7 @@ import {
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
+import { useTimeoutState } from '../../hooks/useTimeoutState';
 import type { FileTreeNode } from '../../types/electron';
 import { SplitDiffViewer } from '../git/SplitDiffViewer';
 
@@ -101,7 +102,8 @@ export const FileExplorer: React.FC = () => {
   const [fileDiff, setFileDiff] = useState<string>('');
   const [activePaneTab, setActivePaneTab] = useState<'editor' | 'diff'>('editor');
   const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  // Индикатор сохранения гаснет сам; таймер снимается при размонтировании (TASK-50)
+  const [saveSuccess, showSaveSuccess] = useTimeoutState(false, 2000);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // New Item Modal
@@ -199,8 +201,7 @@ export const FileExplorer: React.FC = () => {
     try {
       await window.api.saveFileContent(rootPath, selectedFile.relativePath, fileContent);
       setOriginalContent(fileContent);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
+      showSaveSuccess(true);
 
       // Refresh git & diff
       if (loadGitRepoDetails) await loadGitRepoDetails(selectedProject);

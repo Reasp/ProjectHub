@@ -34,6 +34,7 @@ import {
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
+import { useToast, useTimers } from '../../hooks/useTimeoutState';
 import { generateCommitMessage } from '../../services/aiAssistantService';
 import { SplitDiffViewer } from './SplitDiffViewer';
 import { WorktreePanel } from './WorktreePanel';
@@ -92,8 +93,10 @@ export const GitInspector: React.FC = () => {
   const [isCheckingOut, setIsCheckingOut] = useState<string | null>(null);
   const [isRemoteAction, setIsRemoteAction] = useState<string | null>(null);
   const [diffStagedMode, setDiffStagedMode] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  // Уведомления с автоскрытием: таймеры снимаются при размонтировании (TASK-50)
+  const [errorMsg, showError] = useToast<string>(5000);
+  const [successMsg, showSuccess] = useToast<string>(4000);
+  const { setTimer } = useTimers();
 
   // Compare branch state
   const [compareTargetBranch, setCompareTargetBranch] = useState<string>('');
@@ -110,9 +113,9 @@ export const GitInspector: React.FC = () => {
 
   useEffect(() => {
     if (showNewBranchInput) {
-      setTimeout(() => branchInputRef.current?.focus(), 50);
+      setTimer(() => branchInputRef.current?.focus(), 50);
     }
-  }, [showNewBranchInput]);
+  }, [showNewBranchInput, setTimer]);
 
   // Set default compare branch
   useEffect(() => {
@@ -121,16 +124,6 @@ export const GitInspector: React.FC = () => {
       setCompareTargetBranch(other);
     }
   }, [gitRepoDetails?.branches]);
-
-  const showError = (msg: string) => {
-    setErrorMsg(msg);
-    setTimeout(() => setErrorMsg(null), 5000);
-  };
-
-  const showSuccess = (msg: string) => {
-    setSuccessMsg(msg);
-    setTimeout(() => setSuccessMsg(null), 4000);
-  };
 
   // Insert current task id into commit message
   const inProgressTask = tasks.find(taskItem => taskItem.status === 'In Progress');

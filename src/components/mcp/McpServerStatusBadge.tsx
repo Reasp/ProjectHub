@@ -16,12 +16,14 @@ import {
 
 import type { McpServerStatus } from '../../types/electron';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useToast } from '../../hooks/useTimeoutState';
 
 export const McpServerStatusBadge: React.FC = () => {
   const { t } = useTranslation();
   const [status, setStatus] = useState<McpServerStatus | null>(null);
   const [isOpen, setIsOpen] = useState(false);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  // Индикатор «скопировано» гаснет сам; таймер снимается при размонтировании (TASK-50)
+  const [copiedKey, showCopiedKey] = useToast<string>(2500);
 
   const fetchStatus = async () => {
     if (window.api?.getMcpStatus) {
@@ -66,8 +68,7 @@ export const McpServerStatusBadge: React.FC = () => {
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2500);
+    showCopiedKey(key);
   };
 
   if (!status) return null;

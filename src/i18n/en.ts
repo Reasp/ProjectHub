@@ -1618,6 +1618,7 @@ export const en: TranslationDictionary = {
   },
   terminalLogs: {
     sessionCreated: '[Terminal] Created interactive session: {title}',
+    sessionAutoClosed: '[Terminal] Finished session closed automatically: {title}',
     sessionError: '[Terminal Error] Launch error: {message}',
     processStarted: '[Process] Started process: {name} ({command})',
     processError: '[Process Error] Failed to start {name}: {message}',

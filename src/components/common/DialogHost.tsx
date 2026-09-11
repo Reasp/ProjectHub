@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AlertCircle, HelpCircle, Info, X } from 'lucide-react';
 import { useDialogStore } from '../../store/useDialogStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useTimers } from '../../hooks/useTimeoutState';
 
 export const DialogHost: React.FC = () => {
   const { t } = useTranslation();
@@ -10,20 +11,22 @@ export const DialogHost: React.FC = () => {
   const [inputValue, setInputValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  // Отложенный фокус: таймер снимается при закрытии диалога/размонтировании (TASK-50)
+  const { setTimer } = useTimers();
 
   useEffect(() => {
     if (activeDialog?.type === 'prompt') {
       setInputValue(activeDialog.options.defaultValue || '');
-      setTimeout(() => {
+      setTimer(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
       }, 50);
     } else if (activeDialog) {
-      setTimeout(() => {
+      setTimer(() => {
         confirmButtonRef.current?.focus();
       }, 50);
     }
-  }, [activeDialog]);
+  }, [activeDialog, setTimer]);
 
   useEffect(() => {
     if (!activeDialog) return;

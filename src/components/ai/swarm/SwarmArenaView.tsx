@@ -35,6 +35,7 @@ import { useSwarmStore } from '../../../store/useSwarmStore';
 import { useProjectStore } from '../../../store/useProjectStore';
 import { useTranslation } from '../../../i18n/useTranslation';
 import { useDialog } from '../../../hooks/useDialog';
+import { useToast } from '../../../hooks/useTimeoutState';
 import { MarkdownViewer } from '../../common/MarkdownViewer';
 import { NewSwarmModal } from './NewSwarmModal';
 import { ArenaJudgePanel } from './ArenaJudgePanel';
@@ -90,17 +91,13 @@ export const SwarmArenaView: React.FC = () => {
   const [isJudgeSettingsOpen, setJudgeSettingsOpen] = useState(false);
   const [isComposeOpen, setComposeOpen] = useState(false);
   const [isMergingWinner, setIsMergingWinner] = useState<string | null>(null);
-  const [appliedFileMsg, setAppliedFileMsg] = useState<string | null>(null);
+  // Временные уведомления с автоскрытием и очисткой таймеров (TASK-50)
+  const [appliedFileMsg, showAppliedFileMsg] = useToast<string>(4000);
   const [isApplyingFile, setIsApplyingFile] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [transcript, setTranscript] = useState<{ agent: AgentSlotState; data: SwarmTranscript | null; loading: boolean } | null>(null);
-  const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
-
-  const showNotice = (msg: string) => {
-    setNoticeMsg(msg);
-    setTimeout(() => setNoticeMsg(null), 5000);
-  };
+  const [noticeMsg, showNotice] = useToast<string>(5000);
 
   const handleResume = async () => {
     if (!currentSwarm) return;
@@ -219,8 +216,7 @@ export const SwarmArenaView: React.FC = () => {
     try {
       const res = await window.api.checkoutWorktreeFiles(projectPath, branch, [filePath]);
       if (res.success) {
-        setAppliedFileMsg(`${t.swarm.fileApplied}: ${filePath}`);
-        setTimeout(() => setAppliedFileMsg(null), 4000);
+        showAppliedFileMsg(`${t.swarm.fileApplied}: ${filePath}`);
       } else {
         await dialog.alert(res.error || 'Failed to apply file');
       }

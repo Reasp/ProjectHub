@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useTimeoutState, useTimers } from '../../hooks/useTimeoutState';
 import { CreateDocModal } from './CreateDocModal';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 import type { DocItem } from '../../types/electron';
@@ -56,7 +57,9 @@ export const DocsRagView: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'decision' | 'doc'>('all');
   const [viewMode, setViewMode] = useState<'preview' | 'edit' | 'split'>('preview');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [saveSuccessNotice, setSaveSuccessNotice] = useState(false);
+  // Уведомление об успешном сохранении гаснет само; таймер снимается при размонтировании (TASK-50)
+  const [saveSuccessNotice, showSaveSuccessNotice] = useTimeoutState(false, 3000);
+  const { setTimer } = useTimers();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -102,8 +105,7 @@ export const DocsRagView: React.FC = () => {
     if (!selectedDoc) return;
     const ok = await saveDocAction();
     if (ok) {
-      setSaveSuccessNotice(true);
-      setTimeout(() => setSaveSuccessNotice(false), 3000);
+      showSaveSuccessNotice(true);
     }
   };
 
@@ -155,7 +157,7 @@ export const DocsRagView: React.FC = () => {
     const newContent = docContent.substring(0, start) + replacement + docContent.substring(end);
     setDocContent(newContent);
 
-    setTimeout(() => {
+    setTimer(() => {
       el.focus();
       el.setSelectionRange(start + before.length, start + replacement.length - after.length);
     }, 10);

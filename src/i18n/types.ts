@@ -1597,6 +1597,7 @@ export interface TranslationDictionary {
   };
   terminalLogs: {
     sessionCreated: string;
+    sessionAutoClosed: string;
     sessionError: string;
     processStarted: string;
     processError: string;

@@ -17,6 +17,7 @@ import { useHitlStore } from './store/useHitlStore';
 import { useNotificationStore } from './store/useNotificationStore';
 import { useFederationStore } from './store/useFederationStore';
 import { useTranslation } from './i18n/useTranslation';
+import { useToast } from './hooks/useTimeoutState';
 import { Bot, ShieldAlert, X } from 'lucide-react';
 
 
@@ -49,7 +50,8 @@ export const App: React.FC = () => {
   } = useProjectStore();
 
   const [isOmniSearchOpen, setIsOmniSearchOpen] = useState(false);
-  const [remoteActionToast, setRemoteActionToast] = useState<string | null>(null);
+  // Автоскрытие тоста через хук: таймер снимается при размонтировании (TASK-50)
+  const [remoteActionToast, showRemoteToast] = useToast<string>(4000);
   const fallbackNotice = useHitlStore((s) => s.fallbackNotice);
   const dismissFallbackNotice = useHitlStore((s) => s.dismissFallbackNotice);
 
@@ -168,11 +170,6 @@ export const App: React.FC = () => {
 
     return unsub;
   }, [projects, selectedProject, selectProject, setActiveTab]);
-
-  const showRemoteToast = (msg: string) => {
-    setRemoteActionToast(msg);
-    setTimeout(() => setRemoteActionToast(null), 4000);
-  };
 
   // Event listener for opening omni-search via voice or external triggers
   useEffect(() => {

@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { MermaidDiagram } from './MermaidDiagram';
 import { parseMarkdownBlocks, type MarkdownBlock } from './markdownBlocks';
 import { Copy, Check, Info, AlertTriangle, AlertCircle, Lightbulb, Flame } from 'lucide-react';
 import { useI18n } from '../../i18n';
+import { useTimeoutState } from '../../hooks/useTimeoutState';
 
 interface MarkdownViewerProps {
   content: string;
@@ -136,12 +137,12 @@ const BlockRenderer: React.FC<{ block: MarkdownBlock }> = ({ block }) => {
 
 const CodeBlock: React.FC<{ lang: string; code: string }> = ({ lang, code }) => {
   const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
+  // Индикатор «скопировано» гаснет сам; таймер снимается при размонтировании (TASK-50)
+  const [copied, showCopied] = useTimeoutState(false, 2000);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    showCopied(true);
   };
 
   return (

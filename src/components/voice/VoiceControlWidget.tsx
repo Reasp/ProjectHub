@@ -15,6 +15,7 @@ import { useProjectStore } from '../../store/useProjectStore';
 import { useAIStudioStore } from '../../store/useAIStudioStore';
 import { getDictionary } from '../../i18n';
 import { useDialog } from '../../hooks/useDialog';
+import { useTimers, useToast } from '../../hooks/useTimeoutState';
 
 export const VoiceControlWidget: React.FC = () => {
   const dialog = useDialog();
@@ -31,12 +32,13 @@ export const VoiceControlWidget: React.FC = () => {
   const [isSpeakingDetected, setIsSpeakingDetected] = useState<boolean>(false);
   const [transcript, setTranscript] = useState('');
   const [lastFeedback, setLastFeedback] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Сообщение об ошибке гаснет само; таймеры компонента снимаются при размонтировании (TASK-50)
+  const [errorMessage, showErrorMessage, clearErrorMessage] = useToast<string>(10000);
+  const { setTimer } = useTimers();
 
   const transcriptRef = useRef(transcript);
   const audioLevelRef = useRef(audioLevel);
   const lastAudioSyncRef = useRef<number>(0);
-  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   useEffect(() => {
     transcriptRef.current = transcript;
@@ -45,16 +47,6 @@ export const VoiceControlWidget: React.FC = () => {
   useEffect(() => {
     audioLevelRef.current = audioLevel;
   }, [audioLevel]);
-
-  // Таймеры, которые должны быть отменены при размонтировании компонента
-  const scheduleTimeout = useCallback((fn: () => void, ms: number) => {
-    const id = setTimeout(() => {
-      timersRef.current.delete(id);
-      fn();
-    }, ms);
-    timersRef.current.add(id);
-    return id;
-  }, []);
 
   // Язык voiceService синхронизируется только при фактическом изменении language
   useEffect(() => {
@@ -439,11 +431,11 @@ export const VoiceControlWidget: React.FC = () => {
       }
     }
 
-    scheduleTimeout(() => {
+    setTimer(() => {
       setTranscript('');
       setLastFeedback(null);
     }, 4500);
-  }, [scheduleTimeout]);
+  }, [setTimer]);
 
   // Подписки на voiceService и внешние события создаются один раз при монтировании.
   // executeCommand стабилен (все данные читаются через getState()), поэтому эффект
@@ -491,7 +483,7 @@ export const VoiceControlWidget: React.FC = () => {
     });
 
     const unsubError = voiceService.onError((msg: string) => {
-      setErrorMessage(msg);
+      showErrorMessage(msg);
       syncToOverlay();
     });
 
@@ -505,7 +497,7 @@ export const VoiceControlWidget: React.FC = () => {
 
     const unsubDeviceNotice = voiceService.onDeviceNotice((notice) => {
       setLastFeedback(notice.message);
-      scheduleTimeout(() => {
+      setTimer(() => {
         setLastFeedback((prev) => (prev === notice.message ? null : prev));
       }, 5000);
     });
@@ -530,16 +522,8 @@ export const VoiceControlWidget: React.FC = () => {
       unsubExternal?.();
       unsubDeviceNotice();
       window.removeEventListener('keydown', handleKeyDown);
-      timersRef.current.forEach((id) => clearTimeout(id));
-      timersRef.current.clear();
     };
-  }, [executeCommand, scheduleTimeout]);
-  useEffect(() => {
-    if (errorMessage) {
-      const timer = setTimeout(() => setErrorMessage(null), 10000);
-      return () => clearTimeout(timer);
-    }
-  }, [errorMessage]);
+  }, [executeCommand, setTimer]);
 
   const isHandsFreeActive = voiceService.isListening;
   const isSpeech = voiceState === 'speech_detected' || isSpeakingDetected;
@@ -562,7 +546,7 @@ export const VoiceControlWidget: React.FC = () => {
                 <span>{t.voice.voiceUnavailable}</span>
                 <button
                   type="button"
-                  onClick={() => setErrorMessage(null)}
+                  onClick={clearErrorMessage}
                   className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition"
                   title={t.common.close}
                 >

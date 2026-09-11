@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { SubagentInfo, ProjectAgentStatus } from '../../types/electron';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useTimeoutState } from '../../hooks/useTimeoutState';
 
 interface LiveActivitySidebarProps {
   isStreaming: boolean;
@@ -39,7 +40,8 @@ export const LiveActivitySidebar: React.FC<LiveActivitySidebarProps> = ({
   onToggleOpen
 }) => {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
+  // Индикатор «скопировано» гаснет сам; таймер снимается при размонтировании (TASK-50)
+  const [copied, showCopied] = useTimeoutState(false, 2000);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const consoleEndRef = useRef<HTMLDivElement>(null);
 
@@ -71,8 +73,7 @@ export const LiveActivitySidebar: React.FC<LiveActivitySidebarProps> = ({
   const handleCopy = () => {
     if (!liveOutput) return;
     navigator.clipboard.writeText(liveOutput);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    showCopied(true);
   };
 
   const formatElapsed = (sec: number) => {

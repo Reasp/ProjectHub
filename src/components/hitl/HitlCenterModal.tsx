@@ -24,6 +24,7 @@ import {
 import { useHitlStore } from '../../store/useHitlStore';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useToast } from '../../hooks/useTimeoutState';
 import { InteractiveApprovalCard } from '../ai/InteractiveApprovalCard';
 import type { ApprovalRequest, HitlAuditEntry, HitlDecisionSourceKind } from '../../types/electron';
 
@@ -80,7 +81,8 @@ export const HitlCenterModal: React.FC = () => {
   } = useHitlStore();
   const { projects } = useProjectStore();
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // Уведомление гаснет само; таймер снимается при размонтировании (TASK-50)
+  const [notice, showNotice] = useToast<string>(4000);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -104,11 +106,6 @@ export const HitlCenterModal: React.FC = () => {
   }, [projects]);
 
   if (!isCenterOpen) return null;
-
-  const showNotice = (text: string) => {
-    setNotice(text);
-    setTimeout(() => setNotice(null), 4000);
-  };
 
   const handleDecide = async (request: ApprovalRequest, approved: boolean, text?: string) => {
     const result = await decide(request.id, approved, text);

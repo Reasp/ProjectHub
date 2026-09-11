@@ -1,4 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
+
+/** Полезная нагрузка события pty:removed — автоудаление завершившейся сессии (TASK-50). */
+type PtyRemovedPayload = { sessionId: string; title: string; reason: 'ttl' };
 import type {
   ArenaSettings,
   CheckDefinition,
@@ -228,6 +231,14 @@ const api: IElectronAPI = {
     ipcRenderer.on('pty:exit', handler);
     return () => {
       ipcRenderer.removeListener('pty:exit', handler);
+    };
+  },
+  // Завершившаяся сессия удалена по TTL — рендерер убирает вкладку (TASK-50)
+  onPtyRemoved: (callback: (data: PtyRemovedPayload) => void) => {
+    const handler = (_event: unknown, data: PtyRemovedPayload) => callback(data);
+    ipcRenderer.on('pty:removed', handler);
+    return () => {
+      ipcRenderer.removeListener('pty:removed', handler);
     };
   },
 

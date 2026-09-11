@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Columns, AlignJustify, Copy, Check, ChevronDown, ChevronRight, FileCode } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { useTimeoutState } from '../../hooks/useTimeoutState';
 
 interface ParsedHunkLine {
   type: 'context' | 'added' | 'deleted' | 'header' | 'hunk-header';
@@ -147,15 +148,15 @@ export const SplitDiffViewer: React.FC<SplitDiffViewerProps> = ({
 }) => {
   const { t } = useTranslation();
   const [viewMode, setViewMode] = useState<'unified' | 'split'>(defaultMode);
-  const [copied, setCopied] = useState(false);
+  // Индикатор «скопировано» гаснет сам; таймер снимается при размонтировании (TASK-50)
+  const [copied, showCopied] = useTimeoutState(false, 2000);
 
   const { fileHeader, hunks } = useMemo(() => parseUnifiedDiff(diff || ''), [diff]);
 
   const handleCopy = () => {
     if (!diff) return;
     navigator.clipboard.writeText(diff);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    showCopied(true);
   };
 
   if (!diff || hunks.length === 0) {

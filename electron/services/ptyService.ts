@@ -4,15 +4,35 @@ import os from 'node:os';
 import { existsSync } from 'node:fs';
 import { BrowserWindow } from 'electron';
 import { PROJECT_HUB_CLAUDE_DIR } from './aiAgentService.js';
+import {
+  DEFAULT_PTY_EXIT_TTL_MS,
+  PTY_EXIT_TTL_ENV,
+  isPtyExitCleanupEnabled,
+  resolvePtyExitTtlMs
+} from './ptyExitTtl.js';
 import type { PtySession, CreatePtyOptions } from '../../src/types/electron';
 
 interface ActivePty {
   info: PtySession;
   ptyProcess: pty.IPty;
+  /** Таймер автоудаления завершившейся сессии (TASK-50). */
+  cleanupTimer?: NodeJS.Timeout;
 }
 
 class PtyService {
   private sessions = new Map<string, ActivePty>();
+  /** TTL завершившейся сессии; настраивается переменной PROJECTHUB_PTY_EXIT_TTL_MS. */
+  private exitedTtlMs = resolvePtyExitTtlMs(process.env[PTY_EXIT_TTL_ENV]);
+
+  /** Текущий TTL автоочистки (0 — выключена). */
+  getExitedSessionTtl(): number {
+    return this.exitedTtlMs;
+  }
+
+  /** Смена TTL на лету; уже запланированные таймеры не пересчитываются. */
+  setExitedSessionTtl(ttlMs: number | string | null | undefined) {
+    this.exitedTtlMs = resolvePtyExitTtlMs(ttlMs ?? DEFAULT_PTY_EXIT_TTL_MS);
+  }
 
   private broadcastData(sessionId: string, data: string) {
     for (const win of BrowserWindow.getAllWindows()) {
@@ -28,6 +48,37 @@ class PtyService {
         win.webContents.send('pty:exit', { sessionId, exitCode });
       }
     }
+  }
+
+  /** Сообщает рендереру, что завершившаяся сессия удалена по таймауту (TASK-50). */
+  private broadcastRemoved(sessionId: string, title: string, reason: 'ttl') {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send('pty:removed', { sessionId, title, reason });
+      }
+    }
+  }
+
+  /**
+   * Планирует удаление завершившейся сессии: освобождает Map в main и вкладку с
+   * xterm-буфером в рендерере, если пользователь не закрыл её сам.
+   */
+  private scheduleCleanup(sessionId: string) {
+    const active = this.sessions.get(sessionId);
+    if (!active) return;
+    if (active.cleanupTimer) clearTimeout(active.cleanupTimer);
+    if (!isPtyExitCleanupEnabled(this.exitedTtlMs)) return;
+
+    active.cleanupTimer = setTimeout(() => {
+      const current = this.sessions.get(sessionId);
+      // Сессию могли закрыть вручную или переиспользовать id — удаляем только завершённую
+      if (!current || current.info.status !== 'exited') return;
+      this.sessions.delete(sessionId);
+      console.log(`[PtyService] Auto-removed exited session ${sessionId} after ${this.exitedTtlMs}ms`);
+      this.broadcastRemoved(sessionId, current.info.title, 'ttl');
+    }, this.exitedTtlMs);
+    // Таймер не должен удерживать event loop при выходе из приложения
+    active.cleanupTimer.unref?.();
   }
 
   async createSession(options: CreatePtyOptions): Promise<PtySession> {
@@ -104,6 +155,7 @@ class PtyService {
         active.info.exitCode = exitCode;
       }
       this.broadcastExit(sessionId, exitCode);
+      this.scheduleCleanup(sessionId);
     });
 
     this.sessions.set(sessionId, { info, ptyProcess });
@@ -144,6 +196,7 @@ class PtyService {
     if (!session) {
       return false;
     }
+    if (session.cleanupTimer) clearTimeout(session.cleanupTimer);
     try {
       session.ptyProcess.kill();
       this.sessions.delete(sessionId);
@@ -160,7 +213,8 @@ class PtyService {
   }
 
   cleanupAll() {
-    for (const [id, session] of this.sessions.entries()) {
+    for (const session of this.sessions.values()) {
+      if (session.cleanupTimer) clearTimeout(session.cleanupTimer);
       try {
         session.ptyProcess.kill();
       } catch (e) {

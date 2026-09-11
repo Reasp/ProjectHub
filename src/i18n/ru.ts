@@ -1618,6 +1618,7 @@ export const ru: TranslationDictionary = {
   },
   terminalLogs: {
     sessionCreated: '[Terminal] Создана интерактивная сессия: {title}',
+    sessionAutoClosed: '[Terminal] Завершённая сессия закрыта автоматически: {title}',
     sessionError: '[Terminal Error] Ошибка запуска: {message}',
     processStarted: '[Process] Запущен процесс: {name} ({command})',
     processError: '[Process Error] Не удалось запустить {name}: {message}',

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useTranslation } from '../../i18n';
+import { useToast, useTimers } from '../../hooks/useTimeoutState';
 import type { RemoteControlStatus, DeviceRights } from '../../types/electron';
 
 export const RemoteControlBadge: React.FC = () => {
@@ -29,7 +30,9 @@ export const RemoteControlBadge: React.FC = () => {
   const [status, setStatus] = useState<RemoteControlStatus | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'connect' | 'devices' | 'settings' | 'telegram'>('connect');
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  // Индикатор «скопировано» гаснет сам; таймер снимается при размонтировании (TASK-50)
+  const [copiedKey, showCopiedKey] = useToast<string>(2500);
+  const { setTimer } = useTimers();
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [qrTelegramDataUrl, setQrTelegramDataUrl] = useState<string>('');
 
@@ -174,7 +177,8 @@ export const RemoteControlBadge: React.FC = () => {
       });
       setStatus(updated);
       setTestNotificationResult(t.remote.settingsSavedSuccess);
-      setTimeout(() => setTestNotificationResult(null), 3000);
+      // Результат теста живёт постоянно, а подтверждение сохранения гасим по таймеру (TASK-50)
+      setTimer(() => setTestNotificationResult(null), 3000);
     } catch (e) {
       console.error('Failed to update remote config:', e);
     } finally {
@@ -257,8 +261,7 @@ export const RemoteControlBadge: React.FC = () => {
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2500);
+    showCopiedKey(key);
   };
 
   if (!status) return null;

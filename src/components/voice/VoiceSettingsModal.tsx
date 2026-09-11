@@ -32,6 +32,7 @@ import type { LocalWhisperStatusInfo } from '../../types/electron';
 import { CONFIGURABLE_COMMANDS, type CommandPhraseDefinition } from '../../services/voiceCommandPhrases';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
+import { useTimeoutState, useToast, useTimers } from '../../hooks/useTimeoutState';
 
 interface VoiceSettingsModalProps {
   isOpen: boolean;
@@ -49,7 +50,8 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'tabs' | 'panels' | 'ai' | 'approval'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [newPhraseInputs, setNewPhraseInputs] = useState<Record<string, string>>({});
-  const [resetSuccess, setResetSuccess] = useState(false);
+  // Индикатор сброса гаснет сам; таймер снимается при размонтировании (TASK-50)
+  const [resetSuccess, showResetSuccess] = useTimeoutState(false, 2500);
 
   // Audio Devices State
   const [devices, setDevices] = useState<{ inputs: AudioDeviceInfo[]; outputs: AudioDeviceInfo[] }>({
@@ -58,7 +60,8 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
   });
   const [audioLevel, setAudioLevel] = useState(0);
   const [isPlayingTest, setIsPlayingTest] = useState(false);
-  const [deviceNotice, setDeviceNotice] = useState<string | null>(null);
+  const { setTimer } = useTimers();
+  const [deviceNotice, showDeviceNotice] = useToast<string>(4500);
   const [activeMicLabel, setActiveMicLabel] = useState<string | null>(null);
   const [isLoadingDevices, setIsLoadingDevices] = useState(false);
 
@@ -126,7 +129,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
     if (isPlayingTest) return;
     setIsPlayingTest(true);
     await voiceService.playTestTone();
-    setTimeout(() => setIsPlayingTest(false), 600);
+    setTimer(() => setIsPlayingTest(false), 600);
   };
 
   useEffect(() => {
@@ -145,9 +148,8 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
       });
 
       const unsubNotice = voiceService.onDeviceNotice((n) => {
-        setDeviceNotice(n.message);
+        showDeviceNotice(n.message);
         setActiveMicLabel(voiceService.getActiveTrackLabel());
-        setTimeout(() => setDeviceNotice(null), 4500);
       });
 
       return () => {
@@ -156,7 +158,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
         unsubNotice();
       };
     }
-  }, [isOpen]);
+  }, [isOpen, showDeviceNotice]);
 
   if (!isOpen) return null;
 
@@ -190,8 +192,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
     if (await dialog.confirm(t.voice.settingsModal.resetConfirm)) {
       const defaults = voiceService.resetCommandPhrases();
       setPhrasesMap(defaults);
-      setResetSuccess(true);
-      setTimeout(() => setResetSuccess(false), 2500);
+      showResetSuccess(true);
     }
   };
 

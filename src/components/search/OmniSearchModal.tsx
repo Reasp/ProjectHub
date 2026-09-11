@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useProjectStore, samePath } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useTimers } from '../../hooks/useTimeoutState';
 import type { RagSearchResult } from '../../types/electron';
 
 interface OmniSearchModalProps {
@@ -37,16 +38,18 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
   const [selectedResultIndex, setSelectedResultIndex] = useState(0);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  // Отложенный фокус: таймер снимается при размонтировании (TASK-50)
+  const { setTimer } = useTimers();
 
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50);
+      setTimer(() => inputRef.current?.focus(), 50);
       setSelectedResultIndex(0);
     } else {
       setQuery('');
       setResults([]);
     }
-  }, [isOpen]);
+  }, [isOpen, setTimer]);
 
   // Debounced search
   useEffect(() => {

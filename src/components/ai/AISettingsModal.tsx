@@ -26,6 +26,7 @@ import { useAIStudioStore, DEFAULT_AUTO_APPROVE_RULES } from '../../store/useAIS
 import { useHitlStore } from '../../store/useHitlStore';
 import type { AIProviderConfig, AutoApproveRules } from '../../types/electron';
 import { useTranslation } from '../../i18n/useTranslation';
+import { useTimers } from '../../hooks/useTimeoutState';
 
 interface AISettingsModalProps {
   isOpen: boolean;
@@ -77,6 +78,8 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
   });
   const [showKey, setShowKey] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  // Отложенное закрытие после сохранения: таймер снимается при размонтировании (TASK-50)
+  const { setTimer } = useTimers();
 
   // Exclusion list inputs state
   const [newWritePattern, setNewWritePattern] = useState('');
@@ -171,7 +174,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
     e.preventDefault();
     await saveConfig(form);
     setSavedSuccess(true);
-    setTimeout(() => {
+    setTimer(() => {
       onClose();
     }, 400);
   };

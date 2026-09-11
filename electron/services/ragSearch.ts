@@ -5,39 +5,24 @@ import matter from 'gray-matter';
 import type { RagSearchOptions, RagSearchResult } from '../../src/types/electron';
 import { projectRegistry } from './projectRegistry';
 import { ensureModelsCacheDir } from './appPaths';
+import { resolveEmbeddingModel, type EmbeddingModel } from './ragEmbeddingModel';
+import { ragWorkerClient, type VectorSearchRow } from './ragWorkerClient';
 
-// Реестр моделей эмбеддингов — зеркало scripts/rag/embed.mjs (TASK-47). Запрос должен
-// кодироваться той же моделью и с тем же префиксом, что и индекс конкретного проекта, поэтому
-// модель берётся из .rag-index/meta.json этого проекта, а реестр — лишь fallback для dtype/префиксов.
-interface EmbeddingModel {
-  id: string;
-  dtype: 'q8' | 'fp32';
-  queryPrefix: string;
-}
-
-const KNOWN_MODELS: Record<string, Omit<EmbeddingModel, 'id'>> = {
-  'Xenova/multilingual-e5-small': { dtype: 'q8', queryPrefix: 'query: ' },
-  'Xenova/paraphrase-multilingual-MiniLM-L12-v2': { dtype: 'q8', queryPrefix: '' },
-  'Xenova/all-MiniLM-L6-v2': { dtype: 'fp32', queryPrefix: '' }
-};
-const DEFAULT_MODEL_ID = 'Xenova/multilingual-e5-small';
-
+// Эмбеддинг запроса и поиск по LanceDB выполняются в изолированном воркере
+// (`electron/workers/ragWorker.mjs`), чтобы не блокировать event loop main-процесса (TASK-50).
+// Код ниже — fallback на случай, если воркер недоступен: тогда тяжёлые модули грузятся в main.
 const embedders = new Map<string, Promise<any>>();
 let lancedbModule: any = null;
 let transformersModule: any = null;
 
 async function readIndexModel(indexDir: string): Promise<EmbeddingModel> {
-  let modelId = DEFAULT_MODEL_ID;
-  let queryPrefix: string | undefined;
   try {
     const meta = JSON.parse(await fs.readFile(path.join(indexDir, 'meta.json'), 'utf-8'));
-    if (typeof meta.model === 'string' && meta.model) modelId = meta.model;
-    if (typeof meta.queryPrefix === 'string') queryPrefix = meta.queryPrefix;
+    return resolveEmbeddingModel(meta);
   } catch {
     // meta.json отсутствует или битый — работаем с моделью по умолчанию
+    return resolveEmbeddingModel(null);
   }
-  const known = KNOWN_MODELS[modelId] ?? { dtype: 'fp32' as const, queryPrefix: '' };
-  return { id: modelId, dtype: known.dtype, queryPrefix: queryPrefix ?? known.queryPrefix };
 }
 
 async function getLanceDb() {
@@ -91,6 +76,52 @@ async function embedQuery(query: string, model: EmbeddingModel): Promise<number[
     console.warn(`[RAG] Embedding failed (model ${model.id}):`, e);
     return null;
   }
+}
+
+/** Сырая строка результата LanceDB (fallback-путь в main-процессе). */
+interface LanceDbRow {
+  file?: unknown;
+  heading?: unknown;
+  text?: unknown;
+  _distance?: unknown;
+}
+
+/** Открывает основную таблицу индекса в main-процессе (fallback-путь). */
+async function openIndexTableInProcess(indexDir: string) {
+  const lancedb = await getLanceDb();
+  if (!lancedb) return null;
+  const db = await lancedb.connect(indexDir);
+  const tableNames = await db.tableNames();
+  const targetTable = tableNames.includes('docs') ? 'docs' : tableNames[0];
+  if (!targetTable) return null;
+  return db.openTable(targetTable);
+}
+
+/** Векторный поиск целиком в main-процессе — используется, только если воркер недоступен. */
+async function vectorSearchInProcess(indexDir: string, query: string, limit: number): Promise<VectorSearchRow[]> {
+  const table = await openIndexTableInProcess(indexDir);
+  if (!table) return [];
+  const vector = await embedQuery(query, await readIndexModel(indexDir));
+  if (!vector) return [];
+  const rows: LanceDbRow[] = await table.search(vector).limit(limit).toArray();
+  return rows.map((r) => ({
+    file: typeof r.file === 'string' ? r.file : '',
+    heading: typeof r.heading === 'string' ? r.heading : '',
+    text: typeof r.text === 'string' ? r.text : '',
+    distance: typeof r._distance === 'number' ? r._distance : null
+  }));
+}
+
+/** Векторный поиск: сначала воркер, при его недоступности — main-процесс. */
+async function vectorSearch(indexDir: string, query: string, limit: number): Promise<VectorSearchRow[]> {
+  try {
+    const model = await readIndexModel(indexDir);
+    const rows = await ragWorkerClient.vectorSearch({ indexDir, query, model, limit });
+    if (rows) return rows;
+  } catch (e) {
+    console.warn('[RAG] Vector search worker failed, falling back to in-process search:', e);
+  }
+  return vectorSearchInProcess(indexDir, query, limit);
 }
 
 async function scanProjectMarkdownFiles(projectPath: string): Promise<Array<{ filePath: string; relative: string; category: 'doc' | 'decision' | 'task' }>> {
@@ -163,40 +194,26 @@ export async function searchProjectDocs(options: RagSearchOptions): Promise<RagS
       const indexDir = path.join(projPath, '.rag-index');
       if (existsSync(indexDir)) {
         try {
-          const lancedb = await getLanceDb();
-          if (lancedb) {
-            const db = await lancedb.connect(indexDir);
-            const tableNames = await db.tableNames();
-            const targetTable = tableNames.includes('docs') ? 'docs' : tableNames[0];
-            if (targetTable) {
-              const table = await db.openTable(targetTable);
-              const vector = await embedQuery(query, await readIndexModel(indexDir));
-              if (vector) {
-                const vectorResults = await table.search(vector).limit(limit).toArray();
+          for (const r of await vectorSearch(indexDir, query, limit)) {
+            const distance = typeof r.distance === 'number' ? r.distance : 0.5;
+            const similarityScore = Math.max(0, Math.min(1, 1 - distance / 1.5));
 
-                for (const r of vectorResults) {
-                  const distance = typeof r._distance === 'number' ? r._distance : 0.5;
-                  const similarityScore = Math.max(0, Math.min(1, 1 - distance / 1.5));
+            const rel = r.file || '';
+            let cat: 'doc' | 'decision' | 'task' = 'doc';
+            if (rel.includes('decisions')) cat = 'decision';
+            else if (rel.includes('tasks')) cat = 'task';
 
-                  const rel = r.file || '';
-                  let cat: 'doc' | 'decision' | 'task' = 'doc';
-                  if (rel.includes('decisions')) cat = 'decision';
-                  else if (rel.includes('tasks')) cat = 'task';
-
-                  searchResults.push({
-                    projectName: proj.name,
-                    projectPath: projPath,
-                    filePath: path.join(projPath, rel),
-                    fileRelative: rel,
-                    heading: r.heading || undefined,
-                    snippet: r.text || '',
-                    score: Math.round(similarityScore * 100) / 100,
-                    type: 'vector',
-                    category: cat
-                  });
-                }
-              }
-            }
+            searchResults.push({
+              projectName: proj.name,
+              projectPath: projPath,
+              filePath: path.join(projPath, rel),
+              fileRelative: rel,
+              heading: r.heading || undefined,
+              snippet: r.text || '',
+              score: Math.round(similarityScore * 100) / 100,
+              type: 'vector',
+              category: cat
+            });
           }
         } catch (e) {
           console.error(`Vector search error for ${projPath}:`, e);
@@ -264,21 +281,27 @@ export async function getProjectRagStats(projectPath: string): Promise<{
   }
 
   try {
-    const lancedb = await getLanceDb();
-    if (lancedb) {
-      const db = await lancedb.connect(indexDir);
-      const tables = await db.tableNames();
-      const targetTable = tables.includes('docs') ? 'docs' : tables[0];
-      if (targetTable) {
-        const table = await db.openTable(targetTable);
-        const count = await table.countRows();
-        const stats = await fs.stat(indexDir);
-        return {
-          hasIndex: true,
-          chunksCount: count,
-          lastModified: stats.mtime.toISOString()
-        };
-      }
+    // Счёт строк тоже идёт через воркер: connect/openTable к LanceDB блокирует main (TASK-50)
+    let chunksCount: number | null = null;
+    try {
+      const viaWorker = await ragWorkerClient.stats(indexDir);
+      if (viaWorker) chunksCount = viaWorker.hasTable ? viaWorker.chunksCount : null;
+    } catch (e) {
+      console.warn('[RAG] Stats worker failed, falling back to in-process:', e);
+    }
+
+    if (chunksCount === null) {
+      const table = await openIndexTableInProcess(indexDir);
+      if (table) chunksCount = await table.countRows();
+    }
+
+    if (chunksCount !== null) {
+      const stats = await fs.stat(indexDir);
+      return {
+        hasIndex: true,
+        chunksCount,
+        lastModified: stats.mtime.toISOString()
+      };
     }
   } catch (e) {
     console.error(`Failed to get RAG stats for ${projectPath}:`, e);

@@ -3,6 +3,7 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import type { PtySession } from '../../types/electron';
+import { useTimers } from '../../hooks/useTimeoutState';
 
 interface PtyTabTerminalProps {
   session: PtySession;
@@ -13,6 +14,8 @@ export const PtyTabTerminal: React.FC<PtyTabTerminalProps> = ({ session, isActiv
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  // Отложенный refit/focus: таймер снимается при размонтировании вкладки (TASK-50)
+  const { setTimer } = useTimers();
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -104,7 +107,7 @@ export const PtyTabTerminal: React.FC<PtyTabTerminalProps> = ({ session, isActiv
   // When tab becomes active, refit and focus
   useEffect(() => {
     if (isActive && fitAddonRef.current && xtermRef.current) {
-      setTimeout(() => {
+      setTimer(() => {
         try {
           fitAddonRef.current?.fit();
           if (window.api?.resizePty && xtermRef.current) {
@@ -114,7 +117,7 @@ export const PtyTabTerminal: React.FC<PtyTabTerminalProps> = ({ session, isActiv
         } catch (e) {}
       }, 50);
     }
-  }, [isActive, session.id]);
+  }, [isActive, session.id, setTimer]);
 
   return (
     <div
