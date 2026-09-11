@@ -271,6 +271,45 @@ describe('remoteControlService: per-device токены и права (TASK-65, 
     const result = await svc.dispatchRpc('get_status', {}, fullDevice);
     expect(result).toBeDefined();
   });
+
+  // Hub-режим федерации (TASK-66): подключившийся ПК — такое же устройство со своим токеном,
+  // и запуск агента на чужой машине обязан подчиняться тем же правам, что и команды с телефона.
+  it('dispatchRpc блокирует запуск назначенного агента устройству с правами readOnly и hitl', async () => {
+    await expect(
+      svc.dispatchRpc('start_assigned_agent', { taskId: 'TASK-1', roleSlug: 'implementer' }, fakeDevice(deviceId, true, { rights: 'readOnly' }))
+    ).rejects.toThrow(/readOnly/);
+
+    await expect(
+      svc.dispatchRpc('start_assigned_agent', { taskId: 'TASK-1', roleSlug: 'implementer' }, fakeDevice(deviceId, true, { rights: 'hitl' }))
+    ).rejects.toThrow(/hitl-only/);
+  });
+
+  it('dispatchRpc отклоняет start_assigned_agent, адресованный другому хосту', async () => {
+    const fullDevice = fakeDevice(deviceId, true, { rights: 'full' });
+    await expect(
+      svc.dispatchRpc(
+        'start_assigned_agent',
+        { projectPath: userDataDir, taskId: 'TASK-1', roleSlug: 'implementer', hostId: 'ph_host_somebody_else' },
+        fullDevice
+      )
+    ).rejects.toThrow(/ph_host_somebody_else/);
+  });
+
+  it('dispatchRpc в глобальном readOnly запрещает запуск агента даже устройству с правами full', async () => {
+    svc.readOnly = true;
+    try {
+      await expect(
+        svc.dispatchRpc('start_assigned_agent', { taskId: 'TASK-1', roleSlug: 'implementer' }, fakeDevice(deviceId, true, { rights: 'full' }))
+      ).rejects.toThrow(/Read-Only/);
+    } finally {
+      svc.readOnly = false;
+    }
+  });
+
+  it('get_swarms доступен на чтение устройству с правами readOnly', async () => {
+    const result = await svc.dispatchRpc('get_swarms', {}, fakeDevice(deviceId, true, { rights: 'readOnly' }));
+    expect(Array.isArray(result)).toBe(true);
+  });
 });
 
 describe('remoteControlService: rate-limit подбора PIN (decision-5 п.5)', () => {

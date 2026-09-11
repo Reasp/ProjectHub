@@ -10,6 +10,8 @@ import {
   type AIStreamRequest
 } from '../services/aiAgentService';
 import { claudeBridgeService } from '../services/claudeBridgeService';
+import { federationClientService } from '../services/federationClientService';
+import { remoteControlService } from '../services/remoteControlService';
 import { aiSessionStore } from '../services/aiSessionStore';
 import { claudeUsageService } from '../services/claudeUsageService';
 import {
@@ -229,6 +231,35 @@ export function registerAiIpc(ctx: IpcContext) {
       options: { projectPath: string; taskId: string; taskTitle?: string; prompt: string; roleSlug: string; hostId?: string }
     ) => {
       const safeProject = await assertRegisteredProject(options.projectPath);
+
+      // Назначение на другую машину (TASK-66, decision-11 п.5): запускаем агента там через
+      // hub-соединение. Маршрутизация живёт здесь, а не в agentFleetService: тот отвечает за
+      // локальных агентов и ничего не должен знать о федерации.
+      const localHostId = remoteControlService.getHostId();
+      if (options.hostId && options.hostId !== localHostId) {
+        if (!federationClientService.isConnected(options.hostId)) {
+          return { error: `Хост ${options.hostId} не подключён. Добавьте его в «Удалённые хосты» и дождитесь соединения.` };
+        }
+        try {
+          const result = await federationClientService.call<{ swarmId: string; status: string; hostId: string }>(
+            options.hostId,
+            'start_assigned_agent',
+            {
+              projectPath: options.projectPath,
+              taskId: options.taskId,
+              taskTitle: options.taskTitle,
+              prompt: options.prompt,
+              roleSlug: options.roleSlug,
+              hostId: options.hostId
+            }
+          );
+          return { remote: true, hostId: options.hostId, swarmId: result?.swarmId, status: result?.status };
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          return { error: `Не удалось запустить агента на хосте ${options.hostId}: ${message}` };
+        }
+      }
+
       return await agentFleetService.startAssignedAgent({ ...options, projectPath: safeProject });
     }
   );

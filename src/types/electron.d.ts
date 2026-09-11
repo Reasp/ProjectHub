@@ -679,6 +679,27 @@ export interface IElectronAPI {
   onRemoteControlStatusChanged: (callback: (status: RemoteControlStatus) => void) => () => void;
   onRemoteHitlDecisionMade: (callback: (data: { requestId: string; sessionId: string; approved: boolean; byDevice: string }) => void) => () => void;
 
+  // Федерация компьютеров: hub-режим, ПК как клиент другого ПК (TASK-66, decision-11 п.4)
+  listFederationPeers: () => Promise<FederationPeerState[]>;
+  addFederationPeer: (options: {
+    hostId: string;
+    machineName?: string;
+    transport: FederationTransport;
+    address: string;
+    secretKey?: string;
+    pin?: string;
+    autoConnect?: boolean;
+  }) => Promise<FederationPeerState>;
+  removeFederationPeer: (hostId: string) => Promise<FederationPeerState[]>;
+  connectFederationPeer: (hostId: string) => Promise<FederationPeerState>;
+  disconnectFederationPeer: (hostId: string) => Promise<FederationPeerState>;
+  federationCall: <T = unknown>(hostId: string, method: RemoteRpcMethod | string, params?: Record<string, unknown>) => Promise<T>;
+  getFederationHosts: () => Promise<FederationHost[]>;
+  onFederationPeersChanged: (callback: (peers: FederationPeerState[]) => void) => () => void;
+  onFederationEvent: (
+    callback: (payload: { hostId: string; machineName: string; event: string; data: unknown }) => void
+  ) => () => void;
+
   // Единый HITL-контур: очередь, решения по requestId, аудит, шина событий (TASK-57)
   listPendingApprovals: (filter?: { projectPath?: string; sessionId?: string }) => Promise<ApprovalRequest[]>;
   decideApproval: (requestId: string, response: { approved: boolean; text?: string }) => Promise<HitlDecideResult>;

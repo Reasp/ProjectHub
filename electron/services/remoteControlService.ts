@@ -5,7 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow } from 'electron';
 import { WebSocketServer, WebSocket } from 'ws';
 import type {
   RemoteConnectionMode,
@@ -17,7 +17,8 @@ import type {
   RemotePacket,
   EncryptedPacket,
   PlainPacket,
-  FederationHost
+  FederationHost,
+  FederationProject
 } from '../../src/types/remote.js';
 import { generateSecretKey, generatePairingPin, encryptPayload, decryptPayload } from '../../src/utils/remoteCryptoNode.js';
 import { projectRegistry } from './projectRegistry.js';
@@ -25,10 +26,14 @@ import { assertWorkspaceRoot } from './projectPathGuard.js';
 import { processManager } from './processManager.js';
 import { gitService } from './gitService.js';
 import { claudeBridgeService } from './claudeBridgeService.js';
+import { agentFleetService } from './agentFleetService.js';
 import { aiAgentService } from './aiAgentService.js';
 import { actionConfigService, type ActionDefinition } from './actionConfigService.js';
 import { createBacklogTaskFile } from './backlogTaskCreate.js';
 import { hitlService } from './hitlService.js';
+import { assignedTaskRunner } from './assignedTaskRunner.js';
+import { lanDiscoveryService } from './lanDiscoveryService.js';
+import { loadRoles } from './roleService.js';
 import { secretStorageService } from './secretStorageService.js';
 import { appEventBus } from './eventBus.js';
 import { logger } from './logger.js';
@@ -78,6 +83,24 @@ const PIN_MAX_ATTEMPTS = 5;
 const PIN_LOCKOUT_MS = 5 * 60 * 1000;
 const EVENT_LOG_MAX = 200;
 const RPC_IDEMPOTENCY_TTL_MS = 60 * 1000;
+/** Период heartbeat/метаданных в каталог релея (TASK-66): релей считает хост протухшим через 90с. */
+const FEDERATION_HEARTBEAT_MS = 30 * 1000;
+
+/**
+ * `ownerId` каталога федерации (TASK-66, decision-11 п.2) — хэш общего федеративного секрета
+ * пользователя. Сам секрет релею не передаётся; по `ownerId` релей лишь группирует машины
+ * одного пользователя, не имея возможности его восстановить.
+ */
+export function deriveFederationOwnerId(secret: string): string {
+  const value = String(secret || '').trim();
+  if (!value) return '';
+  return crypto.createHash('sha256').update(`projecthub-federation-owner:${value}`, 'utf8').digest('hex');
+}
+
+/** Стабильный непрозрачный идентификатор пути проекта: наружу уходит хэш, не сам путь. */
+export function hashProjectPath(projectPath: string): string {
+  return crypto.createHash('sha256').update(path.resolve(projectPath).toLowerCase(), 'utf8').digest('hex').slice(0, 16);
+}
 
 class RemoteControlService {
   private server: http.Server | null = null;
@@ -95,6 +118,8 @@ class RemoteControlService {
   private readOnly = false;
   private machineName = os.hostname();
   private autoStart = false;
+  /** Автозапуск назначенных на этот хост задач (TASK-66), по умолчанию выключен. */
+  private autoStartAssignedTasks = false;
 
   private telegramBotToken = '';
   private telegramChatId = '';
@@ -137,6 +162,16 @@ class RemoteControlService {
   private knownFederationHosts = new Map<string, FederationHost>();
   private cachedLocalProjects: Array<{ id: string; name: string; path: string }> = [];
 
+  /** Общий секрет федерации: одинаковый на всех машинах пользователя, хранится в safeStorage. */
+  private federationSecret = '';
+  /** Производный от секрета `ownerId` — именно он уходит релею (TASK-66). */
+  private federationOwnerId = '';
+  private federationHeartbeatTimer: NodeJS.Timeout | null = null;
+  /** Работающие прямо сейчас агенты (ключ — agentId/sessionId), считаются по шине событий. */
+  private activeAgentSessions = new Set<string>();
+  /** Понятная ошибка несовместимости версии протокола с релеем (AC #5), показывается в UI. */
+  private federationProtocolError: string | null = null;
+
   constructor() {
     this.hostId = `ph_host_${crypto.randomBytes(6).toString('hex')}`;
     this.pairingPin = generatePairingPin();
@@ -161,12 +196,18 @@ class RemoteControlService {
    */
   private async loadPersistedSecrets(): Promise<void> {
     try {
-      const [storedKey, storedPin, storedBotToken, storedTokens] = await Promise.all([
+      const [storedKey, storedPin, storedBotToken, storedTokens, storedFederationSecret] = await Promise.all([
         secretStorageService.getSecret('remoteControl.secretKey'),
         secretStorageService.getSecret('remoteControl.pairingPin'),
         secretStorageService.getSecret('remoteControl.telegramBotToken'),
-        secretStorageService.getSecret('remoteControl.deviceTokens')
+        secretStorageService.getSecret('remoteControl.deviceTokens'),
+        secretStorageService.getSecret('remoteControl.federationSecret')
       ]);
+
+      // Федеративный секрет не генерируется автоматически: пока пользователь не задал один и тот
+      // же секрет на своих машинах, каталог схлопнут до этого хоста (TASK-66, decision-11 п.2).
+      this.federationSecret = storedFederationSecret || '';
+      this.federationOwnerId = deriveFederationOwnerId(this.federationSecret);
 
       this.secretKey = storedKey || this.legacySecretsToMigrate.secretKey || this.secretKey;
       this.pairingPin = storedPin || this.legacySecretsToMigrate.pairingPin || this.pairingPin;
@@ -379,6 +420,7 @@ class RemoteControlService {
         if (typeof data.requireApproval === 'boolean') this.requireApproval = data.requireApproval;
         if (typeof data.readOnly === 'boolean') this.readOnly = data.readOnly;
         if (typeof data.autoStart === 'boolean') this.autoStart = data.autoStart;
+        if (typeof data.autoStartAssignedTasks === 'boolean') this.autoStartAssignedTasks = data.autoStartAssignedTasks;
         if (data.telegramChatId) this.telegramChatId = data.telegramChatId;
         if (data.telegramBotUsername) this.telegramBotUsername = data.telegramBotUsername;
         if (data.telegramMiniAppUrl) this.telegramMiniAppUrl = data.telegramMiniAppUrl;
@@ -402,6 +444,7 @@ class RemoteControlService {
         requireApproval: this.requireApproval,
         readOnly: this.readOnly,
         autoStart: this.autoStart,
+        autoStartAssignedTasks: this.autoStartAssignedTasks,
         telegramChatId: this.telegramChatId,
         telegramBotUsername: this.telegramBotUsername,
         telegramMiniAppUrl: this.telegramMiniAppUrl
@@ -445,9 +488,24 @@ class RemoteControlService {
           by: event.type === 'hitl:decided' ? event.source.kind : event.type.replace('hitl:', '')
         });
       } else if (event.type.startsWith('agent:')) {
+        this.trackAgentActivity(event);
         this.broadcastEvent(event.type, event);
       }
     });
+  }
+
+  /**
+   * Учёт работающих агентов для каталога федерации (TASK-66): ключ — `agentId` слота роя или
+   * `sessionId` сессии Studio, чтобы несколько агентов одной сессии считались раздельно.
+   */
+  private trackAgentActivity(event: { type: string; sessionId?: string; agentId?: string }): void {
+    const key = event.agentId || event.sessionId;
+    if (!key) return;
+    if (event.type === 'agent:started') {
+      this.activeAgentSessions.add(key);
+    } else if (event.type === 'agent:finished' || event.type === 'agent:failed') {
+      this.activeAgentSessions.delete(key);
+    }
   }
 
   private busUnsubscribe: (() => void) | null = null;
@@ -468,6 +526,9 @@ class RemoteControlService {
   public async initOnStartup(): Promise<void> {
     this.subscribeToEventBus();
     await this.loadPersistedSecrets();
+    // Автозапуск назначенных задач живёт в backlog-вотчере и не зависит от того, включён ли
+    // сам Remote Control: назначение приезжает через git, а не через сеть (TASK-66).
+    assignedTaskRunner.setEnabled(this.autoStartAssignedTasks);
     // Если включен autoStart или задан Telegram Bot Token, сервис и туннель стартуют автоматически
     if (this.autoStart || Boolean(this.telegramBotToken)) {
       try {
@@ -519,6 +580,11 @@ class RemoteControlService {
       tunnelStatus: this.tunnelStatus,
       tunnelError: this.tunnelError,
       federationHosts: this.getFederationHostsList(),
+      federationEnabled: Boolean(this.federationOwnerId),
+      autoStartAssignedTasks: this.autoStartAssignedTasks,
+      federationOwnerId: this.federationOwnerId,
+      federationSecret: this.federationSecret,
+      federationError: this.federationProtocolError,
       localAddresses: localIps,
       secretToken: this.secretKey,
       useRelay: this.mode === 'relay' || Boolean(this.relayServerUrl),
@@ -588,6 +654,10 @@ class RemoteControlService {
     if (patch.autoStart !== undefined) {
       this.autoStart = patch.autoStart;
     }
+    if (patch.autoStartAssignedTasks !== undefined) {
+      this.autoStartAssignedTasks = patch.autoStartAssignedTasks;
+      assignedTaskRunner.setEnabled(this.autoStartAssignedTasks);
+    }
     if (patch.tunnelUrl !== undefined) {
       this.tunnelUrl = patch.tunnelUrl;
     }
@@ -603,6 +673,21 @@ class RemoteControlService {
     }
     if (patch.telegramMiniAppUrl !== undefined) {
       this.telegramMiniAppUrl = patch.telegramMiniAppUrl;
+    }
+    // Общий секрет федерации (TASK-66): один и тот же на всех машинах пользователя. Меняется
+    // редко, но при смене хост обязан перерегистрироваться — иначе останется в старом каталоге.
+    if (patch.federationSecret !== undefined && patch.federationSecret.trim() !== this.federationSecret) {
+      this.federationSecret = patch.federationSecret.trim();
+      this.federationOwnerId = deriveFederationOwnerId(this.federationSecret);
+      await secretStorageService.setSecret('remoteControl.federationSecret', this.federationSecret);
+      // Анонсы уходят с новым ownerId — старую группу слушать больше незачем.
+      lanDiscoveryService.stop();
+      if (this.enabled) this.startLanDiscovery();
+      // Соседи из прежнего каталога больше не наши — иначе в списке остались бы чужие машины.
+      for (const [hostId, host] of this.knownFederationHosts.entries()) {
+        if (host.source === 'relay') this.knownFederationHosts.delete(hostId);
+      }
+      if (this.enabled && this.mode === 'relay') restartRequired = true;
     }
 
     // Сохраняем обновленные настройки на диск
@@ -669,7 +754,14 @@ class RemoteControlService {
       // Оповещаем клиента о разрешении доступа
       this.sendToDevice(deviceId, {
         type: 'handshake_ack',
-        result: { approved: true, readOnly: this.readOnly, hostId: this.hostId, rights: dev.rights, lastEventId: this.eventLogNextId - 1 }
+        result: {
+          approved: true,
+          readOnly: this.readOnly,
+          hostId: this.hostId,
+          protocolVersion: REMOTE_FEDERATION_PROTOCOL_VERSION,
+          rights: dev.rights,
+          lastEventId: this.eventLogNextId - 1
+        }
       });
     }
     return this.getStatus();
@@ -694,19 +786,59 @@ class RemoteControlService {
     };
   }
 
+  /**
+   * Метаданные хоста для публикации в каталог релея (TASK-66). В отличие от
+   * `getHostFederationInfo()` (локальный UI) наружу уходят имена проектов и ХЭШИ путей, а не
+   * сами пути: каталог проходит через релей, который может быть чужим.
+   */
+  public getFederationMetaForRelay(): FederationHost {
+    const local = this.getHostFederationInfo();
+    const projects: FederationProject[] = (local.projects || []).map((p) => ({
+      id: hashProjectPath(p.path || p.id),
+      name: p.name,
+      pathHash: hashProjectPath(p.path || p.id)
+    }));
+
+    return {
+      ...local,
+      projects,
+      port: this.port,
+      appVersion: app?.getVersion?.() || '',
+      activeAgentsCount: this.countActiveAgents(),
+      hitlPendingCount: hitlService.listPending().length,
+      source: 'self'
+    };
+  }
+
+  /**
+   * Сколько агентов сейчас работает на хосте. Считается по шине событий (`agent:started` /
+   * `agent:finished` / `agent:failed`), а не прямым обращением к реестрам движков: иначе
+   * `remoteControlService` пришлось бы статически связать с `agentFleetService` и тянуть его
+   * зависимости в каждый импорт.
+   */
+  private countActiveAgents(): number {
+    return this.activeAgentSessions.size;
+  }
+
+  /** Идентификатор владельца каталога; пустой — федерация не настроена на этой машине. */
+  public getFederationOwnerId(): string {
+    return this.federationOwnerId;
+  }
+
   /** Совместима ли версия протокола удалённого хоста с локальной (TASK-58, задел для TASK-66). */
   public isProtocolCompatible(peer: Pick<FederationHost, 'protocolVersion'>): boolean {
     return (peer.protocolVersion ?? 1) === REMOTE_FEDERATION_PROTOCOL_VERSION;
   }
 
   public getFederationHostsList(): FederationHost[] {
-    const current = this.getHostFederationInfo();
+    const current: FederationHost = { ...this.getHostFederationInfo(), source: 'self' };
     const list: FederationHost[] = [current];
     const now = Date.now();
 
     for (const [id, host] of this.knownFederationHosts.entries()) {
       if (id !== this.hostId) {
-        const isOnline = now - host.lastSeen < 90000;
+        // Хост онлайн, только если его heartbeat свеж И каталог не сообщил о его уходе.
+        const isOnline = host.isOnline !== false && now - host.lastSeen < 90000;
         list.push({ ...host, isOnline });
       }
     }
@@ -886,6 +1018,10 @@ class RemoteControlService {
         this.connectToRelay();
       }
 
+      // LAN-обнаружение соседних ProjectHub без релея (TASK-66, AC #1). Работает только при
+      // заданном общем секрете: иначе нечем отличить свои машины от чужих в общей сети.
+      this.startLanDiscovery();
+
       // Если задан Telegram Bot Token или включен autoStart, автоматически поднимаем HTTPS-туннель
       if (this.telegramBotToken || this.autoStart) {
         this.startTunnel().catch((err) => {
@@ -906,6 +1042,7 @@ class RemoteControlService {
     this.enabled = false;
     this.disconnectFromRelay();
     this.stopTunnel();
+    lanDiscoveryService.stop();
 
     // Закрываем локальные клиенты
     for (const client of this.localClients.values()) {
@@ -1235,6 +1372,7 @@ class RemoteControlService {
             approved: isApproved,
             readOnly: this.readOnly,
             hostId: this.hostId,
+            protocolVersion: REMOTE_FEDERATION_PROTOCOL_VERSION,
             rights,
             // Клиент запоминает точку в потоке событий, чтобы после разрыва догнать с неё, а не
             // проигрывать заново весь кольцевой буфер (decision-11 п.6).
@@ -1282,6 +1420,11 @@ class RemoteControlService {
       relayUrl.searchParams.set('machineName', this.machineName || os.hostname());
       relayUrl.searchParams.set('platform', process.platform);
       relayUrl.searchParams.set('pubkey', Buffer.from(publicKeyPem).toString('base64url'));
+      relayUrl.searchParams.set('protocolVersion', String(REMOTE_FEDERATION_PROTOCOL_VERSION));
+      if (app?.getVersion) relayUrl.searchParams.set('appVersion', app.getVersion());
+      // Каталог федерации включается только если задан общий секрет: без него релей видит хост
+      // как одиночку и не показывает его чужим машинам (TASK-66, decision-11 п.2).
+      if (this.federationOwnerId) relayUrl.searchParams.set('ownerId', this.federationOwnerId);
 
       const ws = new WebSocket(relayUrl.toString());
       this.relayWs = ws;
@@ -1305,7 +1448,28 @@ class RemoteControlService {
             this.relayConnected = true;
             this.relayReconnectAttempt = 0;
             logger.info(`[RemoteControl] Authenticated with Relay Server: ${this.relayServerUrl}`);
+
+            // Несовместимая версия протокола релея — понятная ошибка в UI, а не молча пустой
+            // каталог (AC #5). Соединение не рвём: транспорт для телефона продолжает работать.
+            const relayProtocol = Number(msg.protocolVersion ?? REMOTE_FEDERATION_PROTOCOL_VERSION);
+            if (relayProtocol !== REMOTE_FEDERATION_PROTOCOL_VERSION) {
+              this.federationProtocolError =
+                `Версия протокола релея (${relayProtocol}) несовместима с версией приложения `
+                + `(${REMOTE_FEDERATION_PROTOCOL_VERSION}). Каталог хостов недоступен — обновите релей и ProjectHub.`;
+              logger.warn(`[RemoteControl] ${this.federationProtocolError}`);
+            } else {
+              this.federationProtocolError = null;
+            }
+
+            this.startFederationHeartbeat();
             this.notifyStatusChanged();
+            return;
+          }
+
+          // Каталог хостов того же владельца (TASK-66): полный список приходит при регистрации,
+          // при изменениях у соседей и в ответ на `catalog_request` из heartbeat.
+          if (msg.type === 'catalog' && Array.isArray(msg.hosts)) {
+            this.applyRelayCatalog(msg.hosts as FederationHost[]);
             return;
           }
 
@@ -1371,6 +1535,99 @@ class RemoteControlService {
     }
   }
 
+  /** Запуск LAN-обнаружения: анонсируем себя и принимаем анонсы машин того же владельца. */
+  private startLanDiscovery(): void {
+    if (!this.federationOwnerId) return;
+    lanDiscoveryService.configure({
+      getPayload: () => {
+        if (!this.federationOwnerId) return null;
+        const meta = this.getFederationMetaForRelay();
+        return {
+          hostId: this.hostId,
+          ownerId: this.federationOwnerId,
+          machineName: meta.machineName,
+          platform: meta.platform,
+          port: this.port,
+          appVersion: meta.appVersion,
+          protocolVersion: REMOTE_FEDERATION_PROTOCOL_VERSION,
+          projectsCount: meta.projectsCount,
+          activeAgentsCount: meta.activeAgentsCount,
+          hitlPendingCount: meta.hitlPendingCount
+        };
+      },
+      onHost: (host) => {
+        const previous = this.knownFederationHosts.get(host.hostId);
+        // Запись от релея информативнее (в ней есть список проектов) — LAN лишь освежает
+        // heartbeat и добавляет прямой адрес для подключения без релея.
+        this.knownFederationHosts.set(host.hostId, {
+          ...previous,
+          ...host,
+          projects: previous?.projects || host.projects,
+          source: previous?.source === 'relay' ? 'relay' : 'lan',
+          protocolIncompatible: !this.isProtocolCompatible(host)
+        });
+        this.notifyStatusChanged();
+      }
+    });
+    lanDiscoveryService.start();
+  }
+
+  /**
+   * Heartbeat в каталог релея (TASK-66): публикует метаданные хоста и запрашивает свежий каталог.
+   * Релей считает хост офлайн через 90с без heartbeat, поэтому период — 30с.
+   */
+  private startFederationHeartbeat(): void {
+    this.stopFederationHeartbeat();
+    const tick = () => {
+      if (!this.relayWs || this.relayWs.readyState !== WebSocket.OPEN) return;
+      try {
+        this.relayWs.send(JSON.stringify({ type: 'host_meta_update', meta: this.getFederationMetaForRelay() }));
+        if (this.federationOwnerId) this.relayWs.send(JSON.stringify({ type: 'catalog_request' }));
+      } catch (err) {
+        logger.warn(`[RemoteControl] Federation heartbeat failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+    tick();
+    this.federationHeartbeatTimer = setInterval(tick, FEDERATION_HEARTBEAT_MS);
+  }
+
+  private stopFederationHeartbeat(): void {
+    if (this.federationHeartbeatTimer) {
+      clearInterval(this.federationHeartbeatTimer);
+      this.federationHeartbeatTimer = null;
+    }
+  }
+
+  /**
+   * Применяет каталог, пришедший от релея: хосты, пропавшие из каталога, помечаются офлайн,
+   * а не удаляются молча — «офлайн» это статус, а не ошибка (decision-11 п.6, AC #5).
+   */
+  private applyRelayCatalog(hosts: FederationHost[]): void {
+    const seen = new Set<string>();
+
+    for (const raw of hosts) {
+      if (!raw?.hostId || raw.hostId === this.hostId) continue;
+      seen.add(raw.hostId);
+      const previous = this.knownFederationHosts.get(raw.hostId);
+      this.knownFederationHosts.set(raw.hostId, {
+        ...previous,
+        ...raw,
+        source: 'relay',
+        isOnline: true,
+        lastSeen: Number(raw.lastSeen) || Date.now(),
+        protocolIncompatible: !this.isProtocolCompatible(raw)
+      });
+    }
+
+    for (const [hostId, host] of this.knownFederationHosts.entries()) {
+      if (host.source === 'relay' && !seen.has(hostId)) {
+        this.knownFederationHosts.set(hostId, { ...host, isOnline: false });
+      }
+    }
+
+    this.notifyStatusChanged();
+  }
+
   private scheduleRelayReconnect() {
     if (!this.enabled || this.mode !== 'relay') return;
     if (this.relayReconnectTimer) clearTimeout(this.relayReconnectTimer);
@@ -1386,6 +1643,7 @@ class RemoteControlService {
   }
 
   private disconnectFromRelay() {
+    this.stopFederationHeartbeat();
     if (this.relayReconnectTimer) {
       clearTimeout(this.relayReconnectTimer);
       this.relayReconnectTimer = null;
@@ -1455,6 +1713,7 @@ class RemoteControlService {
             approved: device.isApproved,
             readOnly: this.readOnly,
             hostId: this.hostId,
+            protocolVersion: REMOTE_FEDERATION_PROTOCOL_VERSION,
             rights: device.rights,
             lastEventId: this.eventLogNextId - 1
           }
@@ -1486,6 +1745,7 @@ class RemoteControlService {
           approved: device.isApproved,
           readOnly: this.readOnly,
           hostId: this.hostId,
+          protocolVersion: REMOTE_FEDERATION_PROTOCOL_VERSION,
           rights: issued.rights,
           deviceToken: issued.token,
           lastEventId: this.eventLogNextId - 1
@@ -1568,7 +1828,9 @@ class RemoteControlService {
       'git_push',
       'send_ai_prompt',
       'hitl_decision',
-      'run_action'
+      'run_action',
+      'start_assigned_agent',
+      'stop_swarm'
     ]);
 
     if (this.readOnly && writeMethods.has(method)) {
@@ -1787,6 +2049,73 @@ class RemoteControlService {
           });
 
         return { sessionId, accepted: true };
+      }
+
+      // ── Hub-режим федерации (TASK-66, decision-11 п.4): те же RPC, что и у телефона ──
+
+      case 'get_roles': {
+        const { roles } = await loadRoles(activePath || undefined);
+        return roles.map((r) => ({
+          slug: r.slug,
+          name: r.name,
+          engine: r.engine,
+          model: r.model,
+          source: r.source
+        }));
+      }
+
+      case 'get_swarms': {
+        // Только сводка: полные логи агентов наружу не отдаём (они могут содержать код и секреты).
+        return agentFleetService.listSwarms(activePath || undefined).map((s) => ({
+          id: s.id,
+          mode: s.mode,
+          status: s.status,
+          projectPath: s.projectPath,
+          taskId: s.taskId,
+          taskTitle: s.taskTitle,
+          origin: s.origin,
+          createdAt: s.createdAt,
+          completedAt: s.completedAt,
+          agents: s.agents.map((a) => ({
+            id: a.id,
+            name: a.config.name,
+            roleSlug: a.config.roleSlug,
+            engine: a.config.engine,
+            status: a.status,
+            error: a.error
+          }))
+        }));
+      }
+
+      case 'start_assigned_agent': {
+        if (!activePath) throw new Error('No active project specified');
+        const taskId = typeof params.taskId === 'string' ? params.taskId.trim() : '';
+        const roleSlug = typeof params.roleSlug === 'string' ? params.roleSlug.trim() : '';
+        if (!taskId || !roleSlug) throw new Error('taskId and roleSlug are required');
+
+        // Хост запускает агента только у себя: чужой hostId в запросе — ошибка маршрутизации,
+        // а не повод исполнять чужую работу (decision-11 п.5).
+        const targetHostId = typeof params.hostId === 'string' && params.hostId ? params.hostId : this.hostId;
+        if (targetHostId !== this.hostId) {
+          throw new Error(`Запрос адресован хосту ${targetHostId}, а это ${this.hostId}`);
+        }
+
+        const result = await agentFleetService.startAssignedAgent({
+          projectPath: activePath,
+          taskId,
+          taskTitle: typeof params.taskTitle === 'string' ? params.taskTitle : undefined,
+          prompt: typeof params.prompt === 'string' && params.prompt.trim() ? params.prompt : `Выполни задачу ${taskId}.`,
+          roleSlug,
+          useWorktrees: params.useWorktrees !== false
+        });
+        if ('error' in result) throw new Error(result.error);
+        return { swarmId: result.id, status: result.status, hostId: this.hostId };
+      }
+
+      case 'stop_swarm': {
+        const swarmId = typeof params.swarmId === 'string' ? params.swarmId : '';
+        if (!swarmId) throw new Error('swarmId is required');
+        return { stopped: agentFleetService.stopSwarm(swarmId) };
       }
 
       case 'get_events_since': {

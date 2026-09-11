@@ -2,6 +2,7 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { BrowserWindow } from 'electron';
+import { assignedTaskRunner } from './assignedTaskRunner.js';
 
 class BacklogWatcher {
   private watcher: FSWatcher | null = null;
@@ -31,6 +32,12 @@ class BacklogWatcher {
     });
 
     const notify = (event: string, filePath: string) => {
+      // Назначение `agent:<role>@<hostId>` могло приехать с git pull — хост, чьё имя стоит в
+      // задаче, запускает агента сам (TASK-66, decision-11 п.5). По умолчанию выключено.
+      if (event !== 'unlink' && assignedTaskRunner.isEnabled()) {
+        void assignedTaskRunner.handleTaskFile(projectPath, filePath);
+      }
+
       if (!win || win.isDestroyed()) return;
 
       if (this.debounceTimer) {

@@ -39,6 +39,9 @@ export const RemoteControlBadge: React.FC = () => {
   const [mode, setMode] = useState<'lan' | 'relay'>('lan');
   const [readOnly, setReadOnly] = useState<boolean>(false);
   const [requireApproval, setRequireApproval] = useState<boolean>(true);
+  // Федерация компьютеров (TASK-66): общий секрет каталога и автозапуск назначенных задач.
+  const [federationSecret, setFederationSecret] = useState<string>('');
+  const [autoStartAssignedTasks, setAutoStartAssignedTasks] = useState<boolean>(false);
   const [machineName, setMachineName] = useState<string>('');
   const [autoStart, setAutoStart] = useState<boolean>(false);
   const [savingSettings, setSavingSettings] = useState<boolean>(false);
@@ -66,6 +69,8 @@ export const RemoteControlBadge: React.FC = () => {
         if (st.telegramChatId !== undefined) setTelegramChatId(st.telegramChatId);
         if (st.telegramBotUsername !== undefined) setTelegramBotUsername(st.telegramBotUsername);
         if (st.telegramMiniAppUrl !== undefined) setTelegramMiniAppUrl(st.telegramMiniAppUrl);
+        if (st.federationSecret !== undefined) setFederationSecret(st.federationSecret);
+        if (st.autoStartAssignedTasks !== undefined) setAutoStartAssignedTasks(st.autoStartAssignedTasks);
       } catch (e) {
         console.error('Failed to get remote control status:', e);
       }
@@ -85,6 +90,8 @@ export const RemoteControlBadge: React.FC = () => {
       if (next.telegramChatId !== undefined) setTelegramChatId(next.telegramChatId);
       if (next.telegramBotUsername !== undefined) setTelegramBotUsername(next.telegramBotUsername);
       if (next.telegramMiniAppUrl !== undefined) setTelegramMiniAppUrl(next.telegramMiniAppUrl);
+      if (next.federationSecret !== undefined) setFederationSecret(next.federationSecret);
+      if (next.autoStartAssignedTasks !== undefined) setAutoStartAssignedTasks(next.autoStartAssignedTasks);
     });
     return () => {
       unsubscribe?.();
@@ -161,7 +168,9 @@ export const RemoteControlBadge: React.FC = () => {
         telegramBotToken,
         telegramChatId,
         telegramBotUsername,
-        telegramMiniAppUrl
+        telegramMiniAppUrl,
+        federationSecret,
+        autoStartAssignedTasks
       });
       setStatus(updated);
       setTestNotificationResult(t.remote.settingsSavedSuccess);
@@ -914,6 +923,39 @@ export const RemoteControlBadge: React.FC = () => {
                         className="rounded border-slate-700 bg-slate-950 text-amber-600 focus:ring-0"
                       />
                       <span>{t.remote.readOnlyMode}</span>
+                    </label>
+                  </div>
+
+                  {/* Федерация компьютеров (TASK-66, decision-11 п.2/п.5) */}
+                  <div className="space-y-2.5 pt-2 border-t border-slate-800">
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-wide text-slate-500 mb-1">
+                        {t.federation.federationSecret}
+                      </label>
+                      <input
+                        type="password"
+                        value={federationSecret}
+                        onChange={(e) => setFederationSecret(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono"
+                      />
+                      <p className="mt-1 text-[10px] text-slate-500">{t.federation.federationSecretDesc}</p>
+                      {!status?.federationEnabled && (
+                        <p className="mt-1 text-[10px] text-amber-400">{t.federation.federationDisabled}</p>
+                      )}
+                      {status?.federationError && <p className="mt-1 text-[10px] text-red-400">{status.federationError}</p>}
+                    </div>
+
+                    <label className="flex items-start gap-2 text-slate-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={autoStartAssignedTasks}
+                        onChange={(e) => setAutoStartAssignedTasks(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-700 bg-slate-950 text-emerald-600 focus:ring-0"
+                      />
+                      <span>
+                        {t.federation.autoStartAssigned}
+                        <span className="block text-[10px] text-slate-500">{t.federation.autoStartAssignedDesc}</span>
+                      </span>
                     </label>
                   </div>
 

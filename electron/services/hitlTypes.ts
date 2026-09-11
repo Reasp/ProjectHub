@@ -254,6 +254,14 @@ export type AppBusEvent =
       isApproved: boolean;
       hostId?: string;
       at: number;
+    }
+  /** Событие, пришедшее с удалённого хоста федерации в hub-режиме (TASK-66, decision-11 п.4). */
+  | {
+      type: 'federation:peerEvent';
+      hostId: string;
+      machineName: string;
+      event: string;
+      at: number;
     };
 
 export type AppBusEventType = AppBusEvent['type'];

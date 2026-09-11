@@ -31,6 +31,8 @@ import { useProjectStore, samePath } from '../../store/useProjectStore';
 import { useSwarmStore } from '../../store/useSwarmStore';
 import { useRolesStore } from '../../store/useRolesStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { parseAssignee, formatAgentAssignee } from '../../utils/assignee';
+import { useFederationStore } from '../../store/useFederationStore';
 import { useDialog } from '../../hooks/useDialog';
 import { generateTaskDraft } from '../../services/aiAssistantService';
 import { MarkdownViewer } from '../common/MarkdownViewer';
@@ -66,6 +68,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     setActiveTab: setMainTab
   } = useProjectStore();
   const { openNewSwarmModal, swarms, runAssignedAgentAction } = useSwarmStore();
+  const federationPeers = useFederationStore((s) => s.peers);
   const { rolesByProject, loadRolesAction } = useRolesStore();
   const roles = rolesByProject[selectedProject?.path || ''] || [];
 
@@ -133,8 +136,11 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     }
   };
 
-  const assignedRoleSlug = assignee.startsWith('agent:') ? assignee.slice('agent:'.length).split('@')[0] : null;
-  const assignedHostId = assignee.includes('@') ? assignee.split('@')[1] : undefined;
+  const parsedAssignee = parseAssignee(assignee);
+  const assignedRoleSlug = parsedAssignee?.kind === 'agent' ? parsedAssignee.roleSlug : null;
+  const assignedHostId = parsedAssignee?.kind === 'agent' ? parsedAssignee.hostId : undefined;
+  // Хост из назначения может быть чужим: тогда агент стартует там через hub-соединение (TASK-66).
+  const assignedPeer = assignedHostId ? federationPeers.find((peer) => peer.hostId === assignedHostId) : undefined;
   const assignedRole = assignedRoleSlug ? roles.find((r) => r.slug === assignedRoleSlug) : undefined;
   const projectSwarms = (selectedProject && swarms[selectedProject.path]) || [];
   const activeAssignedSwarm = projectSwarms.find(
@@ -420,9 +426,24 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   />
                   <datalist id="task-assignee-roles">
                     {roles.map((r) => (
-                      <option key={r.slug} value={`agent:${r.slug}`}>{r.name}</option>
+                      <option key={r.slug} value={formatAgentAssignee(r.slug)}>{r.name}</option>
                     ))}
+                    {/* Назначение на другую машину федерации (TASK-66, decision-11 п.5) */}
+                    {federationPeers.flatMap((peer) =>
+                      roles.map((r) => (
+                        <option key={`${peer.hostId}:${r.slug}`} value={formatAgentAssignee(r.slug, peer.hostId)}>
+                          {r.name} — {peer.machineName}
+                        </option>
+                      ))
+                    )}
                   </datalist>
+                  {assignedHostId && (
+                    <p className="text-[10px] mt-1 text-slate-400">
+                      {assignedPeer
+                        ? `${assignedPeer.machineName} · ${t.federation.status[assignedPeer.status]}`
+                        : t.federation.notConnected}
+                    </p>
+                  )}
                   {assignedRoleSlug && !assignedRole && (
                     <p className="text-[10px] text-amber-400 mt-1">{t.taskDetail.assigneeRoleNotFound}</p>
                   )}

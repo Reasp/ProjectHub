@@ -10,10 +10,12 @@ import { VoiceControlWidget } from './components/voice/VoiceControlWidget';
 import { DialogHost } from './components/common/DialogHost';
 import { HitlCenterModal } from './components/hitl/HitlCenterModal';
 import { NotificationSettingsModal } from './components/notifications/NotificationSettingsModal';
+import { RemoteHostsModal } from './components/federation/RemoteHostsModal';
 import { useProjectStore } from './store/useProjectStore';
 import { useAIStudioStore } from './store/useAIStudioStore';
 import { useHitlStore } from './store/useHitlStore';
 import { useNotificationStore } from './store/useNotificationStore';
+import { useFederationStore } from './store/useFederationStore';
 import { useTranslation } from './i18n/useTranslation';
 import { Bot, ShieldAlert, X } from 'lucide-react';
 
@@ -63,6 +65,11 @@ export const App: React.FC = () => {
   // Уведомления: журнал доставок, звук и настройки каналов (TASK-63)
   useEffect(() => {
     useNotificationStore.getState().init();
+  }, []);
+
+  // Федерация: список удалённых хостов и их события в hub-режиме (TASK-66)
+  useEffect(() => {
+    useFederationStore.getState().init();
   }, []);
 
   /**
@@ -339,6 +346,9 @@ export const App: React.FC = () => {
 
       {/* Настройки уведомлений: каналы, тихие часы, Telegram-бот (TASK-63) */}
       <NotificationSettingsModal />
+
+      {/* Удалённые хосты федерации, hub-режим (TASK-66) */}
+      <RemoteHostsModal />
 
       {/* Global Promise-based Modals (ConfirmDialog, PromptDialog, AlertDialog) */}
       <DialogHost />

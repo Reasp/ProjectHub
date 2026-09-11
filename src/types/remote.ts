@@ -43,11 +43,36 @@ export interface RemoteControlConfig {
   machineName?: string;
   autoStart?: boolean;
   tunnelUrl?: string;
+  /**
+   * Общий секрет федерации (TASK-66): задаётся одинаковым на всех машинах пользователя, из него
+   * выводится `ownerId` каталога на релее. Хранится в safeStorage, не в plaintext-конфиге.
+   */
+  federationSecret?: string;
+  /**
+   * Автозапуск задач, назначенных на этот хост (`agent:<role>@<hostId>`), когда их файл приехал
+   * через git (TASK-66). Выключено по умолчанию: агент стартует сам, без нажатия человека.
+   */
+  autoStartAssignedTasks?: boolean;
   telegramBotToken?: string;
   telegramChatId?: string;
   telegramBotUsername?: string;
   telegramMiniAppUrl?: string;
 }
+
+/**
+ * Проект удалённого хоста в каталоге федерации (TASK-66). Наружу уходит имя и хэш пути
+ * (`pathHash`), а не сам путь: каталог проходит через чужой релей. `path` заполняется только
+ * для локального хоста, где он и так известен.
+ */
+export interface FederationProject {
+  id: string;
+  name: string;
+  path?: string;
+  pathHash?: string;
+}
+
+/** Откуда узнали о хосте: сам себя, каталог релея, LAN-обнаружение (TASK-66). */
+export type FederationHostSource = 'self' | 'relay' | 'lan' | 'manual';
 
 export interface FederationHost {
   hostId: string;
@@ -55,11 +80,21 @@ export interface FederationHost {
   platform: 'win32' | 'darwin' | 'linux';
   tunnelUrl?: string;
   localIps?: string[];
+  /** Порт локального HTTP/WS-сервера хоста — нужен для прямого LAN-подключения без релея. */
+  port?: number;
   isOnline: boolean;
   projectsCount: number;
   activeProcessesCount: number;
-  projects?: Array<{ id: string; name: string; path: string }>;
+  projects?: FederationProject[];
   lastSeen: number;
+  /** Версия приложения на хосте (для диагностики несовместимостей). */
+  appVersion?: string;
+  /** Сколько агентов сейчас работает на хосте (fan-out + AI Studio). */
+  activeAgentsCount?: number;
+  /** Длина очереди HITL — видно, что хост чего-то ждёт от человека. */
+  hitlPendingCount?: number;
+  /** Источник записи: сам хост, каталог релея или LAN-обнаружение. */
+  source?: FederationHostSource;
   /**
    * Версия протокола федерации (TASK-58, задел для TASK-66). Хосты со старой/новой несовместимой
    * версией отклоняются при регистрации с понятной ошибкой вместо молчаливой порчи данных.
@@ -67,6 +102,34 @@ export interface FederationHost {
   protocolVersion?: number;
   /** Заполняется на принимающей стороне, если версия хоста несовместима с локальной. */
   protocolIncompatible?: boolean;
+}
+
+/** Транспорт подключения к удалённому ProjectHub в hub-режиме (TASK-66). */
+export type FederationTransport = 'lan' | 'relay';
+
+export type FederationPeerStatus = 'idle' | 'connecting' | 'connected' | 'offline' | 'error';
+
+/**
+ * Состояние подключения к удалённому хосту в hub-режиме (TASK-66, decision-11 п.4).
+ * Секреты (E2EE-ключ, per-device токен) сюда не попадают — только факт сопряжения.
+ */
+export interface FederationPeerState {
+  hostId: string;
+  machineName: string;
+  transport: FederationTransport;
+  address: string;
+  status: FederationPeerStatus;
+  /** Понятная причина ошибки, включая несовместимость версии протокола. */
+  error?: string;
+  /** Права, выданные нам удалённым хостом (его per-device токен). */
+  rights?: DeviceRights;
+  readOnly?: boolean;
+  protocolVersion?: number;
+  lastEventId: number;
+  connectedAt?: number;
+  /** Токен получен — переподключение больше не требует PIN. */
+  paired: boolean;
+  autoConnect: boolean;
 }
 
 export interface RemoteControlStatus {
@@ -91,6 +154,16 @@ export interface RemoteControlStatus {
   tunnelStatus: 'idle' | 'starting' | 'active' | 'error';
   tunnelError: string | null;
   federationHosts: FederationHost[];
+  /** Задан общий федеративный секрет — хост участвует в каталоге пользователя (TASK-66). */
+  federationEnabled?: boolean;
+  /** Включён автозапуск задач, назначенных на этот хост. */
+  autoStartAssignedTasks?: boolean;
+  /** Производный от секрета идентификатор владельца каталога (сам секрет из него не выводится). */
+  federationOwnerId?: string;
+  /** Секрет федерации — показывается в настройках, чтобы перенести его на другую машину. */
+  federationSecret?: string;
+  /** Понятная ошибка федерации (например, несовместимая версия протокола релея). */
+  federationError?: string | null;
   useRelay?: boolean;
   localAddresses?: string[];
   secretToken?: string;
@@ -148,7 +221,12 @@ export type RemoteRpcMethod =
   | 'get_pending_approvals'
   | 'run_action'
   | 'get_federation_hosts'
-  | 'get_events_since';
+  | 'get_events_since'
+  // Hub-режим федерации (TASK-66, decision-11 п.4): ПК как клиент другого ПК
+  | 'get_roles'
+  | 'get_swarms'
+  | 'start_assigned_agent'
+  | 'stop_swarm';
 
 export interface RemoteEventPayloads {
   'process:logChunk': { processId: string; text: string };

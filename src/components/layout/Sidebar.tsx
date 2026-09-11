@@ -21,12 +21,14 @@ import {
   Zap,
   Power,
   Mic,
+  Server,
   PanelLeftClose,
   Bot
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useSwarmStore } from '../../store/useSwarmStore';
 import { useHitlStore } from '../../store/useHitlStore';
+import { useFederationStore } from '../../store/useFederationStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
 import { ScanSettingsModal } from '../projects/ScanSettingsModal';
@@ -63,6 +65,8 @@ export const Sidebar: React.FC = () => {
   const swarms = useSwarmStore((s) => s.swarms);
   const hitlPendingCount = useHitlStore((s) => s.pending.length);
   const openHitlCenter = useHitlStore((s) => s.openCenter);
+  const openRemoteHosts = useFederationStore((s) => s.open);
+  const connectedPeersCount = useFederationStore((s) => s.peers.filter((p) => p.status === 'connected').length);
 
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -545,6 +549,20 @@ export const Sidebar: React.FC = () => {
               {t.hitl.sidebarPending.replace('{count}', String(hitlPendingCount))}
             </button>
           )}
+
+          <button
+            onClick={() => openRemoteHosts()}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 transition border border-slate-700/60"
+            title={t.federation.title}
+          >
+            <Server className="w-3.5 h-3.5 text-cyan-400" />
+            {t.federation.sidebarButton}
+            {connectedPeersCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-semibold">
+                {connectedPeersCount}
+              </span>
+            )}
+          </button>
 
           <button
             onClick={handleAddFolder}

@@ -6,6 +6,7 @@ import { claudeBridgeService } from './services/claudeBridgeService';
 import { localWhisperService } from './services/localWhisperService';
 import { mcpServerService } from './services/mcpServerService';
 import { remoteControlService } from './services/remoteControlService';
+import { federationClientService } from './services/federationClientService';
 import { processManager } from './services/processManager';
 import { ptyService } from './services/ptyService';
 import { gitService } from './services/gitService';
@@ -496,6 +497,12 @@ async function performGracefulShutdown() {
   }
 
   try {
+    federationClientService.shutdown();
+  } catch (e) {
+    console.warn('[Main] Error stopping federation hub client:', e);
+  }
+
+  try {
     // Демон Telegram-бота — обычный процесс processManager, но остановить его надо явно:
     // cleanupAll уже прошёл выше, а бот мог быть запущен позже (TASK-63).
     await telegramService.stopBot();
@@ -584,6 +591,16 @@ app.whenReady().then(() => {
 
   remoteControlService.initOnStartup().catch((err) => {
     console.error('[Main] Failed to auto-start Remote Control service:', err);
+  });
+
+  // Hub-режим федерации (TASK-66): исходящие подключения к другим ПК пользователя. Представляемся
+  // им своим hostId, чтобы удалённый хост видел именно машину, а не безымянное устройство.
+  federationClientService.configure({
+    hostId: remoteControlService.getHostId(),
+    machineName: remoteControlService.getStatus().machineName
+  });
+  federationClientService.init().catch((err) => {
+    console.error('[Main] Failed to init federation hub client:', err);
   });
 
   // Проверка обновлений при старте (decision-14 п.2): с задержкой, чтобы не конкурировать

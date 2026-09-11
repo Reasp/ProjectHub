@@ -3,6 +3,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { decodePubkey, verifySignature, isHijackAttempt, isRelayApiAuthorized } from './remoteRelayAuth.mjs';
+import { normalizeOwnerId, mergeHostMeta, buildCatalog } from './remoteRelayCatalog.mjs';
 
 /**
  * ProjectHub Remote Relay Server
@@ -20,10 +21,73 @@ const HOST = process.env.RELAY_HOST || '0.0.0.0';
 const AUTH_TIMEOUT_MS = 5000;
 /** Токен HTTP-каталога хостов; не задан — каталог выключен, а не открыт всем (TASK-65 п.6). */
 const API_TOKEN = process.env.RELAY_API_TOKEN || '';
+/**
+ * Версия протокола релея (TASK-66, AC #5): сообщается хосту в `relay_ack`, чтобы несовместимость
+ * давала понятную ошибку в UI вместо молчаливо пустого каталога. Совпадает с
+ * `REMOTE_FEDERATION_PROTOCOL_VERSION` в приложении.
+ */
+const RELAY_PROTOCOL_VERSION = 1;
 
 // Хранилище подключений
-// hostId -> { hostWs, hostId, hostPubkey, hostMeta, clients: Map<clientId, {...}> }
+// hostId -> { hostWs, hostId, ownerId, hostPubkey, hostMeta, clients: Map<clientId, {...}> }
 const sessions = new Map();
+
+/**
+ * Каталог хостов федерации (TASK-66, decision-11 п.2). Представление сессий для чистых функций
+ * `remoteRelayCatalog.mjs`: релей не хранит отдельной копии каталога — он и есть набор живых
+ * авторизованных сессий с их метаданными.
+ */
+function catalogSessions() {
+  const list = [];
+  for (const s of sessions.values()) {
+    list.push({
+      hostId: s.hostId,
+      ownerId: s.ownerId,
+      authenticated: Boolean(s.authenticated),
+      hostMeta: s.hostMeta,
+      isOpen: Boolean(s.hostWs && s.hostWs.readyState === WebSocket.OPEN)
+    });
+  }
+  return list;
+}
+
+function catalogForSession(session) {
+  return buildCatalog(catalogSessions(), session.ownerId, { requesterHostId: session.hostId });
+}
+
+/** Рассылает обновлённый каталог всем хостам того же владельца (регистрация/отключение хоста). */
+function broadcastCatalog(ownerId) {
+  const owner = normalizeOwnerId(ownerId);
+  for (const s of sessions.values()) {
+    if (!s.authenticated || !s.hostWs || s.hostWs.readyState !== WebSocket.OPEN) continue;
+    if (normalizeOwnerId(s.ownerId) !== owner) continue;
+    try {
+      s.hostWs.send(JSON.stringify({ type: 'catalog', hosts: catalogForSession(s) }));
+    } catch {
+      // сокет мог закрыться между проверкой и отправкой — рассылка каталога не критична
+    }
+  }
+}
+
+/**
+ * Отложенная рассылка каталога после heartbeat (`host_meta_update`). Без неё соседи узнавали бы
+ * об изменившихся счётчиках (очередь HITL, активные агенты) только со своим опросом — до 30 секунд
+ * задержки. Троттлинг по владельцу: при десятке машин heartbeat-ы идут вразнобой, и рассылать
+ * полный каталог на каждый нельзя.
+ */
+const catalogBroadcastTimers = new Map();
+const CATALOG_BROADCAST_THROTTLE_MS = 2000;
+
+function scheduleCatalogBroadcast(ownerId) {
+  const owner = normalizeOwnerId(ownerId);
+  if (!owner || catalogBroadcastTimers.has(owner)) return;
+  const timer = setTimeout(() => {
+    catalogBroadcastTimers.delete(owner);
+    broadcastCatalog(owner);
+  }, CATALOG_BROADCAST_THROTTLE_MS);
+  timer.unref?.();
+  catalogBroadcastTimers.set(owner, timer);
+}
 
 const server = http.createServer((req, res) => {
   if (req.url === '/health' || req.url === '/') {
@@ -63,20 +127,19 @@ const server = http.createServer((req, res) => {
       );
       return;
     }
-    const hosts = [];
-    for (const s of sessions.values()) {
-      if (s.authenticated && s.hostWs && s.hostWs.readyState === WebSocket.OPEN) {
-        hosts.push(
-          s.hostMeta || {
-            hostId: s.hostId,
-            machineName: 'ProjectHub Host',
-            platform: 'unknown',
-            isOnline: true,
-            lastSeen: Date.now()
-          }
-        );
-      }
-    }
+    // Владельца можно сузить параметром `?ownerId=` — тогда выдача совпадает с тем, что
+    // получают сами хосты этого пользователя через WS-каталог. Без параметра администратор
+    // релея (он предъявил RELAY_API_TOKEN) видит все живые хосты.
+    const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const ownerFilter = normalizeOwnerId(reqUrl.searchParams.get('ownerId'));
+    const hosts = ownerFilter
+      ? buildCatalog(catalogSessions(), ownerFilter, { requesterHostId: '' })
+      : catalogSessions()
+          .filter((s) => s.authenticated && s.isOpen)
+          .map((s) => {
+            const { ownerId: _dropped, ...publicMeta } = s.hostMeta || {};
+            return { hostId: s.hostId, machineName: 'ProjectHub Host', platform: 'unknown', isOnline: true, ...publicMeta };
+          });
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ hosts }));
     return;
@@ -93,9 +156,17 @@ function setupHostMessageRouting(ws, hostId, session) {
     try {
       const msg = JSON.parse(raw.toString());
 
-      // Обновление метаданных хоста (проекты, процессы)
+      // Heartbeat и метаданные хоста (проекты, процессы, агенты, очередь HITL).
       if (msg.type === 'host_meta_update' && msg.meta) {
-        session.hostMeta = { ...session.hostMeta, ...msg.meta, lastSeen: Date.now() };
+        session.hostMeta = mergeHostMeta(session.hostMeta, msg.meta);
+        scheduleCatalogBroadcast(session.ownerId);
+        return;
+      }
+
+      // Запрос каталога хостов того же владельца (TASK-66): отвечаем в рамках уже
+      // аутентифицированного по подписи сокета — отдельной авторизации не нужно.
+      if (msg.type === 'catalog_request') {
+        ws.send(JSON.stringify({ type: 'catalog', hosts: catalogForSession(session) }));
         return;
       }
 
@@ -127,7 +198,10 @@ function setupHostMessageRouting(ws, hostId, session) {
           client.ws.send(JSON.stringify({ type: 'host_disconnected', hostId }));
         }
       }
+      const ownerId = current.ownerId;
       sessions.delete(hostId);
+      // Соседи по федерации должны увидеть уход хоста статусом, а не ошибкой (AC #5).
+      broadcastCatalog(ownerId);
     }
   });
 }
@@ -141,6 +215,10 @@ wss.on('connection', (ws, req) => {
   const machineName = url.searchParams.get('machineName') || 'Desktop PC';
   const platform = url.searchParams.get('platform') || 'win32';
   const tunnelUrl = url.searchParams.get('tunnelUrl') || '';
+  // Владелец каталога (TASK-66): хэш общего федеративного секрета, сам секрет релею не известен.
+  const ownerId = normalizeOwnerId(url.searchParams.get('ownerId'));
+  const appVersion = url.searchParams.get('appVersion') || '';
+  const protocolVersion = parseInt(url.searchParams.get('protocolVersion') || '1', 10) || 1;
 
   if (!hostId || !role) {
     ws.close(1008, 'Missing role or hostId');
@@ -190,8 +268,11 @@ wss.on('connection', (ws, req) => {
 
       const hostMeta = {
         hostId,
+        ownerId,
         machineName,
         platform,
+        appVersion,
+        protocolVersion,
         tunnelUrl,
         isOnline: true,
         projectsCount: 0,
@@ -201,7 +282,7 @@ wss.on('connection', (ws, req) => {
 
       let session = sessions.get(hostId);
       if (!session) {
-        session = { hostWs: ws, hostId, hostPubkey: decoded.pem, hostMeta, clients: new Map(), authenticated: true };
+        session = { hostWs: ws, hostId, ownerId, hostPubkey: decoded.pem, hostMeta, clients: new Map(), authenticated: true };
         sessions.set(hostId, session);
       } else {
         try {
@@ -214,12 +295,24 @@ wss.on('connection', (ws, req) => {
         session.hostWs = ws;
         session.hostPubkey = decoded.pem;
         session.hostMeta = hostMeta;
+        session.ownerId = ownerId;
         session.authenticated = true;
       }
 
       console.log(`[Relay] Host authenticated: ${hostId} [${machineName}] (IP: ${req.socket.remoteAddress})`);
-      ws.send(JSON.stringify({ type: 'relay_ack', role: 'host', hostId, machineName }));
+      ws.send(
+        JSON.stringify({
+          type: 'relay_ack',
+          role: 'host',
+          hostId,
+          machineName,
+          protocolVersion: RELAY_PROTOCOL_VERSION,
+          catalogEnabled: Boolean(ownerId)
+        })
+      );
       setupHostMessageRouting(ws, hostId, session);
+      ws.send(JSON.stringify({ type: 'catalog', hosts: catalogForSession(session) }));
+      broadcastCatalog(ownerId);
     };
 
     ws.on('message', onAuthMessage);

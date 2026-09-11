@@ -435,6 +435,41 @@ const api: IElectronAPI = {
     };
   },
 
+  // Федерация компьютеров, hub-режим (TASK-66)
+  listFederationPeers: () => ipcRenderer.invoke('federation:listPeers'),
+  addFederationPeer: (options: {
+    hostId: string;
+    machineName?: string;
+    transport: 'lan' | 'relay';
+    address: string;
+    secretKey?: string;
+    pin?: string;
+    autoConnect?: boolean;
+  }) => ipcRenderer.invoke('federation:addPeer', options),
+  removeFederationPeer: (hostId: string) => ipcRenderer.invoke('federation:removePeer', hostId),
+  connectFederationPeer: (hostId: string) => ipcRenderer.invoke('federation:connectPeer', hostId),
+  disconnectFederationPeer: (hostId: string) => ipcRenderer.invoke('federation:disconnectPeer', hostId),
+  federationCall: (hostId: string, method: string, params?: Record<string, unknown>) =>
+    ipcRenderer.invoke('federation:call', hostId, method, params),
+  getFederationHosts: () => ipcRenderer.invoke('federation:getHosts'),
+  onFederationPeersChanged: (callback: (peers: unknown[]) => void) => {
+    const handler = (_event: unknown, peers: unknown[]) => callback(peers);
+    ipcRenderer.on('federation:peersChanged', handler);
+    return () => {
+      ipcRenderer.removeListener('federation:peersChanged', handler);
+    };
+  },
+  onFederationEvent: (
+    callback: (payload: { hostId: string; machineName: string; event: string; data: unknown }) => void
+  ) => {
+    const handler = (_event: unknown, payload: { hostId: string; machineName: string; event: string; data: unknown }) =>
+      callback(payload);
+    ipcRenderer.on('federation:event', handler);
+    return () => {
+      ipcRenderer.removeListener('federation:event', handler);
+    };
+  },
+
   // Единый HITL-контур (TASK-57)
   listPendingApprovals: (filter?: { projectPath?: string; sessionId?: string }) => ipcRenderer.invoke('hitl:listPending', filter),
   decideApproval: (requestId: string, response: { approved: boolean; text?: string }) =>
