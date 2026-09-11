@@ -3,10 +3,10 @@ id: TASK-63
 title: >-
   Уведомления через шину событий: системный трей, OS-уведомления с кнопками
   HITL, звук, Telegram-push, автозапуск бота
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-10 07:18'
-updated_date: '2026-09-11 08:57'
+updated_date: '2026-09-11 09:01'
 labels:
   - ade-roadmap
   - notifications
@@ -119,3 +119,13 @@ UI: бейдж в шапке + модалка `NotificationSettingsModal` (creat
 
 `npm run build` (lint 0 ошибок / 510 предупреждений — ниже базовой линии 513, test 410/410, tsc, vite, check-bundle), `npm run lint:docs` и `npm run pack:win` зелёные; `.rag-index` пересобран.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: Claude Opus 5
+created: 2026-09-11 09:01
+---
+Закрыто по решению пользователя. AC #3 и #4 (Telegram push с inline-кнопками и управление демоном бота из приложения) остаются непроверенными вживую: на машине реализации нет токена бота и нет доступа к `api.telegram.org`. Код реализован полностью, путь запуска воркера из `app.asar` проверен. Если при первом использовании с настоящим ботом что-то не сойдётся — заводить отдельную задачу-багфикс, а не переоткрывать эту.
+---
+<!-- COMMENTS:END -->
