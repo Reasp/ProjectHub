@@ -3,11 +3,11 @@ id: TASK-60
 title: >-
   Реестр ролей агентов: файлы ролей, применение во всех движках, assignee задач,
   исправление Codex CLI
-status: Review
+status: Done
 assignee:
   - veshiy666@gmail.com
 created_date: '2026-09-10 07:17'
-updated_date: '2026-09-10 20:51'
+updated_date: '2026-09-11 11:23'
 labels:
   - ade-roadmap
   - roles
@@ -109,3 +109,13 @@ type: feature
 - `assignee` в GUI — текстовое поле с datalist-автодополнением, а не строгий `<select>`; `hostId` вне локального хоста явно отклоняется (федерация — TASK-66).
 - `npm run build` (lint 0 ошибок/484 предупреждения — не выше базовой линии, test 281/281, tsc, vite, check-bundle) и `npm run lint:docs` зелёные; `npm run pack:win` выполнен.
 <!-- SECTION:NOTES:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: Claude
+created: 2026-09-11 11:23
+---
+Переведено в Done по решению пользователя (2026-09-11). **AC #3 остаётся неотмеченным**: `codex` и `gemini` CLI на машине по-прежнему не установлены (проверено `command -v` 11.09.2026), поэтому флаги адаптера так и взяты из публичной документации, а не проверены эмпирически. Что именно ждёт ручного smoke-теста, когда CLI появятся: вызов `codex exec --json --sandbox --ask-for-approval` в `runCodexCliAgent` и аргументы `runGeminiCliAgent` в `agentFleetService.ts`, плюс проверка, что fallback на OpenRouter срабатывает только с явным сообщением в логах и UI.
+---
+<!-- COMMENTS:END -->
