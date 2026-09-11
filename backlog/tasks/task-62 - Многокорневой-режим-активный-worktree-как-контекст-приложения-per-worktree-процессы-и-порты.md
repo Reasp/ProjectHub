@@ -3,10 +3,10 @@ id: TASK-62
 title: >-
   Многокорневой режим: активный worktree как контекст приложения, per-worktree
   процессы и порты
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-10 07:17'
-updated_date: '2026-09-11 07:42'
+updated_date: '2026-09-11 07:45'
 labels:
   - ade-roadmap
   - worktree
