@@ -19,6 +19,7 @@ import { claudeUsageService } from './claudeUsageService.js';
 import { parseClaudeResultEvent, priceUsage, type AgentUsage } from './agentCost.js';
 import { hitlService, ApprovalCancelledError } from './hitlService.js';
 import { appEventBus } from './eventBus.js';
+import { buildAgentContext } from './contextBuilder.js';
 import {
   applyRolePermissions,
   evaluateToolRequest,
@@ -1114,6 +1115,9 @@ class ClaudeBridgeService extends EventEmitter {
       config: AIProviderConfig;
       mode: 'agent' | 'chat' | 'architect';
       claudeCliSessionId?: string;
+      /** Задача, привязанная к сессии AI Studio (TASK-64) — по ней contextBuilder собирает контекст. */
+      taskId?: string;
+      contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>;
     },
     onChunk: (chunk: ClaudeBridgeMessageChunk) => void,
     onComplete: (msg: AIMessage) => void,
@@ -1435,6 +1439,8 @@ class ClaudeBridgeService extends EventEmitter {
       config: AIProviderConfig;
       mode: 'agent' | 'chat' | 'architect';
       claudeCliSessionId?: string;
+      taskId?: string;
+      contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>;
     },
     onChunk: (chunk: ClaudeBridgeMessageChunk) => void,
     onComplete: (msg: AIMessage) => void,
@@ -1473,6 +1479,23 @@ class ClaudeBridgeService extends EventEmitter {
     }
     if (req.config.model && req.config.model !== 'default') {
       cliArgs.push('--model', req.config.model);
+    }
+
+    // Контекст задачи (TASK-64) — задача/AC, RAG, GitNexus и git-статус в системный промпт
+    // Claude CLI через тот же канал `--append-system-prompt`, что и роли в agentFleetService.
+    if (req.taskId) {
+      try {
+        const agentContext = await buildAgentContext({
+          projectPath,
+          taskId: req.taskId,
+          enabledParts: req.contextParts
+        });
+        if (agentContext.combined) {
+          cliArgs.push('--append-system-prompt', agentContext.combined);
+        }
+      } catch (err) {
+        console.warn('[claudeBridgeService] contextBuilder failed:', err);
+      }
     }
 
     // Human-in-the-loop (TASK-42): разрешения запрашиваются через встроенный MCP-сервер

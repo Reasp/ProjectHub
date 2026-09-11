@@ -659,6 +659,35 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             </span>
             {task.created && <span>{String(task.created)}</span>}
           </div>
+
+          {/* Branch/worktree/PR записаны автоматически при создании worktree и PR (TASK-64) */}
+          {(task.branch || task.worktree || task.pr) && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-mono shrink-0">
+              {task.branch && (
+                <span className="flex items-center gap-1 text-slate-400" title={task.branch}>
+                  <FolderGit2 className="w-3 h-3 text-cyan-400" />
+                  {task.branch}
+                </span>
+              )}
+              {task.worktree && (
+                <span className="flex items-center gap-1 text-slate-400" title={task.worktree}>
+                  <FolderOpen className="w-3 h-3 text-cyan-400" />
+                  {task.worktree}
+                </span>
+              )}
+              {task.pr && (
+                <button
+                  type="button"
+                  onClick={() => void window.api.openExternal(task.pr!)}
+                  className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 hover:underline"
+                  title={task.pr}
+                >
+                  <FileCode className="w-3 h-3" />
+                  Pull Request
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Modal Footer Actions */}

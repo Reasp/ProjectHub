@@ -261,4 +261,41 @@ prunable gitdir file points to non-existent location
       expect(scan.orphanedBranches).toEqual(['swarm/old-swarm', 'handoff/old-stage']);
     });
   });
+
+  describe('recordWorktreeInTask — обратная связь задача → worktree/branch (TASK-64)', () => {
+    let projectPath: string;
+
+    beforeEach(async () => {
+      projectPath = await fs.mkdtemp(path.join(os.tmpdir(), 'ph-record-worktree-'));
+      await fs.mkdir(path.join(projectPath, 'backlog', 'tasks'), { recursive: true });
+      await fs.writeFile(
+        path.join(projectPath, 'backlog', 'tasks', 'task-64 - Context.md'),
+        ['---', 'id: TASK-64', 'title: Context', 'status: To Do', 'created_date: \'2026-09-10 07:19\'', '---', '', 'текст'].join('\n'),
+        'utf-8'
+      );
+    });
+
+    afterEach(async () => {
+      await fs.rm(projectPath, { recursive: true, force: true });
+    });
+
+    it('дописывает branch и worktree во frontmatter найденной задачи', async () => {
+      const svc = new WorktreeService();
+      const worktreePath = path.join(projectPath, '.worktrees', 'task-64');
+      await (svc as any).recordWorktreeInTask(projectPath, 'task-64', 'task/task-64', worktreePath);
+
+      const raw = await fs.readFile(path.join(projectPath, 'backlog', 'tasks', 'task-64 - Context.md'), 'utf-8');
+      expect(raw).toContain('branch: task/task-64');
+      expect(raw).toContain('worktree: .worktrees');
+      // updated_date проставляется как строка (правило 16) — не голый ISO-объект YAML.
+      expect(raw).toMatch(/updated_date: ['"]?\d{4}-\d{2}-\d{2}/);
+    });
+
+    it('молча ничего не делает, если задача не найдена (не роняет создание worktree)', async () => {
+      const svc = new WorktreeService();
+      await expect(
+        (svc as any).recordWorktreeInTask(projectPath, 'task-999', 'task/task-999', '/tmp/wt')
+      ).resolves.toBeUndefined();
+    });
+  });
 });

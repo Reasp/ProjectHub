@@ -14,8 +14,8 @@ function parseArgs(argv) {
   return args;
 }
 
-const ALL_FEATURES = ['docsRag', 'envTools', 'backlogMcp', 'bootstrap', 'lightrag'];
-const DEFAULT_ON = ['docsRag', 'envTools', 'backlogMcp', 'bootstrap']; // lightrag — опционально, по умолчанию выключен
+const ALL_FEATURES = ['docsRag', 'envTools', 'backlogMcp', 'bootstrap', 'gitnexus', 'lightrag'];
+const DEFAULT_ON = ['docsRag', 'envTools', 'backlogMcp', 'bootstrap', 'gitnexus']; // lightrag — опционально, по умолчанию выключен
 
 async function ask(rl, question, fallback) {
   const answer = (await rl.question(`${question} `)).trim();
@@ -50,6 +50,7 @@ async function resolveInteractively(args) {
           envTools: 'MCP-инструменты работы с окружением (env-tools)',
           backlogMcp: 'Нативный MCP-сервер Backlog.md (backlog mcp start)',
           bootstrap: 'Кросс-платформенный bootstrap окружения (git/node/…)',
+          gitnexus: 'GitNexus — граф кода для impact-анализа и рефакторинга (MCP, требует установленного gitnexus CLI)',
           lightrag: 'LightRAG — граф технической документации (Python + локальная LLM через Ollama, тяжело)',
         }[f];
         const answer = (await ask(rl, `${label}? [${def}]`, defAnswer)).toLowerCase();
@@ -63,7 +64,7 @@ async function resolveInteractively(args) {
   }
 }
 
-const MCP_KEYS = ['docs-rag', 'env-tools', 'backlog', 'docs-graph'];
+const MCP_KEYS = ['docs-rag', 'env-tools', 'backlog', 'docs-graph', 'gitnexus'];
 
 function buildDesiredMcpServers(prefix, features) {
   const desired = {};
@@ -75,6 +76,10 @@ function buildDesiredMcpServers(prefix, features) {
   }
   if (features.includes('backlogMcp')) {
     desired['backlog'] = { command: 'npx', args: ['--yes', 'backlog.md', 'mcp', 'start'] };
+  }
+  if (features.includes('gitnexus')) {
+    // GitNexus — отдельно устанавливаемый глобальный CLI (npm i -g gitnexus), не скрипт репозитория.
+    desired['gitnexus'] = { command: 'gitnexus', args: ['mcp'] };
   }
   if (features.includes('lightrag')) {
     desired['docs-graph'] = { command: 'node', args: [`${prefix}scripts/lightrag/lightrag-server.mjs`] };
@@ -137,7 +142,7 @@ async function main() {
   const mcpPaths = mergeMcpConfig(projectRootAbs, resolved.features);
   console.log(
     `\nОбновлены ${mcpPaths.map((p) => path.relative(INFRA_ROOT, p)).join(', ')} ` +
-      '(записи docs-rag/env-tools/backlog/docs-graph синхронизированы с включёнными фичами).',
+      '(записи docs-rag/env-tools/backlog/docs-graph/gitnexus синхронизированы с включёнными фичами).',
   );
 
   console.log('\nДальше:');

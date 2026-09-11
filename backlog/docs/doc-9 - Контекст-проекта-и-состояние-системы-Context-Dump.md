@@ -65,6 +65,11 @@ tags:
     - Автоматическая изоляция каждого агента в выделенном Git Worktree (`.worktrees/swarm-<id>-<slotId>`, ветка `swarm/<id>/<agentSlug>`).
     - Состязательный экран Side-by-Side Swarm Arena (`SwarmArenaView.tsx`): параллельный просмотр статусов, метрик, потоковых логов и цветных диффов.
     - Функция Pick Winner в 1 клик со слиянием ветки и очисткой временных каталогов.
+23. **Контекст для агента и обратная связь задача↔PR/worktree** (`task-64`, decision-18):
+    - `contextBuilder` (`electron/services/contextBuilder.ts`) — единая сборка контекста задачи (заголовок, описание, AC), релевантных чанков `docs-rag` и связанного кода GitNexus в системный промпт агента для всех движков (Claude CLI, Codex, Gemini, API) через один канал `--append-system-prompt`/`extraSystemPrompt`.
+    - GitNexus подключён как MCP-сервер проекта (`.mcp.json`, `.agents/mcp_config.json`, `scripts/setup.mjs`, фича `gitnexus`, включена по умолчанию).
+    - AI Studio показывает подставленный контекст (карточка) и позволяет отключать его части на сессию.
+    - После создания worktree/PR в frontmatter задачи автоматически появляются `branch`, `worktree`, `pr` — `TaskDetailModal` показывает их ссылками.
 
 ---
 

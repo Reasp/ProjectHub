@@ -846,6 +846,17 @@ export interface TranslationDictionary {
     voiceChatCmd: string;
     studioTab: string;
     openSwarmArenaTooltip: string;
+    context: {
+      title: string;
+      clear: string;
+      empty: string;
+      task: string;
+      rag: string;
+      gitnexus: string;
+      git: string;
+      truncatedSuffix: string;
+      loading: string;
+    };
     promptCards: {
       backlogPlan: string;
       backlogPlanDesc: string;

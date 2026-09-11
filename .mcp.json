@@ -26,6 +26,12 @@
       "args": [
         "scripts/lightrag/lightrag-server.mjs"
       ]
+    },
+    "gitnexus": {
+      "command": "gitnexus",
+      "args": [
+        "mcp"
+      ]
     }
   }
 }

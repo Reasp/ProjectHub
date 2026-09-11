@@ -16,6 +16,7 @@ import type { HitlOrigin } from './hitlTypes.js';
 import { getUserDataDir, getHandoffReportsDir } from './appPaths.js';
 import { loadRoles } from './roleService.js';
 import { buildEngineInvocation, apiToolNamesForCategories } from './roleEngineAdapter.js';
+import { buildAgentContext } from './contextBuilder.js';
 import type { RoleDefinition } from './roleTypes.js';
 import { SwarmSessionStore } from './swarmSessionStore.js';
 import { appendLiveOutput, pushAgentLog, resetLiveOutput } from './swarmLogBuffer.js';
@@ -952,6 +953,27 @@ export class AgentFleetService extends EventEmitter {
     };
   }
 
+  /**
+   * Единая точка внедрения контекста задачи в промпт CLI-движков (TASK-64, decision-4 п.4):
+   * `systemPromptAddon` слота + contextBuilder (задача/AC, RAG, GitNexus, git-статус worktree),
+   * дальше течёт как `extraSystemPrompt` в `buildEngineInvocation` для любого движка одинаково.
+   */
+  private async buildExtraSystemPrompt(session: SwarmSession, agentState: AgentSlotState, targetPath: string): Promise<string | undefined> {
+    const addon = agentState.config.systemPromptAddon;
+    if (!session.taskId) return addon;
+    try {
+      const context = await buildAgentContext({
+        projectPath: session.projectPath,
+        taskId: session.taskId,
+        gitCwd: targetPath
+      });
+      return [addon, context.combined].filter(Boolean).join('\n\n') || undefined;
+    } catch (err) {
+      console.warn('[AgentFleetService] contextBuilder failed:', err);
+      return addon;
+    }
+  }
+
   private async runApiAgent(
     session: SwarmSession,
     agentState: AgentSlotState,
@@ -999,7 +1021,8 @@ export class AgentFleetService extends EventEmitter {
           config,
           mode: 'agent',
           roleSystemPrompt,
-          allowedToolNames
+          allowedToolNames,
+          taskId: session.taskId
         },
         (chunk) => {
           if (chunk.text) {
@@ -1067,7 +1090,7 @@ export class AgentFleetService extends EventEmitter {
     const invocation = buildEngineInvocation({
       engine: 'claude-cli',
       role,
-      extraSystemPrompt: agentState.config.systemPromptAddon,
+      extraSystemPrompt: await this.buildExtraSystemPrompt(session, agentState, targetPath),
       model: agentState.config.providerConfig?.model,
       budgetUsd: agentState.config.budgetUsd
     });
@@ -1316,7 +1339,7 @@ export class AgentFleetService extends EventEmitter {
     const invocation = buildEngineInvocation({
       engine: 'codex-cli',
       role,
-      extraSystemPrompt: agentState.config.systemPromptAddon,
+      extraSystemPrompt: await this.buildExtraSystemPrompt(session, agentState, targetPath),
       model: agentState.config.providerConfig?.model,
       autoApprove: effective.autoApprove,
       allowFileWrite: effective.autoApproveRules?.allowFileWrite
@@ -1457,7 +1480,7 @@ export class AgentFleetService extends EventEmitter {
     const invocation = buildEngineInvocation({
       engine: 'gemini-cli',
       role,
-      extraSystemPrompt: agentState.config.systemPromptAddon,
+      extraSystemPrompt: await this.buildExtraSystemPrompt(session, agentState, targetPath),
       model: agentState.config.providerConfig?.model,
       autoApprove: effective.autoApprove
     });

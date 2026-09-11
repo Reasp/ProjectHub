@@ -19,6 +19,7 @@ import {
   type SwarmExportFormat
 } from '../services/agentFleetService';
 import { assertRegisteredProject } from '../services/projectPathGuard';
+import { buildAgentContext } from '../services/contextBuilder';
 import type { IpcContext } from './types';
 
 export function registerAiIpc(ctx: IpcContext) {
@@ -162,6 +163,20 @@ export function registerAiIpc(ctx: IpcContext) {
       send(`ai:error:${req.sessionId}`, message);
     }
   });
+
+  // Предпросмотр контекста агента для карточки в AI Studio (TASK-64) — без запуска стрима.
+  ipcMain.handle(
+    'ai:previewContext',
+    async (
+      _event,
+      projectPath: string,
+      taskId: string,
+      contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>
+    ) => {
+      const safeProject = await assertRegisteredProject(projectPath);
+      return await buildAgentContext({ projectPath: safeProject, taskId, enabledParts: contextParts });
+    }
+  );
 
   // Claude Bridge Handlers
   ipcMain.handle('claudeBridge:getAllProjectStatuses', async () => {

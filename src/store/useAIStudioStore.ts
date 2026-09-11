@@ -16,7 +16,8 @@ import type {
   SubagentInfo,
   RateLimitWarning,
   ProjectAgentStatus,
-  AutoApproveRules
+  AutoApproveRules,
+  ContextPartKey
 } from '../types/electron';
 
 export type { AISession };
@@ -69,6 +70,10 @@ interface AIStudioState {
   closeSession: (projectPath: string, sessionId: string) => void;
   closeCurrentSession: (projectPath: string) => void;
   renameSession: (projectPath: string, sessionId: string, newTitle: string) => void;
+  /** Привязывает сессию к задаче (TASK-64) — дальше contextBuilder собирает контекст на каждое сообщение. */
+  setSessionTask: (projectPath: string, sessionId: string, taskId: string | undefined) => void;
+  /** Включает/выключает часть контекста (задача/RAG/GitNexus/git) на сессию. */
+  toggleContextPart: (projectPath: string, sessionId: string, key: ContextPartKey, enabled: boolean) => void;
   clearSession: (projectPath: string, sessionId?: string) => void;
   sendMessage: (projectPath: string, text: string) => Promise<void>;
   abortStream: () => Promise<void>;
@@ -439,6 +444,34 @@ export const useAIStudioStore = create<AIStudioState>()(
         });
       },
 
+      setSessionTask: (projectPath: string, sessionId: string, taskId: string | undefined) => {
+        set((state) => {
+          const projectSessions = state.sessions[projectPath] || [];
+          return {
+            sessions: {
+              ...state.sessions,
+              [projectPath]: projectSessions.map((s) =>
+                s.id === sessionId ? { ...s, activeTaskId: taskId } : s
+              )
+            }
+          };
+        });
+      },
+
+      toggleContextPart: (projectPath: string, sessionId: string, key: ContextPartKey, enabled: boolean) => {
+        set((state) => {
+          const projectSessions = state.sessions[projectPath] || [];
+          return {
+            sessions: {
+              ...state.sessions,
+              [projectPath]: projectSessions.map((s) =>
+                s.id === sessionId ? { ...s, contextParts: { ...s.contextParts, [key]: enabled } } : s
+              )
+            }
+          };
+        });
+      },
+
       closeSession: (projectPath: string, sessionId: string) => {
         releaseSessionInMain(sessionId);
         set((state) => {
@@ -745,7 +778,9 @@ export const useAIStudioStore = create<AIStudioState>()(
           messages: [...currentMessages, userMsg],
           config: get().config,
           mode: get().mode,
-          claudeCliSessionId: currentSession.claudeCliSessionId
+          claudeCliSessionId: currentSession.claudeCliSessionId,
+          taskId: currentSession.activeTaskId,
+          contextParts: currentSession.contextParts
         };
 
         try {

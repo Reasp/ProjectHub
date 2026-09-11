@@ -83,7 +83,10 @@ export function registerBacklogIpc(ctx: IpcContext) {
             created: fmString(data.created_date) || fmString(data.created) || undefined,
             filePath: fullPath,
             description,
-            acceptanceCriteria: criteria
+            acceptanceCriteria: criteria,
+            branch: fmString(data.branch),
+            worktree: fmString(data.worktree),
+            pr: fmString(data.pr)
           });
         }
       }

@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { searchProjectDocs } from './ragSearch.js';
+import { buildAgentContext } from './contextBuilder.js';
 import { secretStorageService } from './secretStorageService.js';
 import matter from 'gray-matter';
 import { assertInsideProject, isInsideProject } from './pathGuard.js';
@@ -80,6 +81,10 @@ export interface AIStreamRequest {
   roleSystemPrompt?: string;
   /** Allow-список нативных имён инструментов API-движка (read_file/write_file/…); без поля — все. */
   allowedToolNames?: string[];
+  /** Задача, в контексте которой идёт диалог (TASK-64) — по ней собирается contextBuilder. */
+  taskId?: string;
+  /** Какие части контекста включены на сессию (по умолчанию все); см. `ContextPartKey`. */
+  contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>;
 }
 
 export interface ClaudeAuthStatus {
@@ -286,7 +291,7 @@ class AIAgentService {
     this.activeControllers.set(req.sessionId, controller);
 
     try {
-      const systemPrompt = await this.buildSystemPrompt(req.projectPath, req.mode, req.roleSystemPrompt);
+      const systemPrompt = await this.buildSystemPrompt(req.projectPath, req.mode, req.roleSystemPrompt, req.taskId, req.contextParts);
 
       if (req.config.provider === 'anthropic') {
         await this.streamAnthropic(req, systemPrompt, controller.signal, onChunk, onComplete, onError);
@@ -629,11 +634,28 @@ class AIAgentService {
   /**
    * System Prompt with Project Context
    */
-  private async buildSystemPrompt(projectPath: string, mode: 'chat' | 'agent' | 'architect', roleSystemPrompt?: string): Promise<string> {
+  private async buildSystemPrompt(
+    projectPath: string,
+    mode: 'chat' | 'agent' | 'architect',
+    roleSystemPrompt?: string,
+    taskId?: string,
+    contextParts?: AIStreamRequest['contextParts']
+  ): Promise<string> {
     const base = `You are Claude Code, Anthropic's official AI assistant for software development.
 Working directory: "${projectPath}".
 Answer directly, clearly, and concisely as Claude Code. If the user addresses you in Russian, answer naturally in Russian while preserving technical terms, file paths, and code.`;
-    return roleSystemPrompt ? `${base}\n\n${roleSystemPrompt}` : base;
+
+    let taskContext = '';
+    if (taskId) {
+      try {
+        const context = await buildAgentContext({ projectPath, taskId, enabledParts: contextParts });
+        taskContext = context.combined;
+      } catch (err) {
+        console.warn('[aiAgentService] contextBuilder failed:', err);
+      }
+    }
+
+    return [base, roleSystemPrompt, taskContext].filter(Boolean).join('\n\n');
   }
 
   /**

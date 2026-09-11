@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { simpleGit } from 'simple-git';
+import matter from 'gray-matter';
 import type {
   GitWorktreeInfo,
   AddWorktreeOptions,
@@ -9,6 +10,8 @@ import type {
   OrphanedWorktreeScan,
   CleanOrphanedResult
 } from '../../src/types/electron';
+import { findTaskFile } from './taskFileLookup.js';
+import { normalizeFrontmatter, withUpdatedDate } from './backlogTaskFormat.js';
 
 /**
  * Нормализация пути для сравнения (учитывая особенности Windows).
@@ -179,6 +182,11 @@ export class WorktreeService {
     // Получаем обновленный список и возвращаем созданное дерево
     const worktrees = await this.listWorktrees(projectPath);
     const created = worktrees.find((w) => normalizePath(w.path) === normalizePath(targetDir));
+    const taskId = extractTaskId(options.branch) || extractTaskId(targetDir);
+
+    if (taskId) {
+      await this.recordWorktreeInTask(projectPath, taskId, options.branch, targetDir);
+    }
 
     if (!created) {
       return {
@@ -189,11 +197,24 @@ export class WorktreeService {
         isLocked: false,
         isPrunable: false,
         isMain: false,
-        taskId: extractTaskId(options.branch) || extractTaskId(targetDir)
+        taskId
       };
     }
 
     return created;
+  }
+
+  /** Обратная связь задача → worktree/branch во frontmatter (TASK-64) — best-effort, не роняет создание worktree. */
+  private async recordWorktreeInTask(projectPath: string, taskId: string, branch: string, worktreePath: string): Promise<void> {
+    try {
+      const task = await findTaskFile(projectPath, taskId);
+      if (!task) return;
+      const data = { ...task.data, branch, worktree: path.relative(projectPath, worktreePath) };
+      const updated = matter.stringify(task.content, normalizeFrontmatter(withUpdatedDate(data)));
+      await fs.writeFile(task.filePath, updated, 'utf-8');
+    } catch (err) {
+      console.error(`[WorktreeService] Failed to record worktree in task ${taskId}:`, err);
+    }
   }
 
   /**

@@ -132,6 +132,10 @@ export interface BacklogTask {
   content?: string;
   description?: string;
   acceptanceCriteria?: TaskCriterion[];
+  /** Ветка/worktree/PR, записанные автоматически при создании worktree и PR (TASK-64). */
+  branch?: string;
+  worktree?: string;
+  pr?: string;
 }
 
 export interface GitCommit {
@@ -557,6 +561,12 @@ export interface IElectronAPI {
   startClaudeLogin: () => Promise<boolean>;
   claudeLogout: () => Promise<boolean>;
   streamAIChat: (request: AIStreamRequest) => Promise<boolean>;
+  /** Предпросмотр контекста агента для карточки в AI Studio (TASK-64), без запуска стрима. */
+  previewAgentContext: (
+    projectPath: string,
+    taskId: string,
+    contextParts?: Partial<Record<ContextPartKey, boolean>>
+  ) => Promise<AgentContextPreview>;
   abortAIStream: (sessionId: string) => Promise<boolean>;
   /** Полная очистка сессии в main: одобрения, процессы, resume-id Claude CLI, подагенты (TASK-33). */
   clearAISession: (sessionId: string) => Promise<boolean>;
@@ -991,12 +1001,27 @@ export interface AIMessage {
 }
 
 /** Диалог AI Studio; хранится файлом `~/.projecthub/sessions/<hash(projectPath)>/<id>.json` (TASK-35). */
+/** Части контекста агента (TASK-64) — что показывает `ContextAppliedCard` и что можно отключить на сессию. */
+export type ContextPartKey = 'task' | 'rag' | 'gitnexus' | 'git';
+
+/** Результат `contextBuilder.buildAgentContext` (main) — зеркало `AgentContextResult` для превью в AI Studio. */
+export interface AgentContextPreview {
+  combined: string;
+  parts: Array<{ key: ContextPartKey; label: string; text: string }>;
+  includedKeys: ContextPartKey[];
+  truncatedKeys: ContextPartKey[];
+}
+
 export interface AISession {
   id: string;
   title: string;
   createdAt: number;
   messages: AIMessage[];
   claudeCliSessionId?: string;
+  /** Задача, привязанная к сессии (TASK-64) — по ней contextBuilder собирает контекст на каждое сообщение. */
+  activeTaskId?: string;
+  /** Какие части контекста включены; по умолчанию (без поля) — все. */
+  contextParts?: Partial<Record<ContextPartKey, boolean>>;
 }
 
 export interface AIStreamRequest {
@@ -1006,6 +1031,8 @@ export interface AIStreamRequest {
   config: AIProviderConfig;
   mode: 'chat' | 'agent' | 'architect';
   claudeCliSessionId?: string;
+  taskId?: string;
+  contextParts?: Partial<Record<ContextPartKey, boolean>>;
 }
 
 export interface GitWorktreeInfo {

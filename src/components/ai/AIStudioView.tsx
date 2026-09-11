@@ -32,6 +32,7 @@ import { RolesSettingsModal } from './roles/RolesSettingsModal';
 import { InteractiveApprovalCard } from './InteractiveApprovalCard';
 import { SubagentsPanel } from './SubagentsPanel';
 import { PromptInputArea } from './PromptInputArea';
+import { ContextAppliedCard } from './ContextAppliedCard';
 import { ModelSelectorDropdown } from './ModelSelectorDropdown';
 import { ClaudeUsageButton } from './ClaudeUsageButton';
 import { RateLimitWarningBanner } from './RateLimitWarningBanner';
@@ -80,6 +81,8 @@ export const AIStudioView: React.FC = () => {
     closeSession,
     renameSession,
     clearSession,
+    setSessionTask,
+    toggleContextPart,
     sendMessage,
     abortStream,
     acceptDiff,
@@ -515,7 +518,12 @@ export const AIStudioView: React.FC = () => {
               {/* Quick Prompt Cards */}
               <div className="grid grid-cols-2 gap-2.5 w-full text-left">
                 <button
-                  onClick={() => sendMessage(projectPath, t.aiStudio.quickActions.nextTaskPrompt)}
+                  onClick={() => {
+                    const candidate =
+                      tasks.find((tk) => tk.status === 'In Progress') || tasks.find((tk) => tk.status === 'To Do');
+                    if (candidate && currentSessionId) setSessionTask(projectPath, currentSessionId, candidate.id);
+                    sendMessage(projectPath, t.aiStudio.quickActions.nextTaskPrompt);
+                  }}
                   className="p-3 rounded-xl bg-[#131625] border border-slate-800/80 hover:border-indigo-500/50 hover:bg-[#161a2e] transition text-xs text-slate-300 space-y-1 group"
                 >
                   <div className="font-semibold text-indigo-300 flex items-center gap-1.5">
@@ -695,6 +703,19 @@ export const AIStudioView: React.FC = () => {
           onToggleOpen={() => setIsActivitySidebarOpen(!isActivitySidebarOpen)}
         />
       </div>
+
+      {/* Карточка подставленного контекста (TASK-64) — только когда сессия привязана к задаче */}
+      {currentSession?.activeTaskId && currentSessionId && (
+        <div className="px-4 pt-3">
+          <ContextAppliedCard
+            projectPath={projectPath}
+            taskId={currentSession.activeTaskId}
+            contextParts={currentSession.contextParts}
+            onTogglePart={(key, enabled) => toggleContextPart(projectPath, currentSessionId, key, enabled)}
+            onClearTask={() => setSessionTask(projectPath, currentSessionId, undefined)}
+          />
+        </div>
+      )}
 
       {/* 3. Isolated Memoized Prompt Input Area (0ms typing lag) */}
       <PromptInputArea

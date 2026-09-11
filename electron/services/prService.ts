@@ -1,11 +1,13 @@
 import path from 'node:path';
-import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import fs from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { simpleGit } from 'simple-git';
 import matter from 'gray-matter';
 import type { PullRequest, PRCreateOptions, PRProviderInfo } from '../../src/types/electron';
+import { findTaskFile } from './taskFileLookup.js';
+import { normalizeFrontmatter, withUpdatedDate } from './backlogTaskFormat.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -194,8 +196,8 @@ class PRService {
       const stdout = await this.runGh(args, projectPath);
       const prUrl = stdout.trim();
 
-      // Automatically sync task status in Backlog to "Review"
-      await this.syncBacklogOnPRCreated(projectPath, options.sourceBranch, options.title);
+      // Automatically sync task status in Backlog to "Review" + record branch/pr (TASK-64)
+      await this.syncBacklogOnPRCreated(projectPath, options.sourceBranch, options.title, prUrl);
 
       // Fetch newly created PR details
       const raw = await this.runGh(
@@ -235,31 +237,22 @@ class PRService {
     }
   }
 
-  private async syncBacklogOnPRCreated(projectPath: string, branchName: string, prTitle: string) {
+  private async syncBacklogOnPRCreated(projectPath: string, branchName: string, prTitle: string, prUrl: string) {
     try {
-      const tasksDir = path.join(projectPath, 'backlog', 'tasks');
-      if (!existsSync(tasksDir)) return;
-
       // Extract task ID from branch name or PR title (e.g. feat/task-8 or TASK-8)
       const match = (branchName + ' ' + prTitle).match(/task-(\d+)/i);
       if (!match) return;
 
-      const taskId = `task-${match[1]}`.toLowerCase();
-      const files = await fs.readdir(tasksDir);
+      const task = await findTaskFile(projectPath, `task-${match[1]}`);
+      if (!task) return;
 
-      for (const file of files) {
-        if (file.toLowerCase().startsWith(taskId) && file.endsWith('.md')) {
-          const fullPath = path.join(tasksDir, file);
-          const raw = await fs.readFile(fullPath, 'utf-8');
-          const parsed = matter(raw);
-          if (parsed.data.status !== 'Review' && parsed.data.status !== 'Done') {
-            parsed.data.status = 'Review';
-            const updated = matter.stringify(parsed.content, parsed.data);
-            await fs.writeFile(fullPath, updated, 'utf-8');
-          }
-          break;
-        }
-      }
+      const data = { ...task.data };
+      if (data.status !== 'Review' && data.status !== 'Done') data.status = 'Review';
+      data.branch = branchName;
+      if (prUrl) data.pr = prUrl;
+
+      const updated = matter.stringify(task.content, normalizeFrontmatter(withUpdatedDate(data)));
+      await fs.writeFile(task.filePath, updated, 'utf-8');
     } catch (err) {
       console.error('Failed to sync Backlog task status on PR creation:', err);
     }

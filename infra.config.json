@@ -5,6 +5,7 @@
     "envTools": true,
     "backlogMcp": true,
     "bootstrap": true,
+    "gitnexus": true,
     "lightrag": true
   }
 }

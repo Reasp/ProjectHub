@@ -847,6 +847,17 @@ export const ru: TranslationDictionary = {
     voiceChatCmd: 'чат {num}',
     studioTab: 'Студия',
     openSwarmArenaTooltip: 'Открыть Swarm Arena для параллельного запуска агентов',
+    context: {
+      title: 'Контекст задачи {id}',
+      clear: 'Отвязать задачу',
+      empty: 'Контекст пуст — ничего не найдено по этой задаче.',
+      task: 'Задача и критерии',
+      rag: 'Документация',
+      gitnexus: 'Связанный код (GitNexus)',
+      git: 'Git-статус',
+      truncatedSuffix: '(обрезано лимитом)',
+      loading: 'Сборка контекста...'
+    },
     promptCards: {
       backlogPlan: 'План задач Backlog',
       backlogPlanDesc: 'Анализ DoD и составление плана реализации',

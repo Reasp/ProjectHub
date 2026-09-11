@@ -228,6 +228,8 @@ const api: IElectronAPI = {
   startClaudeLogin: () => ipcRenderer.invoke('ai:startClaudeLogin'),
   claudeLogout: () => ipcRenderer.invoke('ai:claudeLogout'),
   streamAIChat: (request: any) => ipcRenderer.invoke('ai:streamChat', request),
+  previewAgentContext: (projectPath: string, taskId: string, contextParts?: any) =>
+    ipcRenderer.invoke('ai:previewContext', projectPath, taskId, contextParts),
   abortAIStream: (sessionId: string) => ipcRenderer.invoke('ai:abortStream', sessionId),
   clearAISession: (sessionId: string) => ipcRenderer.invoke('ai:clearSession', sessionId),
   applyAIDiff: (projectPath: string, relativePath: string, newContent: string) =>

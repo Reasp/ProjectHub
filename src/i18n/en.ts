@@ -847,6 +847,17 @@ export const en: TranslationDictionary = {
     voiceChatCmd: 'chat {num}',
     studioTab: 'Studio',
     openSwarmArenaTooltip: 'Open Swarm Arena for parallel agent runs',
+    context: {
+      title: 'Context for {id}',
+      clear: 'Unlink task',
+      empty: 'Context is empty — nothing found for this task.',
+      task: 'Task and criteria',
+      rag: 'Documentation',
+      gitnexus: 'Related code (GitNexus)',
+      git: 'Git status',
+      truncatedSuffix: '(truncated by limit)',
+      loading: 'Building context...'
+    },
     promptCards: {
       backlogPlan: 'Backlog Task Plan',
       backlogPlanDesc: 'Analyze DoD and formulate implementation plan',
