@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  ArenaSettings,
+  CheckDefinition,
   IElectronAPI,
   ScanOptions,
   BacklogTask,
@@ -268,6 +270,15 @@ const api: IElectronAPI = {
   pickSwarmWinner: (swarmId: string, winnerAgentId: string, mergeIntoBase?: boolean) =>
     ipcRenderer.invoke('swarm:pickWinner', swarmId, winnerAgentId, mergeIntoBase),
   getSwarm: (swarmId: string) => ipcRenderer.invoke('swarm:get', swarmId),
+  // Автосудья арены (TASK-61)
+  runSwarmJudge: (swarmId: string, options?: { rerunChecks?: boolean; skipReview?: boolean }) =>
+    ipcRenderer.invoke('swarm:runJudge', swarmId, options),
+  cancelSwarmJudge: (swarmId: string) => ipcRenderer.invoke('swarm:cancelJudge', swarmId),
+  composeSwarmResult: (swarmId: string, selections: Array<{ agentId: string; files: string[] }>) =>
+    ipcRenderer.invoke('swarm:compose', swarmId, selections),
+  getArenaConfig: (projectPath: string) => ipcRenderer.invoke('arena:getConfig', projectPath),
+  saveArenaConfig: (projectPath: string, patch: { checks?: CheckDefinition[]; arena?: ArenaSettings }) =>
+    ipcRenderer.invoke('arena:saveConfig', projectPath, patch),
   listSwarms: (projectPath?: string) => ipcRenderer.invoke('swarm:list', projectPath),
   resumeSwarm: (swarmId: string) => ipcRenderer.invoke('swarm:resume', swarmId),
   discardSwarm: (swarmId: string, cleanupWorktrees?: boolean) =>

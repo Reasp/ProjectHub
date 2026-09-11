@@ -230,8 +230,47 @@ interface RetentionOptions {
   maxFinished: number;
 }
 
+/** Параметры одноразового запуска команды до завершения (`runOnce`, TASK-61). */
+export interface RunOnceOptions {
+  /** Абсолютный рабочий каталог (worktree кандидата). */
+  cwd: string;
+  env?: Record<string, string>;
+  /** По истечении процесс снимается деревом, результат помечается `timedOut`. */
+  timeoutMs?: number;
+  /** Лимит сохраняемого вывода; лишнее вытесняется с головы. */
+  maxOutputBytes?: number;
+  /** Отмена извне (останов судьи, закрытие сессии). */
+  signal?: AbortSignal;
+  /** Потоковая отдача вывода (для лога агента в арене). */
+  onOutput?: (text: string) => void;
+  /** `auto` — подобрать свободный порт в `PORT` и `${port}` команды. */
+  portStrategy?: 'fixed' | 'auto';
+  port?: number;
+}
+
+export interface RunOnceResult {
+  exitCode: number | null;
+  output: string;
+  /** Вывод был длиннее лимита — сохранён хвост. */
+  truncated: boolean;
+  timedOut: boolean;
+  durationMs: number;
+  startedAt: number;
+  /** Команда с уже подставленным портом. */
+  command?: string;
+  port?: number;
+  /** Не удалось запустить или запуск был отменён. */
+  error?: string;
+}
+
+/** Лимит вывода одноразовой команды: проверки бывают многословными, но хвоста хватает. */
+export const ONE_SHOT_OUTPUT_MAX_BYTES = 512 * 1024;
+
 class HubProcessManager {
   private activeProcesses = new Map<string, ActiveProcessItem>();
+
+  /** Порты, выданные одноразовым запускам (`runOnce`) — их нет в `activeProcesses`. */
+  private oneShotPorts = new Set<number>();
 
   private retention: RetentionOptions = {
     finishedTtlMs: FINISHED_PROCESS_TTL_MS,
@@ -646,6 +685,126 @@ class HubProcessManager {
     if (!entry?.command) throw new Error(`Процесс ${parsed.name} не найден в реестре env-tools`);
     await this.stopEnvToolsProcess(id);
     return this.startProcess(parsed.projectPath, entry.command, parsed.name, { cwd: entry.cwd });
+  }
+
+  /**
+   * Одноразовый запуск команды до завершения (TASK-61): проверки кандидатов Swarm Arena.
+   *
+   * В отличие от `startProcess` запись не попадает в реестр активных процессов и не светится
+   * во вкладке Processes: это не сервис, а разовая проверка, и у трёх кандидатов одинаковые
+   * имена дали бы конфликт id. Оболочка и экранирование — те же (`resolveShellSpawn`), вывод
+   * копится в кольцевом буфере, по таймауту или `signal` процесс снимается деревом.
+   */
+  async runOnce(command: string, options: RunOnceOptions): Promise<RunOnceResult> {
+    const startedAt = Date.now();
+    const cwd = path.normalize(options.cwd);
+    if (!existsSync(cwd)) {
+      return {
+        exitCode: null,
+        output: '',
+        truncated: false,
+        timedOut: false,
+        durationMs: 0,
+        startedAt,
+        error: `Рабочий каталог не найден: ${cwd}`
+      };
+    }
+
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(options.env ?? {})) {
+      if (value === undefined || value === null) continue;
+      env[key] = String(value);
+    }
+
+    // Изоляция портов: проверки разных кандидатов не должны драться за один номер (decision-12).
+    let effectiveCommand = command;
+    let port: number | undefined;
+    if (options.portStrategy === 'auto') {
+      const start = isValidPort(options.port) ? options.port : DEFAULT_PORT_SEARCH_START;
+      const reserved = new Set([...this.reservedPorts(), ...this.oneShotPorts]);
+      port = await findFreePort(start, PORT_SEARCH_RANGE, async (p) => !reserved.has(p) && (await isPortFree(p)));
+      this.oneShotPorts.add(port);
+      env.PORT = String(port);
+      if (hasPortPlaceholder(effectiveCommand)) effectiveCommand = substitutePort(effectiveCommand, port);
+    }
+
+    const maxBytes = options.maxOutputBytes ?? ONE_SHOT_OUTPUT_MAX_BYTES;
+    const buffer: LogBufferState = { logBuffer: [], logBytes: 0 };
+    let totalBytes = 0;
+    const spec = resolveShellSpawn(effectiveCommand);
+
+    try {
+      return await new Promise<RunOnceResult>((resolve) => {
+        const child = spawn(spec.file, spec.args, {
+          cwd,
+          env: { ...process.env, CI: '1', FORCE_COLOR: '0', ...env },
+          windowsVerbatimArguments: spec.windowsVerbatimArguments
+        });
+
+        let settled = false;
+        let timedOut = false;
+        let spawnError: string | undefined;
+        let timer: NodeJS.Timeout | undefined;
+
+        const kill = () => {
+          if (child.pid) treeKill(child.pid, 'SIGKILL', () => {});
+          else child.kill('SIGKILL');
+        };
+
+        const onAbort = () => {
+          if (settled) return;
+          timedOut = false;
+          spawnError = spawnError ?? 'Проверка отменена';
+          kill();
+        };
+        options.signal?.addEventListener('abort', onAbort, { once: true });
+
+        if (options.timeoutMs && options.timeoutMs > 0) {
+          timer = setTimeout(() => {
+            if (settled) return;
+            timedOut = true;
+            kill();
+          }, options.timeoutMs);
+          timer.unref?.();
+        }
+
+        const onData = (data: Buffer) => {
+          const text = data.toString();
+          totalBytes += Buffer.byteLength(text);
+          appendLogChunk(buffer, text, maxBytes);
+          options.onOutput?.(text);
+        };
+        child.stdout.on('data', onData);
+        child.stderr.on('data', onData);
+
+        const finish = (exitCode: number | null) => {
+          if (settled) return;
+          settled = true;
+          if (timer) clearTimeout(timer);
+          options.signal?.removeEventListener('abort', onAbort);
+          if (port !== undefined) this.oneShotPorts.delete(port);
+          resolve({
+            exitCode,
+            output: buffer.logBuffer.join(''),
+            truncated: totalBytes > maxBytes,
+            timedOut,
+            durationMs: Date.now() - startedAt,
+            startedAt,
+            command: effectiveCommand,
+            ...(port !== undefined ? { port } : {}),
+            ...(spawnError ? { error: spawnError } : {})
+          });
+        };
+
+        child.on('error', (err) => {
+          spawnError = err.message;
+          finish(null);
+        });
+        child.on('close', (code) => finish(code));
+      });
+    } finally {
+      if (port !== undefined) this.oneShotPorts.delete(port);
+    }
   }
 
   /** Порты, выданные ещё работающим процессам Hub (TASK-62). */

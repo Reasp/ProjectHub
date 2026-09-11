@@ -34,6 +34,8 @@ import {
   type PriceTable
 } from './agentCost.js';
 import { exportSwarmSessionJson, exportSwarmSessionMarkdown, summarizeSwarmSession } from './swarmExport.js';
+import { arenaJudgeService, judgeableAgents, type RunJudgeOptions } from './arenaJudgeService.js';
+import type { ComposeResult, ComposeSelection, JudgeState } from './arenaTypes.js';
 import type {
   AgentSlotConfig,
   AgentSlotDiffSummary,
@@ -726,7 +728,154 @@ export class AgentFleetService extends EventEmitter {
     const allDone = session.agents.every((a) => !isActiveAgentStatus(a.status) && a.status !== 'interrupted');
     if (allDone) {
       this.finishSession(session);
+      // Автосудья запускается после завершения всех кандидатов (TASK-61, decision-12) и работает
+      // в фоне: сессия уже помечена завершённой, а результаты проверок и балл дотекают в UI.
+      // Сам по себе он стартует только там, где есть что сравнивать: у одиночного агента
+      // (в том числе запущенного через assignee) сравнивать не с кем, а прогон проверок и
+      // платное ревью там были бы неожиданной тратой — для него остаётся кнопка в арене.
+      if (this.shouldAutoJudge(session)) {
+        void this.runJudge(session.id).catch((err) => {
+          console.warn(`[AgentFleetService] Автосудья не отработал для ${session.id}:`, err);
+        });
+      }
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Автосудья (TASK-61, decision-12)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Прогон судьи по сессии: проверки в worktree кандидатов, метрики диффа, ревью и балл.
+   * После прогона — авто-мердж, если он включён в проекте и вердикт разрешает (см.
+   * `autoMergeDecision`): выключен по умолчанию, требует зелёных проверок и балла выше порога,
+   * пишется в аудит HITL.
+   */
+  /** Стоит ли запускать судью автоматически: настоящая арена с несколькими кандидатами. */
+  private shouldAutoJudge(session: SwarmSession): boolean {
+    if (session.mode !== 'fan_out' || session.origin === 'assigned') return false;
+    return judgeableAgents(session).length > 1;
+  }
+
+  public async runJudge(swarmId: string, options: RunJudgeOptions = {}): Promise<JudgeState | null> {
+    const session = this.sessions.get(swarmId);
+    if (!session) return null;
+    if (session.mode !== 'fan_out') return null;
+
+    const state = await arenaJudgeService.runJudge(
+      session,
+      {
+        onUpdate: (agentId) => {
+          this.persist(session);
+          this.emitSwarmEvent({
+            type: agentId ? 'agent_updated' : 'swarm_updated',
+            swarmId: session.id,
+            ...(agentId ? { agentId } : {}),
+            session
+          });
+        },
+        log: (agent, line) => this.log(session, agent, line)
+      },
+      options
+    );
+
+    if (state.status === 'done') {
+      await this.maybeAutoMerge(session, state);
+    }
+    this.persist(session, true);
+    this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
+    return state;
+  }
+
+  public cancelJudge(swarmId: string): boolean {
+    return arenaJudgeService.cancelJudge(swarmId);
+  }
+
+  /** Авто-мердж рекомендованного кандидата; решение уже принято судьёй, здесь — исполнение и аудит. */
+  private async maybeAutoMerge(session: SwarmSession, state: JudgeState): Promise<void> {
+    const auto = state.autoMerge;
+    if (!auto?.enabled) return;
+    if (!auto.agentId) {
+      this.recordAutoMergeAudit(session, undefined, 'denied', auto.reason);
+      return;
+    }
+
+    const decisionReason = auto.reason;
+    const allowed = state.recommendedAgentId === auto.agentId && !session.winnerAgentId;
+    if (!allowed) {
+      auto.reason = session.winnerAgentId ? 'Победитель уже выбран вручную' : decisionReason;
+      this.recordAutoMergeAudit(session, auto.agentId, 'denied', auto.reason);
+      return;
+    }
+
+    auto.attempted = true;
+    const agent = session.agents.find((a) => a.id === auto.agentId);
+    const result = await this.pickWinner(session.id, auto.agentId, true);
+    auto.merged = result.success;
+    auto.reason = result.success
+      ? `${decisionReason}; влито в ${session.baseBranch}`
+      : `Слияние не удалось: ${result.error || 'неизвестная ошибка'}`;
+    if (agent) this.log(session, agent, `[Судья] Авто-мердж: ${auto.reason}`);
+    this.recordAutoMergeAudit(session, auto.agentId, result.success ? 'allowed' : 'failed', auto.reason);
+  }
+
+  /**
+   * Запись авто-мерджа в аудит HITL (decision-10, decision-12 п.4): человек не нажимал кнопку,
+   * поэтому решение должно остаться в журнале с причиной.
+   */
+  private recordAutoMergeAudit(
+    session: SwarmSession,
+    agentId: string | undefined,
+    outcome: 'allowed' | 'denied' | 'failed',
+    detail: string
+  ): void {
+    const agent = agentId ? session.agents.find((a) => a.id === agentId) : undefined;
+    hitlService.recordAutoDecision(
+      {
+        sessionId: `judge-${session.id}`,
+        projectPath: session.projectPath,
+        origin: this.hitlOrigin(session),
+        type: 'command',
+        title: `Авто-мердж кандидата ${agent?.config.name || agentId || '—'} в ${session.baseBranch}`,
+        command: agent?.worktreeBranch ? `git merge --no-ff ${agent.worktreeBranch}` : undefined,
+        ...(agent
+          ? { engine: agent.config.engine, agentId: agent.id, agentName: agent.config.name, role: agent.config.role }
+          : {})
+      },
+      outcome === 'allowed' ? 'allow' : 'deny',
+      'arena-auto-merge',
+      detail
+    );
+  }
+
+  /**
+   * Частичная сборка результата из файлов нескольких кандидатов (decision-12 п.5, AC #5):
+   * файлы выкачиваются в основное дерево из веток кандидатов механизмом TASK-55.
+   */
+  public async composeFromCandidates(swarmId: string, selections: ComposeSelection[]): Promise<ComposeResult> {
+    const session = this.sessions.get(swarmId);
+    if (!session) return { success: false, error: `Swarm session ${swarmId} not found` };
+
+    const applied: NonNullable<ComposeResult['applied']> = [];
+    for (const selection of selections) {
+      const files = (selection.files ?? []).filter((f) => typeof f === 'string' && f.trim());
+      if (files.length === 0) continue;
+      const agent = session.agents.find((a) => a.id === selection.agentId);
+      if (!agent) return { success: false, error: `Агент ${selection.agentId} не найден в сессии` };
+      if (!agent.worktreeBranch) return { success: false, error: `У агента "${agent.config.name}" нет ветки с результатом` };
+
+      const res = await worktreeService.checkoutFilesFromBranch(session.projectPath, agent.worktreeBranch, files);
+      if (!res.success) {
+        return { success: false, error: `Файлы из "${agent.config.name}": ${res.error || 'не удалось применить'}`, applied };
+      }
+      applied.push({ agentId: agent.id, branch: agent.worktreeBranch, files });
+      this.log(session, agent, `[Судья] Взято в сборку файлов: ${files.length} (${files.join(', ')})`);
+    }
+
+    if (applied.length === 0) return { success: false, error: 'Не выбрано ни одного файла' };
+    this.persist(session, true);
+    this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
+    return { success: true, applied };
   }
 
   private finishSession(session: SwarmSession): void {

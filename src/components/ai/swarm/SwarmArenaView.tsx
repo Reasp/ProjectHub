@@ -27,7 +27,9 @@ import {
   ScrollText,
   X,
   AlertTriangle,
-  DollarSign
+  DollarSign,
+  Gavel,
+  ClipboardCheck
 } from 'lucide-react';
 import { useSwarmStore } from '../../../store/useSwarmStore';
 import { useProjectStore } from '../../../store/useProjectStore';
@@ -35,8 +37,26 @@ import { useTranslation } from '../../../i18n/useTranslation';
 import { useDialog } from '../../../hooks/useDialog';
 import { MarkdownViewer } from '../../common/MarkdownViewer';
 import { NewSwarmModal } from './NewSwarmModal';
+import { ArenaJudgePanel } from './ArenaJudgePanel';
+import { ArenaSettingsModal } from './ArenaSettingsModal';
+import { ComposeResultModal } from './ComposeResultModal';
 import type { AgentSlotState, SwarmSession, SwarmTranscript } from '../../../types/electron';
 import { agentInputTokens, formatDuration, formatTokens, formatUsd, summarizeSwarm } from '../../../utils/swarmFormat';
+import {
+  checkStatusClass,
+  checkStatusLabel,
+  checksSummary,
+  componentLabel,
+  formatScore,
+  scoreClass,
+  severityClass,
+  severityLabel,
+  verdictClass,
+  verdictLabel
+} from '../../../utils/arenaFormat';
+
+/** Вкладки карточки кандидата: к выводу/логам/диффу добавлены проверки и ревью судьи (TASK-61). */
+type AgentTab = 'output' | 'logs' | 'diff' | 'checks' | 'review';
 
 export const SwarmArenaView: React.FC = () => {
   const { t } = useTranslation();
@@ -53,6 +73,8 @@ export const SwarmArenaView: React.FC = () => {
     discardSwarmAction,
     getTranscriptAction,
     exportSwarmAction,
+    runJudgeAction,
+    cancelJudgeAction,
     initSwarmEventListener,
     isLoading
   } = useSwarmStore();
@@ -64,7 +86,9 @@ export const SwarmArenaView: React.FC = () => {
   const currentSwarmId = activeSwarmId[projectPath] || projectSwarms[0]?.id;
   const currentSwarm = projectSwarms.find((s) => s.id === currentSwarmId) || projectSwarms[0];
 
-  const [activeTabByAgent, setActiveTabByAgent] = useState<Record<string, 'output' | 'logs' | 'diff'>>({});
+  const [activeTabByAgent, setActiveTabByAgent] = useState<Record<string, AgentTab>>({});
+  const [isJudgeSettingsOpen, setJudgeSettingsOpen] = useState(false);
+  const [isComposeOpen, setComposeOpen] = useState(false);
   const [isMergingWinner, setIsMergingWinner] = useState<string | null>(null);
   const [appliedFileMsg, setAppliedFileMsg] = useState<string | null>(null);
   const [isApplyingFile, setIsApplyingFile] = useState(false);
@@ -205,12 +229,18 @@ export const SwarmArenaView: React.FC = () => {
     }
   };
 
-  const getAgentTab = (agentId: string): 'output' | 'logs' | 'diff' => {
+  const getAgentTab = (agentId: string): AgentTab => {
     return activeTabByAgent[agentId] || 'output';
   };
 
-  const setAgentTab = (agentId: string, tab: 'output' | 'logs' | 'diff') => {
+  const setAgentTab = (agentId: string, tab: AgentTab) => {
     setActiveTabByAgent((prev) => ({ ...prev, [agentId]: tab }));
+  };
+
+  const handleRunJudge = async (options?: { rerunChecks?: boolean }) => {
+    if (!currentSwarm) return;
+    const res = await runJudgeAction(currentSwarm.id, options);
+    if (!res.success && res.error) await dialog.alert(t.judge.judgeError.replace('{error}', res.error));
   };
 
   if (!projectPath) {
@@ -523,6 +553,18 @@ export const SwarmArenaView: React.FC = () => {
               </div>
             )}
 
+            {/* Автосудья (TASK-61, decision-12) — только для арены fan-out */}
+            {currentSwarm.mode === 'fan_out' && (
+              <ArenaJudgePanel
+                session={currentSwarm}
+                isRunning={currentSwarm.judge?.status === 'running'}
+                onRun={handleRunJudge}
+                onCancel={() => cancelJudgeAction(currentSwarm.id)}
+                onOpenSettings={() => setJudgeSettingsOpen(true)}
+                onOpenCompose={() => setComposeOpen(true)}
+              />
+            )}
+
             {/* Side-by-Side Arena Grid (AC #4) */}
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -581,6 +623,19 @@ export const SwarmArenaView: React.FC = () => {
                             {agent.worktreeMissing && (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-rose-500/10 text-rose-400 border-rose-500/30">
                                 {t.swarm.worktreeMissingBadge}
+                              </span>
+                            )}
+                            {currentSwarm.judge?.recommendedAgentId === agent.id && !isWinner && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] font-bold border border-primary/30">
+                                <Gavel className="w-3 h-3" /> {t.judge.recommendedBadge}
+                              </span>
+                            )}
+                            {agent.score?.blocked && (
+                              <span
+                                className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-rose-500/10 text-rose-400 border-rose-500/30"
+                                title={agent.score.blockedReason}
+                              >
+                                {t.judge.blockedBadge}
                               </span>
                             )}
                           </div>
@@ -698,6 +753,39 @@ export const SwarmArenaView: React.FC = () => {
                               <span className="text-rose-400">-{agent.diffSummary.deletions}</span>
                             </span>
                           )}
+
+                          {(() => {
+                            const summary = checksSummary(agent.checks);
+                            if (summary.total === 0 && summary.running === 0) return null;
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded border font-mono text-[10px] ${
+                                  summary.failed > 0
+                                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                                    : summary.running > 0
+                                    ? 'bg-primary/10 text-primary border-primary/30'
+                                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                }`}
+                                title={(agent.checks ?? [])
+                                  .map((c) => `${c.name}: ${checkStatusLabel(c.status, t.judge)}`)
+                                  .join('\n')}
+                              >
+                                <ClipboardCheck className="w-3 h-3" />
+                                {summary.passed}/{summary.total || agent.checks?.length || 0}
+                              </span>
+                            );
+                          })()}
+
+                          {agent.score && (
+                            <span
+                              className={`font-mono text-[10px] font-bold ${scoreClass(agent.score)}`}
+                              title={agent.score.components
+                                .map((c) => `${componentLabel(c.key, t.judge)}: ${c.points.toFixed(1)}/${c.weight} — ${c.unknown ? t.judge.componentUnknown : c.detail}`)
+                                .join('\n')}
+                            >
+                              {t.judge.scoreLabel} {formatScore(agent.score)}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -732,6 +820,26 @@ export const SwarmArenaView: React.FC = () => {
                           }`}
                         >
                           <Code2 className="w-3.5 h-3.5" /> {t.swarm.diffTab.replace('{count}', String(agent.diffSummary?.filesChanged || 0))}
+                        </button>
+                        <button
+                          onClick={() => setAgentTab(agent.id, 'checks')}
+                          className={`flex items-center gap-1.5 py-2 px-3 text-xs font-medium border-b-2 transition-colors ${
+                            currentTab === 'checks'
+                              ? 'border-primary text-primary'
+                              : 'border-transparent text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <ClipboardCheck className="w-3.5 h-3.5" /> {t.judge.checksTab}
+                        </button>
+                        <button
+                          onClick={() => setAgentTab(agent.id, 'review')}
+                          className={`flex items-center gap-1.5 py-2 px-3 text-xs font-medium border-b-2 transition-colors ${
+                            currentTab === 'review'
+                              ? 'border-primary text-primary'
+                              : 'border-transparent text-muted-foreground hover:text-foreground'
+                          }`}
+                        >
+                          <Gavel className="w-3.5 h-3.5" /> {t.judge.reviewTab}
                         </button>
                       </div>
 
@@ -885,6 +993,173 @@ export const SwarmArenaView: React.FC = () => {
                             </div>
                           );
                         })()}
+
+                        {currentTab === 'checks' && (
+                          <div className="h-full overflow-y-auto space-y-2">
+                            {!agent.checks || agent.checks.length === 0 ? (
+                              <div className="h-full flex items-center justify-center text-muted-foreground">
+                                {t.judge.checksNone}
+                              </div>
+                            ) : (
+                              agent.checks.map((check) => (
+                                <div key={check.id} className="rounded-lg border border-border/60 bg-secondary/20 p-2.5 space-y-1.5">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span className="text-xs font-semibold text-foreground truncate">{check.name}</span>
+                                      {check.blocking && (
+                                        <span className="text-[9px] px-1.5 py-0.2 rounded bg-muted text-muted-foreground border border-border">
+                                          {t.judge.checkBlocking}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span
+                                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 ${checkStatusClass(check.status)}`}
+                                    >
+                                      {checkStatusLabel(check.status, t.judge)}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground font-mono">
+                                    <span className="truncate max-w-full" title={check.command}>{check.command}</span>
+                                    {typeof check.durationMs === 'number' && (
+                                      <span>{(check.durationMs / 1000).toFixed(1)} {t.swarm.secondsUnit}</span>
+                                    )}
+                                    {typeof check.failedTests === 'number' && check.failedTests > 0 && (
+                                      <span className="text-rose-400">
+                                        {t.judge.checkFailedTests.replace('{count}', String(check.failedTests))}
+                                      </span>
+                                    )}
+                                    {typeof check.errorCount === 'number' && check.errorCount > 0 && (
+                                      <span className="text-rose-400">
+                                        {t.judge.checkErrors.replace('{count}', String(check.errorCount))}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {check.detail && <div className="text-[10px] text-amber-400/90">{check.detail}</div>}
+                                  {check.outputTail && check.status !== 'passed' && (
+                                    <details className="text-[10px]">
+                                      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                                        {t.judge.checkOutput}
+                                      </summary>
+                                      <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-muted-foreground select-text">
+                                        {check.outputTail}
+                                      </pre>
+                                    </details>
+                                  )}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+
+                        {currentTab === 'review' && (
+                          <div className="h-full overflow-y-auto space-y-3">
+                            {!agent.review || agent.review.status === 'pending' ? (
+                              <div className="h-full flex items-center justify-center text-muted-foreground">
+                                {t.judge.reviewNone}
+                              </div>
+                            ) : agent.review.status === 'running' ? (
+                              <div className="h-full flex items-center justify-center text-muted-foreground gap-2">
+                                <RefreshCw className="w-4 h-4 animate-spin text-primary" /> {t.judge.reviewRunning}
+                              </div>
+                            ) : agent.review.status === 'skipped' ? (
+                              <div className="h-full flex items-center justify-center text-muted-foreground">
+                                {t.judge.reviewSkipped}
+                              </div>
+                            ) : (
+                              <>
+                                {agent.review.status === 'failed' && (
+                                  <div className="px-2 py-1.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded text-[11px]">
+                                    {t.judge.reviewFailed.replace('{error}', agent.review.error || '')}
+                                  </div>
+                                )}
+                                {agent.review.summary && (
+                                  <div>
+                                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                                      {t.judge.reviewSummary}
+                                    </div>
+                                    <p className="text-[11px] text-foreground leading-relaxed">{agent.review.summary}</p>
+                                  </div>
+                                )}
+                                {agent.review.criteria && agent.review.criteria.length > 0 && (
+                                  <div>
+                                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                                      {t.judge.reviewCriteria}
+                                    </div>
+                                    <div className="space-y-1">
+                                      {agent.review.criteria.map((c) => (
+                                        <div key={c.index} className="flex items-start gap-2 text-[11px]">
+                                          <span
+                                            className={`shrink-0 px-1.5 py-0.2 rounded border text-[9px] font-semibold ${verdictClass(c.verdict)}`}
+                                          >
+                                            #{c.index} {verdictLabel(c.verdict, t.judge)}
+                                          </span>
+                                          <span className="text-muted-foreground leading-relaxed">
+                                            {c.text}
+                                            {c.comment ? ` — ${c.comment}` : ''}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {agent.review.findings && agent.review.findings.length > 0 && (
+                                  <div>
+                                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                                      {t.judge.reviewFindings}
+                                    </div>
+                                    <div className="space-y-1">
+                                      {agent.review.findings.map((f, i) => (
+                                        <div key={i} className="flex items-start gap-2 text-[11px]">
+                                          <span
+                                            className={`shrink-0 px-1.5 py-0.2 rounded border text-[9px] font-semibold ${severityClass(f.severity)}`}
+                                          >
+                                            {severityLabel(f.severity, t.judge)}
+                                          </span>
+                                          <span className="text-muted-foreground leading-relaxed">
+                                            {f.file && (
+                                              <span className="font-mono text-foreground/80">
+                                                {f.file}
+                                                {f.line ? `:${f.line}` : ''}{' '}
+                                              </span>
+                                            )}
+                                            {f.message}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {agent.review.risks && agent.review.risks.length > 0 && (
+                                  <div>
+                                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+                                      {t.judge.reviewRisks}
+                                    </div>
+                                    <ul className="list-disc list-inside space-y-0.5 text-[11px] text-muted-foreground">
+                                      {agent.review.risks.map((r, i) => (
+                                        <li key={i}>{r}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                                {agent.review.raw && (
+                                  <details className="text-[10px]">
+                                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                                      {t.judge.reviewRaw}
+                                    </summary>
+                                    <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-muted-foreground select-text">
+                                      {agent.review.raw}
+                                    </pre>
+                                  </details>
+                                )}
+                                {agent.review.model && (
+                                  <div className="text-[10px] text-muted-foreground/70 font-mono">
+                                    {t.judge.reviewModel}: {agent.review.model}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -942,6 +1217,18 @@ export const SwarmArenaView: React.FC = () => {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Настройки судьи и сборка результата (TASK-61) */}
+      {isJudgeSettingsOpen && projectPath && (
+        <ArenaSettingsModal projectPath={projectPath} onClose={() => setJudgeSettingsOpen(false)} />
+      )}
+      {isComposeOpen && currentSwarm && (
+        <ComposeResultModal
+          session={currentSwarm}
+          onClose={() => setComposeOpen(false)}
+          onDone={(message) => showNotice(message)}
+        />
       )}
 
       {/* New Swarm Modal */}

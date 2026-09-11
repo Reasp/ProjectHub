@@ -472,3 +472,88 @@ describe('рабочее дерево и порты процесса (TASK-62)',
     await processManager.stopProcess(b.id);
   }, 30000);
 });
+
+/** Кроссплатформенная команда через оболочку для одноразовых запусков (`runOnce`). */
+const nodeEval = (script: string) => `node -e "${script}"`;
+
+describe('processManager.runOnce (проверки кандидатов, TASK-61)', () => {
+  it('возвращает код возврата и собранный вывод', async () => {
+    const result = await processManager.runOnce(nodeEval('console.log(42)'), { cwd: CWD });
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain('42');
+    expect(result.timedOut).toBe(false);
+    expect(result.error).toBeUndefined();
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+  }, 20000);
+
+  it('ненулевой код возврата доезжает как есть', async () => {
+    const result = await processManager.runOnce(nodeEval('process.exit(3)'), { cwd: CWD });
+    expect(result.exitCode).toBe(3);
+  }, 20000);
+
+  it('stderr попадает в тот же буфер, что и stdout', async () => {
+    const result = await processManager.runOnce(nodeEval('console.error(\'упало\')'), { cwd: CWD });
+    expect(result.output).toContain('упало');
+  }, 20000);
+
+  it('таймаут убивает процесс и помечает результат', async () => {
+    const result = await processManager.runOnce(nodeEval('setTimeout(function(){}, 30000)'), {
+      cwd: CWD,
+      timeoutMs: 800
+    });
+    expect(result.timedOut).toBe(true);
+    expect(result.exitCode).not.toBe(0);
+  }, 20000);
+
+  it('отмена через signal завершает запуск с ошибкой, а не зависает', async () => {
+    const controller = new AbortController();
+    const promise = processManager.runOnce(nodeEval('setTimeout(function(){}, 30000)'), {
+      cwd: CWD,
+      signal: controller.signal
+    });
+    setTimeout(() => controller.abort(), 300);
+    const result = await promise;
+    expect(result.timedOut).toBe(false);
+    expect(result.error).toContain('отменена');
+  }, 20000);
+
+  it('несуществующий рабочий каталог не бросает, а возвращает ошибку', async () => {
+    const result = await processManager.runOnce('echo hi', { cwd: path.join(CWD, 'нет-такого-каталога') });
+    expect(result.exitCode).toBeNull();
+    expect(result.error).toContain('не найден');
+  });
+
+  it('вывод сверх лимита усекается с головы и помечается truncated', async () => {
+    const result = await processManager.runOnce(
+      nodeEval('for (var i = 0; i < 2000; i++) console.log(\'x\'.repeat(80))'),
+      { cwd: CWD, maxOutputBytes: 2048 }
+    );
+    expect(result.truncated).toBe(true);
+    expect(Buffer.byteLength(result.output)).toBeLessThanOrEqual(4096);
+  }, 20000);
+
+  it('переменные окружения прокидываются в команду', async () => {
+    const result = await processManager.runOnce(nodeEval('console.log(process.env.PH_CHECK_MARK)'), {
+      cwd: CWD,
+      env: { PH_CHECK_MARK: 'судья' }
+    });
+    expect(result.output).toContain('судья');
+  }, 20000);
+
+  it('portStrategy auto подставляет свободный порт в PORT и ${port}', async () => {
+    const result = await processManager.runOnce(nodeEval('console.log(\'port=\' + process.env.PORT)') + ' ${port}', {
+      cwd: CWD,
+      portStrategy: 'auto',
+      port: 45_600
+    });
+    expect(result.port).toBeGreaterThanOrEqual(45_600);
+    expect(result.command).toContain(String(result.port));
+    expect(result.output).toContain(`port=${result.port}`);
+  }, 20000);
+
+  it('одноразовые запуски не попадают в реестр процессов проекта', async () => {
+    const before = (await processManager.listProcessesForProject(CWD)).length;
+    await processManager.runOnce(nodeEval('console.log(1)'), { cwd: CWD });
+    expect((await processManager.listProcessesForProject(CWD)).length).toBe(before);
+  }, 20000);
+});

@@ -21,6 +21,10 @@ import {
   type SwarmExportFormat
 } from '../services/agentFleetService';
 import { assertRegisteredProject } from '../services/projectPathGuard';
+import type { RunJudgeOptions } from '../services/arenaJudgeService';
+import { loadArenaConfig, saveArenaConfig } from '../services/arenaConfig';
+import type { ArenaSettings } from '../services/actionConfigService';
+import type { CheckDefinition, ComposeSelection } from '../services/arenaTypes';
 import { buildAgentContext } from '../services/contextBuilder';
 import type { IpcContext } from './types';
 
@@ -275,6 +279,42 @@ export function registerAiIpc(ctx: IpcContext) {
   ipcMain.handle('swarm:get', async (_event, swarmId: string) => {
     return agentFleetService.getSwarm(swarmId);
   });
+
+  // Автосудья арены (TASK-61, decision-12)
+  ipcMain.handle('swarm:runJudge', async (_event, swarmId: string, options?: RunJudgeOptions) => {
+    if (typeof swarmId !== 'string') return { success: false, error: 'Invalid swarm id' };
+    const state = await agentFleetService.runJudge(swarmId, {
+      rerunChecks: options?.rerunChecks === true,
+      skipReview: options?.skipReview === true
+    });
+    if (!state) return { success: false, error: 'Сессия не найдена или не является ареной (fan-out)' };
+    return { success: true, state };
+  });
+
+  ipcMain.handle('swarm:cancelJudge', async (_event, swarmId: string) => {
+    if (typeof swarmId !== 'string') return false;
+    return agentFleetService.cancelJudge(swarmId);
+  });
+
+  ipcMain.handle('swarm:compose', async (_event, swarmId: string, selections: ComposeSelection[]) => {
+    if (typeof swarmId !== 'string') return { success: false, error: 'Invalid swarm id' };
+    if (!Array.isArray(selections)) return { success: false, error: 'Не передан список файлов' };
+    return await agentFleetService.composeFromCandidates(swarmId, selections);
+  });
+
+  ipcMain.handle('arena:getConfig', async (_event, projectPath: string) => {
+    const safeProject = await assertRegisteredProject(projectPath);
+    return await loadArenaConfig(safeProject);
+  });
+
+  ipcMain.handle(
+    'arena:saveConfig',
+    async (_event, projectPath: string, patch: { checks?: CheckDefinition[]; arena?: ArenaSettings }) => {
+      const safeProject = await assertRegisteredProject(projectPath);
+      const ok = await saveArenaConfig(safeProject, patch ?? {});
+      return { success: ok, config: ok ? await loadArenaConfig(safeProject) : undefined };
+    }
+  );
 
   ipcMain.handle('swarm:list', async (_event, projectPath?: string) => {
     const safeProject = projectPath ? await assertRegisteredProject(projectPath) : undefined;

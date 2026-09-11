@@ -1,5 +1,11 @@
 import { create } from 'zustand';
 import type {
+  ArenaConfig,
+  ArenaSettings,
+  CheckDefinition,
+  ComposeResult,
+  ComposeSelection,
+  JudgeState,
   SwarmSession,
   StartFanOutOptions,
   StartHandoffOptions,
@@ -45,6 +51,18 @@ interface SwarmState {
   /** Закрыть сессию с очисткой worktree/веток и удалением файлов состояния (TASK-56). */
   discardSwarmAction: (projectPath: string, swarmId: string) => Promise<{ success: boolean; error?: string }>;
   getTranscriptAction: (swarmId: string, agentId: string) => Promise<SwarmTranscript | null>;
+  /** Прогон автосудьи по сессии арены (TASK-61). */
+  runJudgeAction: (
+    swarmId: string,
+    options?: { rerunChecks?: boolean; skipReview?: boolean }
+  ) => Promise<{ success: boolean; error?: string; state?: JudgeState }>;
+  cancelJudgeAction: (swarmId: string) => Promise<boolean>;
+  composeResultAction: (swarmId: string, selections: ComposeSelection[]) => Promise<ComposeResult>;
+  getArenaConfigAction: (projectPath: string) => Promise<ArenaConfig | null>;
+  saveArenaConfigAction: (
+    projectPath: string,
+    patch: { checks?: CheckDefinition[]; arena?: ArenaSettings }
+  ) => Promise<{ success: boolean; config?: ArenaConfig }>;
   exportSwarmAction: (
     swarmId: string,
     format: SwarmExportFormat
@@ -244,6 +262,56 @@ export const useSwarmStore = create<SwarmState>((set) => ({
     } catch (err) {
       console.error('[SwarmStore] Failed to read transcript:', err);
       return null;
+    }
+  },
+
+  runJudgeAction: async (swarmId: string, options) => {
+    if (!window.api?.runSwarmJudge) return { success: false, error: 'API not available' };
+    try {
+      return await window.api.runSwarmJudge(swarmId, options);
+    } catch (err) {
+      console.error('[SwarmStore] Failed to run judge:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+
+  cancelJudgeAction: async (swarmId: string) => {
+    if (!window.api?.cancelSwarmJudge) return false;
+    try {
+      return await window.api.cancelSwarmJudge(swarmId);
+    } catch (err) {
+      console.error('[SwarmStore] Failed to cancel judge:', err);
+      return false;
+    }
+  },
+
+  composeResultAction: async (swarmId: string, selections: ComposeSelection[]) => {
+    if (!window.api?.composeSwarmResult) return { success: false, error: 'API not available' };
+    try {
+      return await window.api.composeSwarmResult(swarmId, selections);
+    } catch (err) {
+      console.error('[SwarmStore] Failed to compose result:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+
+  getArenaConfigAction: async (projectPath: string) => {
+    if (!window.api?.getArenaConfig) return null;
+    try {
+      return await window.api.getArenaConfig(projectPath);
+    } catch (err) {
+      console.error('[SwarmStore] Failed to load arena config:', err);
+      return null;
+    }
+  },
+
+  saveArenaConfigAction: async (projectPath, patch) => {
+    if (!window.api?.saveArenaConfig) return { success: false };
+    try {
+      return await window.api.saveArenaConfig(projectPath, patch);
+    } catch (err) {
+      console.error('[SwarmStore] Failed to save arena config:', err);
+      return { success: false };
     }
   },
 

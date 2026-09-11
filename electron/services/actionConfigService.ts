@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import type { CheckDefinition } from './arenaTypes.js';
 
 export interface ActionDefinition {
   name: string;
@@ -29,12 +30,26 @@ export interface WorktreeInitPolicy {
   linkNodeModules?: boolean;
 }
 
+/** Настройки автосудьи арены (decision-12, TASK-61); полный разбор — в `arenaConfigService`. */
+export interface ArenaSettings {
+  weights?: Partial<Record<'checks' | 'acceptance' | 'review' | 'diffSize' | 'locality' | 'cost' | 'time', number>>;
+  autoMerge?: { enabled?: boolean; minScore?: number };
+  reviewer?: { enabled?: boolean; roleSlug?: string; provider?: string; model?: string };
+  maxConcurrentChecks?: number;
+}
+
 export interface ProjectActionConfig {
   run: ActionDefinition;
   deploy: ActionDefinition;
   test: ActionDefinition;
   customActions?: Array<ActionDefinition & { id: string }>;
   worktreeInit?: WorktreeInitPolicy;
+  /**
+   * Проверки кандидатов Swarm Arena (TASK-61). Отсутствие секции означает «вывести из
+   * `package.json`», а пустой массив — «проверки отключены пользователем».
+   */
+  checks?: CheckDefinition[];
+  arena?: ArenaSettings;
 }
 
 const CONFIG_FILENAME = '.projecthub.json';

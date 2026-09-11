@@ -602,6 +602,18 @@ export interface IElectronAPI {
   stopSwarm: (swarmId: string) => Promise<boolean>;
   pickSwarmWinner: (swarmId: string, winnerAgentId: string, mergeIntoBase?: boolean) => Promise<{ success: boolean; error?: string; mergedBranch?: string }>;
   getSwarm: (swarmId: string) => Promise<SwarmSession | undefined>;
+  /** Автосудья арены (TASK-61). */
+  runSwarmJudge: (
+    swarmId: string,
+    options?: { rerunChecks?: boolean; skipReview?: boolean }
+  ) => Promise<{ success: boolean; error?: string; state?: JudgeState }>;
+  cancelSwarmJudge: (swarmId: string) => Promise<boolean>;
+  composeSwarmResult: (swarmId: string, selections: ComposeSelection[]) => Promise<ComposeResult>;
+  getArenaConfig: (projectPath: string) => Promise<ArenaConfig>;
+  saveArenaConfig: (
+    projectPath: string,
+    patch: { checks?: CheckDefinition[]; arena?: ArenaSettings }
+  ) => Promise<{ success: boolean; config?: ArenaConfig }>;
   listSwarms: (projectPath?: string) => Promise<SwarmSession[]>;
   onSwarmEvent: (callback: (event: SwarmEventPayload) => void) => () => void;
   // Персистентность, транскрипты и экспорт swarm-сессий (TASK-56)
@@ -1335,6 +1347,149 @@ export interface AgentSlotDiffSummary {
   deletions: number;
   patch: string;
   truncated?: boolean;
+  /** Затронутые модули (TASK-61). */
+  modules?: string[];
+  /** Задетые символы по GitNexus; отсутствует, если репозиторий не проиндексирован. */
+  dependentSymbols?: number;
+  affectedProcesses?: number;
+  riskLevel?: string;
+}
+
+// ─── Автосудья Swarm Arena (TASK-61, decision-12); зеркало electron/services/arenaTypes.ts ───
+
+export type CheckKind = 'lint' | 'test' | 'build' | 'typecheck' | 'custom';
+export type CheckStatus = 'pending' | 'running' | 'passed' | 'failed' | 'timeout' | 'skipped' | 'error';
+
+export interface CheckDefinition {
+  id: string;
+  kind: CheckKind;
+  name: string;
+  command: string;
+  timeoutMs?: number;
+  blocking?: boolean;
+  enabled?: boolean;
+  portStrategy?: 'fixed' | 'auto';
+  port?: number;
+}
+
+export interface CheckRunResult {
+  id: string;
+  kind: CheckKind;
+  name: string;
+  command: string;
+  status: CheckStatus;
+  blocking: boolean;
+  exitCode?: number;
+  startedAt?: number;
+  durationMs?: number;
+  failedTests?: number;
+  passedTests?: number;
+  totalTests?: number;
+  errorCount?: number;
+  warningCount?: number;
+  outputTail?: string;
+  outputTruncated?: boolean;
+  detail?: string;
+}
+
+export type ScoreComponentKey = 'checks' | 'acceptance' | 'review' | 'diffSize' | 'locality' | 'cost' | 'time';
+export type ScoreWeights = Record<ScoreComponentKey, number>;
+
+export interface ScoreComponent {
+  key: ScoreComponentKey;
+  weight: number;
+  normalized: number;
+  points: number;
+  raw?: number;
+  detail: string;
+  unknown?: boolean;
+}
+
+export interface CandidateScore {
+  agentId: string;
+  total: number;
+  blocked: boolean;
+  blockedReason?: string;
+  components: ScoreComponent[];
+  computedAt: number;
+}
+
+export type ReviewSeverity = 'info' | 'minor' | 'major' | 'critical';
+export type CriterionVerdict = 'met' | 'partial' | 'unmet' | 'unknown';
+export type ReviewerStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+
+export interface ReviewerFinding {
+  file?: string;
+  line?: number;
+  severity: ReviewSeverity;
+  message: string;
+}
+
+export interface ReviewerCriterionVerdict {
+  index: number;
+  text: string;
+  verdict: CriterionVerdict;
+  comment?: string;
+}
+
+export interface ReviewerVerdict {
+  agentId: string;
+  status: ReviewerStatus;
+  summary?: string;
+  findings?: ReviewerFinding[];
+  criteria?: ReviewerCriterionVerdict[];
+  risks?: string[];
+  overall?: number;
+  model?: string;
+  costUsd?: number;
+  durationMs?: number;
+  error?: string;
+  raw?: string;
+}
+
+export type JudgeStatus = 'idle' | 'running' | 'done' | 'failed' | 'cancelled';
+
+export interface JudgeState {
+  status: JudgeStatus;
+  startedAt?: number;
+  finishedAt?: number;
+  error?: string;
+  recommendedAgentId?: string;
+  weights?: ScoreWeights;
+  stage?: 'checks' | 'diff' | 'review' | 'scoring';
+  autoMerge?: {
+    enabled: boolean;
+    attempted: boolean;
+    merged: boolean;
+    agentId?: string;
+    reason: string;
+  };
+}
+
+export interface ArenaSettings {
+  weights?: Partial<ScoreWeights>;
+  autoMerge?: { enabled?: boolean; minScore?: number };
+  reviewer?: { enabled?: boolean; roleSlug?: string; provider?: string; model?: string };
+  maxConcurrentChecks?: number;
+}
+
+export interface ArenaConfig {
+  checks: CheckDefinition[];
+  weights: ScoreWeights;
+  autoMerge: { enabled: boolean; minScore: number };
+  reviewer: { enabled: boolean; roleSlug: string; provider?: string; model?: string };
+  maxConcurrentChecks: number;
+}
+
+export interface ComposeSelection {
+  agentId: string;
+  files: string[];
+}
+
+export interface ComposeResult {
+  success: boolean;
+  error?: string;
+  applied?: Array<{ agentId: string; branch: string; files: string[] }>;
 }
 
 export interface AgentSlotMetrics {
@@ -1370,6 +1525,10 @@ export interface AgentSlotState {
   commitStatus?: 'committed' | 'stashed' | 'no_changes' | 'pending';
   lastCommitHash?: string;
   resumeCount?: number;
+  /** Результаты проверок автосудьи (TASK-61). */
+  checks?: CheckRunResult[];
+  score?: CandidateScore;
+  review?: ReviewerVerdict;
 }
 
 export interface HandoffStageState {
@@ -1414,6 +1573,8 @@ export interface SwarmSession {
   budgetUsd?: number;
   totalCostUsd?: number;
   restored?: boolean;
+  /** Состояние автосудьи арены (TASK-61). */
+  judge?: JudgeState;
 }
 
 export interface StartFanOutOptions {

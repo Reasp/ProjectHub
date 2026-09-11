@@ -6,6 +6,7 @@
 import type { AIProviderConfig } from './aiAgentService.js';
 import type { AgentUsage } from './agentCost.js';
 import type { RolePermissions } from './hitlTypes.js';
+import type { CandidateScore, CheckRunResult, JudgeState, ReviewerVerdict } from './arenaTypes.js';
 
 export type SwarmMode = 'fan_out' | 'handoff';
 export type SwarmStatus =
@@ -56,6 +57,14 @@ export interface AgentSlotDiffSummary {
   patch: string;
   /** Патч усечён при сохранении на диск. */
   truncated?: boolean;
+  /** Затронутые модули (TASK-61): два первых сегмента пути каждого изменённого файла. */
+  modules?: string[];
+  /** Число задетых символов по GitNexus; отсутствует, если репозиторий не проиндексирован. */
+  dependentSymbols?: number;
+  /** Потоки выполнения, задетые диффом (GitNexus). */
+  affectedProcesses?: number;
+  /** Оценка риска GitNexus (`low`/`medium`/`high`). */
+  riskLevel?: string;
 }
 
 export interface AgentSlotMetrics {
@@ -95,6 +104,12 @@ export interface AgentSlotState {
   error?: string;
   /** Сколько раз агент перезапускался после прерывания. */
   resumeCount?: number;
+  /** Результаты проверок автосудьи в worktree кандидата (TASK-61, decision-12). */
+  checks?: CheckRunResult[];
+  /** Балл кандидата с разложением по компонентам. */
+  score?: CandidateScore;
+  /** Структурированный отзыв роли `reviewer`. */
+  review?: ReviewerVerdict;
 }
 
 export interface HandoffStageState {
@@ -144,6 +159,8 @@ export interface SwarmSession {
   totalCostUsd?: number;
   /** Сессия загружена с диска после перезапуска приложения. */
   restored?: boolean;
+  /** Состояние автосудьи арены (TASK-61, decision-12). */
+  judge?: JudgeState;
 }
 
 export interface StartFanOutOptions {
