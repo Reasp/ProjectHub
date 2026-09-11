@@ -59,7 +59,7 @@ tags:
     - **Интерактивный File Explorer с Git-индикацией**: Дерево файлов с бейджами изменений и быстрым редактором.
     - **ProjectHub Native MCP Server**: Встроенный HTTP/SSE сервер MCP (`electron/services/mcpServerService.ts`).
     - **Голосовое управление (Voice Control STT/TTS)**: Распознавание речи, голосовые команды и плавающий виджет.
-21. **Модуль удаленного управления (Remote Control: Server Relay & WebRTC P2P)** (`task-51`): E2EE шифрование, WebRTC P2P + WebSocket Relay, мобильное SPA-клиент и виджет с QR-кодом.
+21. **Модуль удаленного управления (Remote Control: LAN Direct & Server Relay)** (`task-51`, ремонт `task-65`): E2EE шифрование, LAN Direct + WebSocket Relay (Ed25519 identity, per-device токены), мобильное SPA-клиент и виджет с QR-кодом. WebRTC P2P выведен из scope (`RTCPeerConnection` не реализовывался) — см. [[decision-11]].
 22. **Оркестрация параллельной работы разнородных AI-агентов (Multi-Agent Swarm, Fan-Out, Arena и Handoff)** (`task-54`):
     - `AgentFleetService` (`electron/services/agentFleetService.ts`) — координатор параллельного (Fan-Out) и конвейерного (Handoff) выполнения задач CLI и API-агентами.
     - Автоматическая изоляция каждого агента в выделенном Git Worktree (`.worktrees/swarm-<id>-<slotId>`, ветка `swarm/<id>/<agentSlug>`).
@@ -82,4 +82,4 @@ tags:
 - **RAG & AI**: **LanceDB** + локальный коннектор **Ollama** + Claude AI Studio + **Agent Fleet Swarm Orchestrator**.
 - **Voice & Multimodal (v2.0)**: **Web Speech API** (STT) + **SpeechSynthesis** (TTS) с парсером команд.
 - **Ecosystem & Interoperability (v2.0)**: **ProjectHub Native MCP Server** (`@modelcontextprotocol/sdk`).
-- **Remote Control & P2P**: **WebRTC DataChannel**, **WebSocket Relay** (`ws`), **E2EE (AES-256-GCM / Web Crypto)**.
+- **Remote Control**: **WebSocket LAN Direct/Relay** (`ws`), **Ed25519 identity**, **E2EE (AES-256-GCM / Web Crypto)**.

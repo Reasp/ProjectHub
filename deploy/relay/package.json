@@ -1,0 +1,9 @@
+{
+  "name": "projecthub-remote-relay",
+  "private": true,
+  "type": "module",
+  "description": "Standalone deploy package for scripts/remote-relay-server.mjs (TASK-65, decision-11 п.2) — only the relay's own runtime dependency, not the full ProjectHub app.",
+  "dependencies": {
+    "ws": "^8.21.3"
+  }
+}

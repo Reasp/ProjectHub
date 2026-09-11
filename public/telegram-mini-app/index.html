@@ -6,6 +6,8 @@
   <title>ProjectHub Telegram Mini App</title>
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Канонический E2EE-модуль (TASK-65, decision-11 п.3) — общий с встроенным веб-клиентом -->
+  <script src="/remote-crypto.js"></script>
   <style>
     :root {
       --bg: var(--tg-theme-bg-color, #0b0f19);
@@ -21,7 +23,7 @@
     }
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
     body { background: var(--bg); color: var(--text); padding-bottom: 76px; min-height: 100vh; overflow-x: hidden; }
-    
+
     /* Header */
     header {
       background: var(--card-bg);
@@ -145,7 +147,7 @@
       background: var(--primary);
       color: #fff;
     }
-    
+
     /* Layout */
     .container { padding: 14px; max-width: 540px; margin: 0 auto; }
     .tab-content { display: none; }
@@ -283,7 +285,7 @@
     .task-badge.progress { background: rgba(99, 102, 241, 0.2); color: #a5b4fc; }
     .task-badge.review { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
     .task-badge.done { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
-    
+
     .task-card {
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--border);
@@ -310,6 +312,14 @@
       margin-bottom: 12px;
     }
     .hitl-title { font-size: 13px; font-weight: 700; color: #fbbf24; margin-bottom: 4px; }
+
+    /* AI Studio chat bubbles */
+    .ai-msg { margin-bottom: 8px; }
+    .ai-msg.user { text-align: right; }
+    .ai-msg .bubble { display: inline-block; padding: 6px 10px; border-radius: 10px; max-width: 85%; text-align: left; white-space: pre-wrap; word-break: break-word; }
+    .ai-msg.user .bubble { background: var(--primary); color: var(--primary-text); }
+    .ai-msg.assistant .bubble { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+    .ai-msg.error .bubble { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
   </style>
 </head>
 <body>
@@ -453,7 +463,7 @@
       <div class="card">
         <div class="card-title">AI Studio Mobile</div>
         <div id="ai-chat-box" style="height: 240px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px; font-size: 13px; margin-bottom: 8px;">
-          <div style="color: var(--muted); text-align: center; margin-top: 30px;">
+          <div id="ai-chat-placeholder" style="color: var(--muted); text-align: center; margin-top: 30px;">
             Задайте вопрос или поручите задачу AI-ассистенту проекта
           </div>
         </div>
@@ -486,7 +496,7 @@
     </button>
   </nav>
 
-  <!-- Mini App Logic & Crypto -->
+  <!-- Mini App Logic -->
   <script>
     const tg = window.Telegram?.WebApp;
     if (tg) {
@@ -507,40 +517,16 @@
       } catch (e) {}
     }
 
-    // --- Web Crypto E2EE (AES-256-GCM) ---
-    async function deriveCryptoKey(secretHex) {
-      const cleanHex = secretHex.replace(/[^0-9a-fA-F]/g, '');
-      const rawBytes = new Uint8Array(32);
-      for (let i = 0; i < Math.min(32, cleanHex.length / 2); i++) {
-        rawBytes[i] = parseInt(cleanHex.substr(i * 2, 2), 16);
-      }
-      return await crypto.subtle.importKey('raw', rawBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-    }
-
+    // --- E2EE через общий канонический модуль (window.RemoteCrypto из /remote-crypto.js) ---
+    // Формат на проводе — {e2ee:true, iv, tag, data} в hex (decision-11 п.3), без ключа — plain JSON.
     async function encryptData(payloadObj, secretHex) {
       if (!secretHex) return payloadObj;
-      const key = await deriveCryptoKey(secretHex);
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const encoded = new TextEncoder().encode(JSON.stringify(payloadObj));
-      const cipherBuffer = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, encoded);
-      
-      const toB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
-      return {
-        type: 'encrypted',
-        version: 1,
-        iv: toB64(iv),
-        payload: toB64(cipherBuffer)
-      };
+      return await RemoteCrypto.encryptPayloadWeb(payloadObj, secretHex);
     }
 
     async function decryptData(packet, secretHex) {
-      if (!packet || packet.type !== 'encrypted' || !secretHex) return packet;
-      const key = await deriveCryptoKey(secretHex);
-      const fromB64 = (b64) => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-      const iv = fromB64(packet.iv);
-      const cipher = fromB64(packet.payload);
-      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, cipher);
-      return JSON.parse(new TextDecoder().decode(decrypted));
+      if (!packet || !packet.e2ee || !secretHex) return packet;
+      return await RemoteCrypto.decryptPayloadWeb(packet, secretHex);
     }
 
     // --- State & Connection ---
@@ -567,8 +553,10 @@
       if (hash.get('pin')) currentConfig.pin = hash.get('pin');
       if (hash.get('relay')) currentConfig.relay = decodeURIComponent(hash.get('relay'));
 
-      // If start_param is passed (base64 encoded JSON or param string)
-      if (startParam) {
+      // Deep-link из QR RemoteControlBadge: `startapp=k_<hex>` — чистый hex-ключ с префиксом.
+      if (startParam.startsWith('k_')) {
+        currentConfig.key = startParam.slice(2);
+      } else if (startParam) {
         try {
           const decoded = atob(startParam);
           if (decoded.includes('key=')) {
@@ -623,7 +611,23 @@
     let viewMode = 'current'; // 'current' | 'all'
     let currentProjects = [];
 
+    // Переподключение с экспоненциальной задержкой (TASK-65, decision-11 п.6).
+    let reconnectAttempt = 0;
+    let reconnectTimer = null;
+    let manualDisconnect = false;
+
+    function scheduleReconnect() {
+      if (manualDisconnect) return;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      const delay = Math.min(30000, 1000 * Math.pow(2, reconnectAttempt));
+      reconnectAttempt++;
+      setStatus(false, `Переподключение через ${Math.round(delay / 1000)}с...`);
+      reconnectTimer = setTimeout(() => connectWs(), delay);
+    }
+
     function connectWs(overrideHost) {
+      manualDisconnect = false;
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       if (ws) {
         try { ws.close(); } catch (e) {}
       }
@@ -656,6 +660,7 @@
         ws = new WebSocket(wsUrl);
 
         ws.onopen = async () => {
+          reconnectAttempt = 0;
           setStatus(true, 'Онлайн');
           triggerHaptic('success');
           // Load projects and federation
@@ -688,9 +693,11 @@
 
         ws.onclose = () => {
           setStatus(false, 'Отключен');
+          scheduleReconnect();
         };
       } catch (err) {
         setStatus(false, 'Сбой');
+        scheduleReconnect();
       }
     }
 
@@ -714,16 +721,109 @@
       });
     }
 
+    // --- HITL (TASK-65, decision-5 п.6): очередь запросов, решение строго по requestId ---
+    const hitlQueue = [];
+    function renderHitl() {
+      const box = document.getElementById('hitl-container');
+      const current = hitlQueue[0];
+      if (!current) { box.style.display = 'none'; return; }
+      const who = current.agentName ? ` [${current.agentName}${current.role ? ' / ' + current.role : ''}]` : '';
+      const extra = current.command ? `\n$ ${current.command}` : current.filePath ? `\n${current.filePath}` : '';
+      const rest = hitlQueue.length > 1 ? ` (+${hitlQueue.length - 1} в очереди)` : '';
+      document.getElementById('hitl-desc').textContent = (current.description || 'Требуется подтверждение') + who + extra + rest;
+      box.style.display = 'block';
+    }
+    function showHitlRequest(data) {
+      if (!data || !data.requestId) return;
+      if (!hitlQueue.some((r) => r.requestId === data.requestId)) hitlQueue.push(data);
+      triggerHaptic('warning');
+      renderHitl();
+    }
+    function dropHitl(requestId) {
+      const idx = hitlQueue.findIndex((r) => r.requestId === requestId);
+      if (idx >= 0) hitlQueue.splice(idx, 1);
+      renderHitl();
+    }
+    async function decideHitl(decision) {
+      const current = hitlQueue[0];
+      if (!current) return;
+      dropHitl(current.requestId);
+      triggerHaptic('medium');
+      try {
+        await callRpc('hitl_decision', { requestId: current.requestId, sessionId: current.sessionId, decision });
+      } catch (e) {
+        console.error('HITL decision error:', e);
+      }
+    }
+    document.getElementById('hitl-allow').addEventListener('click', () => decideHitl('allow'));
+    document.getElementById('hitl-deny').addEventListener('click', () => decideHitl('deny'));
+
+    // --- AI Studio (TASK-65): промпт, стрим ответа по sessionId ---
+    let aiSessionId = null;
+    let aiAssistantBubble = null;
+    function clearAiPlaceholder() {
+      const placeholder = document.getElementById('ai-chat-placeholder');
+      if (placeholder) placeholder.remove();
+    }
+    function appendAiMessage(role, text) {
+      clearAiPlaceholder();
+      const box = document.getElementById('ai-chat-box');
+      const row = document.createElement('div');
+      row.className = `ai-msg ${role}`;
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = text;
+      row.appendChild(bubble);
+      box.appendChild(row);
+      box.scrollTop = box.scrollHeight;
+      return bubble;
+    }
+    async function sendAiPrompt() {
+      const input = document.getElementById('ai-prompt-input');
+      const prompt = input.value.trim();
+      if (!prompt || !activeProjectPath) return;
+      input.value = '';
+      triggerHaptic('light');
+      appendAiMessage('user', prompt);
+      aiAssistantBubble = null;
+      try {
+        const res = await callRpc('send_ai_prompt', { projectPath: activeProjectPath, prompt });
+        aiSessionId = res?.sessionId || null;
+      } catch (e) {
+        appendAiMessage('error', 'Ошибка отправки: ' + (e && e.message ? e.message : e));
+      }
+    }
+    document.getElementById('ai-send-btn').addEventListener('click', sendAiPrompt);
+    document.getElementById('ai-prompt-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendAiPrompt();
+    });
+
     function handleIncomingEvent(event, data) {
-      if (event === 'process:log') {
+      if (event === 'process:logChunk') {
         const term = document.getElementById('terminal-logs');
-        term.textContent += `[${data.name}] ${data.text}`;
+        term.textContent += `[${data.processId}] ${data.text}`;
         term.scrollTop = term.scrollHeight;
       } else if (event === 'process:statusChanged' || event === 'backlog:changed') {
         refreshProcesses();
         refreshTasks();
-      } else if (event === 'remote:hitlDecisionMade') {
-        document.getElementById('hitl-container').style.display = 'none';
+      } else if (event === 'ai:hitl') {
+        showHitlRequest(data);
+      } else if (event === 'ai:hitlDecided' || event === 'remote:hitlDecisionMade') {
+        dropHitl(data && data.requestId);
+      } else if (event === 'ai:chunk') {
+        if (!data || data.sessionId !== aiSessionId || !data.text) return;
+        if (!aiAssistantBubble) aiAssistantBubble = appendAiMessage('assistant', '');
+        aiAssistantBubble.textContent += data.text;
+        document.getElementById('ai-chat-box').scrollTop = document.getElementById('ai-chat-box').scrollHeight;
+      } else if (event === 'ai:complete') {
+        if (!data || data.sessionId !== aiSessionId) return;
+        aiAssistantBubble = null;
+        triggerHaptic('success');
+      } else if (event === 'ai:error') {
+        if (!data || data.sessionId !== aiSessionId) return;
+        appendAiMessage('error', data.error || 'Ошибка AI-ассистента');
+        aiAssistantBubble = null;
+        triggerHaptic('error');
       }
     }
 

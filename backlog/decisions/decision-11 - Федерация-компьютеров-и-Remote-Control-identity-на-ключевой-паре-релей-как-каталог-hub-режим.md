@@ -59,3 +59,18 @@ Tunnel с меняющимся URL и релей-сервер без аутен�
 - Минус: отказ от WebRTC означает, что трафик вне LAN идёт через релей, но он зашифрован
   end-to-end и релей не видит содержимого.
 - Реализация: ремонт текущего контура TASK-65, федерация TASK-66.
+
+## Implementation note (TASK-65, 2026-09-11)
+
+Пункты 1-3 и часть 6 реализованы в TASK-65: Ed25519-identity хоста (`node:crypto`, приватный
+ключ — `secretStorageService`/`safeStorage`), per-device токены с правами
+(`readOnly`/`hitl`/`full`) и отзывом, единый формат E2EE на всех клиентах (Mini App переведена на
+общий `remote-crypto.js`), релей проверяет подпись хоста при регистрации и отклоняет захват
+чужого `hostId` (`scripts/remote-relay-server.mjs`, `scripts/remoteRelayAuth.mjs`), Dockerfile и
+инструкция self-hosted деплоя (`deploy/relay/`), экспоненциальный backoff на клиентах,
+идемпотентность RPC по `requestId`, буфер событий для догона (`get_events_since`, ещё не
+подключён к переподключению в Mini App/embedded-клиенте — известный остаток).
+
+Пункты 4-5 (hub-режим: ProjectHub как клиент другого ProjectHub, назначение
+`agent:<role>@<hostId>`) не реализованы — это предмет TASK-66. Статус решения остаётся
+`proposed` до его завершения.

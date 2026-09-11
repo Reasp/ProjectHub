@@ -1,32 +1,29 @@
 #!/usr/bin/env node
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
+import { decodePubkey, verifySignature, isHijackAttempt } from './remoteRelayAuth.mjs';
 
 /**
  * ProjectHub Remote Relay Server
  * Легковесный релей-сервер для связи между десктопом ProjectHub и удаленными мобильными клиентами.
  * Поддерживает E2EE (End-to-End Encryption): сервер не имеет доступа к содержимому сообщений.
+ *
+ * Регистрация хоста (TASK-65, decision-11 п.2): хост предъявляет свой Ed25519 identity-публичный
+ * ключ и подписывает случайный nonce приватным ключом (challenge-response) — без валидной подписи
+ * `hostId` не регистрируется. Один и тот же `hostId` с ДРУГИМ ключом отклоняется — так чужой
+ * hostId нельзя захватить, даже зная его (он не секрет, публикуется в QR/deep-link).
  */
 
 const PORT = parseInt(process.env.RELAY_PORT || process.env.PORT || '42055', 10);
 const HOST = process.env.RELAY_HOST || '0.0.0.0';
+const AUTH_TIMEOUT_MS = 5000;
 
 // Хранилище подключений
-// hostId -> { ws: WebSocket, hostInfo: any, clients: Map<clientId, { ws: WebSocket, clientInfo: any }> }
+// hostId -> { hostWs, hostId, hostPubkey, hostMeta, clients: Map<clientId, {...}> }
 const sessions = new Map();
 
 const server = http.createServer((req, res) => {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-
   if (req.url === '/health' || req.url === '/') {
     let totalClients = 0;
     for (const session of sessions.values()) {
@@ -38,7 +35,7 @@ const server = http.createServer((req, res) => {
       JSON.stringify({
         status: 'ok',
         service: 'ProjectHub-Remote-Relay',
-        version: '1.0.0',
+        version: '2.0.0',
         activeHosts: sessions.size,
         activeClients: totalClients,
         uptimeSeconds: Math.floor(process.uptime()),
@@ -48,11 +45,11 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // GET /api/federation/hosts - список всех активных хостов в федерации
+  // GET /api/federation/hosts - список всех активных хостов в федерации на этом релее
   if (req.url === '/api/federation/hosts') {
     const hosts = [];
     for (const s of sessions.values()) {
-      if (s.hostWs && s.hostWs.readyState === WebSocket.OPEN) {
+      if (s.authenticated && s.hostWs && s.hostWs.readyState === WebSocket.OPEN) {
         hosts.push(
           s.hostMeta || {
             hostId: s.hostId,
@@ -75,6 +72,50 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server });
 
+function setupHostMessageRouting(ws, hostId, session) {
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw.toString());
+
+      // Обновление метаданных хоста (проекты, процессы)
+      if (msg.type === 'host_meta_update' && msg.meta) {
+        session.hostMeta = { ...session.hostMeta, ...msg.meta, lastSeen: Date.now() };
+        return;
+      }
+
+      // Если хост отправляет сообщение конкретному клиенту
+      if (msg.targetClientId) {
+        const client = session.clients.get(msg.targetClientId);
+        if (client && client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(raw);
+        }
+      } else {
+        // Broadcast всем клиентам данного хоста
+        for (const client of session.clients.values()) {
+          if (client.ws.readyState === WebSocket.OPEN) {
+            client.ws.send(raw);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Relay] Error handling host message:', err);
+    }
+  });
+
+  ws.on('close', () => {
+    console.log(`[Relay] Host disconnected: ${hostId}`);
+    const current = sessions.get(hostId);
+    if (current && current.hostWs === ws) {
+      for (const client of current.clients.values()) {
+        if (client.ws.readyState === WebSocket.OPEN) {
+          client.ws.send(JSON.stringify({ type: 'host_disconnected', hostId }));
+        }
+      }
+      sessions.delete(hostId);
+    }
+  });
+}
+
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const role = url.searchParams.get('role'); // 'host' | 'client'
@@ -90,96 +131,91 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  // Роль: HOST (десктопное приложение ProjectHub)
+  // Роль: HOST (десктопное приложение ProjectHub) — требует identity-ключ и подпись nonce.
   if (role === 'host') {
-    let session = sessions.get(hostId);
-    const hostMeta = {
-      hostId,
-      machineName,
-      platform,
-      tunnelUrl,
-      isOnline: true,
-      projectsCount: 0,
-      activeProcessesCount: 0,
-      lastSeen: Date.now()
-    };
-
-    if (!session) {
-      session = {
-        hostWs: ws,
-        hostId,
-        hostMeta,
-        clients: new Map()
-      };
-      sessions.set(hostId, session);
-    } else {
-      // Заменяем старое подключение хоста
-      try {
-        if (session.hostWs && session.hostWs !== ws && session.hostWs.readyState === WebSocket.OPEN) {
-          session.hostWs.close(1000, 'Replaced by new host connection');
-        }
-      } catch {
-        // ignore
-      }
-      session.hostWs = ws;
-      session.hostMeta = hostMeta;
+    const pubkeyParam = url.searchParams.get('pubkey');
+    const decoded = pubkeyParam && decodePubkey(pubkeyParam);
+    if (!decoded) {
+      ws.close(1008, 'Missing or invalid pubkey');
+      return;
     }
 
-    console.log(`[Relay] Host registered: ${hostId} [${machineName}] (IP: ${req.socket.remoteAddress})`);
+    const existing = sessions.get(hostId);
+    if (isHijackAttempt(existing?.hostPubkey, decoded.pem)) {
+      console.warn(`[Relay] Rejected host registration for ${hostId}: pubkey mismatch (possible hijack attempt)`);
+      ws.close(4001, 'hostId already registered with a different identity key');
+      return;
+    }
 
-    // Подтверждение хосту
-    ws.send(JSON.stringify({ type: 'relay_ack', role: 'host', hostId, machineName }));
+    const nonce = crypto.randomBytes(24).toString('hex');
+    ws.send(JSON.stringify({ type: 'auth_challenge', nonce }));
 
-    ws.on('message', (raw) => {
+    const authTimer = setTimeout(() => {
+      ws.close(1008, 'Auth challenge timeout');
+    }, AUTH_TIMEOUT_MS);
+
+    const onAuthMessage = (raw) => {
+      let msg;
       try {
-        const msg = JSON.parse(raw.toString());
-
-        // Обновление метаданных хоста (проекты, процессы)
-        if (msg.type === 'host_meta_update' && msg.meta) {
-          session.hostMeta = { ...session.hostMeta, ...msg.meta, lastSeen: Date.now() };
-          return;
-        }
-
-        // Если хост отправляет сообщение конкретному клиенту
-        if (msg.targetClientId) {
-          const client = session.clients.get(msg.targetClientId);
-          if (client && client.ws.readyState === WebSocket.OPEN) {
-            client.ws.send(raw);
-          }
-        } else {
-          // Broadcast всем клиентам данного хоста
-          for (const client of session.clients.values()) {
-            if (client.ws.readyState === WebSocket.OPEN) {
-              client.ws.send(raw);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[Relay] Error handling host message:', err);
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return;
       }
-    });
+      if (msg.type !== 'auth_response') return;
 
-    ws.on('close', () => {
-      console.log(`[Relay] Host disconnected: ${hostId}`);
-      // Оповещаем подключенных клиентов
-      const current = sessions.get(hostId);
-      if (current && current.hostWs === ws) {
-        for (const client of current.clients.values()) {
-          if (client.ws.readyState === WebSocket.OPEN) {
-            client.ws.send(JSON.stringify({ type: 'host_disconnected', hostId }));
-          }
-        }
-        sessions.delete(hostId);
+      ws.removeListener('message', onAuthMessage);
+      clearTimeout(authTimer);
+
+      if (!verifySignature(decoded.keyObject, nonce, msg.signature || '')) {
+        console.warn(`[Relay] Rejected host registration for ${hostId}: invalid signature`);
+        ws.close(1008, 'Invalid signature');
+        return;
       }
-    });
 
+      const hostMeta = {
+        hostId,
+        machineName,
+        platform,
+        tunnelUrl,
+        isOnline: true,
+        projectsCount: 0,
+        activeProcessesCount: 0,
+        lastSeen: Date.now()
+      };
+
+      let session = sessions.get(hostId);
+      if (!session) {
+        session = { hostWs: ws, hostId, hostPubkey: decoded.pem, hostMeta, clients: new Map(), authenticated: true };
+        sessions.set(hostId, session);
+      } else {
+        try {
+          if (session.hostWs && session.hostWs !== ws && session.hostWs.readyState === WebSocket.OPEN) {
+            session.hostWs.close(1000, 'Replaced by new host connection');
+          }
+        } catch {
+          // ignore
+        }
+        session.hostWs = ws;
+        session.hostPubkey = decoded.pem;
+        session.hostMeta = hostMeta;
+        session.authenticated = true;
+      }
+
+      console.log(`[Relay] Host authenticated: ${hostId} [${machineName}] (IP: ${req.socket.remoteAddress})`);
+      ws.send(JSON.stringify({ type: 'relay_ack', role: 'host', hostId, machineName }));
+      setupHostMessageRouting(ws, hostId, session);
+    };
+
+    ws.on('message', onAuthMessage);
+    ws.on('close', () => clearTimeout(authTimer));
     return;
   }
 
-  // Роль: CLIENT (телефон, браузер, удаленный ПК)
+  // Роль: CLIENT (телефон, браузер, удаленный ПК) — сам транспорт не аутентифицирует клиента,
+  // это делает хост через E2EE-пакет handshake (PIN/ключ/token), см. remoteControlService.
   if (role === 'client') {
     const session = sessions.get(hostId);
-    if (!session || !session.hostWs || session.hostWs.readyState !== WebSocket.OPEN) {
+    if (!session || !session.authenticated || !session.hostWs || session.hostWs.readyState !== WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'error', error: 'Host offline or not found', hostId }));
       ws.close(1002, 'Host not found');
       return;

@@ -46,4 +46,9 @@ MCP-сервер с любой веб-страницы, path traversal в IPC и
 - Плюс: единый список требований для ревью новых подсистем.
 - Минус: часть удобств (открыть MCP для соседнего ПК, отключить PIN) намеренно невозможна;
   для этих сценариев используется федерация с ключевой парой.
-- Текущие отклонения Remote Control от пунктов 4 и 5 фиксируются как дефекты в TASK-65.
+- Отклонения Remote Control от пунктов 4 и 5 устранены в TASK-65: секреты (`secretKey`,
+  `pairingPin`, `telegramBotToken`, приватный identity-ключ, per-device токены) переведены на
+  `secretStorageService`/`safeStorage`, `/api/federation/*` требуют Bearer-токен, `/api/status`
+  урезан до непубличного минимума, `/api/qr` (отдавал секрет без проверки) удалён, PIN защищён
+  rate-limit и константным сравнением, CORS `*` снят. Тесты — `tests/unit/remoteControlAuth.test.ts`,
+  `tests/unit/remoteRelayAuth.test.ts`.

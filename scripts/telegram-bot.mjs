@@ -16,7 +16,11 @@ function loadConfig() {
     allowedUsers: process.env.TELEGRAM_ALLOWED_USERS || '',
     miniAppUrl: process.env.PROJECTHUB_MINIAPP_URL || '',
     hubPort: Number(process.env.PROJECTHUB_PORT || 42050),
-    hubHost: process.env.PROJECTHUB_HOST || '127.0.0.1'
+    hubHost: process.env.PROJECTHUB_HOST || '127.0.0.1',
+    // Мастер-ключ Remote Control этого хоста (тот же `secretToken` из бейджа Remote Control) —
+    // требуется для /api/federation/* с TASK-65 (decision-5 п.5: аутентификация на каждом
+    // сетевом эндпоинте). Без него доступен только урезанный публичный /api/status.
+    hostToken: process.env.PROJECTHUB_HOST_TOKEN || ''
   };
 
   if (fs.existsSync(CONFIG_FILE)) {
@@ -40,7 +44,8 @@ if (!config.botToken) {
 {
   "botToken": "123456789:ABC...",
   "allowedUsers": "username1,12345678",
-  "miniAppUrl": "https://your-public-url.com/telegram"
+  "miniAppUrl": "https://your-public-url.com/telegram",
+  "hostToken": "<secretToken из бейджа Remote Control ProjectHub>"
 }
 `);
 }
@@ -62,6 +67,12 @@ async function tgApi(method, body = {}) {
     throw new Error(data.description || `Telegram API error in ${method}`);
   }
   return data.result;
+}
+
+/** GET на локальный хаб ProjectHub с Bearer-токеном, если он настроен (TASK-65, decision-5 п.5). */
+function fetchHub(pathname) {
+  const headers = config.hostToken ? { Authorization: `Bearer ${config.hostToken}` } : undefined;
+  return fetch(`http://${config.hubHost}:${config.hubPort}${pathname}`, { headers });
 }
 
 function isUserAllowed(from) {
@@ -112,7 +123,8 @@ async function handleMessage(msg) {
 
   if (text.startsWith('/status') || text.startsWith('/help')) {
     try {
-      const res = await fetch(`http://${config.hubHost}:${config.hubPort}/api/federation/hosts`);
+      const res = await fetchHub('/api/federation/hosts');
+      if (!res.ok) throw new Error(`federation/hosts HTTP ${res.status}`);
       const fed = await res.json();
       const hosts = fed.hosts || [];
       const onlineHosts = hosts.filter((h) => h.isOnline);
@@ -137,7 +149,7 @@ async function handleMessage(msg) {
       });
     } catch {
       try {
-        const res = await fetch(`http://${config.hubHost}:${config.hubPort}/api/status`);
+        const res = await fetchHub('/api/status');
         const status = await res.json();
         await tgApi('sendMessage', {
           chat_id: chatId,

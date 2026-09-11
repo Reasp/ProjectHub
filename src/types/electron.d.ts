@@ -218,76 +218,13 @@ export interface UpdaterStatus {
   supportsAutoInstall: boolean;
 }
 
-export interface FederationHost {
-  hostId: string;
-  machineName: string;
-  platform: 'win32' | 'darwin' | 'linux';
-  tunnelUrl?: string;
-  localIps?: string[];
-  isOnline: boolean;
-  projectsCount: number;
-  activeProcessesCount: number;
-  projects?: Array<{ id: string; name: string; path: string }>;
-  lastSeen: number;
-}
-
-/** Статус встроенного сервиса удаленного управления (TASK-51). */
-export interface RemoteControlStatus {
-  enabled: boolean;
-  port: number;
-  relayConnected: boolean;
-  relayUrl: string;
-  useRelay: boolean;
-  useP2P: boolean;
-  hostId: string;
-  machineName?: string;
-  secretToken: string;
-  localAddresses: string[];
-  connectedDevices: RemoteDevice[];
-  qrPayload: string;
-  webUrl: string;
-  lastError: string | null;
-  autoStart?: boolean;
-  tunnelUrl?: string;
-  tunnelStatus?: 'idle' | 'starting' | 'active' | 'error';
-  tunnelError?: string | null;
-  federationHosts?: FederationHost[];
-  telegramBotToken?: string;
-  telegramChatId?: string;
-  telegramBotUsername?: string;
-  telegramMiniAppUrl?: string;
-}
-
-export interface RemoteDevice {
-  id: string;
-  name: string;
-  platform: string;
-  clientType: 'mobile' | 'desktop' | 'web';
-  ip?: string;
-  connectedAt: string;
-  lastSeen: string;
-  isApproved: boolean;
-  connectionMode: 'lan' | 'relay' | 'p2p';
-}
-
-export interface RemoteConfig {
-  enabled?: boolean;
-  port?: number;
-  readOnly?: boolean;
-  requireApproval?: boolean;
-  secretToken?: string;
-  relayUrl?: string;
-  useRelay?: boolean;
-  useP2P?: boolean;
-  stunServers?: string[];
-  machineName?: string;
-  autoStart?: boolean;
-  tunnelUrl?: string;
-  telegramBotToken?: string;
-  telegramChatId?: string;
-  telegramBotUsername?: string;
-  telegramMiniAppUrl?: string;
-}
+// Remote Control (TASK-51, TASK-65): единственный источник истины для этих типов — `./remote`
+// (используется и рендерером, и main-процессом/remoteControlService). Раньше здесь были
+// собственные, разошедшиеся с рантаймом определения (`relayUrl`, `qrPayload`, `clientType`,
+// `connectionMode`, ...) — IPC фактически всегда отдавал форму из `./remote`, из-за чего
+// `RemoteControlBadge.tsx` читал несуществующие поля (decision-11, TASK-65 п.7).
+export type { FederationHost, RemoteDevice, RemoteControlStatus } from './remote';
+export type { RemoteControlConfig as RemoteConfig } from './remote';
 
 export interface ManagedProcess {
   id: string;
@@ -683,8 +620,8 @@ export interface IElectronAPI {
   // Remote Control (TASK-51)
   getRemoteStatus: () => Promise<RemoteControlStatus>;
   toggleRemoteControl: (enable?: boolean) => Promise<RemoteControlStatus>;
-  updateRemoteConfig: (config: RemoteConfig) => Promise<RemoteControlStatus>;
-  regenerateRemoteToken: () => Promise<string>;
+  updateRemoteConfig: (config: Partial<RemoteConfig>) => Promise<RemoteControlStatus>;
+  regenerateRemoteToken: () => Promise<RemoteControlStatus>;
   disconnectRemoteDevice: (deviceId: string) => Promise<boolean>;
   approveRemoteDevice: (deviceId: string) => Promise<boolean>;
   testTelegramNotification: (text?: string) => Promise<boolean>;

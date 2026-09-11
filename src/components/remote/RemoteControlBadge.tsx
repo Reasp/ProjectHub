@@ -35,9 +35,8 @@ export const RemoteControlBadge: React.FC = () => {
 
   // Local settings state
   const [port, setPort] = useState<number>(49200);
-  const [relayUrl, setRelayUrl] = useState<string>('ws://localhost:8765');
-  const [useRelay, setUseRelay] = useState<boolean>(true);
-  const [useP2P, setUseP2P] = useState<boolean>(true);
+  const [relayServerUrl, setRelayServerUrl] = useState<string>('ws://localhost:8765');
+  const [mode, setMode] = useState<'lan' | 'relay'>('lan');
   const [readOnly, setReadOnly] = useState<boolean>(false);
   const [requireApproval, setRequireApproval] = useState<boolean>(true);
   const [machineName, setMachineName] = useState<string>('');
@@ -59,9 +58,8 @@ export const RemoteControlBadge: React.FC = () => {
         const st = await window.api.getRemoteStatus();
         setStatus(st);
         setPort(st.port);
-        setRelayUrl(st.relayUrl);
-        setUseRelay(st.useRelay);
-        setUseP2P(st.useP2P);
+        setRelayServerUrl(st.relayServerUrl);
+        setMode(st.mode);
         if (st.machineName !== undefined) setMachineName(st.machineName);
         if (st.autoStart !== undefined) setAutoStart(st.autoStart);
         if (st.telegramBotToken !== undefined) setTelegramBotToken(st.telegramBotToken);
@@ -79,9 +77,8 @@ export const RemoteControlBadge: React.FC = () => {
     const unsubscribe = window.api?.onRemoteControlStatusChanged?.((next) => {
       setStatus(next);
       setPort(next.port);
-      setRelayUrl(next.relayUrl);
-      setUseRelay(next.useRelay);
-      setUseP2P(next.useP2P);
+      setRelayServerUrl(next.relayServerUrl);
+      setMode(next.mode);
       if (next.machineName !== undefined) setMachineName(next.machineName);
       if (next.autoStart !== undefined) setAutoStart(next.autoStart);
       if (next.telegramBotToken !== undefined) setTelegramBotToken(next.telegramBotToken);
@@ -99,7 +96,8 @@ export const RemoteControlBadge: React.FC = () => {
     if (!status || !isOpen) return;
 
     const localIp = status.localAddresses?.[0] || 'localhost';
-    const pairingUrl = `http://${localIp}:${status.port}/remote#host=${status.hostId}&key=${status.secretToken}&relay=${encodeURIComponent(status.relayUrl)}&mode=${status.useP2P ? 'p2p' : status.useRelay ? 'relay' : 'lan'}`;
+    const secretTokenForQr = status.secretToken ?? '';
+    const pairingUrl = `http://${localIp}:${status.port}/remote#host=${status.hostId}&key=${secretTokenForQr}&relay=${encodeURIComponent(status.relayServerUrl)}&mode=${status.mode}`;
 
     QRCode.toDataURL(pairingUrl, {
       margin: 2,
@@ -113,8 +111,8 @@ export const RemoteControlBadge: React.FC = () => {
     const effectiveTgUrl = status.tunnelUrl
       ? `${status.tunnelUrl}/telegram`
       : telegramBotUsername
-      ? `https://t.me/${telegramBotUsername}?startapp=k_${status.secretToken.slice(0, 32)}`
-      : `http://${localIp}:${status.port}/telegram#host=${status.hostId}&key=${status.secretToken}`;
+      ? `https://t.me/${telegramBotUsername}?startapp=k_${secretTokenForQr.slice(0, 32)}`
+      : `http://${localIp}:${status.port}/telegram#host=${status.hostId}&key=${secretTokenForQr}`;
 
     QRCode.toDataURL(effectiveTgUrl, {
       margin: 2,
@@ -138,8 +136,8 @@ export const RemoteControlBadge: React.FC = () => {
   const handleRegenerate = async () => {
     if (!window.api?.regenerateRemoteToken) return;
     try {
-      const nextToken = await window.api.regenerateRemoteToken();
-      setStatus((prev) => (prev ? { ...prev, secretToken: nextToken } : null));
+      const next = await window.api.regenerateRemoteToken();
+      setStatus(next);
     } catch (e) {
       console.error('Failed to regenerate remote token:', e);
     }
@@ -151,9 +149,8 @@ export const RemoteControlBadge: React.FC = () => {
     try {
       const updated = await window.api.updateRemoteConfig({
         port,
-        relayUrl,
-        useRelay,
-        useP2P,
+        relayServerUrl,
+        mode,
         readOnly,
         requireApproval,
         machineName,
@@ -232,11 +229,12 @@ export const RemoteControlBadge: React.FC = () => {
 
   if (!status) return null;
 
+  const secretToken = status.secretToken ?? '';
   const connectedCount = status.connectedDevices?.length || 0;
   const approvedCount = status.connectedDevices?.filter((d) => d.isApproved).length || 0;
   const primaryIp = status.localAddresses?.[0] || 'localhost';
-  const webClientUrl = `http://${primaryIp}:${status.port}/remote#host=${status.hostId}&key=${status.secretToken}&relay=${encodeURIComponent(status.relayUrl)}`;
-  const telegramDirectUrl = `http://${primaryIp}:${status.port}/telegram#host=${status.hostId}&key=${status.secretToken}`;
+  const webClientUrl = `http://${primaryIp}:${status.port}/remote#host=${status.hostId}&key=${secretToken}&relay=${encodeURIComponent(status.relayServerUrl)}`;
+  const telegramDirectUrl = `http://${primaryIp}:${status.port}/telegram#host=${status.hostId}&key=${secretToken}`;
   const telegramBotDeepLink = telegramBotUsername
     ? `https://t.me/${telegramBotUsername}?startapp=host_${status.hostId}`
     : '';
@@ -406,7 +404,7 @@ export const RemoteControlBadge: React.FC = () => {
                       </p>
                       <div className="flex flex-wrap gap-1.5 pt-1">
                         <span className="px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20 text-[10px] text-indigo-300">
-                          {status.useP2P ? t.remote.p2pBadge : t.remote.lanBadge}
+                          {status.mode === 'relay' ? t.remote.relayBadge : t.remote.lanBadge}
                         </span>
                         {status.relayConnected && (
                           <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-[10px] text-emerald-300">
@@ -471,12 +469,12 @@ export const RemoteControlBadge: React.FC = () => {
                       <input
                         type="password"
                         readOnly
-                        value={status.secretToken}
+                        value={secretToken}
                         className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 font-mono select-all focus:outline-none"
                       />
                       <button
                         type="button"
-                        onClick={() => copyToClipboard(status.secretToken, 'secretToken')}
+                        onClick={() => copyToClipboard(secretToken, 'secretToken')}
                         className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition"
                         title={t.remote.copyTokenTooltip}
                       >
@@ -740,11 +738,11 @@ export const RemoteControlBadge: React.FC = () => {
                               <div className="text-xs font-semibold text-white flex items-center gap-2">
                                 {dev.name}
                                 <span className="px-1.5 py-0.2 bg-slate-800 text-[10px] text-slate-400 rounded">
-                                  {dev.connectionMode.toUpperCase()}
+                                  {dev.mode.toUpperCase()}
                                 </span>
                               </div>
                               <div className="text-[11px] text-slate-400">
-                                {dev.platform} • {dev.ip || 'Remote IP'}
+                                {dev.ip || 'Remote IP'}
                               </div>
                             </div>
                           </div>
@@ -797,8 +795,8 @@ export const RemoteControlBadge: React.FC = () => {
                       <label className="text-slate-300 font-medium block mb-1">{t.remote.wsRelayUrl}</label>
                       <input
                         type="text"
-                        value={relayUrl}
-                        onChange={(e) => setRelayUrl(e.target.value)}
+                        value={relayServerUrl}
+                        onChange={(e) => setRelayServerUrl(e.target.value)}
                         placeholder="ws://localhost:8765"
                         className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 font-mono"
                       />
@@ -809,18 +807,8 @@ export const RemoteControlBadge: React.FC = () => {
                     <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={useP2P}
-                        onChange={(e) => setUseP2P(e.target.checked)}
-                        className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
-                      />
-                      <span>{t.remote.enableWebRTC}</span>
-                    </label>
-
-                    <label className="flex items-center gap-2 text-slate-300 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={useRelay}
-                        onChange={(e) => setUseRelay(e.target.checked)}
+                        checked={mode === 'relay'}
+                        onChange={(e) => setMode(e.target.checked ? 'relay' : 'lan')}
                         className="rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0"
                       />
                       <span>{t.remote.useWsRelay}</span>

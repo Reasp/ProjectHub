@@ -1,4 +1,8 @@
-export type RemoteConnectionMode = 'lan' | 'webrtc' | 'relay';
+/** LAN Direct и Relay (decision-11 п.2) — WebRTC выведен из scope, `RTCPeerConnection` в коде не было. */
+export type RemoteConnectionMode = 'lan' | 'relay';
+
+/** Права per-device токена (TASK-65, decision-11 п.1). */
+export type DeviceRights = 'readOnly' | 'hitl' | 'full';
 
 export interface RemoteDevice {
   id: string;
@@ -9,6 +13,8 @@ export interface RemoteDevice {
   lastSeenAt: number;
   userAgent: string;
   isApproved: boolean;
+  /** Права выданного при сопряжении токена; отсутствует, пока устройство не прошло сопряжение. */
+  rights?: DeviceRights;
 }
 
 export interface RemoteControlConfig {
@@ -18,8 +24,8 @@ export interface RemoteControlConfig {
   relayServerUrl: string;
   requireApproval: boolean;
   readOnly: boolean;
+  /** Производное поле статуса (не часть конфига): `mode === 'relay'`. */
   useRelay?: boolean;
-  useP2P?: boolean;
   machineName?: string;
   autoStart?: boolean;
   tunnelUrl?: string;
@@ -70,7 +76,6 @@ export interface RemoteControlStatus {
   tunnelError: string | null;
   federationHosts: FederationHost[];
   useRelay?: boolean;
-  useP2P?: boolean;
   localAddresses?: string[];
   secretToken?: string;
   telegramBotToken?: string;
@@ -121,12 +126,15 @@ export type RemoteRpcMethod =
   | 'hitl_decision'
   | 'get_pending_approvals'
   | 'run_action'
-  | 'get_federation_hosts';
+  | 'get_federation_hosts'
+  | 'get_events_since';
 
 export interface RemoteEventPayloads {
   'process:logChunk': { processId: string; text: string };
   'process:statusChanged': any;
-  'ai:chunk': { text: string };
+  'ai:chunk': { sessionId: string; text?: string };
+  'ai:complete': { sessionId: string; message: unknown };
+  'ai:error': { sessionId: string; error: string };
   /** Запрос HITL (TASK-57): решение отправляется RPC `hitl_decision` строго с `requestId`. */
   'ai:hitl': {
     requestId: string;

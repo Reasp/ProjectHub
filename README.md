@@ -82,7 +82,7 @@ IDE построена вокруг одного человека, которы�
 ### 📡 Управление откуда угодно
 
 - **Голосовое управление**: навигация, запуск процессов, коммиты, диктовка в AI Studio, hands-free режим. Web Speech API или локальный Whisper, настраиваемые фразы и синонимы, горячее переключение гарнитуры.
-- **Remote Control**: мобильный веб-клиент для проектов, задач, процессов, терминала и AI Studio. Режимы LAN Direct, WebRTC P2P и Server Relay со сквозным шифрованием AES-256-GCM, сопряжение по QR-коду.
+- **Remote Control**: мобильный веб-клиент для проектов, задач, процессов, терминала и AI Studio. Режимы LAN Direct и Server Relay (identity на Ed25519, per-device токены) со сквозным шифрованием AES-256-GCM, сопряжение по QR-коду.
 - **Telegram Mini App и бот**: полноценный клиент внутри Telegram с нативными компонентами WebApp, push-уведомления о падениях процессов и запросах HITL, автоматический HTTPS-туннель, объединение нескольких машин разработчика в единый Hub.
 - Глобальные горячие клавиши и палитра быстрых действий.
 - Интерфейс на английском и русском с мгновенным переключением.
@@ -138,7 +138,7 @@ flowchart LR
 | AI и агенты | Anthropic API, Claude Code CLI, Codex CLI, OpenRouter, DeepSeek, Ollama, @modelcontextprotocol/sdk |
 | Знания | LanceDB, @huggingface/transformers (`multilingual-e5-small`), gray-matter, Mermaid |
 | Голос | Web Speech API, локальный Whisper, AudioWorklet |
-| Remote | WebRTC DataChannel, WebSocket Relay, AES-256-GCM (Web Crypto), Telegram WebApp SDK |
+| Remote | WebSocket LAN Direct/Relay, Ed25519 identity, AES-256-GCM (Web Crypto), Telegram WebApp SDK |
 | Качество | ESLint (typescript-eslint, react-hooks), Vitest, валидатор документации, проверка externals бандла |
 
 ---

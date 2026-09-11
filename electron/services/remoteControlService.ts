@@ -12,6 +12,7 @@ import type {
   RemoteControlConfig,
   RemoteControlStatus,
   RemoteDevice,
+  DeviceRights,
   RemotePacket,
   EncryptedPacket,
   PlainPacket,
@@ -22,7 +23,11 @@ import { projectRegistry } from './projectRegistry.js';
 import { processManager } from './processManager.js';
 import { gitService } from './gitService.js';
 import { claudeBridgeService } from './claudeBridgeService.js';
+import { aiAgentService } from './aiAgentService.js';
+import { actionConfigService, type ActionDefinition } from './actionConfigService.js';
+import { createBacklogTaskFile } from './backlogTaskCreate.js';
 import { hitlService } from './hitlService.js';
+import { secretStorageService } from './secretStorageService.js';
 import { appEventBus } from './eventBus.js';
 import { logger } from './logger.js';
 import { getUserDataDir, getDevRepoRoot, getAppRootDir } from './appPaths.js';
@@ -58,12 +63,25 @@ interface ClientConnection {
   isEncrypted: boolean;
 }
 
+interface DeviceTokenRecord {
+  token: string;
+  rights: DeviceRights;
+  deviceName: string;
+  createdAt: number;
+}
+
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCKOUT_MS = 5 * 60 * 1000;
+const EVENT_LOG_MAX = 200;
+const RPC_IDEMPOTENCY_TTL_MS = 60 * 1000;
+
 class RemoteControlService {
   private server: http.Server | null = null;
   private wss: WebSocketServer | null = null;
   private relayWs: WebSocket | null = null;
   private relayConnected = false;
   private relayReconnectTimer: NodeJS.Timeout | null = null;
+  private relayReconnectAttempt = 0;
 
   private enabled = false;
   private port = 42050;
@@ -89,6 +107,26 @@ class RemoteControlService {
   private secretKey: string;
   private lastError: string | null = null;
 
+  /** Ed25519-identity хоста (decision-11 п.1); приватный ключ — только через secretStorageService. */
+  private identityPrivateKeyPem: string | null = null;
+  private identityPublicKeyPem: string | null = null;
+  private identityReady: Promise<void> | null = null;
+
+  /** Per-device токены выданные при сопряжении: deviceId -> запись (TASK-65). */
+  private deviceTokens = new Map<string, DeviceTokenRecord>();
+  /** Rate-limit подбора PIN/ключа по IP (decision-5 п.5). */
+  private pinAttempts = new Map<string, { count: number; lockedUntil: number }>();
+  /** Кольцевой буфер последних событий для догона по `lastEventId` (decision-11 п.6). */
+  private eventLog: Array<{ id: number; event: string; data: any }> = [];
+  private eventLogNextId = 1;
+  /** Идемпотентность RPC по `requestId` (decision-11 п.6): повтор в течение TTL возвращает
+   *  закэшированный ответ вместо повторного выполнения. */
+  private recentRpcResponses = new Map<string, { result?: any; error?: string; expiresAt: number }>();
+  /** Значения `secretKey`/`pairingPin`/`telegramBotToken`, найденные в legacy-plaintext конфиге при
+   *  первом запуске после TASK-65 — переносятся в secretStorageService и никогда больше не
+   *  пишутся в `remote-control.json` (decision-5 п.4). */
+  private legacySecretsToMigrate: { secretKey?: string; pairingPin?: string; telegramBotToken?: string } = {};
+
   private connectedDevices = new Map<string, RemoteDevice>();
   private localClients = new Map<string, ClientConnection>();
   private activeProjectPath: string | null = null;
@@ -108,6 +146,151 @@ class RemoteControlService {
 
     // Подписка на стриминг логов фоновых процессов
     this.setupProcessLogStreaming();
+  }
+
+  /**
+   * Секреты (`secretKey`, `pairingPin`, `telegramBotToken`, приватный ключ identity, per-device
+   * токены) — только через `secretStorageService` (safeStorage/DPAPI), никогда plaintext-JSON
+   * (decision-5 п.4). Разово переносит значения, найденные в старом `remote-control.json`.
+   * Вызывается из `initOnStartup()`; при отсутствии вызова (юнит-тесты) сервис остаётся на
+   * значениях по умолчанию из конструктора — функционально корректно, просто не персистентно.
+   */
+  private async loadPersistedSecrets(): Promise<void> {
+    try {
+      const [storedKey, storedPin, storedBotToken, storedTokens] = await Promise.all([
+        secretStorageService.getSecret('remoteControl.secretKey'),
+        secretStorageService.getSecret('remoteControl.pairingPin'),
+        secretStorageService.getSecret('remoteControl.telegramBotToken'),
+        secretStorageService.getSecret('remoteControl.deviceTokens')
+      ]);
+
+      this.secretKey = storedKey || this.legacySecretsToMigrate.secretKey || this.secretKey;
+      this.pairingPin = storedPin || this.legacySecretsToMigrate.pairingPin || this.pairingPin;
+      this.telegramBotToken = storedBotToken || this.legacySecretsToMigrate.telegramBotToken || this.telegramBotToken;
+
+      if (!storedKey) await secretStorageService.setSecret('remoteControl.secretKey', this.secretKey);
+      if (!storedPin) await secretStorageService.setSecret('remoteControl.pairingPin', this.pairingPin);
+      if (!storedBotToken && this.telegramBotToken) {
+        await secretStorageService.setSecret('remoteControl.telegramBotToken', this.telegramBotToken);
+      }
+
+      if (storedTokens) {
+        try {
+          const parsed = JSON.parse(storedTokens) as Record<string, DeviceTokenRecord>;
+          for (const [deviceId, rec] of Object.entries(parsed)) this.deviceTokens.set(deviceId, rec);
+        } catch {
+          // ignore corrupt device-tokens blob
+        }
+      }
+
+      this.legacySecretsToMigrate = {};
+      // Legacy-поля больше не пишутся saveConfig() — следующий вызов очистит их из JSON на диске.
+      this.saveConfig();
+    } catch (err: any) {
+      logger.warn(`[RemoteControl] Failed to load persisted secrets: ${err?.message || err}`);
+    }
+  }
+
+  private async persistDeviceTokens(): Promise<void> {
+    try {
+      const obj: Record<string, DeviceTokenRecord> = {};
+      for (const [deviceId, rec] of this.deviceTokens.entries()) obj[deviceId] = rec;
+      await secretStorageService.setSecret('remoteControl.deviceTokens', JSON.stringify(obj));
+    } catch (err: any) {
+      logger.warn(`[RemoteControl] Failed to persist device tokens: ${err?.message || err}`);
+    }
+  }
+
+  /** Ed25519-keypair хоста (decision-11 п.1), генерируется один раз, приватный ключ — в secretStorageService. */
+  private async ensureIdentity(): Promise<{ privateKeyPem: string; publicKeyPem: string }> {
+    if (this.identityPrivateKeyPem && this.identityPublicKeyPem) {
+      return { privateKeyPem: this.identityPrivateKeyPem, publicKeyPem: this.identityPublicKeyPem };
+    }
+    if (!this.identityReady) {
+      this.identityReady = (async () => {
+        const stored = await secretStorageService.getSecret('remoteControl.identityPrivateKey');
+        if (stored) {
+          this.identityPrivateKeyPem = stored;
+          this.identityPublicKeyPem = crypto.createPublicKey(stored).export({ type: 'spki', format: 'pem' }).toString();
+          return;
+        }
+        const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
+        this.identityPrivateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+        this.identityPublicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+        await secretStorageService.setSecret('remoteControl.identityPrivateKey', this.identityPrivateKeyPem);
+      })();
+    }
+    await this.identityReady;
+    return { privateKeyPem: this.identityPrivateKeyPem!, publicKeyPem: this.identityPublicKeyPem! };
+  }
+
+  /** Публичный ключ identity хоста (base64 SPKI) — для предъявления релею/пирам при регистрации. */
+  public async getIdentityPublicKey(): Promise<string> {
+    const { publicKeyPem } = await this.ensureIdentity();
+    return publicKeyPem;
+  }
+
+  /** Подпись произвольных данных приватным ключом identity хоста (hex) — challenge-response релея. */
+  public async signWithIdentity(data: string): Promise<string> {
+    const { privateKeyPem } = await this.ensureIdentity();
+    const key = crypto.createPrivateKey(privateKeyPem);
+    return crypto.sign(null, Buffer.from(data, 'utf8'), key).toString('hex');
+  }
+
+  private constantTimeEqual(a: string, b: string): boolean {
+    const bufA = Buffer.from(a, 'utf8');
+    const bufB = Buffer.from(b, 'utf8');
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+  }
+
+  /** Rate-limit подбора PIN/ключа (decision-5 п.5): 5 неудачных попыток -> блокировка на 5 минут. */
+  private checkPinRateLimit(ip: string): { allowed: boolean; retryAfterMs?: number } {
+    const entry = this.pinAttempts.get(ip);
+    if (!entry) return { allowed: true };
+    if (entry.lockedUntil > Date.now()) return { allowed: false, retryAfterMs: entry.lockedUntil - Date.now() };
+    return { allowed: true };
+  }
+
+  private recordPinFailure(ip: string): void {
+    const entry = this.pinAttempts.get(ip) || { count: 0, lockedUntil: 0 };
+    entry.count += 1;
+    if (entry.count >= PIN_MAX_ATTEMPTS) {
+      entry.lockedUntil = Date.now() + PIN_LOCKOUT_MS;
+      entry.count = 0;
+    }
+    this.pinAttempts.set(ip, entry);
+  }
+
+  private recordPinSuccess(ip: string): void {
+    this.pinAttempts.delete(ip);
+  }
+
+  /** Новый per-device токен при первом сопряжении (PIN/ключ); переподключения — уже по токену. */
+  private issueDeviceToken(deviceId: string, deviceName: string): DeviceTokenRecord {
+    const rights: DeviceRights = this.readOnly ? 'readOnly' : 'full';
+    const record: DeviceTokenRecord = {
+      token: crypto.randomBytes(32).toString('hex'),
+      rights,
+      deviceName,
+      createdAt: Date.now()
+    };
+    this.deviceTokens.set(deviceId, record);
+    this.persistDeviceTokens().catch(() => {});
+    return record;
+  }
+
+  private validateDeviceToken(deviceId: string, token: string): DeviceTokenRecord | null {
+    const record = this.deviceTokens.get(deviceId);
+    if (!record) return null;
+    return this.constantTimeEqual(record.token, token) ? record : null;
+  }
+
+  /** Отзыв токена конкретного устройства (в отличие от `regenerateToken`, не трогает остальных). */
+  public revokeDeviceToken(deviceId: string): void {
+    if (this.deviceTokens.delete(deviceId)) {
+      this.persistDeviceTokens().catch(() => {});
+    }
   }
 
   public async refreshLocalProjects(): Promise<void> {
@@ -135,15 +318,17 @@ class RemoteControlService {
         const data = JSON.parse(raw);
         if (data.hostId) this.hostId = data.hostId;
         if (data.machineName) this.machineName = data.machineName;
-        if (data.pairingPin) this.pairingPin = data.pairingPin;
-        if (data.secretKey) this.secretKey = data.secretKey;
+        // Legacy plaintext secretKey/pairingPin/telegramBotToken (до TASK-65) — переносятся в
+        // secretStorageService в loadPersistedSecrets(), больше не читаются/пишутся отсюда напрямую.
+        if (data.pairingPin) this.legacySecretsToMigrate.pairingPin = data.pairingPin;
+        if (data.secretKey) this.legacySecretsToMigrate.secretKey = data.secretKey;
+        if (data.telegramBotToken) this.legacySecretsToMigrate.telegramBotToken = data.telegramBotToken;
         if (typeof data.port === 'number') this.port = data.port;
         if (data.mode) this.mode = data.mode;
         if (data.relayServerUrl) this.relayServerUrl = data.relayServerUrl;
         if (typeof data.requireApproval === 'boolean') this.requireApproval = data.requireApproval;
         if (typeof data.readOnly === 'boolean') this.readOnly = data.readOnly;
         if (typeof data.autoStart === 'boolean') this.autoStart = data.autoStart;
-        if (data.telegramBotToken) this.telegramBotToken = data.telegramBotToken;
         if (data.telegramChatId) this.telegramChatId = data.telegramChatId;
         if (data.telegramBotUsername) this.telegramBotUsername = data.telegramBotUsername;
         if (data.telegramMiniAppUrl) this.telegramMiniAppUrl = data.telegramMiniAppUrl;
@@ -156,18 +341,17 @@ class RemoteControlService {
   private saveConfig() {
     try {
       const cfgPath = this.getConfigFilePath();
+      // secretKey/pairingPin/telegramBotToken НЕ пишутся сюда (decision-5 п.4) — только через
+      // secretStorageService (loadPersistedSecrets/updateConfig).
       const data = {
         hostId: this.hostId,
         machineName: this.machineName,
-        pairingPin: this.pairingPin,
-        secretKey: this.secretKey,
         port: this.port,
         mode: this.mode,
         relayServerUrl: this.relayServerUrl,
         requireApproval: this.requireApproval,
         readOnly: this.readOnly,
         autoStart: this.autoStart,
-        telegramBotToken: this.telegramBotToken,
         telegramChatId: this.telegramChatId,
         telegramBotUsername: this.telegramBotUsername,
         telegramMiniAppUrl: this.telegramMiniAppUrl
@@ -220,6 +404,7 @@ class RemoteControlService {
 
   public async initOnStartup(): Promise<void> {
     this.subscribeToEventBus();
+    await this.loadPersistedSecrets();
     // Если включен autoStart или задан Telegram Bot Token, сервис и туннель стартуют автоматически
     if (this.autoStart || Boolean(this.telegramBotToken)) {
       try {
@@ -242,7 +427,10 @@ class RemoteControlService {
 
   /** PIN или секретный ключ подходят для сопряжения нового устройства (TASK-58: вынесено для unit-тестов). */
   public isValidPairingCredentials(pin: string | null | undefined, key: string | null | undefined): boolean {
-    return (Boolean(pin) && pin === this.pairingPin) || (Boolean(key) && key === this.secretKey);
+    return (
+      (Boolean(pin) && this.constantTimeEqual(pin as string, this.pairingPin)) ||
+      (Boolean(key) && this.constantTimeEqual(key as string, this.secretKey))
+    );
   }
 
   public getStatus(): RemoteControlStatus {
@@ -270,7 +458,6 @@ class RemoteControlService {
       localAddresses: localIps,
       secretToken: this.secretKey,
       useRelay: this.mode === 'relay' || Boolean(this.relayServerUrl),
-      useP2P: this.mode === 'webrtc',
       telegramBotToken: this.telegramBotToken,
       telegramChatId: this.telegramChatId,
       telegramBotUsername: this.telegramBotUsername,
@@ -342,6 +529,7 @@ class RemoteControlService {
     }
     if (patch.telegramBotToken !== undefined) {
       this.telegramBotToken = patch.telegramBotToken;
+      await secretStorageService.setSecret('remoteControl.telegramBotToken', patch.telegramBotToken);
     }
     if (patch.telegramChatId !== undefined) {
       this.telegramChatId = patch.telegramChatId;
@@ -367,12 +555,15 @@ class RemoteControlService {
     return this.getStatus();
   }
 
-  public regenerateToken(): RemoteControlStatus {
+  public async regenerateToken(): Promise<RemoteControlStatus> {
     this.pairingPin = generatePairingPin();
     this.secretKey = generateSecretKey();
-    this.saveConfig();
+    await Promise.all([
+      secretStorageService.setSecret('remoteControl.secretKey', this.secretKey),
+      secretStorageService.setSecret('remoteControl.pairingPin', this.pairingPin)
+    ]);
 
-    // Отключаем все текущие устройства при смене ключа
+    // Отключаем все текущие устройства и отзываем их токены при смене мастер-ключа
     for (const client of this.localClients.values()) {
       try {
         client.ws.close(1008, 'Token regenerated');
@@ -382,6 +573,8 @@ class RemoteControlService {
     }
     this.localClients.clear();
     this.connectedDevices.clear();
+    this.deviceTokens.clear();
+    await this.persistDeviceTokens();
 
     this.notifyStatusChanged();
     return this.getStatus();
@@ -398,6 +591,7 @@ class RemoteControlService {
       this.localClients.delete(deviceId);
     }
     this.connectedDevices.delete(deviceId);
+    this.revokeDeviceToken(deviceId);
     this.notifyStatusChanged();
     return this.getStatus();
   }
@@ -703,23 +897,28 @@ class RemoteControlService {
   }
 
   /**
-   * Обработка HTTP запросов (отдача веб-клиента, публичного статуса и федерации хостов).
+   * Аутентификация `/api/*` (decision-5 п.5): Bearer-токен (заголовок или `?token=`) должен
+   * совпадать с мастер-ключом хоста либо с одним из выданных per-device токенов. `/api/qr`
+   * удалён (отдавал секрет без всякой проверки — единственный потребитель, встроенный клиент,
+   * уже получает пейринг-данные через IPC/QR на стороне рендерера).
    */
-  private async handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204);
-      res.end();
-      return;
+  private isAuthorizedApiRequest(req: IncomingMessage, url: URL): boolean {
+    const header = req.headers.authorization || '';
+    const bearer = header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+    const presented = bearer || url.searchParams.get('token') || '';
+    if (!presented) return false;
+    if (this.constantTimeEqual(presented, this.secretKey)) return true;
+    for (const record of this.deviceTokens.values()) {
+      if (this.constantTimeEqual(presented, record.token)) return true;
     }
+    return false;
+  }
 
+  private async handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
-    // GET /api/status - публичная информация
+    // GET /api/status - минимальная публичная информация для обнаружения хоста (без имени
+    // машины и локальных IP — см. decision-5 п.5, "не раскрывать... без токена").
     if (url.pathname === '/api/status') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
@@ -727,83 +926,82 @@ class RemoteControlService {
           status: 'ok',
           service: 'ProjectHub-Remote',
           hostId: this.hostId,
-          machineName: this.machineName,
           mode: this.mode,
           requireApproval: this.requireApproval,
-          localIps: getLocalIpAddresses(),
-          port: this.port,
-          tunnelUrl: this.tunnelUrl
+          port: this.port
         })
       );
       return;
     }
 
-    // GET /api/federation/info - сводка данного компьютера для единого Hub
-    if (url.pathname === '/api/federation/info') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(this.getHostFederationInfo()));
-      return;
-    }
+    // GET /api/federation/info, /api/federation/hosts, POST /api/federation/register —
+    // раскрывают пути проектов/имя машины/список хостов, требуют токен (decision-5 п.5).
+    if (url.pathname.startsWith('/api/federation/')) {
+      if (!this.isAuthorizedApiRequest(req, url)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
 
-    // GET /api/federation/hosts - список всех известных компьютеров разработчика
-    if (url.pathname === '/api/federation/hosts') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ hosts: this.getFederationHostsList() }));
-      return;
-    }
+      if (url.pathname === '/api/federation/info') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(this.getHostFederationInfo()));
+        return;
+      }
 
-    // POST /api/federation/register - регистрация удаленного ПК в реестре федерации
-    if (url.pathname === '/api/federation/register' && req.method === 'POST') {
-      let body = '';
-      req.on('data', (chunk) => {
-        body += chunk;
-      });
-      req.on('end', () => {
-        try {
-          const peer = JSON.parse(body) as FederationHost;
-          if (!this.isProtocolCompatible(peer)) {
-            res.writeHead(409, { 'Content-Type': 'application/json' });
-            res.end(
-              JSON.stringify({
-                error: 'protocol_version_mismatch',
-                message:
-                  `Версия протокола федерации хоста "${peer.machineName || peer.hostId}" (${peer.protocolVersion ?? 1}) `
-                  + `несовместима с локальной (${REMOTE_FEDERATION_PROTOCOL_VERSION}). Обновите ProjectHub на обеих машинах.`,
-                localProtocolVersion: REMOTE_FEDERATION_PROTOCOL_VERSION,
-                peerProtocolVersion: peer.protocolVersion ?? 1
-              })
-            );
-            return;
+      if (url.pathname === '/api/federation/hosts') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ hosts: this.getFederationHostsList() }));
+        return;
+      }
+
+      if (url.pathname === '/api/federation/register' && req.method === 'POST') {
+        let body = '';
+        req.on('data', (chunk) => {
+          body += chunk;
+        });
+        req.on('end', () => {
+          try {
+            const peer = JSON.parse(body) as FederationHost;
+            if (!this.isProtocolCompatible(peer)) {
+              res.writeHead(409, { 'Content-Type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  error: 'protocol_version_mismatch',
+                  message:
+                    `Версия протокола федерации хоста "${peer.machineName || peer.hostId}" (${peer.protocolVersion ?? 1}) `
+                    + `несовместима с локальной (${REMOTE_FEDERATION_PROTOCOL_VERSION}). Обновите ProjectHub на обеих машинах.`,
+                  localProtocolVersion: REMOTE_FEDERATION_PROTOCOL_VERSION,
+                  peerProtocolVersion: peer.protocolVersion ?? 1
+                })
+              );
+              return;
+            }
+            this.registerPeerHost(peer);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, hosts: this.getFederationHostsList() }));
+          } catch {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid JSON' }));
           }
-          this.registerPeerHost(peer);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, hosts: this.getFederationHostsList() }));
-        } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Invalid JSON' }));
-        }
-      });
-      return;
+        });
+        return;
+      }
     }
 
-    // GET /api/qr - данные для быстрого сканирования в локальной сети
-    if (url.pathname === '/api/qr') {
-      const localIps = getLocalIpAddresses();
-      const ip = localIps[0] || '127.0.0.1';
-      const remoteUrl = `http://${ip}:${this.port}/remote#pin=${this.pairingPin}&key=${this.secretKey}&host=${this.hostId}&mode=${this.mode}`;
-
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          url: remoteUrl,
-          pin: this.pairingPin,
-          hostId: this.hostId
-        })
-      );
+    // GET /remote-crypto.js - канонический браузерный E2EE-модуль (TASK-65, decision-11 п.3),
+    // общий для Mini App и встроенного веб-клиента (оба без сборщика).
+    if (url.pathname === '/remote-crypto.js') {
+      const script = await this.readStaticAsset('remote-crypto.js');
+      if (!script) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Not Found' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
+      res.end(script);
       return;
     }
-
-
 
     // GET /telegram или GET /telegram/ - отдача Telegram Mini App
     if (url.pathname === '/telegram' || url.pathname === '/telegram/' || url.pathname.startsWith('/telegram/')) {
@@ -831,30 +1029,56 @@ class RemoteControlService {
       const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
       const pin = url.searchParams.get('pin');
       const key = url.searchParams.get('key');
+      const token = url.searchParams.get('token');
       const deviceId = url.searchParams.get('deviceId') || `dev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const deviceName = url.searchParams.get('name') || 'Mobile Client';
       const userAgent = req.headers['user-agent'] || 'Unknown Device';
       const ip = req.socket.remoteAddress || '127.0.0.1';
 
-      // Проверка пин-кода или ключа
-      const isKeyValid = key === this.secretKey;
+      // Переподключение уже спаренного устройства — по его собственному токену, без PIN/ключа
+      // (decision-5 п.5: per-device токены с отзывом вместо одного общего секрета навсегда).
+      let issuedToken: string | null = null;
+      let rights: DeviceRights;
+      const existingRecord = token ? this.validateDeviceToken(deviceId, token) : null;
 
-      if (!this.isValidPairingCredentials(pin, key)) {
-        ws.send(JSON.stringify({ type: 'error', error: 'Invalid pairing PIN or secret key' }));
-        ws.close(1008, 'Authentication failed');
-        return;
+      if (existingRecord) {
+        rights = existingRecord.rights;
+      } else {
+        const rateLimit = this.checkPinRateLimit(ip);
+        if (!rateLimit.allowed) {
+          ws.send(JSON.stringify({ type: 'error', error: 'Too many failed attempts, try again later' }));
+          ws.close(1008, 'Rate limited');
+          return;
+        }
+
+        if (!this.isValidPairingCredentials(pin, key)) {
+          this.recordPinFailure(ip);
+          ws.send(JSON.stringify({ type: 'error', error: 'Invalid pairing PIN or secret key' }));
+          ws.close(1008, 'Authentication failed');
+          return;
+        }
+        this.recordPinSuccess(ip);
+
+        const issued = this.issueDeviceToken(deviceId, deviceName);
+        issuedToken = issued.token;
+        rights = issued.rights;
       }
 
-      const isApproved = !this.requireApproval;
+      // Пакет шифруется ключом E2EE (`key`), общим для всех устройств (см. remoteCryptoNode/Web);
+      // per-device токен — отдельный фактор аутентификации/прав, не участвует в шифровании.
+      const isKeyValid = key === this.secretKey;
+
+      const isApproved = !this.requireApproval || Boolean(existingRecord);
       const device: RemoteDevice = {
         id: deviceId,
         name: deviceName,
         ip,
-        mode: this.mode === 'webrtc' ? 'webrtc' : 'lan',
+        mode: 'lan',
         connectedAt: Date.now(),
         lastSeenAt: Date.now(),
         userAgent,
-        isApproved
+        isApproved,
+        rights
       };
 
       const clientConn: ClientConnection = {
@@ -868,14 +1092,16 @@ class RemoteControlService {
       this.localClients.set(deviceId, clientConn);
       this.notifyStatusChanged();
 
-      // Подтверждение клиенту
+      // Подтверждение клиенту — новый токен выдаётся только при первом сопряжении.
       ws.send(
         JSON.stringify({
           type: 'handshake_ack',
           result: {
             approved: isApproved,
             readOnly: this.readOnly,
-            hostId: this.hostId
+            hostId: this.hostId,
+            rights,
+            ...(issuedToken ? { deviceToken: issuedToken } : {})
           }
         })
       );
@@ -902,30 +1128,52 @@ class RemoteControlService {
   }
 
   /**
-   * Подключение к внешнему Relay серверу.
+   * Подключение к внешнему Relay серверу. Хост доказывает владение `hostId` подписью
+   * challenge-nonce своим Ed25519-identity ключом (TASK-65, decision-11 п.2) — без этого релей
+   * не зарегистрирует соединение (см. `remote-relay-server.mjs`).
    */
-  private connectToRelay() {
+  private async connectToRelay() {
     this.disconnectFromRelay();
 
     try {
+      const { publicKeyPem } = await this.ensureIdentity();
       const relayUrl = new URL(this.relayServerUrl);
       relayUrl.searchParams.set('role', 'host');
       relayUrl.searchParams.set('hostId', this.hostId);
+      relayUrl.searchParams.set('machineName', this.machineName || os.hostname());
+      relayUrl.searchParams.set('platform', process.platform);
+      relayUrl.searchParams.set('pubkey', Buffer.from(publicKeyPem).toString('base64url'));
 
       const ws = new WebSocket(relayUrl.toString());
       this.relayWs = ws;
 
       ws.on('open', () => {
-        this.relayConnected = true;
-        logger.info(`[RemoteControl] Connected to Relay Server: ${this.relayServerUrl}`);
-        this.notifyStatusChanged();
+        logger.info(`[RemoteControl] Relay TCP connected, awaiting auth challenge: ${this.relayServerUrl}`);
       });
 
       ws.on('message', async (raw: any) => {
         try {
           const msg = JSON.parse(raw.toString());
 
-          // Обработка системных сообщений от релея
+          // Challenge-response при регистрации (см. remote-relay-server.mjs)
+          if (msg.type === 'auth_challenge') {
+            const signature = await this.signWithIdentity(msg.nonce);
+            ws.send(JSON.stringify({ type: 'auth_response', signature }));
+            return;
+          }
+
+          if (msg.type === 'relay_ack' && msg.role === 'host') {
+            this.relayConnected = true;
+            this.relayReconnectAttempt = 0;
+            logger.info(`[RemoteControl] Authenticated with Relay Server: ${this.relayServerUrl}`);
+            this.notifyStatusChanged();
+            return;
+          }
+
+          // Обработка системных сообщений от релея. Клиент, пришедший через релей, ещё НЕ
+          // аутентифицирован — в отличие от LAN (проверка PIN/ключа в query до апгрейда сокета),
+          // релей лишь транспорт, поэтому isApproved всегда false, пока клиент не пройдёт
+          // `handshake` внутри E2EE-пакета (decision-5 п.5: аутентификация на каждом интерфейсе).
           if (msg.type === 'client_connected') {
             const dev: RemoteDevice = {
               id: msg.clientId,
@@ -935,7 +1183,7 @@ class RemoteControlService {
               connectedAt: Date.now(),
               lastSeenAt: Date.now(),
               userAgent: msg.userAgent || 'Web/Mobile',
-              isApproved: !this.requireApproval
+              isApproved: false
             };
             this.connectedDevices.set(msg.clientId, dev);
             this.notifyStatusChanged();
@@ -987,11 +1235,14 @@ class RemoteControlService {
     if (!this.enabled || this.mode !== 'relay') return;
     if (this.relayReconnectTimer) clearTimeout(this.relayReconnectTimer);
 
+    // Экспоненциальный backoff (TASK-65, decision-11 п.6), максимум 30с между попытками.
+    const delay = Math.min(30000, 1000 * Math.pow(2, this.relayReconnectAttempt));
+    this.relayReconnectAttempt++;
     this.relayReconnectTimer = setTimeout(() => {
       if (this.enabled && this.mode === 'relay' && !this.relayConnected) {
         this.connectToRelay();
       }
-    }, 5000);
+    }, delay);
   }
 
   private disconnectFromRelay() {
@@ -1040,15 +1291,55 @@ class RemoteControlService {
       return;
     }
 
-    // Ping / Pong
-    if (packet.type === 'ping') {
-      reply({ type: 'pong', id: packet.id });
+    // Handshake внутри E2EE-пакета (TASK-65, decision-5 п.5): единственный способ клиенту,
+    // подключённому через релей, доказать PIN/ключ/токен — релей сам не проверяет ничего, кроме
+    // identity хоста. LAN-клиенты уже прошли этот же контроль в query-параметрах при апгрейде
+    // сокета (`setupLocalWebSocketServer`), но повторный handshake через пакет здесь тоже
+    // поддерживается им (идемпотентно выдаёт новый токен).
+    if (packet.type === 'handshake') {
+      const data = (packet.data || {}) as { pin?: string; key?: string; token?: string };
+      const rateKey = `relay:${deviceId}`;
+      const existingRecord = data.token ? this.validateDeviceToken(deviceId, data.token) : null;
+
+      if (existingRecord) {
+        device.isApproved = !this.requireApproval || device.isApproved;
+        device.rights = existingRecord.rights;
+        reply({ type: 'handshake_ack', result: { approved: device.isApproved, readOnly: this.readOnly, hostId: this.hostId, rights: device.rights } });
+        this.notifyStatusChanged();
+        return;
+      }
+
+      const rateLimit = this.checkPinRateLimit(rateKey);
+      if (!rateLimit.allowed) {
+        reply({ type: 'error', error: 'Too many failed attempts, try again later' });
+        return;
+      }
+      if (!this.isValidPairingCredentials(data.pin, data.key)) {
+        this.recordPinFailure(rateKey);
+        reply({ type: 'error', error: 'Invalid pairing PIN or secret key' });
+        return;
+      }
+      this.recordPinSuccess(rateKey);
+
+      const issued = this.issueDeviceToken(deviceId, device.name);
+      device.isApproved = !this.requireApproval;
+      device.rights = issued.rights;
+      reply({
+        type: 'handshake_ack',
+        result: { approved: device.isApproved, readOnly: this.readOnly, hostId: this.hostId, rights: issued.rights, deviceToken: issued.token }
+      });
+      this.notifyStatusChanged();
       return;
     }
 
-    // WebRTC Signaling passthrough
-    if (packet.type === 'event' && packet.event === 'signal') {
-      this.broadcastEvent('signal', { ...packet.data, fromDeviceId: deviceId });
+    if (!device.isApproved) {
+      reply({ type: 'error', error: 'Device not approved by host' });
+      return;
+    }
+
+    // Ping / Pong
+    if (packet.type === 'ping') {
+      reply({ type: 'pong', id: packet.id });
       return;
     }
 
@@ -1056,8 +1347,18 @@ class RemoteControlService {
     if (packet.type === 'rpc_req' || (packet as any).type === 'request') {
       const req = packet as PlainPacket;
       const isReqType = (packet as any).type === 'request';
+      const idemKey = req.id ? `${deviceId}:${req.id}` : null;
+      const cached = idemKey ? this.recentRpcResponses.get(idemKey) : undefined;
+
+      if (cached && cached.expiresAt > Date.now()) {
+        const resPayload: any = { type: isReqType ? 'response' : 'rpc_res', id: req.id, result: cached.result, error: cached.error };
+        reply(isEncrypted ? encryptPayload(resPayload, this.secretKey) : resPayload);
+        return;
+      }
+
       try {
         const result = await this.dispatchRpc(req.method || '', req.params, device);
+        if (idemKey) this.recentRpcResponses.set(idemKey, { result, expiresAt: Date.now() + RPC_IDEMPOTENCY_TTL_MS });
         const resPayload: any = {
           type: isReqType ? 'response' : 'rpc_res',
           id: req.id,
@@ -1070,6 +1371,9 @@ class RemoteControlService {
           reply(resPayload);
         }
       } catch (err: any) {
+        if (idemKey) {
+          this.recentRpcResponses.set(idemKey, { error: err?.message || String(err), expiresAt: Date.now() + RPC_IDEMPOTENCY_TTL_MS });
+        }
         const errPayload: any = {
           type: isReqType ? 'response' : 'rpc_res',
           id: req.id,
@@ -1106,6 +1410,18 @@ class RemoteControlService {
 
     if (this.readOnly && writeMethods.has(method)) {
       throw new Error(`Method ${method} is forbidden in Read-Only mode`);
+    }
+
+    // Права per-device токена (TASK-65, decision-11 п.1): readOnly — только чтение, hitl — чтение
+    // и решения HITL, full — без ограничений сверх глобального readOnly выше.
+    if (writeMethods.has(method)) {
+      const rights = device.rights ?? 'full';
+      if (rights === 'readOnly') {
+        throw new Error(`Method ${method} is forbidden for this device (readOnly rights)`);
+      }
+      if (rights === 'hitl' && method !== 'hitl_decision') {
+        throw new Error(`Method ${method} is forbidden for this device (hitl-only rights)`);
+      }
     }
 
     const activePath = params.projectPath || this.activeProjectPath;
@@ -1222,6 +1538,86 @@ class RemoteControlService {
           byDevice: device.name
         });
         return { ok: true, decision: approved, sessionId: result.request.sessionId };
+      }
+
+      case 'create_task': {
+        if (!activePath) throw new Error('No active project specified');
+        if (!params.title) throw new Error('title is required');
+        const created = await createBacklogTaskFile(activePath, {
+          title: String(params.title),
+          description: typeof params.description === 'string' ? params.description : '',
+          labels: Array.isArray(params.labels) ? params.labels.map(String) : [],
+          type: params.type ? String(params.type) : undefined,
+          priority: params.priority ? String(params.priority) : undefined,
+          milestone: params.milestone ? String(params.milestone) : undefined
+        });
+        if (!created) throw new Error('Failed to create task');
+        this.broadcastEvent('backlog:changed', { projectPath: activePath });
+        return created;
+      }
+
+      case 'git_pull': {
+        if (!activePath) throw new Error('No active project specified');
+        return await gitService.pullRemote(activePath);
+      }
+
+      case 'git_push': {
+        if (!activePath) throw new Error('No active project specified');
+        return await gitService.pushRemote(activePath);
+      }
+
+      case 'run_action': {
+        if (!activePath) throw new Error('No active project specified');
+        const actionId: string = typeof params.action === 'string' ? params.action : 'run';
+        const config = await actionConfigService.getConfig(activePath);
+        const builtin: Record<'run' | 'deploy' | 'test', ActionDefinition> = {
+          run: config.run,
+          deploy: config.deploy,
+          test: config.test
+        };
+        const def: ActionDefinition | undefined =
+          actionId in builtin ? builtin[actionId as 'run' | 'deploy' | 'test'] : config.customActions?.find((a) => a.id === actionId);
+        if (!def) throw new Error(`Unknown action: ${actionId}`);
+        return await processManager.startProcess(activePath, def.command, def.name, { cwd: def.cwd, env: def.env });
+      }
+
+      case 'send_ai_prompt': {
+        if (!activePath) throw new Error('No active project specified');
+        const prompt = typeof params.prompt === 'string' ? params.prompt : '';
+        if (!prompt.trim()) throw new Error('prompt is required');
+        const sessionId = typeof params.sessionId === 'string' && params.sessionId ? params.sessionId : `remote_${crypto.randomBytes(6).toString('hex')}`;
+        const config = await aiAgentService.getConfig();
+        const message = {
+          id: `msg_${crypto.randomBytes(6).toString('hex')}`,
+          role: 'user' as const,
+          content: prompt,
+          timestamp: new Date().toISOString()
+        };
+
+        claudeBridgeService
+          .runAgentTask(
+            {
+              sessionId,
+              projectPath: activePath,
+              messages: [message],
+              config,
+              mode: params.mode === 'chat' || params.mode === 'architect' ? params.mode : 'agent',
+              taskId: params.taskId ? String(params.taskId) : undefined
+            },
+            (chunk) => this.broadcastEvent('ai:chunk', { sessionId, ...chunk }),
+            (fullMsg) => this.broadcastEvent('ai:complete', { sessionId, message: fullMsg }),
+            (err) => this.broadcastEvent('ai:error', { sessionId, error: err })
+          )
+          .catch((err: any) => {
+            this.broadcastEvent('ai:error', { sessionId, error: err?.message || String(err) });
+          });
+
+        return { sessionId, accepted: true };
+      }
+
+      case 'get_events_since': {
+        const sinceId = Number(params.sinceId) || 0;
+        return { events: this.eventLog.filter((e) => e.id > sinceId), lastEventId: this.eventLogNextId - 1 };
       }
 
       case 'get_pending_approvals': {
@@ -1369,6 +1765,11 @@ class RemoteControlService {
       data
     };
 
+    // Догон пропущенных во время разрыва событий (TASK-65, decision-11 п.6): кольцевой буфер,
+    // клиент запрашивает `get_events_since` с последним увиденным id после reconnect.
+    this.eventLog.push({ id: this.eventLogNextId++, event, data });
+    if (this.eventLog.length > EVENT_LOG_MAX) this.eventLog.shift();
+
     // Отправка локальным клиентам
     for (const client of this.localClients.values()) {
       if (client.ws.readyState === WebSocket.OPEN && client.device.isApproved) {
@@ -1441,6 +1842,7 @@ class RemoteControlService {
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>ProjectHub Remote</title>
   <meta name="theme-color" content="#0d1117">
+  <script src="/remote-crypto.js"></script>
   <style>
     :root {
       --bg: #0b0f19;
@@ -1580,11 +1982,35 @@ class RemoteControlService {
     if (pinParam) document.getElementById('pinInput').value = pinParam;
     if (keyParam) document.getElementById('keyInput').value = keyParam;
 
-    document.getElementById('connectBtn').addEventListener('click', connect);
+    document.getElementById('connectBtn').addEventListener('click', () => { reconnectAttempt = 0; connect(); });
+
+    let currentKey = '';
+    let reconnectAttempt = 0;
+    let reconnectTimer = null;
+
+    // E2EE через общий канонический модуль (window.RemoteCrypto из /remote-crypto.js);
+    // формат {e2ee:true, iv, tag, data} в hex (decision-11 п.3). Без ключа — plain JSON.
+    async function encryptOut(data) {
+      if (!currentKey) return data;
+      return await RemoteCrypto.encryptPayloadWeb(data, currentKey);
+    }
+    async function decryptIn(packet) {
+      if (!packet || !packet.e2ee || !currentKey) return packet;
+      return await RemoteCrypto.decryptPayloadWeb(packet, currentKey);
+    }
+
+    function scheduleReconnect() {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      const delay = Math.min(30000, 1000 * Math.pow(2, reconnectAttempt));
+      reconnectAttempt++;
+      reconnectTimer = setTimeout(connect, delay);
+    }
 
     function connect() {
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       const pin = document.getElementById('pinInput').value.trim();
       const key = document.getElementById('keyInput').value.trim();
+      currentKey = key;
 
       const loc = window.location;
       const wsProto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1593,6 +2019,7 @@ class RemoteControlService {
       ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
+        reconnectAttempt = 0;
         document.getElementById('statusDot').classList.add('connected');
         document.getElementById('pairingSection').style.display = 'none';
         document.getElementById('mainContent').style.display = 'block';
@@ -1600,9 +2027,10 @@ class RemoteControlService {
         fetchProjects();
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = async (event) => {
         try {
-          const msg = JSON.parse(event.data);
+          const raw = JSON.parse(event.data);
+          const msg = await decryptIn(raw);
           handleMessage(msg);
         } catch (e) {
           console.error(e);
@@ -1611,8 +2039,8 @@ class RemoteControlService {
 
       ws.onclose = () => {
         document.getElementById('statusDot').classList.remove('connected');
-        appendLog('\\n[Соединение разорвано. Переподключение...]\\n');
-        setTimeout(connect, 4000);
+        appendLog('\\n[Соединение разорвано. Переподключение через ' + Math.round(Math.min(30000, 1000 * Math.pow(2, reconnectAttempt)) / 1000) + 'с...]\\n');
+        scheduleReconnect();
       };
 
       ws.onerror = (err) => {
@@ -1623,9 +2051,10 @@ class RemoteControlService {
     function sendRpc(method, params = {}) {
       return new Promise((resolve) => {
         const id = 'req_' + Math.random().toString(36).slice(2, 9);
-        const listener = (event) => {
+        const listener = async (event) => {
           try {
-            const msg = JSON.parse(event.data);
+            const raw = JSON.parse(event.data);
+            const msg = await decryptIn(raw);
             if (msg.type === 'rpc_res' && msg.id === id) {
               ws.removeEventListener('message', listener);
               resolve(msg.result);
@@ -1633,7 +2062,7 @@ class RemoteControlService {
           } catch {}
         };
         ws.addEventListener('message', listener);
-        ws.send(JSON.stringify({ type: 'rpc_req', id, method, params }));
+        encryptOut({ type: 'rpc_req', id, method, params }).then((packet) => ws.send(JSON.stringify(packet)));
       });
     }
 
@@ -1790,18 +2219,22 @@ class RemoteControlService {
   }
 
   /**
-   * Получение HTML для Telegram Mini App (из файла src/telegram-mini-app/index.html или fallback).
+   * Кандидаты пути статического ассета Remote Control под именем `relPath`. Источник в
+   * репозитории — `public/<relPath>` (Vite копирует `public/**` в `dist/` без изменений при
+   * сборке, так ассет доезжает до packaged-приложения как `dist/<relPath>`, см. `files` в
+   * `package.json`). Dev-режим (без сборки) и packaged — оба покрыты.
    */
-  private async getTelegramMiniAppHtml(): Promise<string> {
+  private staticAssetCandidates(relPath: string): string[] {
     const root = getDevRepoRoot() || getAppRootDir();
-    const candidates = [
-      path.join(root, 'src', 'telegram-mini-app', 'index.html'),
-      path.join(root, 'dist', 'telegram-mini-app', 'index.html'),
-      path.join(__dirname, '..', 'src', 'telegram-mini-app', 'index.html'),
-      path.join(__dirname, 'telegram-mini-app', 'index.html')
+    return [
+      path.join(root, 'public', relPath),
+      path.join(root, 'dist', relPath),
+      path.join(__dirname, relPath)
     ];
+  }
 
-    for (const p of candidates) {
+  private async readStaticAsset(relPath: string): Promise<string | null> {
+    for (const p of this.staticAssetCandidates(relPath)) {
       try {
         if (existsSync(p)) {
           return await fs.readFile(p, 'utf8');
@@ -1810,9 +2243,16 @@ class RemoteControlService {
         // ignore
       }
     }
+    return null;
+  }
 
+  /**
+   * Получение HTML для Telegram Mini App (из `public/telegram-mini-app/index.html` или fallback).
+   */
+  private async getTelegramMiniAppHtml(): Promise<string> {
+    const html = await this.readStaticAsset(path.join('telegram-mini-app', 'index.html'));
     // Fallback: встроенный веб-клиент
-    return this.getEmbeddedWebClientHtml();
+    return html ?? this.getEmbeddedWebClientHtml();
   }
 }
 

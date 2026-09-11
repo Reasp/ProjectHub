@@ -1377,7 +1377,6 @@ export interface TranslationDictionary {
     statusConnected: string;
     statusDisconnected: string;
     statusListening: string;
-    webrtcP2P: string;
     relayServer: string;
     scanQrToConnect: string;
     copyLink: string;
@@ -1404,7 +1403,7 @@ export interface TranslationDictionary {
     generatingQr: string;
     e2eeTitle: string;
     e2eeDesc: string;
-    p2pBadge: string;
+    relayBadge: string;
     lanBadge: string;
     relayOnline: string;
     portLabel: string;
@@ -1452,7 +1451,6 @@ export interface TranslationDictionary {
     disconnectDevice: string;
     localServerPort: string;
     wsRelayUrl: string;
-    enableWebRTC: string;
     useWsRelay: string;
     requireApproval: string;
     saveSettings: string;
