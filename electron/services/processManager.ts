@@ -5,6 +5,16 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import treeKill from 'tree-kill';
 import { BrowserWindow, shell } from 'electron';
 import type { ManagedProcess } from '../../src/types/electron';
+import {
+  findFreePort,
+  findPortOwners,
+  hasPortPlaceholder,
+  isPortFree,
+  isValidPort,
+  substitutePort,
+  DEFAULT_PORT_SEARCH_START,
+  PORT_SEARCH_RANGE
+} from './portAllocator';
 
 /** Суммарный лимит буфера логов одного процесса (аудит 2.1: было 2000 чанков по 64 КБ ≈ 128 МБ). */
 export const LOG_BUFFER_MAX_BYTES = 2 * 1024 * 1024;
@@ -21,8 +31,22 @@ export interface LogBufferState {
 /** Параметры запуска из `ActionDefinition` (.projecthub.json): переменные окружения и рабочий каталог. */
 export interface StartProcessOptions {
   env?: Record<string, string>;
-  /** Рабочий каталог: абсолютный либо относительно projectPath. */
+  /** Рабочий каталог: абсолютный либо относительно workspaceRoot (по умолчанию — корня проекта). */
   cwd?: string;
+  /**
+   * Активное рабочее дерево (основное дерево проекта или worktree), TASK-62.
+   * Входит в идентификатор процесса и служит базой для `cwd`, поэтому dev-серверы
+   * двух worktree одного проекта не конфликтуют по имени.
+   */
+  workspaceRoot?: string;
+  /**
+   * Стратегия порта: `fixed` (по умолчанию) — как задано в команде; `auto` — ProjectHub
+   * подбирает свободный порт, кладёт его в `PORT` и подставляет вместо `${port}`
+   * в команде и `autoOpenUrl`.
+   */
+  portStrategy?: 'fixed' | 'auto';
+  /** Порт, с которого начинать поиск при `portStrategy: 'auto'`. */
+  port?: number;
   /** URL, который нужно открыть в браузере после старта (dev-сервер). */
   autoOpenUrl?: string;
   /**
@@ -55,7 +79,20 @@ export function isAutoOpenUrlAllowed(url: string): boolean {
   }
 }
 
-/** Разбор id процесса `${projectPath}::${name}` (в пути на Windows есть `:`, поэтому режем по последнему `::`). */
+/**
+ * Идентификатор процесса `${workspaceRoot}::${name}` (TASK-62).
+ * В основном дереве это прежний `${projectPath}::${name}`, в worktree — путь worktree,
+ * поэтому одинаково названные dev-серверы разных рабочих деревьев не схлопываются в один id.
+ */
+export function buildProcessId(workspaceRoot: string, name: string): string {
+  return `${path.normalize(workspaceRoot)}::${name}`;
+}
+
+/**
+ * Разбор id процесса `${workspaceRoot}::${name}` (в пути на Windows есть `:`, поэтому
+ * режем по последнему `::`). Поле `projectPath` — рабочее дерево процесса: для основного
+ * дерева оно совпадает с корнем проекта.
+ */
 export function parseProcessId(id: string): { projectPath: string; name: string } | null {
   const idx = id.lastIndexOf('::');
   if (idx <= 0 || idx === id.length - 2) return null;
@@ -162,8 +199,13 @@ export function appendLogChunk(state: LogBufferState, text: string, maxBytes = L
 interface ActiveProcessItem extends LogBufferState {
   info: ManagedProcess;
   child: ChildProcessWithoutNullStreams;
-  /** Параметры запуска — нужны для перезапуска с теми же env/cwd/autoOpenUrl. */
+  /** Параметры запуска с уже подставленным портом — по ним работает автооткрытие URL. */
   options: StartProcessOptions;
+  /**
+   * Исходные команда и параметры (с плейсхолдерами `${port}`) — по ним идёт перезапуск,
+   * чтобы при `portStrategy: 'auto'` заново подобрать свободный порт.
+   */
+  restartSpec: { command: string; options: StartProcessOptions };
   /** Резолвится, когда дочерний процесс фактически закрылся (close/error). */
   exited: Promise<void>;
   /** Время завершения (мс), нужно для вытеснения самых старых завершённых записей. */
@@ -172,6 +214,14 @@ interface ActiveProcessItem extends LogBufferState {
   /** Таймер отложенного автооткрытия URL. */
   autoOpenTimer?: NodeJS.Timeout;
   autoOpened?: boolean;
+}
+
+/** Владелец порта: pid слушателя и, если это процесс Hub, его id/имя/рабочее дерево. */
+export interface PortOwner {
+  pid: number;
+  processId?: string;
+  name?: string;
+  workspaceRoot?: string;
 }
 
 interface RetentionOptions {
@@ -330,8 +380,10 @@ class HubProcessManager {
     name: string,
     options: StartProcessOptions = {}
   ): Promise<ManagedProcess> {
-    const id = `${path.normalize(projectPath)}::${name}`;
-    const workingDir = resolveWorkingDir(projectPath, options.cwd);
+    // Рабочее дерево: активный worktree либо сам корень проекта (TASK-62).
+    const workspaceRoot = path.normalize(options.workspaceRoot?.trim() || projectPath);
+    const id = buildProcessId(workspaceRoot, name);
+    const workingDir = resolveWorkingDir(workspaceRoot, options.cwd);
     if (!existsSync(workingDir)) {
       throw new Error(`Рабочий каталог не найден: ${workingDir}`);
     }
@@ -347,7 +399,6 @@ class HubProcessManager {
       this.activeProcesses.delete(id);
     }
 
-    const shellSpec = resolveShellSpawn(command);
     // env из ActionDefinition накладывается поверх окружения приложения; значения приводим к строкам,
     // чтобы число/boolean из JSON не превратились в `[object Object]`/undefined.
     const actionEnv: Record<string, string> = {};
@@ -356,20 +407,41 @@ class HubProcessManager {
       actionEnv[key] = String(value);
     }
 
+    // portStrategy: 'auto' — свободный порт в PORT, в `${port}` команды и autoOpenUrl (TASK-62).
+    let effectiveCommand = command;
+    let autoOpenUrl = options.autoOpenUrl;
+    let port: number | undefined;
+    if (options.portStrategy === 'auto') {
+      const start = isValidPort(options.port) ? options.port : DEFAULT_PORT_SEARCH_START;
+      // Порты, уже выданные работающим процессам, исключаем: сервер мог ещё не успеть
+      // занять свой порт, и параллельный старт во втором worktree получил бы тот же номер.
+      const reserved = this.reservedPorts();
+      port = await findFreePort(start, PORT_SEARCH_RANGE, async (p) => !reserved.has(p) && (await isPortFree(p)));
+      actionEnv.PORT = String(port);
+      if (hasPortPlaceholder(effectiveCommand)) effectiveCommand = substitutePort(effectiveCommand, port);
+      if (hasPortPlaceholder(autoOpenUrl)) autoOpenUrl = substitutePort(autoOpenUrl!, port);
+    } else if (isValidPort(options.port)) {
+      port = options.port;
+    }
+
+    const shellSpec = resolveShellSpawn(effectiveCommand);
     const child = spawn(shellSpec.file, shellSpec.args, {
       cwd: workingDir,
       env: { ...process.env, FORCE_COLOR: '1', ...actionEnv },
       windowsVerbatimArguments: shellSpec.windowsVerbatimArguments
     });
 
+    const normalizedProject = path.normalize(projectPath);
     const info: ManagedProcess = {
       id,
       name,
-      command,
+      command: effectiveCommand,
       // cwd — привязка к проекту (по нему процесс ищут UI и listProcessesForProject),
-      // фактический рабочий каталог — workingDir.
-      cwd: projectPath,
-      workingDir: workingDir !== path.normalize(projectPath) ? workingDir : undefined,
+      // workspaceRoot — рабочее дерево, workingDir — фактический каталог запуска.
+      cwd: normalizedProject,
+      workspaceRoot: workspaceRoot !== normalizedProject ? workspaceRoot : undefined,
+      workingDir: workingDir !== workspaceRoot ? workingDir : undefined,
+      port,
       pid: child.pid,
       startedAt: new Date().toISOString(),
       status: 'running',
@@ -384,7 +456,8 @@ class HubProcessManager {
     const item: ActiveProcessItem = {
       info,
       child,
-      options: { ...options },
+      options: { ...options, workspaceRoot, autoOpenUrl, port },
+      restartSpec: { command, options: { ...options, workspaceRoot } },
       exited,
       logBuffer: [],
       logBytes: 0
@@ -542,7 +615,12 @@ class HubProcessManager {
         const stopped = await this.stopProcess(id);
         if (!stopped) throw new Error(`Не удалось остановить процесс ${item.info.name}`);
       }
-      return this.startProcess(item.info.cwd, item.info.command, item.info.name, item.options);
+      return this.startProcess(
+        item.info.cwd,
+        item.restartSpec.command,
+        item.info.name,
+        item.restartSpec.options
+      );
     }
 
     const parsed = parseProcessId(id);
@@ -554,6 +632,71 @@ class HubProcessManager {
     if (!entry?.command) throw new Error(`Процесс ${parsed.name} не найден в реестре env-tools`);
     await this.stopEnvToolsProcess(id);
     return this.startProcess(parsed.projectPath, entry.command, parsed.name, { cwd: entry.cwd });
+  }
+
+  /** Порты, выданные ещё работающим процессам Hub (TASK-62). */
+  private reservedPorts(): Set<number> {
+    const reserved = new Set<number>();
+    for (const item of this.activeProcesses.values()) {
+      if (item.info.status === 'running' && item.info.port) reserved.add(item.info.port);
+    }
+    return reserved;
+  }
+
+  /**
+   * Кто слушает порт (TASK-62): pid'ы из netstat/lsof, для процессов самого Hub —
+   * их id и имя, чтобы UI показал «порт занят Dev Server из worktree task-62».
+   */
+  async listPortOwners(port: number): Promise<PortOwner[]> {
+    const pids = await findPortOwners(port);
+    const owners: PortOwner[] = pids.map((pid) => ({ pid }));
+    for (const item of this.activeProcesses.values()) {
+      if (item.info.status !== 'running' || !item.info.pid) continue;
+      const own = owners.find((o) => o.pid === item.info.pid);
+      if (own) {
+        own.processId = item.info.id;
+        own.name = item.info.name;
+        own.workspaceRoot = item.info.workspaceRoot || item.info.cwd;
+      } else if (item.info.port === port) {
+        // Дочерний процесс держит порт из-под оболочки: pid слушателя другой, но порт наш.
+        owners.push({
+          pid: item.info.pid,
+          processId: item.info.id,
+          name: item.info.name,
+          workspaceRoot: item.info.workspaceRoot || item.info.cwd
+        });
+      }
+    }
+    return owners;
+  }
+
+  /**
+   * Освобождение порта: hub-процессы останавливаются штатно (с ожиданием выхода),
+   * посторонние pid'ы снимаются tree-kill. Возвращает, что удалось освободить.
+   */
+  async releasePort(port: number): Promise<{ killed: number[]; failed: number[] }> {
+    const owners = await this.listPortOwners(port);
+    const killed: number[] = [];
+    const failed: number[] = [];
+    for (const owner of owners) {
+      try {
+        if (owner.processId) {
+          const ok = await this.stopProcess(owner.processId);
+          (ok ? killed : failed).push(owner.pid);
+          continue;
+        }
+        await treeKillAsync(owner.pid, 'SIGKILL');
+        killed.push(owner.pid);
+      } catch (err) {
+        if (isPidAlive(owner.pid)) {
+          console.error(`[ProcessManager] Failed to release port ${port} (pid ${owner.pid}):`, err);
+          failed.push(owner.pid);
+        } else {
+          killed.push(owner.pid);
+        }
+      }
+    }
+    return { killed, failed };
   }
 
   getLogs(id: string): string[] {

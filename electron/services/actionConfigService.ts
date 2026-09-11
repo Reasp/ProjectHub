@@ -11,6 +11,22 @@ export interface ActionDefinition {
   requiresConfirmation?: boolean;
   env?: Record<string, string>;
   cwd?: string;
+  /**
+   * `fixed` (по умолчанию) — порт как записан в команде; `auto` — ProjectHub подбирает
+   * свободный порт, кладёт его в `PORT` и подставляет вместо `${port}` в команде и
+   * `autoOpenUrl` (TASK-62, decision-15).
+   */
+  portStrategy?: 'fixed' | 'auto';
+  /** Порт, с которого начинать поиск при `portStrategy: 'auto'`. */
+  port?: number;
+}
+
+/** Политика инициализации нового worktree (TASK-62). */
+export interface WorktreeInitPolicy {
+  /** Команды, выполняемые в новом worktree после создания (например `npm ci`). */
+  commands?: string[];
+  /** Связать `node_modules` worktree с основным деревом вместо установки зависимостей. */
+  linkNodeModules?: boolean;
 }
 
 export interface ProjectActionConfig {
@@ -18,6 +34,7 @@ export interface ProjectActionConfig {
   deploy: ActionDefinition;
   test: ActionDefinition;
   customActions?: Array<ActionDefinition & { id: string }>;
+  worktreeInit?: WorktreeInitPolicy;
 }
 
 const CONFIG_FILENAME = '.projecthub.json';

@@ -11,7 +11,9 @@ import {
   ScrollText,
   Globe,
   Server,
-  Wrench
+  Wrench,
+  FolderGit2,
+  Unplug
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -50,13 +52,15 @@ export const ProcessesView: React.FC = () => {
     restartProcessAction,
     setTerminalOpen,
     setTerminalMode,
-    setActiveProcessId
+    setActiveProcessId,
+    releasePortAction
   } = useProjectStore();
 
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [busy, setBusy] = useState<Record<string, 'stop' | 'restart' | undefined>>({});
   const [startingKey, setStartingKey] = useState<string | null>(null);
+  const [releasingPort, setReleasingPort] = useState<number | null>(null);
   const dialog = useDialog();
 
   const projectPath = selectedProject?.path;
@@ -138,6 +142,18 @@ export const ProcessesView: React.FC = () => {
       await fetchProcesses(selectedProject.path);
     } finally {
       setBusy((b) => ({ ...b, [proc.id]: undefined }));
+    }
+  };
+
+  /** Снять процессы, держащие порт: занятый порт блокирует запуск dev-сервера в другом дереве. */
+  const handleReleasePort = async (port: number) => {
+    const confirmed = await dialog.confirm(t.worktrees.releasePortConfirm.replace('{port}', String(port)));
+    if (!confirmed) return;
+    setReleasingPort(port);
+    try {
+      await releasePortAction(port);
+    } finally {
+      setReleasingPort(null);
     }
   };
 
@@ -249,6 +265,8 @@ export const ProcessesView: React.FC = () => {
               <tr className="text-left text-[11px] uppercase tracking-wide text-slate-500">
                 <th className="px-5 py-2 font-semibold">{t.processes.colName}</th>
                 <th className="px-3 py-2 font-semibold">{t.processes.colCommand}</th>
+                <th className="px-3 py-2 font-semibold">{t.worktrees.workspaceColumn}</th>
+                <th className="px-3 py-2 font-semibold">{t.worktrees.portColumn}</th>
                 <th className="px-3 py-2 font-semibold">{t.processes.colPid}</th>
                 <th className="px-3 py-2 font-semibold">{t.processes.colStatus}</th>
                 <th className="px-3 py-2 font-semibold">{t.processes.colStarted}</th>
@@ -275,6 +293,36 @@ export const ProcessesView: React.FC = () => {
                       <code className="text-slate-300 font-mono block max-w-[320px] truncate" title={proc.command}>
                         {proc.command || '—'}
                       </code>
+                    </td>
+                    <td className="px-3 py-2.5 align-top">
+                      {proc.workspaceRoot ? (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-950/40 border border-cyan-800/50 text-cyan-300 text-[10px] font-mono max-w-[160px] truncate"
+                          title={proc.workspaceRoot}
+                        >
+                          <FolderGit2 className="w-3 h-3 shrink-0" />
+                          {proc.workspaceRoot.split(/[\\/]/).pop()}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-500">{t.worktrees.mainTreeOption}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 align-top">
+                      {proc.port ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="font-mono text-slate-300">{proc.port}</span>
+                          <button
+                            onClick={() => void handleReleasePort(proc.port!)}
+                            disabled={releasingPort === proc.port}
+                            title={t.worktrees.releasePort}
+                            className="p-1 rounded-md hover:bg-rose-950/60 text-slate-500 hover:text-rose-300 transition disabled:opacity-50"
+                          >
+                            {releasingPort === proc.port ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Unplug className="w-3 h-3" />}
+                          </button>
+                        </span>
+                      ) : (
+                        <span className="text-slate-600">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2.5 align-top font-mono text-slate-400">{proc.pid ?? '—'}</td>
                     <td className="px-3 py-2.5 align-top">{statusBadge(proc)}</td>

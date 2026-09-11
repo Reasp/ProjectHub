@@ -85,6 +85,12 @@ export interface AIStreamRequest {
   taskId?: string;
   /** Какие части контекста включены на сессию (по умолчанию все); см. `ContextPartKey`. */
   contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>;
+  /**
+   * Активное рабочее дерево сессии (worktree), TASK-62. Инструменты работы с файлами и
+   * командами используют его как рабочий каталог; контекст задачи по-прежнему собирается
+   * из общего `backlog/` основного дерева (`projectPath`).
+   */
+  workspaceRoot?: string;
 }
 
 export interface ClaudeAuthStatus {
@@ -291,7 +297,14 @@ class AIAgentService {
     this.activeControllers.set(req.sessionId, controller);
 
     try {
-      const systemPrompt = await this.buildSystemPrompt(req.projectPath, req.mode, req.roleSystemPrompt, req.taskId, req.contextParts);
+      const systemPrompt = await this.buildSystemPrompt(
+        req.projectPath,
+        req.mode,
+        req.roleSystemPrompt,
+        req.taskId,
+        req.contextParts,
+        req.workspaceRoot
+      );
 
       if (req.config.provider === 'anthropic') {
         await this.streamAnthropic(req, systemPrompt, controller.signal, onChunk, onComplete, onError);
@@ -458,8 +471,9 @@ class AIAgentService {
               // Prepare diff if write_file
               if (currentTool.name === 'write_file' && args.filePath && args.content) {
                 // Старое содержимое читаем только внутри проекта; путь вне корня отклонит applyDiff.
-                const targetPath = isInsideProject(req.projectPath, args.filePath)
-                  ? path.resolve(req.projectPath, args.filePath)
+                const workDir = req.workspaceRoot?.trim() || req.projectPath;
+                const targetPath = isInsideProject(workDir, args.filePath)
+                  ? path.resolve(workDir, args.filePath)
                   : null;
                 let oldContent = '';
                 if (targetPath && existsSync(targetPath)) {
@@ -639,10 +653,13 @@ class AIAgentService {
     mode: 'chat' | 'agent' | 'architect',
     roleSystemPrompt?: string,
     taskId?: string,
-    contextParts?: AIStreamRequest['contextParts']
+    contextParts?: AIStreamRequest['contextParts'],
+    workspaceRoot?: string
   ): Promise<string> {
+    // Рабочий каталог — активное дерево (worktree), задачи и документация — общий backlog проекта.
+    const workDir = workspaceRoot?.trim() || projectPath;
     const base = `You are Claude Code, Anthropic's official AI assistant for software development.
-Working directory: "${projectPath}".
+Working directory: "${workDir}".
 Answer directly, clearly, and concisely as Claude Code. If the user addresses you in Russian, answer naturally in Russian while preserving technical terms, file paths, and code.`;
 
     let taskContext = '';

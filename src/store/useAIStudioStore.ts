@@ -19,6 +19,7 @@ import type {
   AutoApproveRules,
   ContextPartKey
 } from '../types/electron';
+import { useProjectStore } from './useProjectStore';
 
 export type { AISession };
 
@@ -780,7 +781,9 @@ export const useAIStudioStore = create<AIStudioState>()(
           mode: get().mode,
           claudeCliSessionId: currentSession.claudeCliSessionId,
           taskId: currentSession.activeTaskId,
-          contextParts: currentSession.contextParts
+          contextParts: currentSession.contextParts,
+          // Агент работает в активном рабочем дереве проекта (TASK-62, decision-15).
+          workspaceRoot: useProjectStore.getState().workspaceRoot || undefined
         };
 
         try {

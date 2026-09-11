@@ -48,7 +48,8 @@ export const TerminalPanel: React.FC = () => {
     setActivePtySessionId,
     setTerminalMode,
     createPtySessionAction,
-    closePtySessionAction
+    closePtySessionAction,
+    workspaceRoot
   } = useProjectStore();
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -282,14 +283,15 @@ export const TerminalPanel: React.FC = () => {
     window.addEventListener('mouseup', onMouseUp);
   };
 
+  // Терминал открывается в активном рабочем дереве проекта (TASK-62).
   const handleLaunchClaude = () => {
     if (!selectedProject) return;
-    createPtySessionAction(selectedProject.path, 'claude');
+    createPtySessionAction(selectedProject.path, 'claude', undefined, workspaceRoot || undefined);
   };
 
   const handleLaunchShell = () => {
     if (!selectedProject) return;
-    createPtySessionAction(selectedProject.path, 'shell');
+    createPtySessionAction(selectedProject.path, 'shell', undefined, workspaceRoot || undefined);
   };
 
   if (!isTerminalOpen) return null;

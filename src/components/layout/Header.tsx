@@ -25,6 +25,7 @@ import { McpServerStatusBadge } from '../mcp/McpServerStatusBadge';
 import { DiagnosticsBadge } from '../diagnostics/DiagnosticsBadge';
 import { RemoteControlBadge } from '../remote/RemoteControlBadge';
 import { VoiceControlHeader } from '../voice/VoiceControlHeader';
+import { WorktreeSwitcher } from '../git/WorktreeSwitcher';
 import { ClaudeUsageButton } from '../ai/ClaudeUsageButton';
 import { VoiceBadge } from '../voice/VoiceBadge';
 import { HitlBadge } from '../hitl/HitlBadge';
@@ -47,7 +48,9 @@ export const Header: React.FC = () => {
     setTerminalMode,
     setActiveTab,
     projectAgentStatuses,
-    worktrees
+    worktrees,
+    workspaceRoot,
+    gitRepoDetails
   } = useProjectStore();
 
   if (!selectedProject) {
@@ -107,22 +110,27 @@ export const Header: React.FC = () => {
   }
 
   const agentStatus = projectAgentStatuses[selectedProject.path];
+  // Ветка активного рабочего дерева: в worktree она своя, в основном дереве — ветка проекта.
+  const activeBranch = gitRepoDetails?.currentBranch || selectedProject.gitBranch || '';
+
+  // Внешние инструменты открываются в активном рабочем дереве (TASK-62).
+  const activeRoot = workspaceRoot || selectedProject.path;
 
   const handleOpenCode = () => {
     if (window.api && selectedProject) {
-      window.api.openInCode(selectedProject.path);
+      window.api.openInCode(activeRoot);
     }
   };
 
   const handleOpenTerminal = () => {
     if (window.api && selectedProject) {
-      window.api.openTerminal(selectedProject.path);
+      window.api.openTerminal(activeRoot);
     }
   };
 
   const handleOpenExplorer = () => {
     if (window.api && selectedProject) {
-      window.api.openInExplorer(selectedProject.path);
+      window.api.openInExplorer(activeRoot);
     }
   };
 
@@ -182,17 +190,23 @@ export const Header: React.FC = () => {
               </div>
             )}
           </div>
-          <p className="text-[11px] text-slate-400 font-mono truncate max-w-md" title={selectedProject.path}>
-            {selectedProject.path}
+          <p className="text-[11px] text-slate-400 font-mono truncate max-w-md" title={workspaceRoot || selectedProject.path}>
+            {workspaceRoot || selectedProject.path}
           </p>
         </div>
 
         {selectedProject.hasGit && selectedProject.gitBranch && (
           <div className="flex items-center gap-2 pl-3 border-l border-slate-800 shrink-0 whitespace-nowrap">
-            <span className="flex items-center gap-1.5 text-xs text-slate-300 font-mono px-2 py-1 rounded bg-[#181c2b] border border-slate-800 whitespace-nowrap" title={t.header.currentGitBranch.replace('{branch}', selectedProject.gitBranch)}>
+            <span
+              className="flex items-center gap-1.5 text-xs text-slate-300 font-mono px-2 py-1 rounded bg-[#181c2b] border border-slate-800 whitespace-nowrap"
+              title={t.header.currentGitBranch.replace('{branch}', activeBranch)}
+            >
               <GitBranch className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-              {selectedProject.gitBranch}
+              {activeBranch}
             </span>
+
+            {/* Активное рабочее дерево проекта (TASK-62) */}
+            <WorktreeSwitcher />
 
             {selectedProject.uncommittedCount !== undefined && (
               <span

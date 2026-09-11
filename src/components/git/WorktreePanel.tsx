@@ -17,7 +17,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import type { GitWorktreeInfo, BacklogTask } from '../../types/electron';
-import { useProjectStore } from '../../store/useProjectStore';
+import { useProjectStore, samePath } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
 import { WorktreeCompleteModal } from './WorktreeCompleteModal';
@@ -40,7 +40,9 @@ export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) =>
     pruneWorktreesAction,
     findOrphanedWorktreesAction,
     cleanOrphanedWorktreesAction,
-    createPtySessionAction
+    createPtySessionAction,
+    workspaceRoot,
+    setActiveWorktree
   } = useProjectStore();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -284,9 +286,11 @@ export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) =>
               <div
                 key={wt.path}
                 className={`p-4 rounded-xl border transition ${
-                  wt.isMain
-                    ? 'bg-[#121626]/80 border-slate-800 hover:border-slate-700'
-                    : 'bg-[#141829] border-indigo-900/30 hover:border-indigo-700/50 shadow-sm'
+                  samePath(wt.path, workspaceRoot)
+                    ? 'bg-cyan-950/25 border-cyan-600/50 shadow-sm'
+                    : wt.isMain
+                      ? 'bg-[#121626]/80 border-slate-800 hover:border-slate-700'
+                      : 'bg-[#141829] border-indigo-900/30 hover:border-indigo-700/50 shadow-sm'
                 }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -306,6 +310,22 @@ export const WorktreePanel: React.FC<WorktreePanelProps> = ({ onSelectTask }) =>
                         <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-full">
                           Isolated Worktree
                         </span>
+                      )}
+
+                      {/* Активное рабочее дерево — контекст всего приложения (TASK-62) */}
+                      {samePath(wt.path, workspaceRoot) ? (
+                        <span className="text-[10px] font-semibold text-cyan-200 bg-cyan-500/20 border border-cyan-500/40 px-2 py-0.5 rounded-full">
+                          {t.worktrees.activeBadge}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void setActiveWorktree(wt.isMain ? null : wt.path)}
+                          className="text-[10px] font-medium text-slate-300 bg-slate-800/80 border border-slate-700 hover:bg-slate-700 hover:text-white px-2 py-0.5 rounded-full transition"
+                          title={t.worktrees.switchTo.replace('{branch}', wt.branch || wt.path)}
+                        >
+                          {t.worktrees.switcherLabel}
+                        </button>
                       )}
 
                       {wt.head && (

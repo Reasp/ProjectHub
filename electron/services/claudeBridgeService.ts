@@ -242,6 +242,8 @@ export interface CliPermissionMeta {
   role?: string;
   /** Права роли (decision-9): применяются поверх глобальных настроек и только сужают их. */
   permissions?: RolePermissions;
+  /** Рабочее дерево сессии (worktree), если агент запущен не в основном дереве (TASK-62). */
+  workspaceRoot?: string;
 }
 
 interface CliPermissionContext extends CliPermissionMeta {
@@ -410,6 +412,8 @@ class ClaudeBridgeService extends EventEmitter {
       return { behavior: 'deny', message: 'ProjectHub: сессия агента не найдена или уже завершена — запрос разрешения отклонён.' };
     }
     const { projectPath, config, onChunk } = ctx;
+    // Файлы агент правит в своём рабочем дереве (worktree), а не обязательно в основном (TASK-62).
+    const workDir = ctx.workspaceRoot?.trim() || projectPath;
     const rules = config.autoApproveRules;
     const toolName = String(request.tool_name || '');
     const input: Record<string, any> = request.input && typeof request.input === 'object' ? request.input : {};
@@ -542,7 +546,7 @@ class ClaudeBridgeService extends EventEmitter {
         return allow();
       }
 
-      const diff = await this.buildCliWriteDiff(projectPath, toolName, filePath, input);
+      const diff = await this.buildCliWriteDiff(workDir, toolName, filePath, input);
       const res = await ask({
         id: newId(), sessionId, projectPath, type: 'file_write',
         title: isExcluded ? `⚠️ Файл в списке исключений: ${filePath}` : `Разрешение на запись файла: ${filePath}`,
@@ -617,7 +621,7 @@ class ClaudeBridgeService extends EventEmitter {
 
   /** Диф для карточки одобрения записи: Write — файл целиком, Edit — заменяемый фрагмент. */
   private async buildCliWriteDiff(
-    projectPath: string,
+    workDir: string,
     toolName: string,
     filePath: string,
     input: Record<string, any>
@@ -625,7 +629,7 @@ class ClaudeBridgeService extends EventEmitter {
     try {
       if (toolName === 'Write' && typeof input.content === 'string') {
         let oldContent = '';
-        const fullPath = path.resolve(projectPath, filePath);
+        const fullPath = path.resolve(workDir, filePath);
         if (existsSync(fullPath)) oldContent = await fs.readFile(fullPath, 'utf-8');
         return { filePath, oldContent, newContent: input.content, patch: aiAgentService.generateDiff(oldContent, input.content, filePath) };
       }
@@ -1115,6 +1119,8 @@ class ClaudeBridgeService extends EventEmitter {
       config: AIProviderConfig;
       mode: 'agent' | 'chat' | 'architect';
       claudeCliSessionId?: string;
+      /** Активное рабочее дерево сессии (worktree); по умолчанию — корень проекта (TASK-62). */
+      workspaceRoot?: string;
       /** Задача, привязанная к сессии AI Studio (TASK-64) — по ней contextBuilder собирает контекст. */
       taskId?: string;
       contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>;
@@ -1190,13 +1196,15 @@ class ClaudeBridgeService extends EventEmitter {
     sessionId: string,
     projectPath: string,
     rules: AutoApproveRules | undefined,
-    onChunk: (chunk: ClaudeBridgeMessageChunk) => void
+    onChunk: (chunk: ClaudeBridgeMessageChunk) => void,
+    /** Рабочее дерево сессии: worktree или сам корень проекта (TASK-62). */
+    workspaceRoot: string = projectPath
   ): Promise<void> {
     this.setProjectStatus(projectPath, 'running', `Выполняется: ${cmd}`);
 
     if (tc.args.background === true) {
       const name = String(tc.args.name || `agent-${Date.now().toString(36)}`).trim();
-      const info = await processManager.startProcess(projectPath, cmd, name);
+      const info = await processManager.startProcess(projectPath, cmd, name, { workspaceRoot });
       tc.status = 'accepted';
       tc.result = `Процесс "${info.name}" запущен в фоне (pid ${info.pid ?? '?'}, id "${info.id}"). `
         + 'Цикл агента не блокируется; логи и остановка — во вкладке Processes.';
@@ -1208,7 +1216,7 @@ class ClaudeBridgeService extends EventEmitter {
     const timeoutMs = typeof timeoutSec === 'number' && timeoutSec > 0 ? timeoutSec * 1000 : SUBPROCESS_DEFAULT_TIMEOUT_MS;
     const res = await this.executeSubprocess(
       cmd,
-      projectPath,
+      workspaceRoot,
       (outputSoFar) => {
         tc.status = 'running';
         tc.result = outputSoFar;
@@ -1237,12 +1245,14 @@ class ClaudeBridgeService extends EventEmitter {
 
   private async handleApiToolCall(
     tc: AIToolCall,
-    req: { sessionId: string; projectPath: string; config: AIProviderConfig },
+    req: { sessionId: string; projectPath: string; config: AIProviderConfig; workspaceRoot?: string },
     rules: AutoApproveRules | undefined,
     perms: { canAutoCommands: boolean; canAutoWrite: boolean; canAutoRead: boolean; canAutoSubagents: boolean },
     onChunk: (chunk: ClaudeBridgeMessageChunk) => void
   ): Promise<void> {
     const { sessionId, projectPath } = req;
+    // Инструменты работают в активном рабочем дереве сессии (worktree), TASK-62.
+    const workDir = req.workspaceRoot?.trim() || projectPath;
     const { canAutoCommands, canAutoWrite } = perms;
     const timeoutMs = this.approvalTimeoutMs(req.config);
     const meta = { origin: 'studio' as const, engine: 'api' as const, tool: tc.name };
@@ -1309,7 +1319,7 @@ class ClaudeBridgeService extends EventEmitter {
       const shouldAutoRun = canAutoCommands && !isDenied;
       const runApproved = async (requestId: string) => {
         try {
-          await this.runCommandTool(tc, cmd, sessionId, projectPath, rules, onChunk);
+          await this.runCommandTool(tc, cmd, sessionId, projectPath, rules, onChunk, workDir);
           hitlService.recordOutcome(requestId, tc.status === 'error' ? 'failed' : 'executed');
         } catch (e: any) {
           tc.status = 'error';
@@ -1354,7 +1364,7 @@ class ClaudeBridgeService extends EventEmitter {
 
       const applyApproved = async (requestId: string, successMessage: string) => {
         try {
-          await aiAgentService.applyDiff(projectPath, filePath, content);
+          await aiAgentService.applyDiff(workDir, filePath, content);
           tc.status = 'accepted';
           tc.result = successMessage;
           onChunk({ toolCall: tc });
@@ -1365,7 +1375,7 @@ class ClaudeBridgeService extends EventEmitter {
         }
       };
 
-      if (!isInsideProject(projectPath, filePath)) {
+      if (!isInsideProject(workDir, filePath)) {
         // Абсолютный путь вне проекта или выход через `..` — отклоняем до любых
         // одобрений, даже при auto-approve, и объясняем модели причину (TASK-32).
         tc.status = 'rejected';
@@ -1380,7 +1390,7 @@ class ClaudeBridgeService extends EventEmitter {
         );
       } else {
         let oldContent = '';
-        const fullPath = path.resolve(projectPath, filePath);
+        const fullPath = path.resolve(workDir, filePath);
         if (existsSync(fullPath)) {
           try {
             oldContent = await fs.readFile(fullPath, 'utf-8');
@@ -1439,6 +1449,8 @@ class ClaudeBridgeService extends EventEmitter {
       config: AIProviderConfig;
       mode: 'agent' | 'chat' | 'architect';
       claudeCliSessionId?: string;
+      /** Активное рабочее дерево сессии (worktree); по умолчанию — корень проекта (TASK-62). */
+      workspaceRoot?: string;
       taskId?: string;
       contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>;
     },
@@ -1447,6 +1459,8 @@ class ClaudeBridgeService extends EventEmitter {
     onError: (err: string) => void
   ): Promise<void> {
     const { sessionId, projectPath, messages } = req;
+    // cwd агента — активное рабочее дерево (worktree), backlog при этом общий (TASK-62).
+    const workDir = req.workspaceRoot?.trim() || projectPath;
     const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')?.content || '';
     if (!lastUserMessage.trim()) {
       onComplete({
@@ -1501,7 +1515,11 @@ class ClaudeBridgeService extends EventEmitter {
     // Human-in-the-loop (TASK-42): разрешения запрашиваются через встроенный MCP-сервер
     // до выполнения инструмента. --dangerously-skip-permissions — только как запасной
     // вариант при auto-approve, если сервер поднять не удалось.
-    const hitl = await this.prepareCliPermissions(sessionId, projectPath, req.config, onChunk, { origin: 'studio', engine: 'claude-cli' });
+    const hitl = await this.prepareCliPermissions(sessionId, projectPath, req.config, onChunk, {
+      origin: 'studio',
+      engine: 'claude-cli',
+      workspaceRoot: workDir
+    });
     let hitlWarning = '';
     if (hitl) {
       cliArgs.push(...hitl.args);
@@ -1537,7 +1555,7 @@ class ClaudeBridgeService extends EventEmitter {
         'claude',
         cliArgs,
         {
-          cwd: projectPath,
+          cwd: workDir,
           shell: true,
           stdio: ['pipe', 'pipe', 'pipe'],
           env: {

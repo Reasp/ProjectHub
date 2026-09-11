@@ -2,83 +2,84 @@ import { ipcMain } from 'electron';
 import { gitService } from '../services/gitService';
 import { worktreeService } from '../services/worktreeService';
 import { prService } from '../services/prService';
-import { assertRegisteredProject } from '../services/projectPathGuard';
+import { assertRegisteredProject, assertWorkspaceRoot } from '../services/projectPathGuard';
 import { assertInsideProject } from '../services/pathGuard';
+import { runWorktreeInit } from '../services/worktreeInitService';
 import type { AddWorktreeOptions, PRCreateOptions } from '../../src/types/electron';
 
 export function registerGitIpc() {
   // Git Core & Status
   ipcMain.handle('git:getLog', async (_event, projectPath: string, maxCount = 30) => {
-    return await gitService.getLog(projectPath, maxCount);
+    return await gitService.getLog(await assertWorkspaceRoot(projectPath), maxCount);
   });
 
   ipcMain.handle('git:getStatus', async (_event, projectPath: string) => {
-    return await gitService.getStatus(projectPath);
+    return await gitService.getStatus(await assertWorkspaceRoot(projectPath));
   });
 
   ipcMain.handle('git:getRepoDetails', async (_event, projectPath: string) => {
-    return await gitService.getRepoDetails(projectPath);
+    return await gitService.getRepoDetails(await assertWorkspaceRoot(projectPath));
   });
 
   ipcMain.handle('git:unwatch', async (_event, projectPath: string) => {
-    gitService.unwatchProjectGit(await assertRegisteredProject(projectPath));
+    gitService.unwatchProjectGit(await assertWorkspaceRoot(projectPath));
     return true;
   });
 
   ipcMain.handle('git:checkout', async (_event, projectPath: string, branchName: string, createNew = false) => {
-    return await gitService.checkoutBranch(projectPath, branchName, createNew);
+    return await gitService.checkoutBranch(await assertWorkspaceRoot(projectPath), branchName, createNew);
   });
 
   ipcMain.handle('git:createBranch', async (_event, projectPath: string, branchName: string) => {
-    return await gitService.createBranch(projectPath, branchName);
+    return await gitService.createBranch(await assertWorkspaceRoot(projectPath), branchName);
   });
 
   ipcMain.handle('git:stageFile', async (_event, projectPath: string, filePath: string) => {
-    return await gitService.stageFile(projectPath, filePath);
+    return await gitService.stageFile(await assertWorkspaceRoot(projectPath), filePath);
   });
 
   ipcMain.handle('git:unstageFile', async (_event, projectPath: string, filePath: string) => {
-    return await gitService.unstageFile(projectPath, filePath);
+    return await gitService.unstageFile(await assertWorkspaceRoot(projectPath), filePath);
   });
 
   ipcMain.handle('git:stageAll', async (_event, projectPath: string) => {
-    return await gitService.stageAll(projectPath);
+    return await gitService.stageAll(await assertWorkspaceRoot(projectPath));
   });
 
   ipcMain.handle('git:commit', async (_event, projectPath: string, message: string, stageAll = false) => {
-    return await gitService.commitChanges(projectPath, message, stageAll);
+    return await gitService.commitChanges(await assertWorkspaceRoot(projectPath), message, stageAll);
   });
 
   ipcMain.handle('git:getFileDiff', async (_event, projectPath: string, filePath: string, staged = false) => {
-    return await gitService.getFileDiff(projectPath, filePath, staged);
+    return await gitService.getFileDiff(await assertWorkspaceRoot(projectPath), filePath, staged);
   });
 
   ipcMain.handle('git:deleteBranch', async (_event, projectPath: string, branchName: string, force = false) => {
-    return await gitService.deleteBranch(projectPath, branchName, force);
+    return await gitService.deleteBranch(await assertWorkspaceRoot(projectPath), branchName, force);
   });
 
   ipcMain.handle('git:mergeBranch', async (_event, projectPath: string, branchName: string) => {
-    return await gitService.mergeBranch(projectPath, branchName);
+    return await gitService.mergeBranch(await assertWorkspaceRoot(projectPath), branchName);
   });
 
   ipcMain.handle('git:fetchRemote', async (_event, projectPath: string) => {
-    return await gitService.fetchRemote(projectPath);
+    return await gitService.fetchRemote(await assertWorkspaceRoot(projectPath));
   });
 
   ipcMain.handle('git:pullRemote', async (_event, projectPath: string) => {
-    return await gitService.pullRemote(projectPath);
+    return await gitService.pullRemote(await assertWorkspaceRoot(projectPath));
   });
 
   ipcMain.handle('git:pushRemote', async (_event, projectPath: string) => {
-    return await gitService.pushRemote(projectPath);
+    return await gitService.pushRemote(await assertWorkspaceRoot(projectPath));
   });
 
   ipcMain.handle('git:discardFileChanges', async (_event, projectPath: string, filePath: string) => {
-    return await gitService.discardFileChanges(projectPath, filePath);
+    return await gitService.discardFileChanges(await assertWorkspaceRoot(projectPath), filePath);
   });
 
   ipcMain.handle('git:getDiffBetween', async (_event, projectPath: string, targetA: string, targetB?: string, filePath?: string) => {
-    return await gitService.getDiffBetween(projectPath, targetA, targetB, filePath);
+    return await gitService.getDiffBetween(await assertWorkspaceRoot(projectPath), targetA, targetB, filePath);
   });
 
   // Git Worktrees (TASK-53)
@@ -92,7 +93,10 @@ export function registerGitIpc() {
     if (options.customPath) {
       assertInsideProject(safeProject, options.customPath);
     }
-    return await worktreeService.addWorktree(safeProject, options);
+    const created = await worktreeService.addWorktree(safeProject, options);
+    // Политика worktreeInit: node_modules и команды инициализации нового дерева (TASK-62).
+    const init = await runWorktreeInit(safeProject, created.path);
+    return init.ran ? { ...created, init } : created;
   });
 
   ipcMain.handle('git:worktree:remove', async (_event, projectPath: string, worktreePath: string, force = false) => {

@@ -85,7 +85,9 @@ const statusBadgeStyles: Record<string, string> = {
 export const FileExplorer: React.FC = () => {
   const { t } = useTranslation();
   const dialog = useDialog();
-  const { selectedProject, gitRepoDetails, gitDiscardFileChanges, loadGitRepoDetails } = useProjectStore();
+  const { selectedProject, gitRepoDetails, gitDiscardFileChanges, loadGitRepoDetails, workspaceRoot } = useProjectStore();
+  // Проводник и редактор открывают файлы активного рабочего дерева (TASK-62, decision-15).
+  const rootPath = workspaceRoot || selectedProject?.path || '';
 
   const [tree, setTree] = useState<FileTreeNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -140,7 +142,7 @@ export const FileExplorer: React.FC = () => {
     if (!selectedProject || !window.api) return;
     setIsLoading(true);
     try {
-      const nodes = await window.api.readDirectoryTree(selectedProject.path, '', 6);
+      const nodes = await window.api.readDirectoryTree(rootPath, '', 6);
       setTree(nodes);
     } catch (e: any) {
       console.error('Failed to load file tree:', e);
@@ -155,7 +157,7 @@ export const FileExplorer: React.FC = () => {
     setSelectedFile(null);
     setFileContent('');
     setFileDiff('');
-  }, [selectedProject?.path]);
+  }, [rootPath]);
 
   const toggleExpand = (relPath: string) => {
     setExpandedPaths(prev => {
@@ -170,13 +172,13 @@ export const FileExplorer: React.FC = () => {
     if (node.isDirectory || !selectedProject || !window.api) return;
     setSelectedFile(node);
     try {
-      const content = await window.api.readFileContent(selectedProject.path, node.relativePath);
+      const content = await window.api.readFileContent(rootPath, node.relativePath);
       setFileContent(content);
       setOriginalContent(content);
 
       // Check if git diff exists
       if (gitMap.has(node.relativePath)) {
-        const diff = await window.api.getFileDiff(selectedProject.path, node.relativePath, false);
+        const diff = await window.api.getFileDiff(rootPath, node.relativePath, false);
         setFileDiff(diff);
         if (diff) {
           setActivePaneTab('editor');
@@ -195,14 +197,14 @@ export const FileExplorer: React.FC = () => {
     if (!selectedFile || !selectedProject || !window.api) return;
     setIsSaving(true);
     try {
-      await window.api.saveFileContent(selectedProject.path, selectedFile.relativePath, fileContent);
+      await window.api.saveFileContent(rootPath, selectedFile.relativePath, fileContent);
       setOriginalContent(fileContent);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
 
       // Refresh git & diff
       if (loadGitRepoDetails) await loadGitRepoDetails(selectedProject);
-      const diff = await window.api.getFileDiff(selectedProject.path, selectedFile.relativePath, false);
+      const diff = await window.api.getFileDiff(rootPath, selectedFile.relativePath, false);
       setFileDiff(diff);
     } catch (e: any) {
       console.error('Failed to save file:', e);
@@ -235,7 +237,7 @@ export const FileExplorer: React.FC = () => {
     });
     if (confirmed) {
       try {
-        await window.api.deleteFileOrFolder(selectedProject.path, node.relativePath);
+        await window.api.deleteFileOrFolder(rootPath, node.relativePath);
         if (selectedFile?.relativePath === node.relativePath) {
           setSelectedFile(null);
           setFileContent('');
@@ -255,7 +257,7 @@ export const FileExplorer: React.FC = () => {
       : newItemName.trim();
 
     try {
-      await window.api.createFileOrFolder(selectedProject.path, rel, showNewModal.isDir);
+      await window.api.createFileOrFolder(rootPath, rel, showNewModal.isDir);
       setShowNewModal(null);
       setNewItemName('');
       await loadTree();
@@ -521,7 +523,7 @@ export const FileExplorer: React.FC = () => {
                 {/* Open In VS Code */}
                 {window.api?.openInCode && selectedProject && (
                   <button
-                    onClick={() => window.api.openInCode(`${selectedProject.path}/${selectedFile.relativePath}`)}
+                    onClick={() => window.api.openInCode(`${rootPath}/${selectedFile.relativePath}`)}
                     className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition"
                     title={t.explorer.openInVsCodeTooltip}
                   >

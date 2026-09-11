@@ -35,6 +35,8 @@ export const ActionRunnerBar: React.FC = () => {
   const [isStartingTest, setIsStartingTest] = useState(false);
 
   const projectPath = selectedProject?.path;
+  // Действия запускаются в активном рабочем дереве, там же ищем уже запущенный процесс (TASK-62).
+  const workspaceRoot = useProjectStore((s) => s.workspaceRoot);
   useEffect(() => {
     if (projectPath) void loadActionConfig(projectPath);
   }, [projectPath, loadActionConfig]);
@@ -43,12 +45,12 @@ export const ActionRunnerBar: React.FC = () => {
 
   // Check if Run process is currently active
   const runningDevProcess = processes.find(
-    (p) => p.status === 'running' && isProcessOfAction(p, selectedProject.path, config.run)
+    (p) => p.status === 'running' && isProcessOfAction(p, workspaceRoot || selectedProject.path, config.run)
   );
 
   // Check if Deploy process is active
   const runningDeployProcess = processes.find(
-    (p) => p.status === 'running' && isProcessOfAction(p, selectedProject.path, config.deploy)
+    (p) => p.status === 'running' && isProcessOfAction(p, workspaceRoot || selectedProject.path, config.deploy)
   );
 
   const confirmDeploy = (def: { command: string }) =>

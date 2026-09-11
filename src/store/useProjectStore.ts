@@ -28,11 +28,27 @@ import type {
 } from '../types/electron';
 
 /**
- * Процесс относится к действию из .projecthub.json, если он привязан к тому же проекту
- * и совпадает по имени действия либо по командной строке.
+ * Сравнение путей в рендерере (TASK-62): на Windows регистр не важен, разделители
+ * приводим к одному виду, хвостовой разделитель игнорируем.
  */
-export function isProcessOfAction(p: ManagedProcess, projectPath: string, def: ActionDefinition): boolean {
-  return p.cwd === projectPath && (p.name === def.name || p.command === def.command);
+export function samePath(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const norm = (p: string) => p.replace(/[\\/]+/g, '/').replace(/\/+$/, '').toLowerCase();
+  return norm(a) === norm(b);
+}
+
+/** Рабочее дерево, в котором запущен процесс: worktree либо сам корень проекта (TASK-62). */
+export function processWorkspaceRoot(p: ManagedProcess): string {
+  return p.workspaceRoot || p.cwd;
+}
+
+/**
+ * Процесс относится к действию из .projecthub.json, если он запущен в том же рабочем дереве
+ * (worktree или основное дерево проекта) и совпадает по имени действия либо по командной
+ * строке. Сравнение именно по дереву: одно и то же действие в двух worktree — разные процессы.
+ */
+export function isProcessOfAction(p: ManagedProcess, workspaceRoot: string, def: ActionDefinition): boolean {
+  return processWorkspaceRoot(p) === workspaceRoot && (p.name === def.name || p.command === def.command);
 }
 import { getDictionary, type Language } from '../i18n';
 
@@ -231,6 +247,8 @@ interface ProjectState {
   stopProcessAction: (processId: string) => Promise<boolean>;
   /** Перезапуск процесса (hub или env-tools) с теми же параметрами. */
   restartProcessAction: (processId: string) => Promise<ManagedProcess | null>;
+  /** Освободить занятый порт: снять держащие его процессы (TASK-62). */
+  releasePortAction: (port: number) => Promise<boolean>;
 
   // Action Runner (.projecthub.json): единый источник команд run/deploy/test для кнопок,
   // терминала и голосовых команд (аудит 5.9).
@@ -283,9 +301,21 @@ interface ProjectState {
   gitLoadFileDiff: (filePath: string, staged?: boolean) => Promise<void>;
   setGitSelectedFile: (filePath: string | null) => void;
 
-  // Git Worktrees (TASK-53, TASK-55)
+  // Git Worktrees (TASK-53, TASK-55) и многокорневой режим (TASK-62, decision-15)
   worktrees: GitWorktreeInfo[];
+  /** Активное рабочее дерево проекта; null — основное дерево. */
   activeWorktreePath: string | null;
+  /**
+   * Контекст приложения: «проект + рабочее дерево». Git Inspector, File Explorer, терминалы,
+   * Action Runner и агенты работают с ним, Backlog остаётся общим (`selectedProject.path`).
+   */
+  workspaceRoot: string | null;
+  /** Запомненный выбор рабочего дерева по проектам — переживает перезапуск приложения. */
+  activeWorktreeByProject: Record<string, string>;
+  /** Число рабочих деревьев (кроме основного) по проектам — для индикатора в сайдбаре. */
+  worktreeCountByProject: Record<string, number>;
+  /** Переключение активного рабочего дерева; null — вернуться в основное дерево. */
+  setActiveWorktree: (worktreePath: string | null) => Promise<void>;
   loadWorktreesAction: (projectPath?: string) => Promise<GitWorktreeInfo[]>;
   createWorktreeAction: (branch: string, newBranch?: boolean, baseCommitOrBranch?: string, customPath?: string) => Promise<GitWorktreeInfo | null>;
   removeWorktreeAction: (worktreePath: string, force?: boolean) => Promise<boolean>;
@@ -316,6 +346,8 @@ const FILTER_ACTIVE_KEY = 'projecthub_filter_active';
 const PR_FILTER_KEY = 'projecthub_pr_filter';
 const TERMINAL_MODE_KEY = 'projecthub_terminal_mode';
 const SELECTED_PROJECT_KEY = 'projecthub_selected_project_path';
+/** Активное рабочее дерево на проект (TASK-62): `{ [projectPath]: worktreePath }`. */
+const ACTIVE_WORKTREES_KEY = 'projecthub_active_worktrees';
 
 const VALID_TABS: Set<string> = new Set([
   'kanban',
@@ -425,6 +457,29 @@ const loadInitialActiveProjects = (): string[] => {
   return [];
 };
 
+const loadActiveWorktrees = (): Record<string, string> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(ACTIVE_WORKTREES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, string>;
+    }
+  } catch (e) {
+    console.error('Failed to parse active worktrees from localStorage:', e);
+  }
+  return {};
+};
+
+const saveActiveWorktrees = (map: Record<string, string>) => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(ACTIVE_WORKTREES_KEY, JSON.stringify(map));
+  } catch (e) {
+    console.error('Failed to save active worktrees to localStorage:', e);
+  }
+};
+
 const saveActiveProjects = (paths: string[]) => {
   if (typeof window === 'undefined') return;
   try {
@@ -444,6 +499,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   gitDiffContent: '',
   worktrees: [],
   activeWorktreePath: null,
+  workspaceRoot: null,
+  activeWorktreeByProject: loadActiveWorktrees(),
+  worktreeCountByProject: {},
   activeTab: loadInitialActiveTab(),
   taskViewMode: loadInitialTaskViewMode(),
   selectedLabelFilter: loadInitialLabelFilter(),
@@ -659,7 +717,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (typeof window !== 'undefined') {
         try { localStorage.removeItem(SELECTED_PROJECT_KEY); } catch {}
       }
-      set({ selectedProject: null, selectedMilestoneFilter: null, actionConfig: null });
+      set({
+        selectedProject: null,
+        selectedMilestoneFilter: null,
+        actionConfig: null,
+        activeWorktreePath: null,
+        workspaceRoot: null,
+        worktrees: []
+      });
       return;
     }
 
@@ -677,6 +742,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // Конфиг действий принадлежит проекту — до загрузки нового не показывать чужой.
       set({ lastSelectedProjectPath: cur.path, actionConfig: null });
     }
+
+    // Контекст «проект + рабочее дерево»: восстанавливаем запомненный worktree (TASK-62).
+    // Если дерево удалили снаружи, loadWorktreesAction вернёт контекст в основное дерево.
+    const rememberedWorktree = get().activeWorktreeByProject[selectedProject.path] || null;
+    set({
+      activeWorktreePath: rememberedWorktree,
+      workspaceRoot: rememberedWorktree || selectedProject.path,
+      worktrees: cur && cur.path !== selectedProject.path ? [] : get().worktrees
+    });
 
     // Automatically make the selected project active in the session
     const activePaths = get().activeProjectPaths;
@@ -832,11 +906,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (!window.api?.createPtySession) return null;
     try {
       set({ isTerminalOpen: true, terminalMode: 'pty' });
+      // Без явного cwd терминал открывается в активном рабочем дереве проекта (TASK-62).
+      const activeRoot = samePath(projectPath, get().selectedProject?.path) ? get().workspaceRoot : null;
       const session = await window.api.createPtySession({
         projectPath,
         type,
         title,
-        cwd,
+        cwd: cwd || activeRoot || undefined,
         worktreeBranch
       });
       if (session) {
@@ -909,7 +985,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
     try {
       set({ isTerminalOpen: true });
-      const proc = await window.api.startProcess(curProject.path, command, name, options);
+      // Процесс принадлежит проекту, но живёт в активном рабочем дереве (TASK-62).
+      const workspaceRoot = options?.workspaceRoot || get().workspaceRoot || curProject.path;
+      const proc = await window.api.startProcess(curProject.path, command, name, { ...options, workspaceRoot });
       set((state) => ({
         processes: [...state.processes.filter((p) => p.id !== proc.id), proc],
         activeProcessId: proc.id
@@ -942,7 +1020,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       env: def.env,
       cwd: def.cwd,
       autoOpenUrl: def.autoOpenUrl,
-      autoOpenDelayMs: def.autoOpenDelayMs
+      autoOpenDelayMs: def.autoOpenDelayMs,
+      portStrategy: def.portStrategy,
+      port: def.port
     });
   },
 
@@ -959,10 +1039,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   findActionProcess: (kind: ProjectActionKind) => {
-    const { selectedProject, actionConfig, processes } = get();
+    const { selectedProject, actionConfig, processes, workspaceRoot } = get();
     if (!selectedProject || !actionConfig) return undefined;
     const def = actionConfig[kind];
-    return processes.find((p) => p.status === 'running' && isProcessOfAction(p, selectedProject.path, def));
+    const root = workspaceRoot || selectedProject.path;
+    return processes.find((p) => p.status === 'running' && isProcessOfAction(p, root, def));
   },
 
   stopProcessAction: async (processId: string) => {
@@ -980,6 +1061,27 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       return ok;
     } catch (e) {
       console.error('Failed to stop process:', e);
+      return false;
+    }
+  },
+
+  releasePortAction: async (port: number) => {
+    if (!window.api?.releasePort) return false;
+    const logs = getDictionary(get().language).terminalLogs;
+    try {
+      const res = await window.api.releasePort(port);
+      const ok = res.killed.length > 0 && res.failed.length === 0;
+      get().addTerminalLog(
+        ok
+          ? formatLog(logs.portReleased, { port, count: res.killed.length })
+          : formatLog(logs.portReleaseFailed, { port })
+      );
+      const current = get().selectedProject;
+      if (current) await get().fetchProcesses(current.path);
+      return ok;
+    } catch (e) {
+      console.error('Failed to release port:', e);
+      get().addTerminalLog(formatLog(logs.portReleaseFailed, { port }));
       return false;
     }
   },
@@ -1230,7 +1332,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         if (window.api.onGitChanged) {
           gitChangedCleanup = window.api.onGitChanged(async (data) => {
             const curProject = get().selectedProject;
-            if (curProject && curProject.path.toLowerCase() === data.projectPath.toLowerCase()) {
+            // Вотчер следит и за основным деревом, и за активным worktree (TASK-62).
+            const watched = samePath(curProject?.path, data.projectPath) || samePath(get().workspaceRoot, data.projectPath);
+            if (curProject && watched) {
               await get().loadGitRepoDetails(curProject);
             }
           });
@@ -1369,15 +1473,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   loadGitRepoDetails: async (project: ProjectInfo) => {
     if (!window.api || !project.hasGit) return;
     try {
-      const details = await window.api.getGitRepoDetails(project.path);
       const isCurrent = get().selectedProject?.path === project.path;
-      if (isCurrent) {
-        set({ gitRepoDetails: details });
-        void get().loadWorktreesAction(project.path);
-      }
+      // Инспектор показывает активное рабочее дерево: ветку, статус и дифф worktree (TASK-62).
+      const root = isCurrent ? get().workspaceRoot || project.path : project.path;
+      const details = await window.api.getGitRepoDetails(root);
+      if (isCurrent) set({ gitRepoDetails: details });
+      void get().loadWorktreesAction(project.path);
       set((state) => {
+        // Кэш проекта хранит состояние основного дерева — детали worktree в него не пишем.
         const cached = state.projectDataCache[project.path];
-        if (!cached) return state;
+        if (!cached || !samePath(root, project.path)) return state;
         return {
           projectDataCache: {
             ...state.projectDataCache,
@@ -1395,9 +1500,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitCheckoutBranch: async (branchName: string, createNew = false) => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return false;
     try {
-      const ok = await window.api.checkoutBranch(project.path, branchName, createNew);
+      const ok = await window.api.checkoutBranch(root, branchName, createNew);
       if (ok) {
         get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitBranchSwitched, { branch: branchName }));
         await get().loadGitRepoDetails(project);
@@ -1411,9 +1517,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitCreateBranch: async (branchName: string) => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return false;
     try {
-      const ok = await window.api.createBranch(project.path, branchName);
+      const ok = await window.api.createBranch(root, branchName);
       if (ok) {
         get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitBranchCreated, { branch: branchName }));
         await get().loadGitRepoDetails(project);
@@ -1427,9 +1534,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitDeleteBranch: async (branchName: string, force = false) => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return false;
     try {
-      const ok = await window.api.deleteBranch(project.path, branchName, force);
+      const ok = await window.api.deleteBranch(root, branchName, force);
       if (ok) {
         get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitBranchDeleted, { branch: branchName }));
         await get().loadGitRepoDetails(project);
@@ -1443,9 +1551,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitMergeBranch: async (branchName: string) => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return { success: false, error: 'No active project' };
     try {
-      const res = await window.api.mergeBranch(project.path, branchName);
+      const res = await window.api.mergeBranch(root, branchName);
       if (res.success) {
         get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitBranchMerged, { branch: branchName }));
         await get().loadGitRepoDetails(project);
@@ -1461,9 +1570,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitFetchRemote: async () => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return false;
     try {
-      const ok = await window.api.fetchRemote(project.path);
+      const ok = await window.api.fetchRemote(root);
       if (ok) {
         get().addTerminalLog(getDictionary(get().language).terminalLogs.gitFetchDone);
         await get().loadGitRepoDetails(project);
@@ -1477,9 +1587,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitPullRemote: async () => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return { success: false, error: 'No active project' };
     try {
-      const res = await window.api.pullRemote(project.path);
+      const res = await window.api.pullRemote(root);
       if (res.success) {
         get().addTerminalLog(getDictionary(get().language).terminalLogs.gitPullDone);
         await get().loadGitRepoDetails(project);
@@ -1495,9 +1606,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitPushRemote: async () => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return { success: false, error: 'No active project' };
     try {
-      const res = await window.api.pushRemote(project.path);
+      const res = await window.api.pushRemote(root);
       if (res.success) {
         get().addTerminalLog(getDictionary(get().language).terminalLogs.gitPushDone);
         await get().loadGitRepoDetails(project);
@@ -1513,9 +1625,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitDiscardFileChanges: async (filePath: string) => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return false;
     try {
-      const ok = await window.api.discardFileChanges(project.path, filePath);
+      const ok = await window.api.discardFileChanges(root, filePath);
       if (ok) {
         get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitRevertedFile, { path: filePath }));
         await get().loadGitRepoDetails(project);
@@ -1532,9 +1645,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitLoadDiffBetween: async (targetA: string, targetB?: string, filePath?: string) => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return '';
     try {
-      const diff = await window.api.getDiffBetween(project.path, targetA, targetB, filePath);
+      const diff = await window.api.getDiffBetween(root, targetA, targetB, filePath);
       set({ gitDiffContent: diff });
       return diff;
     } catch (e) {
@@ -1545,9 +1659,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitStageFile: async (filePath: string) => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return false;
     try {
-      const ok = await window.api.stageFile(project.path, filePath);
+      const ok = await window.api.stageFile(root, filePath);
       if (ok) await get().loadGitRepoDetails(project);
       return ok;
     } catch (e) {
@@ -1558,9 +1673,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitUnstageFile: async (filePath: string) => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return false;
     try {
-      const ok = await window.api.unstageFile(project.path, filePath);
+      const ok = await window.api.unstageFile(root, filePath);
       if (ok) await get().loadGitRepoDetails(project);
       return ok;
     } catch (e) {
@@ -1571,9 +1687,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitStageAll: async () => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return false;
     try {
-      const ok = await window.api.stageAll(project.path);
+      const ok = await window.api.stageAll(root);
       if (ok) await get().loadGitRepoDetails(project);
       return ok;
     } catch (e) {
@@ -1584,13 +1701,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitCommit: async (message: string, stageAll = false) => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return false;
     try {
-      const ok = await window.api.commitChanges(project.path, message, stageAll);
+      const ok = await window.api.commitChanges(root, message, stageAll);
       if (ok) {
         get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitCommitCreated, { message }));
         const [logs, _] = await Promise.all([
-          window.api.getGitLog(project.path, 25),
+          window.api.getGitLog(root, 25),
           get().loadGitRepoDetails(project)
         ]);
         set({ gitLogs: logs, gitDiffContent: '', gitSelectedFile: null });
@@ -1604,10 +1722,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   gitLoadFileDiff: async (filePath: string, staged = false) => {
     const project = get().selectedProject;
+    const root = get().workspaceRoot || project?.path || '';
     if (!window.api || !project) return;
     try {
       set({ gitSelectedFile: filePath });
-      const diff = await window.api.getFileDiff(project.path, filePath, staged);
+      const diff = await window.api.getFileDiff(root, filePath, staged);
       set({ gitDiffContent: diff });
     } catch (e) {
       console.error('Failed to load file diff:', e);
@@ -1626,11 +1745,65 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (!window.api?.listWorktrees || !targetPath) return [];
     try {
       const list = await window.api.listWorktrees(targetPath);
-      set({ worktrees: list });
+      set((state) => ({
+        worktrees: state.selectedProject?.path === targetPath ? list : state.worktrees,
+        worktreeCountByProject: {
+          ...state.worktreeCountByProject,
+          [targetPath]: list.filter((w) => !w.isMain).length
+        }
+      }));
+
+      // Активное дерево могли удалить снаружи (`git worktree remove`) — возвращаемся в основное.
+      const active = get().activeWorktreePath;
+      if (active && get().selectedProject?.path === targetPath && !list.some((w) => samePath(w.path, active))) {
+        await get().setActiveWorktree(null);
+      }
       return list;
     } catch (e) {
       console.error('Failed to list worktrees:', e);
       return [];
+    }
+  },
+
+  setActiveWorktree: async (worktreePath: string | null) => {
+    const project = get().selectedProject;
+    if (!project) return;
+    const normalized = worktreePath && !samePath(worktreePath, project.path) ? worktreePath : null;
+    if (samePath(get().workspaceRoot || '', normalized || project.path)) return;
+
+    const byProject = { ...get().activeWorktreeByProject };
+    if (normalized) byProject[project.path] = normalized;
+    else delete byProject[project.path];
+    saveActiveWorktrees(byProject);
+
+    set({
+      activeWorktreePath: normalized,
+      workspaceRoot: normalized || project.path,
+      activeWorktreeByProject: byProject,
+      // Дифф и выбранный файл принадлежали прежнему дереву.
+      gitSelectedFile: null,
+      gitDiffContent: ''
+    });
+
+    const branch = get().worktrees.find((w) => samePath(w.path, normalized || project.path))?.branch;
+    get().addTerminalLog(
+      formatLog(getDictionary(get().language).terminalLogs.worktreeSwitched, {
+        path: normalized || project.path,
+        branch: branch || project.gitBranch || '—'
+      })
+    );
+
+    await get().loadGitRepoDetails(project);
+    await get().fetchProcesses(project.path);
+
+    // История коммитов тоже принадлежит дереву: в worktree своя ветка.
+    if (project.hasGit && window.api?.getGitLog) {
+      try {
+        const logs = await window.api.getGitLog(normalized || project.path, 25);
+        if (samePath(get().workspaceRoot, normalized || project.path)) set({ gitLogs: logs });
+      } catch (e) {
+        console.error('Failed to reload git log for worktree:', e);
+      }
     }
   },
 
@@ -1650,7 +1823,26 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         customPath
       });
       if (wt) {
-        get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.worktreeCreated, { path: wt.path, branch: wt.branch || 'detached' }));
+        const logs = getDictionary(get().language).terminalLogs;
+        get().addTerminalLog(formatLog(logs.worktreeCreated, { path: wt.path, branch: wt.branch || 'detached' }));
+
+        // Политика worktreeInit отработала в main — показываем её результат и процесс (TASK-62).
+        if (wt.init?.linkedNodeModules) get().addTerminalLog(logs.worktreeInitLinked);
+        if (wt.init?.commands?.length) {
+          get().addTerminalLog(formatLog(logs.worktreeInitStarted, { commands: wt.init.commands.join(' && ') }));
+        }
+        if (wt.init?.error) {
+          get().addTerminalLog(formatLog(logs.worktreeInitError, { message: wt.init.error }));
+        }
+        if (wt.init?.process) {
+          const initProc = wt.init.process;
+          set((state) => ({
+            processes: [...state.processes.filter((p) => p.id !== initProc.id), initProc],
+            activeProcessId: initProc.id,
+            isTerminalOpen: true
+          }));
+        }
+
         await get().loadWorktreesAction(project.path);
         await get().loadGitRepoDetails(project);
       }

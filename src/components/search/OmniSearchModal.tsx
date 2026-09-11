@@ -11,9 +11,11 @@ import {
   FolderGit2,
   BrainCircuit,
   ArrowRight,
-  Layers
+  Layers,
+  GitBranch,
+  Home
 } from 'lucide-react';
-import { useProjectStore } from '../../store/useProjectStore';
+import { useProjectStore, samePath } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import type { RagSearchResult } from '../../types/electron';
 
@@ -24,7 +26,8 @@ interface OmniSearchModalProps {
 
 export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
-  const { selectedProject, selectProject, projects, setActiveTab } = useProjectStore();
+  const { selectedProject, selectProject, projects, setActiveTab, worktrees, workspaceRoot, setActiveWorktree } =
+    useProjectStore();
 
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<'all' | 'vector' | 'text'>('all');
@@ -101,6 +104,43 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
       }
     }
     onClose();
+  };
+
+  /**
+   * Переключение рабочего дерева прямо из палитры (TASK-62, AC #1): совпадение по ветке,
+   * пути или id задачи; при пустом запросе показываются все деревья проекта.
+   */
+  const q = query.trim().toLowerCase();
+  const worktreeMatches = selectedProject
+    ? [
+        {
+          path: selectedProject.path,
+          label: t.worktrees.mainTreeOption,
+          hint: selectedProject.path,
+          isMain: true,
+          taskId: undefined as string | undefined
+        },
+        ...worktrees
+          .filter((w) => !w.isMain)
+          .map((w) => ({
+            path: w.path,
+            label: w.branch || w.head.slice(0, 7),
+            hint: w.path,
+            isMain: false,
+            taskId: w.taskId
+          }))
+      ].filter(
+        (w) =>
+          q === '' ||
+          w.label.toLowerCase().includes(q) ||
+          w.hint.toLowerCase().includes(q) ||
+          (w.taskId ? w.taskId.toLowerCase().includes(q) : false)
+      )
+    : [];
+
+  const handleSwitchWorktree = async (path: string, isMain: boolean) => {
+    onClose();
+    await setActiveWorktree(isMain ? null : path);
   };
 
   if (!isOpen) return null;
@@ -202,6 +242,50 @@ export const OmniSearchModal: React.FC<OmniSearchModalProps> = ({ isOpen, onClos
 
         {/* Results List */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          {/* Активное рабочее дерево проекта (TASK-62) */}
+          {worktreeMatches.length > 1 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] uppercase tracking-wide text-slate-500 font-semibold px-1">
+                {t.worktrees.switcherTitle}
+              </p>
+              {worktreeMatches.map((w) => {
+                const isActive = samePath(w.path, workspaceRoot);
+                return (
+                  <button
+                    key={w.path}
+                    type="button"
+                    onClick={() => void handleSwitchWorktree(w.path, w.isMain)}
+                    className={`w-full text-left p-2.5 rounded-xl border transition flex items-center gap-2 ${
+                      isActive
+                        ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-200'
+                        : 'bg-[#151928]/50 border-slate-800/80 text-slate-300 hover:bg-[#181d2e] hover:border-slate-700'
+                    }`}
+                  >
+                    {w.isMain ? (
+                      <Home className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    ) : (
+                      <GitBranch className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
+                    )}
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs font-semibold truncate">{w.label}</span>
+                      <span className="block text-[10px] font-mono text-slate-500 truncate">{w.hint}</span>
+                    </span>
+                    {w.taskId && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 shrink-0">
+                        {w.taskId}
+                      </span>
+                    )}
+                    {isActive && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 border border-cyan-500/40 shrink-0">
+                        {t.worktrees.activeBadge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {query.trim() === '' && (
             <div className="py-12 text-center text-xs text-slate-500 space-y-2">
               <BrainCircuit className="w-8 h-8 mx-auto text-slate-600" />

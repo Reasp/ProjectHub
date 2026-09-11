@@ -920,7 +920,9 @@ export class AgentFleetService extends EventEmitter {
       agentId: agentState.id,
       agentName: agentState.config.name,
       role: agentState.config.role,
-      permissions
+      permissions,
+      // Агент роя работает в своём worktree — карточки одобрения и диффы берут файлы оттуда (TASK-62).
+      workspaceRoot: targetPath
     };
     const onChunk = (chunk: { approvalRequest?: { title: string; type: string } }) => {
       if (chunk.approvalRequest) {

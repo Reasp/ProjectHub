@@ -21,9 +21,11 @@ import {
   Zap,
   Power,
   Mic,
-  PanelLeftClose
+  PanelLeftClose,
+  Bot
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useSwarmStore } from '../../store/useSwarmStore';
 import { useHitlStore } from '../../store/useHitlStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
@@ -55,8 +57,10 @@ export const Sidebar: React.FC = () => {
     toggleFavoriteProject,
     refreshSingleProject,
     setProjectVoiceAlias,
-    projectAgentStatuses
+    projectAgentStatuses,
+    worktreeCountByProject
   } = useProjectStore();
+  const swarms = useSwarmStore((s) => s.swarms);
   const hitlPendingCount = useHitlStore((s) => s.pending.length);
   const openHitlCenter = useHitlStore((s) => s.openCenter);
 
@@ -253,6 +257,14 @@ export const Sidebar: React.FC = () => {
             const activeProcs = project.processStatus?.runningCount || 0;
             const hasRagReady = project.ragStatus?.ready;
             const agentStatus = projectAgentStatuses[project.path];
+            // Параллельность проекта (TASK-62): рабочие деревья и занятые ими агенты.
+            const worktreeCount = worktreeCountByProject[project.path] || 0;
+            const activeAgents = (swarms[project.path] || []).reduce(
+              (sum, session) =>
+                sum + session.agents.filter((a) => a.status === 'running' || a.status === 'preparing').length,
+              0
+            );
+            const agentsBusy = activeAgents + (agentStatus && agentStatus.status !== 'idle' && agentStatus.status !== 'done' ? 1 : 0);
 
             return (
               <div
@@ -418,6 +430,26 @@ export const Sidebar: React.FC = () => {
 
                   {/* Processes and RAG */}
                   <div className="flex items-center gap-1.5">
+                    {worktreeCount > 0 && (
+                      <span
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/25 font-mono text-[9px]"
+                        title={t.header.worktreeCountTooltip.replace('{count}', String(worktreeCount))}
+                      >
+                        <FolderGit2 className="w-2.5 h-2.5" />
+                        WT: {worktreeCount}
+                      </span>
+                    )}
+
+                    {agentsBusy > 0 && (
+                      <span
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/25 font-mono text-[9px]"
+                        title={t.worktrees.agentsCount.replace('{count}', String(agentsBusy))}
+                      >
+                        <Bot className="w-2.5 h-2.5" />
+                        {agentsBusy}
+                      </span>
+                    )}
+
                     {activeProcs > 0 && (
                       <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono text-[9px]">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />

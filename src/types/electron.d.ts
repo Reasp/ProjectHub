@@ -7,6 +7,22 @@ export interface ActionDefinition {
   requiresConfirmation?: boolean;
   env?: Record<string, string>;
   cwd?: string;
+  /**
+   * Стратегия порта (TASK-62): `fixed` — как записано в команде; `auto` — ProjectHub
+   * подбирает свободный порт, кладёт в `PORT` и подставляет вместо `${port}` в команде
+   * и `autoOpenUrl`. Позволяет держать dev-серверы нескольких worktree одновременно.
+   */
+  portStrategy?: 'fixed' | 'auto';
+  /** Порт, с которого начинать поиск при `portStrategy: 'auto'` (по умолчанию 5173). */
+  port?: number;
+}
+
+/** Политика инициализации нового worktree (`.projecthub.json`, TASK-62). */
+export interface WorktreeInitPolicy {
+  /** Команды, выполняемые в новом worktree после его создания (например `npm ci`). */
+  commands?: string[];
+  /** Связать `node_modules` worktree с основным деревом (symlink/junction) вместо установки. */
+  linkNodeModules?: boolean;
 }
 
 export interface ProjectActionConfig {
@@ -14,6 +30,8 @@ export interface ProjectActionConfig {
   deploy: ActionDefinition;
   test: ActionDefinition;
   customActions?: Array<ActionDefinition & { id: string }>;
+  /** Что выполнить в новом worktree после создания (TASK-62). */
+  worktreeInit?: WorktreeInitPolicy;
 }
 
 /** Стандартные действия из .projecthub.json. */
@@ -25,6 +43,10 @@ export interface StartProcessOptions {
   cwd?: string;
   autoOpenUrl?: string;
   autoOpenDelayMs?: number;
+  /** Активное рабочее дерево (worktree или корень проекта) — входит в id процесса (TASK-62). */
+  workspaceRoot?: string;
+  portStrategy?: 'fixed' | 'auto';
+  port?: number;
 }
 
 export interface RagStatus {
@@ -232,8 +254,12 @@ export interface ManagedProcess {
   command: string;
   /** Корень проекта, к которому привязан процесс (ключ для поиска в UI). */
   cwd: string;
-  /** Фактический рабочий каталог, если `ActionDefinition.cwd` отличается от корня проекта. */
+  /** Рабочее дерево процесса (worktree), если он запущен не в основном дереве проекта. */
+  workspaceRoot?: string;
+  /** Фактический рабочий каталог, если `ActionDefinition.cwd` отличается от рабочего дерева. */
   workingDir?: string;
+  /** Порт, выданный процессу при `portStrategy: 'auto'` (или заданный явно). */
+  port?: number;
   pid?: number;
   startedAt: string;
   status: 'running' | 'stopped' | 'failed';
@@ -241,6 +267,23 @@ export interface ManagedProcess {
   source: 'hub' | 'env-tools';
   /** URL, который открывается после старта (только для hub-процессов из ActionDefinition). */
   autoOpenUrl?: string;
+}
+
+/** Результат политики `worktreeInit` для только что созданного worktree (TASK-62). */
+export interface WorktreeInitOutcome {
+  ran: boolean;
+  linkedNodeModules?: boolean;
+  commands?: string[];
+  process?: ManagedProcess;
+  error?: string;
+}
+
+/** Владелец порта (TASK-62). */
+export interface PortOwner {
+  pid: number;
+  processId?: string;
+  name?: string;
+  workspaceRoot?: string;
 }
 
 export interface RagSearchOptions {
@@ -388,6 +431,10 @@ export interface IElectronAPI {
     options?: StartProcessOptions
   ) => Promise<ManagedProcess>;
   stopProcess: (processId: string) => Promise<boolean>;
+  /** Кто слушает порт: pid и, если это процесс Hub, его id/имя/рабочее дерево (TASK-62). */
+  listPortOwners: (port: number) => Promise<PortOwner[]>;
+  /** Освободить порт: hub-процессы останавливаются штатно, посторонние pid'ы снимаются. */
+  releasePort: (port: number) => Promise<{ killed: number[]; failed: number[] }>;
   restartProcess: (processId: string) => Promise<ManagedProcess>;
   listProcesses: (projectPath: string) => Promise<ManagedProcess[]>;
   tailProcessLog: (projectPath: string, processName: string, lines?: number) => Promise<string>;
@@ -972,6 +1019,8 @@ export interface AIStreamRequest {
   claudeCliSessionId?: string;
   taskId?: string;
   contextParts?: Partial<Record<ContextPartKey, boolean>>;
+  /** Активное рабочее дерево (worktree) — рабочий каталог агента; backlog общий (TASK-62). */
+  workspaceRoot?: string;
 }
 
 export interface GitWorktreeInfo {
@@ -985,6 +1034,8 @@ export interface GitWorktreeInfo {
   pruneReason?: string;
   isMain: boolean;
   taskId?: string;
+  /** Что отработала политика `worktreeInit` сразу после создания дерева (TASK-62). */
+  init?: WorktreeInitOutcome;
 }
 
 export interface AddWorktreeOptions {

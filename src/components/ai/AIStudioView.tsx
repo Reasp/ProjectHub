@@ -21,7 +21,8 @@ import {
   Rocket,
   GitCommit,
   Zap,
-  Users
+  Users,
+  FolderGit2
 } from 'lucide-react';
 import { useAIStudioStore, type AISession } from '../../store/useAIStudioStore';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -45,7 +46,7 @@ import { SwarmArenaView } from './swarm/SwarmArenaView';
 export const AIStudioView: React.FC = () => {
   const { t, language } = useTranslation();
   const dialog = useDialog();
-  const { selectedProject, tasks, gitRepoDetails } = useProjectStore();
+  const { selectedProject, tasks, gitRepoDetails, workspaceRoot } = useProjectStore();
   const {
     sessions,
     sessionsLoaded,
@@ -364,6 +365,17 @@ export const AIStudioView: React.FC = () => {
               </span>
             )}
           </button>
+
+          {/* Рабочее дерево агента: он стартует с cwd в активном worktree (TASK-62) */}
+          {workspaceRoot && selectedProject && workspaceRoot !== selectedProject.path && (
+            <span
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-cyan-600/50 bg-cyan-950/40 text-cyan-300 text-[11px] font-mono max-w-[200px] truncate"
+              title={`${t.worktrees.switcherTitle}: ${workspaceRoot}`}
+            >
+              <FolderGit2 className="w-3 h-3 shrink-0" />
+              {workspaceRoot.split(/[\\/]/).pop()}
+            </span>
+          )}
 
           {/* Quick Model Selector Dropdown matching official Claude Code UI */}
           <ModelSelectorDropdown

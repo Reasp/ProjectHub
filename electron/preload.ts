@@ -45,6 +45,10 @@ const api: IElectronAPI = {
     ipcRenderer.invoke('process:stop', processId),
   restartProcess: (processId: string) =>
     ipcRenderer.invoke('process:restart', processId),
+  listPortOwners: (port: number) =>
+    ipcRenderer.invoke('process:listPortOwners', port),
+  releasePort: (port: number) =>
+    ipcRenderer.invoke('process:releasePort', port),
   listProcesses: (projectPath: string) =>
     ipcRenderer.invoke('process:list', projectPath),
   tailProcessLog: (projectPath: string, processName: string, lines?: number) =>

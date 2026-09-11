@@ -27,6 +27,7 @@ const {
   resolveShellSpawn,
   resolveWorkingDir,
   parseProcessId,
+  buildProcessId,
   containsUrl,
   isAutoOpenUrlAllowed
 } = await import('../../electron/services/processManager');
@@ -405,4 +406,69 @@ describe('перезапуск hub-процесса (TASK-45, AC #2)', () => {
     // Повторная остановка уже остановленного — true без ошибок.
     expect(await processManager.stopProcess(info.id)).toBe(true);
   }, 20000);
+});
+
+describe('рабочее дерево и порты процесса (TASK-62)', () => {
+  it('id процесса включает рабочее дерево: одно имя в двух деревьях — разные процессы', () => {
+    const main = buildProcessId(path.join('F:', 'proj'), 'Dev Server');
+    const wt = buildProcessId(path.join('F:', 'proj', '.worktrees', 'task-62'), 'Dev Server');
+    expect(main).not.toBe(wt);
+    expect(parseProcessId(wt)).toEqual({
+      projectPath: path.normalize(path.join('F:', 'proj', '.worktrees', 'task-62')),
+      name: 'Dev Server'
+    });
+  });
+
+  it('процесс worktree привязан к проекту, но запускается в дереве', async () => {
+    processManager.configureRetention({ finishedTtlMs: 60000, maxFinished: 50 });
+    const worktreeRoot = path.resolve(CWD, 'tests');
+    const isWin = process.platform === 'win32';
+    const info = await processManager.startProcess(CWD, isWin ? 'cd' : 'pwd', 'wt-cwd', {
+      workspaceRoot: worktreeRoot
+    });
+    expect(info.id).toBe(buildProcessId(worktreeRoot, 'wt-cwd'));
+    expect(info.cwd).toBe(CWD);
+    expect(info.workspaceRoot).toBe(worktreeRoot);
+    await waitFor(() => finished(info.id));
+    expect(processManager.getLogs(info.id).join('').toLowerCase()).toContain(worktreeRoot.toLowerCase());
+
+    // Процесс worktree виден в списке процессов проекта.
+    const listed = await processManager.listProcessesForProject(CWD);
+    expect(listed.some((p) => p.id === info.id)).toBe(true);
+  }, 20000);
+
+  it('portStrategy auto подставляет свободный порт в команду, PORT и autoOpenUrl', async () => {
+    processManager.configureRetention({ finishedTtlMs: 60000, maxFinished: 50 });
+    const isWin = process.platform === 'win32';
+    const command = isWin ? 'echo port=${port} env=%PORT%' : 'echo port=${port} env=$PORT';
+    const info = await processManager.startProcess(CWD, command, 'auto-port', {
+      portStrategy: 'auto',
+      port: 45_100,
+      autoOpenUrl: 'http://localhost:${port}/'
+    });
+    expect(info.port).toBeGreaterThanOrEqual(45_100);
+    expect(info.command).toContain(`port=${info.port}`);
+    expect(info.command).not.toContain('${port}');
+    await waitFor(() => finished(info.id));
+    const log = processManager.getLogs(info.id).join('');
+    expect(log).toContain(`port=${info.port}`);
+    expect(log).toContain(`env=${info.port}`);
+  }, 20000);
+
+  it('два дерева одного проекта поднимают одно действие одновременно с разными портами', async () => {
+    processManager.configureRetention({ finishedTtlMs: 60000, maxFinished: 50 });
+    const command = `${longRunningCommand(4000)} && echo ignored`;
+    const a = await processManager.startProcess(CWD, command, 'dev', { portStrategy: 'auto', port: 45_200 });
+    const b = await processManager.startProcess(CWD, command, 'dev', {
+      workspaceRoot: path.resolve(CWD, 'tests'),
+      portStrategy: 'auto',
+      port: 45_200
+    });
+    expect(a.id).not.toBe(b.id);
+    expect(a.port).not.toBe(b.port);
+    expect(a.status).toBe('running');
+    expect(b.status).toBe('running');
+    await processManager.stopProcess(a.id);
+    await processManager.stopProcess(b.id);
+  }, 30000);
 });

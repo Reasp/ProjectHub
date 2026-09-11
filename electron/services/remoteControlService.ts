@@ -21,6 +21,7 @@ import type {
 } from '../../src/types/remote.js';
 import { generateSecretKey, generatePairingPin, encryptPayload, decryptPayload } from '../../src/utils/remoteCryptoNode.js';
 import { projectRegistry } from './projectRegistry.js';
+import { assertWorkspaceRoot } from './projectPathGuard.js';
 import { processManager } from './processManager.js';
 import { gitService } from './gitService.js';
 import { claudeBridgeService } from './claudeBridgeService.js';
@@ -1545,7 +1546,13 @@ class RemoteControlService {
 
       case 'start_process': {
         if (!activePath) throw new Error('No active project specified');
-        const proc = await processManager.startProcess(activePath, params.command, params.name, params.options);
+        // Рабочее дерево из удалённого запроса проверяем гардом: клиент не должен
+        // запускать процессы в произвольном каталоге (TASK-62).
+        const options = { ...(params.options ?? {}) };
+        if (options.workspaceRoot) {
+          options.workspaceRoot = await assertWorkspaceRoot(String(options.workspaceRoot));
+        }
+        const proc = await processManager.startProcess(activePath, params.command, params.name, options);
         return proc;
       }
 
@@ -1654,7 +1661,12 @@ class RemoteControlService {
         const def: ActionDefinition | undefined =
           actionId in builtin ? builtin[actionId as 'run' | 'deploy' | 'test'] : config.customActions?.find((a) => a.id === actionId);
         if (!def) throw new Error(`Unknown action: ${actionId}`);
-        return await processManager.startProcess(activePath, def.command, def.name, { cwd: def.cwd, env: def.env });
+        return await processManager.startProcess(activePath, def.command, def.name, {
+          cwd: def.cwd,
+          env: def.env,
+          portStrategy: def.portStrategy,
+          port: def.port
+        });
       }
 
       case 'send_ai_prompt': {

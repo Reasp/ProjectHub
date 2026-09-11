@@ -11,10 +11,13 @@ export const ClaudeCliView: React.FC = () => {
     ptySessions,
     activePtySessionId,
     createPtySessionAction,
-    closePtySessionAction
+    closePtySessionAction,
+    workspaceRoot
   } = useProjectStore();
 
   const projectPath = selectedProject?.path || '';
+  // Сессия CLI живёт в том дереве, где была создана; активное дерево могли переключить позже.
+  const sessionCwd = (session?: { cwd?: string }) => session?.cwd || projectPath;
 
   // Find or create Claude Code PTY session for current project
   const claudeSessions = ptySessions.filter(
@@ -44,7 +47,8 @@ export const ClaudeCliView: React.FC = () => {
     if (activeSession) {
       await closePtySessionAction(activeSession.id);
     }
-    await createPtySessionAction(projectPath, 'claude');
+    // Перезапуск поднимает сессию уже в активном рабочем дереве (TASK-62).
+    await createPtySessionAction(projectPath, 'claude', undefined, workspaceRoot || undefined);
   };
 
   return (
@@ -58,6 +62,14 @@ export const ClaudeCliView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-xs font-semibold text-white">{t.claudeCli.title}</h3>
+              {activeSession && workspaceRoot && sessionCwd(activeSession) !== workspaceRoot && (
+                <span
+                  className="px-2 py-0.5 rounded-full text-[10px] font-mono border bg-amber-500/10 border-amber-500/30 text-amber-300"
+                  title={t.worktrees.switcherHint}
+                >
+                  {t.claudeCli.restart} → {t.worktrees.switcherLabel}
+                </span>
+              )}
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono border ${
                 activeSession?.status === 'running'
                   ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
@@ -67,7 +79,7 @@ export const ClaudeCliView: React.FC = () => {
               </span>
             </div>
             <p className="text-[10px] text-slate-400 font-mono truncate max-w-md">
-              {t.claudeCli.cwd}: {selectedProject.path}
+              {t.claudeCli.cwd}: {sessionCwd(activeSession)}
             </p>
           </div>
         </div>

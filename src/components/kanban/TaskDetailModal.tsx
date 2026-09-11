@@ -27,7 +27,7 @@ import {
   Loader2
 } from 'lucide-react';
 import type { BacklogTask, TaskCriterion } from '../../types/electron';
-import { useProjectStore } from '../../store/useProjectStore';
+import { useProjectStore, samePath } from '../../store/useProjectStore';
 import { useSwarmStore } from '../../store/useSwarmStore';
 import { useRolesStore } from '../../store/useRolesStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -57,6 +57,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const {
     milestones,
     worktrees,
+    workspaceRoot,
+    setActiveWorktree,
     createWorktreeAction,
     createPtySessionAction,
     selectedProject,
@@ -700,6 +702,29 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               <Trash2 className="w-3.5 h-3.5" />
               {t.taskDetail.deleteTask}
             </button>
+
+            {/* Активное рабочее дерево задачи (TASK-62): контекст приложения переключается сюда */}
+            {selectedProject?.hasGit && existingWorktree && (
+              samePath(existingWorktree.path, workspaceRoot) ? (
+                <span
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/15 text-cyan-200 border border-cyan-500/40 text-xs font-semibold"
+                  title={t.worktrees.switcherTitle}
+                >
+                  <FolderGit2 className="w-3.5 h-3.5" />
+                  {t.worktrees.activeBadge}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void setActiveWorktree(existingWorktree.path)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-200 border border-slate-700/60 text-xs font-semibold transition"
+                  title={t.worktrees.switchTo.replace('{branch}', existingWorktree.branch || existingWorktree.path)}
+                >
+                  <FolderGit2 className="w-3.5 h-3.5 text-cyan-400" />
+                  {t.worktrees.switcherLabel}
+                </button>
+              )
+            )}
 
             {/* Git Worktree Action (TASK-53) */}
             {selectedProject?.hasGit && (

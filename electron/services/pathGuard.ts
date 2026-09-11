@@ -70,6 +70,30 @@ export function findOwningProject(projectPaths: readonly string[], filePath: str
   return best;
 }
 
+/**
+ * Путь к каталогу git из файла `.git` рабочего дерева (`gitdir: ...`), TASK-62.
+ * В worktree `.git` — файл со ссылкой на `<project>/.git/worktrees/<name>`, а не каталог.
+ * Возвращает null, если содержимое не похоже на указатель.
+ */
+export function parseGitDirPointer(content: string): string | null {
+  const line = content.split(/\r?\n/).find((l) => l.trim().startsWith('gitdir:'));
+  if (!line) return null;
+  const target = line.trim().slice('gitdir:'.length).trim();
+  return target || null;
+}
+
+/**
+ * Является ли `gitdir` из файла `.git` указателем на рабочее дерево проекта `projectPath`,
+ * то есть лежит ли он внутри `<projectPath>/.git/worktrees/`. Путь может быть и
+ * относительным — тогда он разрешается от каталога самого рабочего дерева.
+ */
+export function isWorktreeGitDirOf(projectPath: string, worktreePath: string, gitdir: string): boolean {
+  if (!gitdir) return false;
+  const resolved = path.isAbsolute(gitdir) ? path.resolve(gitdir) : path.resolve(worktreePath, gitdir);
+  const worktreesRoot = path.join(path.resolve(projectPath), '.git', 'worktrees');
+  return isInsideProject(worktreesRoot, resolved);
+}
+
 /** Совпадает ли `candidate` с одним из корней `projectPaths` (с учётом нормализации и регистра ФС). */
 export function isRegisteredProjectRoot(projectPaths: readonly string[], candidate: string): boolean {
   if (typeof candidate !== 'string' || !candidate.trim()) return false;

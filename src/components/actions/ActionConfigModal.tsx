@@ -153,6 +153,40 @@ export const ActionConfigModal: React.FC<ActionConfigModalProps> = ({
           />
           <p className="text-[10px] text-slate-500 mt-1">{t.actions.cwdHint}</p>
         </div>
+        {/* Стратегия порта (TASK-62): авто-подбор для параллельных worktree */}
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <label className="block text-xs font-medium text-slate-300 mb-1">{t.actions.portStrategyLabel}</label>
+            <select
+              value={def.portStrategy || 'fixed'}
+              onChange={e =>
+                updateKind(kind, { portStrategy: e.target.value === 'auto' ? 'auto' : undefined })
+              }
+              className={`w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:${accent}`}
+            >
+              <option value="fixed">{t.actions.portStrategyFixed}</option>
+              <option value="auto">{t.actions.portStrategyAuto}</option>
+            </select>
+          </div>
+          <div className="w-40">
+            <label className="block text-xs font-medium text-slate-300 mb-1">{t.actions.portStartLabel}</label>
+            <input
+              type="number"
+              min={1}
+              max={65535}
+              disabled={def.portStrategy !== 'auto'}
+              value={def.port ?? ''}
+              onChange={e => {
+                const value = Number(e.target.value);
+                updateKind(kind, { port: Number.isInteger(value) && value > 0 ? value : undefined });
+              }}
+              placeholder="5173"
+              className={`w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono outline-none disabled:opacity-40 focus:${accent}`}
+            />
+          </div>
+        </div>
+        <p className="text-[10px] text-slate-500 -mt-2">{t.actions.portStrategyHint}</p>
+
         <div>
           <label className="block text-xs font-medium text-slate-300 mb-1">{t.actions.envLabel}</label>
           <textarea

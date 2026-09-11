@@ -137,6 +137,11 @@ export interface TranslationDictionary {
     confirmDeploy: string;
     cwdLabel: string;
     cwdHint: string;
+    portStrategyLabel: string;
+    portStrategyFixed: string;
+    portStrategyAuto: string;
+    portStrategyHint: string;
+    portStartLabel: string;
     envLabel: string;
     envHint: string;
     autoOpenDelayLabel: string;
@@ -1138,6 +1143,18 @@ export interface TranslationDictionary {
     noOrphanedFound: string;
     confirmCleanOrphaned: string;
     cleanedOrphanedSuccess: string;
+    switcherLabel: string;
+    switcherTitle: string;
+    switcherHint: string;
+    mainTreeOption: string;
+    activeBadge: string;
+    switchTo: string;
+    agentsCount: string;
+    portsTitle: string;
+    releasePort: string;
+    releasePortConfirm: string;
+    portColumn: string;
+    workspaceColumn: string;
   };
   dialogs: {
     confirmTitle: string;
@@ -1504,6 +1521,12 @@ export interface TranslationDictionary {
     worktreePruned: string;
     worktreeMerged: string;
     worktreeMergeError: string;
+    worktreeSwitched: string;
+    worktreeInitStarted: string;
+    worktreeInitLinked: string;
+    worktreeInitError: string;
+    portReleased: string;
+    portReleaseFailed: string;
     prCreated: string;
     prError: string;
     docSaved: string;
