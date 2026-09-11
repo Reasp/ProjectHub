@@ -3,11 +3,11 @@ id: TASK-65
 title: >-
   Ремонт Remote Control: единый формат E2EE, реализация RPC, аутентификация
   релея, per-device токены
-status: Review
+status: Done
 assignee:
   - 'agent:implementer'
 created_date: '2026-09-10 07:20'
-updated_date: '2026-09-11 07:03'
+updated_date: '2026-09-11 07:06'
 labels:
   - ade-roadmap
   - remote
