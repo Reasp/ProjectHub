@@ -83,7 +83,7 @@ npx --yes backlog.md init "<имя проекта>" --agent-instructions agents 
 
 ```bash
 node scripts/setup.mjs --project-root <путь-от-инфры-до-корня-проекта> \
-  --features docsRag,envTools,bootstrap[,lightrag] --no-interactive
+  --features docsRag,envTools,backlogMcp,bootstrap,gitnexus[,lightrag] --no-interactive
 npm install
 ```
 

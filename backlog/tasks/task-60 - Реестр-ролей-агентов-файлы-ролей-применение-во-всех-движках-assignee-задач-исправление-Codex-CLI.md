@@ -7,7 +7,7 @@ status: Done
 assignee:
   - veshiy666@gmail.com
 created_date: '2026-09-10 07:17'
-updated_date: '2026-09-11 11:23'
+updated_date: '2026-09-11 11:43'
 labels:
   - ade-roadmap
   - roles
@@ -117,5 +117,11 @@ author: Claude
 created: 2026-09-11 11:23
 ---
 Переведено в Done по решению пользователя (2026-09-11). **AC #3 остаётся неотмеченным**: `codex` и `gemini` CLI на машине по-прежнему не установлены (проверено `command -v` 11.09.2026), поэтому флаги адаптера так и взяты из публичной документации, а не проверены эмпирически. Что именно ждёт ручного smoke-теста, когда CLI появятся: вызов `codex exec --json --sandbox --ask-for-approval` в `runCodexCliAgent` и аргументы `runGeminiCliAgent` в `agentFleetService.ts`, плюс проверка, что fallback на OpenRouter срабатывает только с явным сообщением в логах и UI.
+---
+
+author: Claude
+created: 2026-09-11 11:43
+---
+Проверка Codex CLI снята с долга по решению пользователя (2026-09-11): подписка на Codex не оплачена, поэтому эмпирически проверить `codex exec --json --sandbox --ask-for-approval` невозможно в принципе — это не незакрытая работа, а вне области работ. Код адаптера остаётся как есть (флаги по документации developers.openai.com/codex); если подписка появится — прогнать smoke-тест тогда. Из AC #3 фактически остаётся открытой только часть про Gemini CLI (`runGeminiCliAgent`), если доступ к нему есть.
 ---
 <!-- COMMENTS:END -->
