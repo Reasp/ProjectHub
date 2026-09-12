@@ -407,7 +407,8 @@ export const en: TranslationDictionary = {
     done: 'Done',
     hiddenTabsHeader: 'Hidden Tabs',
     restoreTab: 'Restore to tab bar',
-    customizeAll: 'Configure all tabs...'
+    customizeAll: 'Configure all tabs...',
+    loadingProject: 'Loading project data...'
   },
   kanban: {
     todo: 'To Do',

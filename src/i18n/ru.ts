@@ -407,7 +407,8 @@ export const ru: TranslationDictionary = {
     done: 'Готово',
     hiddenTabsHeader: 'Скрытые вкладки',
     restoreTab: 'Вернуть на панель',
-    customizeAll: 'Настроить все вкладки...'
+    customizeAll: 'Настроить все вкладки...',
+    loadingProject: 'Загрузка данных проекта...'
   },
   kanban: {
     todo: 'К выполнению (To Do)',

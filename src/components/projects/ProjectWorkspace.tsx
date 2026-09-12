@@ -22,6 +22,7 @@ import {
   FolderGit2,
   ArrowRight,
   PanelLeft,
+  Loader2,
   X
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -60,7 +61,8 @@ export const ProjectWorkspace: React.FC = () => {
     setSidebarOpen,
     addProjectByPath,
     removedProjectNotice,
-    clearRemovedProjectNotice
+    clearRemovedProjectNotice,
+    isProjectDataLoading
   } = useProjectStore();
 
   const {
@@ -487,18 +489,38 @@ export const ProjectWorkspace: React.FC = () => {
       )}
 
       {/* Tab View Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {activeTab === 'kanban' && <KanbanBoard />}
-        {activeTab === 'milestones' && <MilestonesRoadmapView />}
-        {activeTab === 'git' && <GitInspector />}
-        {activeTab === 'files' && <FileExplorer />}
-        {activeTab === 'prs' && <PullRequestView />}
-        {activeTab === 'docs' && <DocsRagView />}
-        {activeTab === 'analytics' && <ProjectAnalyticsView />}
-        {activeTab === 'ai' && <AIStudioView />}
-        {activeTab === 'claude-cli' && <ClaudeCliView />}
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/*
+          Ключ по пути проекта (TASK-67): при смене проекта вкладка перемонтируется, поэтому
+          локальное состояние вью (поиск по задачам, открытая карточка, выбранный файл диффа)
+          не переносится с предыдущего проекта.
+        */}
+        <div key={selectedProject?.path || 'no-project'} className="flex-1 flex flex-col overflow-hidden">
+          {activeTab === 'kanban' && <KanbanBoard />}
+          {activeTab === 'milestones' && <MilestonesRoadmapView />}
+          {activeTab === 'git' && <GitInspector />}
+          {activeTab === 'files' && <FileExplorer />}
+          {activeTab === 'prs' && <PullRequestView />}
+          {activeTab === 'docs' && <DocsRagView />}
+          {activeTab === 'analytics' && <ProjectAnalyticsView />}
+          {activeTab === 'ai' && <AIStudioView />}
+          {activeTab === 'claude-cli' && <ClaudeCliView />}
 
-        {activeTab === 'processes' && <ProcessesView />}
+          {activeTab === 'processes' && <ProcessesView />}
+        </div>
+
+        {/* Пока данные нового проекта не пришли, вместо пустого экрана показываем индикатор. */}
+        {isProjectDataLoading && selectedProject && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-[#0b0e17]/80 backdrop-blur-sm">
+            <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
+            <div className="text-center">
+              <p className="text-xs font-semibold text-slate-200">{t.tabs.loadingProject}</p>
+              <p className="text-[11px] text-slate-500 font-mono mt-0.5 truncate max-w-xs">
+                {selectedProject.name}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Workspace Tabs Settings Modal */}

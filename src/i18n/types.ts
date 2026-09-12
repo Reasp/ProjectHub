@@ -386,6 +386,7 @@ export interface TranslationDictionary {
     hiddenTabsHeader: string;
     restoreTab: string;
     customizeAll: string;
+    loadingProject: string;
   };
   kanban: {
     todo: string;

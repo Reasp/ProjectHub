@@ -119,6 +119,44 @@ function dropProjectCache(cache: Record<string, ProjectCachedData>, projectPath:
   return rest;
 }
 
+/**
+ * Состояние, принадлежащее конкретному проекту (TASK-67). При смене проекта сбрасывается
+ * целиком, чтобы до загрузки данных нового проекта на экране не оставались задачи, коммиты,
+ * документы, PR и процессы предыдущего. Фильтры по метке и майлстоуну тоже проектные:
+ * их id в другом проекте не существуют.
+ */
+export function emptyProjectScopedState() {
+  return {
+    tasks: [] as BacklogTask[],
+    gitLogs: [] as GitCommit[],
+    gitRepoDetails: null as GitRepoDetails | null,
+    gitSelectedFile: null as string | null,
+    gitDiffContent: '',
+    docsList: [] as DocItem[],
+    selectedDoc: null as DocItem | null,
+    docContent: '',
+    isDocDirty: false,
+    milestones: [] as Milestone[],
+    processes: [] as ManagedProcess[],
+    activeProcessId: null as string | null,
+    prs: [] as PullRequest[],
+    selectedPR: null as PullRequest | null,
+    prDiffContent: '',
+    prProviderInfo: null as PRProviderInfo | null,
+    selectedLabelFilter: null as string | null,
+    selectedMilestoneFilter: null as string | null
+  };
+}
+
+/** Фильтры задач персистятся в localStorage — при сбросе экрана их надо чистить и там. */
+function clearPersistedTaskFilters() {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(LABEL_FILTER_KEY);
+    localStorage.removeItem(MILESTONE_FILTER_KEY);
+  } catch {}
+}
+
 interface ProjectState {
   projects: ProjectInfo[];
   selectedProject: ProjectInfo | null;
@@ -132,6 +170,11 @@ interface ProjectState {
   selectedLabelFilter: string | null;
   selectedMilestoneFilter: string | null;
   isLoading: boolean;
+  /**
+   * Данные выбранного проекта ещё загружаются (TASK-67). На время загрузки экран проекта
+   * очищен: задачи/коммиты/доки предыдущего проекта показывать нельзя — это сбивает с толку.
+   */
+  isProjectDataLoading: boolean;
   isScanning: boolean;
   searchQuery: string;
   filterOnlyFavorites: boolean;
@@ -508,6 +551,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   selectedLabelFilter: loadInitialLabelFilter(),
   selectedMilestoneFilter: loadInitialMilestoneFilter(),
   isLoading: false,
+  isProjectDataLoading: false,
   isScanning: false,
   searchQuery: '',
   filterOnlyFavorites: loadInitialFilterFavorites(),
@@ -611,16 +655,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       } else if (allProjects.length > 0) {
         get().selectProject(allProjects[0]);
       } else {
-        set({
-          selectedProject: null,
-          selectedMilestoneFilter: null,
-          tasks: [],
-          gitLogs: [],
-          gitRepoDetails: null,
-          docsList: [],
-          milestones: [],
-          processes: []
-        });
+        clearPersistedTaskFilters();
+        set({ ...emptyProjectScopedState(), selectedProject: null, isProjectDataLoading: false });
       }
     }
   },
@@ -718,9 +754,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (typeof window !== 'undefined') {
         try { localStorage.removeItem(SELECTED_PROJECT_KEY); } catch {}
       }
+      clearPersistedTaskFilters();
       set({
+        ...emptyProjectScopedState(),
         selectedProject: null,
-        selectedMilestoneFilter: null,
+        isProjectDataLoading: false,
         actionConfig: null,
         activeWorktreePath: null,
         workspaceRoot: null,
@@ -739,9 +777,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
 
     const cur = get().selectedProject;
-    if (cur && cur.path !== selectedProject.path) {
+    const isProjectChange = !!cur && cur.path !== selectedProject.path;
+    if (isProjectChange) {
       // Конфиг действий принадлежит проекту — до загрузки нового не показывать чужой.
-      set({ lastSelectedProjectPath: cur.path, actionConfig: null });
+      set({ lastSelectedProjectPath: cur!.path, actionConfig: null });
+      // Полный сброс экрана проекта (TASK-67): иначе до прихода данных нового проекта
+      // пользователь видит задачи, коммиты и доки того, с которого только что переключился.
+      clearPersistedTaskFilters();
+      set(emptyProjectScopedState());
     }
 
     // Контекст «проект + рабочее дерево»: восстанавливаем запомненный worktree (TASK-62).
@@ -769,6 +812,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // Instant synchronous UI update without any lag or spinner!
       set((state) => ({
         selectedProject,
+        isProjectDataLoading: false,
         tasks: cached.tasks,
         gitLogs: cached.gitLogs,
         gitRepoDetails: cached.gitRepoDetails,
@@ -785,8 +829,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       get().fetchDocs(selectedProject.path);
       get().fetchMilestones(selectedProject.path);
     } else {
-      // Not yet in cache - standard load
-      set({ selectedProject });
+      // Not yet in cache - standard load. Экран уже очищен выше, поэтому вместо чужих данных
+      // показывается индикатор загрузки (TASK-67).
+      set({ selectedProject, isProjectDataLoading: true });
       get().loadProjectData(selectedProject);
       get().fetchProcesses(selectedProject.path);
       get().fetchDocs(selectedProject.path);
@@ -995,6 +1040,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (window.api) {
       try {
         const procs = await window.api.listProcesses(projectPath);
+        // Ответ по уже покинутому проекту игнорируем (TASK-67).
+        if (!samePath(get().selectedProject?.path, projectPath)) return;
         set({ processes: procs });
         if (!get().activeProcessId && procs.length > 0) {
           set({ activeProcessId: procs[0].id });
@@ -1373,7 +1420,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
         const isCurrent = get().selectedProject?.path === project.path;
         if (isCurrent) {
-          set({ tasks, gitLogs: logs });
+          set({ tasks, gitLogs: logs, isProjectDataLoading: false });
         }
 
         // Update in-memory cache for instant switching
@@ -1403,6 +1450,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
     } catch (e) {
       console.error('Failed to load project data:', e);
+    } finally {
+      // Индикатор снимается в любом случае, иначе при ошибке экран остаётся в «загрузке».
+      if (get().selectedProject?.path === project.path) {
+        set({ isProjectDataLoading: false });
+      }
     }
   },
 
@@ -1503,7 +1555,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // Инспектор показывает активное рабочее дерево: ветку, статус и дифф worktree (TASK-62).
       const root = isCurrent ? get().workspaceRoot || project.path : project.path;
       const details = await window.api.getGitRepoDetails(root);
-      if (isCurrent) set({ gitRepoDetails: details });
+      // Проект мог смениться за время запроса — проверяем ещё раз, уже после await (TASK-67).
+      if (isCurrent && get().selectedProject?.path === project.path) set({ gitRepoDetails: details });
       void get().loadWorktreesAction(project.path);
       set((state) => {
         // Кэш проекта хранит состояние основного дерева — детали worktree в него не пишем.
@@ -1994,10 +2047,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (!window.api) return;
     try {
       const info = await window.api.getPRProviderInfo(projectPath);
+      // Ответ по уже покинутому проекту игнорируем (TASK-67).
+      if (!samePath(get().selectedProject?.path, projectPath)) return;
       set({ prProviderInfo: info });
     } catch (e) {
       console.error('Failed to get PR provider info:', e);
-      set({ prProviderInfo: null });
+      if (samePath(get().selectedProject?.path, projectPath)) set({ prProviderInfo: null });
     }
   },
 
@@ -2008,6 +2063,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       await get().fetchPRProviderInfo(projectPath);
       const prList = await window.api.listPullRequests(projectPath, filter);
+      // Ответ по уже покинутому проекту игнорируем (TASK-67).
+      if (!samePath(get().selectedProject?.path, projectPath)) return;
       set({ prs: prList });
       if (!get().selectedPR && prList.length > 0) {
         get().selectPR(prList[0]);
@@ -2080,6 +2137,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ isDocLoading: true });
     try {
       const list = await window.api.listDocs(projectPath);
+      // Проект успели переключить, пока шёл запрос — чужие доки в новый экран не подставляем (TASK-67).
+      if (!samePath(get().selectedProject?.path, projectPath)) return;
       set({ docsList: list });
       if (!get().selectedDoc && list.length > 0) {
         get().selectDoc(list[0]);
@@ -2095,7 +2154,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
     } catch (e) {
       console.error('Failed to fetch docs:', e);
-      set({ docsList: [] });
+      if (samePath(get().selectedProject?.path, projectPath)) set({ docsList: [] });
     } finally {
       set({ isDocLoading: false });
     }
@@ -2170,10 +2229,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ isLoadingMilestones: true });
     try {
       const milestones = await window.api.listMilestones(projectPath);
+      // Ответ по уже покинутому проекту игнорируем (TASK-67).
+      if (!samePath(get().selectedProject?.path, projectPath)) return;
       set({ milestones: milestones || [] });
     } catch (e) {
       console.error('Failed to fetch milestones:', e);
-      set({ milestones: [] });
+      if (samePath(get().selectedProject?.path, projectPath)) set({ milestones: [] });
     } finally {
       set({ isLoadingMilestones: false });
     }
