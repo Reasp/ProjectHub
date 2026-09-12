@@ -3,10 +3,10 @@ id: TASK-50
 title: >-
   Мелкие утечки и оптимизации: очистка setTimeout в компонентах, автоочистка
   завершённых PTY-сессий, RAG в utilityProcess
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-05 09:10'
-updated_date: '2026-09-11 23:53'
+updated_date: '2026-09-12 02:06'
 labels:
   - audit
   - performance
