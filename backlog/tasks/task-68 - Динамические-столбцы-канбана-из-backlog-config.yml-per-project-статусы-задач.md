@@ -4,7 +4,7 @@ title: Динамические столбцы канбана из backlog/confi
 status: Review
 assignee: []
 created_date: '2026-09-13 12:34'
-updated_date: '2026-09-13 13:01'
+updated_date: '2026-09-13 13:12'
 labels:
   - ui
   - backlog
@@ -116,4 +116,25 @@ type: feature
 **Оставлено за рамками (зафиксировано в decision-24 как долг)**: жёстко зашитые имена статусов
 в `prService` (перевод в Review при PR), `assignedTaskRules`, `milestoneService`,
 `remoteControlService`.
+
+## Доработка после проверки в приложении (RealmLoop)
+
+Пользователь не увидел двух кастомных статусов в проекте RealmLoop (`F:\WorldSim`). Причина не в
+сборке: `backlog/config.yml` этого проекта содержит `default_editor: "C:\Windows\notepad.exe"` —
+в двойных кавычках `\W` недопустимая escape-последовательность YAML, js-yaml отвергает **весь**
+документ, и срабатывал fallback на четыре стандартных статуса. Такой конфиг генерирует сам
+Backlog.md на Windows, то есть случай массовый.
+
+Исправлено в `backlogConfigService.ts`: добавлен спасательный разбор — если документ не парсится
+целиком, ключи `statuses`, `default_status`, `project_name`, `task_prefix` читаются по отдельности
+блоками верхнего уровня (`splitTopLevelBlocks` + `recoverConfigKeys`). Fallback остаётся только
+если не читается и сам `statuses`. Проверено на реальном файле RealmLoop: поднимаются все 6
+статусов, включая `InProgress(Human)` и `Review(Human)`.
+
+Тесты: +3 кейса в `tests/unit/backlogConfigService.test.ts` (битый посторонний ключ не отменяет
+статусы; спасательный разбор блочного списка; битый `statuses` — честный fallback).
+ADR `decision-24` дополнен пунктом 3, `npm run index-docs` выполнен.
+
+Повторные проверки: lint 0 ошибок (504 предупреждения), `npm test` — 641 passed, `lint:docs` — ок,
+`npm run pack:win` — `release/win-unpacked/ProjectHub.exe` пересобран.
 <!-- SECTION:NOTES:END -->

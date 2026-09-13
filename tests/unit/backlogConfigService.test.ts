@@ -49,6 +49,48 @@ describe('parseBacklogConfig', () => {
     expect(cfg.fromConfig).toBe(false);
   });
 
+  it('битый посторонний ключ не отменяет статусы (реальный config.yml RealmLoop)', () => {
+    // Backlog.md на Windows пишет default_editor с одинарным слэшем в двойных кавычках:
+    // "\W" — недопустимая escape-последовательность YAML, и js-yaml отвергает весь документ.
+    const cfg = parseBacklogConfig(
+      [
+        'project_name: "RealmLoop"',
+        'default_status: "To Do"',
+        'statuses: ["To Do", "In Progress", "InProgress(Human)", "Review", "Review(Human)", "Done"]',
+        'labels: []',
+        'default_editor: "C:\\Windows\\notepad.exe"',
+        'task_prefix: "task"'
+      ].join('\n')
+    );
+
+    expect(cfg.statuses).toEqual([
+      'To Do',
+      'In Progress',
+      'InProgress(Human)',
+      'Review',
+      'Review(Human)',
+      'Done'
+    ]);
+    expect(cfg.defaultStatus).toBe('To Do');
+    expect(cfg.projectName).toBe('RealmLoop');
+    expect(cfg.taskPrefix).toBe('task');
+    expect(cfg.fromConfig).toBe(true);
+  });
+
+  it('спасательный разбор поднимает блочный список статусов из битого конфига', () => {
+    const cfg = parseBacklogConfig(
+      ['editor: "C:\\bad\\path"', 'statuses:', '  - Idea', '  - Shipped', ''].join('\n')
+    );
+    expect(cfg.statuses).toEqual(['Idea', 'Shipped']);
+    expect(cfg.fromConfig).toBe(true);
+  });
+
+  it('если битый и сам statuses — честный fallback', () => {
+    const cfg = parseBacklogConfig(['statuses: ["To Do", "In Progress"', 'foo: :::', ''].join('\n'));
+    expect(cfg.statuses).toEqual([...DEFAULT_TASK_STATUSES]);
+    expect(cfg.fromConfig).toBe(false);
+  });
+
   it('пустой или нелистовой statuses даёт fallback, но project_name сохраняется', () => {
     expect(parseBacklogConfig('project_name: "Demo"\nstatuses: []\n')).toMatchObject({
       statuses: [...DEFAULT_TASK_STATUSES],

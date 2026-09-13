@@ -54,6 +54,60 @@ function parseYamlConfig(raw: string): Record<string, unknown> | null {
   }
 }
 
+/** Ключи, ради которых имеет смысл спасать частично битый конфиг. */
+const RECOVERABLE_KEYS = ['project_name', 'default_status', 'statuses', 'task_prefix'] as const;
+
+/**
+ * Разбивает YAML на блоки верхнего уровня `ключ: значение` (со всеми строками-продолжениями,
+ * то есть блочными списками и многострочными flow-списками).
+ */
+function splitTopLevelBlocks(body: string): Map<string, string> {
+  const blocks = new Map<string, string>();
+  let currentKey: string | null = null;
+  let currentLines: string[] = [];
+
+  const flush = () => {
+    if (currentKey && !blocks.has(currentKey)) blocks.set(currentKey, currentLines.join('\n'));
+    currentKey = null;
+    currentLines = [];
+  };
+
+  for (const line of body.split('\n')) {
+    const header = /^([A-Za-z_][A-Za-z0-9_.-]*):(?:\s|$)/.exec(line);
+    if (header) {
+      flush();
+      currentKey = header[1];
+      currentLines = [line];
+    } else if (currentKey && (line.trim() === '' || /^\s/.test(line))) {
+      currentLines.push(line);
+    } else {
+      // Строка вне блока (например, элемент списка верхнего уровня) — конфиг не наш формат.
+      flush();
+    }
+  }
+  flush();
+  return blocks;
+}
+
+/**
+ * Спасательный разбор: конфиг целиком не парсится из-за постороннего ключа, но нужные нам
+ * значения читаются поблочно. Реальный случай — `backlog/config.yml`, сгенерированный
+ * Backlog.md на Windows: `default_editor: "C:\Windows\notepad.exe"` содержит недопустимую
+ * escape-последовательность `\W` в двойных кавычках, и js-yaml отвергает весь документ.
+ * Из-за этого доска теряла все кастомные статусы проекта, хотя ключ `statuses` корректен.
+ */
+function recoverConfigKeys(raw: string): Record<string, unknown> | null {
+  const blocks = splitTopLevelBlocks(raw.replace(/\r\n/g, '\n'));
+  const recovered: Record<string, unknown> = {};
+  for (const key of RECOVERABLE_KEYS) {
+    const block = blocks.get(key);
+    if (!block) continue;
+    const parsed = parseYamlConfig(block);
+    if (parsed && key in parsed) recovered[key] = parsed[key];
+  }
+  return Object.keys(recovered).length > 0 ? recovered : null;
+}
+
 /** Список статусов: строки, без пустых, без дублей (регистр и пробелы не значимы). */
 function parseStatuses(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -71,13 +125,16 @@ function parseStatuses(value: unknown): string[] {
 }
 
 /**
- * Разбор содержимого `backlog/config.yml`. Пустой/битый ввод и пустой `statuses` дают
- * fallback-конфиг с `fromConfig: false`.
+ * Разбор содержимого `backlog/config.yml`. Если документ не парсится целиком, делается
+ * попытка прочитать нужные ключи по отдельности; и только когда не удаётся и это,
+ * возвращается fallback-конфиг с `fromConfig: false`.
  */
 export function parseBacklogConfig(raw: string | null | undefined): BacklogProjectConfig {
   if (!raw || !raw.trim()) return fallbackStatusConfig();
 
-  const data = parseYamlConfig(raw);
+  // Битый посторонний ключ не должен стоить проекту всех его статусов: если документ целиком
+  // не парсится, читаем интересующие ключи по отдельности.
+  const data = parseYamlConfig(raw) || recoverConfigKeys(raw);
   if (!data) return fallbackStatusConfig();
 
   const projectName = cfgString(data.project_name);
