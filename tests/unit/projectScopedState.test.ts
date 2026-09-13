@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { emptyProjectScopedState } from '../../src/store/useProjectStore';
+import { FALLBACK_STATUS_CONFIG } from '../../src/utils/taskStatus';
 
 /**
  * Сброс экрана при смене проекта (TASK-67): пока данные нового проекта не загрузились,
@@ -11,7 +12,11 @@ describe('emptyProjectScopedState', () => {
     const state = emptyProjectScopedState();
 
     for (const [key, value] of Object.entries(state)) {
-      if (Array.isArray(value)) {
+      if (key === 'backlogConfig') {
+        // Состав статусов проектный (TASK-68): сброс — это четыре стандартных статуса,
+        // а не колонки предыдущего проекта.
+        expect(value, 'backlogConfig должен вернуться к стандартным статусам').toEqual(FALLBACK_STATUS_CONFIG);
+      } else if (Array.isArray(value)) {
         expect(value, `${key} должен быть пустым списком`).toEqual([]);
       } else {
         expect([null, '', false], `${key} должен быть сброшен`).toContain(value);
@@ -23,6 +28,7 @@ describe('emptyProjectScopedState', () => {
     expect(Object.keys(emptyProjectScopedState()).sort()).toEqual(
       [
         'activeProcessId',
+        'backlogConfig',
         'docContent',
         'docsList',
         'gitDiffContent',
@@ -50,5 +56,7 @@ describe('emptyProjectScopedState', () => {
 
     expect(first.tasks).not.toBe(second.tasks);
     expect(first.docsList).not.toBe(second.docsList);
+    expect(first.backlogConfig).not.toBe(second.backlogConfig);
+    expect(first.backlogConfig.statuses).not.toBe(second.backlogConfig.statuses);
   });
 });

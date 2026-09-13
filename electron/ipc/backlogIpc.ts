@@ -17,9 +17,11 @@ import {
   withUpdatedDate
 } from '../services/backlogTaskFormat';
 import { createBacklogTaskFile } from '../services/backlogTaskCreate';
+import { readBacklogConfig } from '../services/backlogConfigService';
 import { listProjectDocs, readDocFile, saveDocFile, createProjectDoc } from '../services/docsService';
 import { listMilestones, createMilestone, saveMilestone, deleteMilestone } from '../services/milestoneService';
 import { assertInsideRegisteredProject, assertRegisteredProject } from '../services/projectPathGuard';
+import { DEFAULT_TASK_STATUS } from '../../src/utils/taskStatus.js';
 import type { IpcContext } from './types';
 
 function fmString(value: unknown): string | undefined {
@@ -57,6 +59,11 @@ export function registerBacklogIpc(ctx: IpcContext) {
     backlogWatcher.watch(projectPath, ctx.getMainWindow());
   });
 
+  // Состав статусов задаёт конфиг открытого проекта, а не ProjectHub (TASK-68, decision-24).
+  ipcMain.handle('backlog:getConfig', async (_event, projectPath: string) => {
+    return readBacklogConfig(projectPath);
+  });
+
   ipcMain.handle('backlog:getTasks', async (_event, projectPath: string) => {
     const tasksDir = path.join(projectPath, 'backlog', 'tasks');
     if (!existsSync(tasksDir)) return [];
@@ -76,7 +83,7 @@ export function registerBacklogIpc(ctx: IpcContext) {
           taskList.push({
             id: taskIdFromFile(data, fullPath),
             title: fmString(data.title) || path.basename(file, '.md'),
-            status: (fmString(data.status) as any) || 'To Do',
+            status: fmString(data.status) || DEFAULT_TASK_STATUS,
             labels: fmStringList(data.labels),
             milestone: fmString(data.milestone) || fmString(data.milestone_id) || undefined,
             assignee: fmStringList(data.assignee),

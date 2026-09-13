@@ -12,33 +12,30 @@ import {
 } from 'lucide-react';
 import type { BacklogTask } from '../../types/electron';
 import { useTranslation } from '../../i18n';
+import {
+  isKnownStatus,
+  statusGlyph,
+  statusLabel,
+  statusOptions,
+  statusVisual,
+  DEFAULT_TASK_STATUS
+} from '../../utils/taskStatus';
 
 interface TaskListViewProps {
   tasks: BacklogTask[];
+  /** Статусы из `backlog/config.yml` проекта (TASK-68): и бейджи, и варианты `<select>`. */
+  statuses: string[];
   onSelectTask: (task: BacklogTask) => void;
   onUpdateStatus: (taskId: string, newStatus: BacklogTask['status']) => void;
 }
 
 export const TaskListView: React.FC<TaskListViewProps> = ({
   tasks,
+  statuses,
   onSelectTask,
   onUpdateStatus
 }) => {
   const { t } = useTranslation();
-  const getStatusBadge = (status: BacklogTask['status']) => {
-    switch (status) {
-      case 'To Do':
-        return 'bg-slate-800 text-slate-300 border-slate-700/60';
-      case 'In Progress':
-        return 'bg-amber-500/15 text-amber-300 border-amber-500/30';
-      case 'Review':
-        return 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30';
-      case 'Done':
-        return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
-      default:
-        return 'bg-slate-800 text-slate-400 border-slate-700';
-    }
-  };
 
   return (
     <div className="flex-1 overflow-y-auto rounded-xl bg-[#141724]/70 border border-slate-800/80">
@@ -86,17 +83,24 @@ export const TaskListView: React.FC<TaskListViewProps> = ({
                     </div>
                   </td>
                   <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                    {/* Варианты — только статусы проекта; текущий кастомный статус остаётся
+                        в списке, чтобы открытие `<select>` его не перезаписывало (TASK-68). */}
                     <select
-                      value={task.status || 'To Do'}
-                      onChange={(e) => onUpdateStatus(task.id, e.target.value as any)}
-                      className={`text-[11px] font-medium rounded-lg px-2.5 py-1 border focus:outline-none bg-[#10121d] ${getStatusBadge(
-                        task.status || 'To Do'
-                      )}`}
+                      value={task.status || DEFAULT_TASK_STATUS}
+                      onChange={(e) => onUpdateStatus(task.id, e.target.value)}
+                      title={
+                        isKnownStatus(statuses, task.status) ? undefined : t.kanban.unknownStatusHint
+                      }
+                      className={`text-[11px] font-medium rounded-lg px-2.5 py-1 border focus:outline-none bg-[#10121d] ${
+                        statusVisual(task.status || DEFAULT_TASK_STATUS).badge
+                      }`}
                     >
-                      <option value="To Do">○ To Do</option>
-                      <option value="In Progress">◒ In Progress</option>
-                      <option value="Review">◆ Review</option>
-                      <option value="Done">✔ Done</option>
+                      {statusOptions(statuses, task.status).map((status) => (
+                        <option key={status} value={status}>
+                          {`${statusGlyph(status)} ${statusLabel(status, t.kanban)}`}
+                          {isKnownStatus(statuses, status) ? '' : ' ⚠'}
+                        </option>
+                      ))}
                     </select>
                   </td>
                   <td className="py-3 px-4">

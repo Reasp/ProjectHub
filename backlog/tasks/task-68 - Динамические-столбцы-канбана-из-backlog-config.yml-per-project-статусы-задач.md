@@ -1,9 +1,10 @@
 ---
 id: TASK-68
 title: Динамические столбцы канбана из backlog/config.yml (per-project статусы задач)
-status: To Do
+status: Review
 assignee: []
 created_date: '2026-09-13 12:34'
+updated_date: '2026-09-13 13:01'
 labels:
   - ui
   - backlog
@@ -56,14 +57,63 @@ type: feature
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Состав столбцов канбана берётся из `statuses` в `backlog/config.yml` открытого проекта; добавленный в конфиг статус появляется отдельным столбцом без правок кода
-- [ ] #2 Задача с кастомным статусом отображается в своём столбце и не исчезает с доски; при отсутствии совпадения статус не теряется, а задача попадает в столбец по `default_status` с визуальной пометкой
-- [ ] #3 Смена статуса через `<select>` в табличном виде и через drag-n-drop на доске предлагает только статусы из конфига и не перезаписывает кастомные значения
-- [ ] #4 Счётчики задач на карточке проекта и метрики в аналитике считаются по динамическому набору статусов, задачи с нестандартным статусом учитываются в общем количестве
-- [ ] #5 При отсутствии `backlog/config.yml`, битом YAML или пустом `statuses` используется fallback `To Do` / `In Progress` / `Review` / `Done`, ошибка не всплывает в UI и не роняет main-процесс
-- [ ] #6 Для четырёх стандартных статусов сохранены прежние цвета и локализованные подписи; кастомные статусы выводятся как есть, без перевода
-- [ ] #7 Тип `BacklogTask.status` допускает произвольную строку, приведения `as any` в `electron/ipc/backlogIpc.ts` убраны
-- [ ] #8 Unit-тесты в `tests/unit/` покрывают парсер конфига: валидный список, нет файла, битый YAML, пустой `statuses`, дубликаты, не-ASCII значения
-- [ ] #9 Создан ADR в `backlog/decisions/` о `backlog/config.yml` как источнике истины по статусам, выполнен `npm run index-docs`
-- [ ] #10 `npm run lint`, `npm test`, `npm run lint:docs` и `npm run pack:win` проходят
+- [x] #1 Состав столбцов канбана берётся из `statuses` в `backlog/config.yml` открытого проекта; добавленный в конфиг статус появляется отдельным столбцом без правок кода
+- [x] #2 Задача с кастомным статусом отображается в своём столбце и не исчезает с доски; при отсутствии совпадения статус не теряется, а задача попадает в столбец по `default_status` с визуальной пометкой
+- [x] #3 Смена статуса через `<select>` в табличном виде и через drag-n-drop на доске предлагает только статусы из конфига и не перезаписывает кастомные значения
+- [x] #4 Счётчики задач на карточке проекта и метрики в аналитике считаются по динамическому набору статусов, задачи с нестандартным статусом учитываются в общем количестве
+- [x] #5 При отсутствии `backlog/config.yml`, битом YAML или пустом `statuses` используется fallback `To Do` / `In Progress` / `Review` / `Done`, ошибка не всплывает в UI и не роняет main-процесс
+- [x] #6 Для четырёх стандартных статусов сохранены прежние цвета и локализованные подписи; кастомные статусы выводятся как есть, без перевода
+- [x] #7 Тип `BacklogTask.status` допускает произвольную строку, приведения `as any` в `electron/ipc/backlogIpc.ts` убраны
+- [x] #8 Unit-тесты в `tests/unit/` покрывают парсер конфига: валидный список, нет файла, битый YAML, пустой `statuses`, дубликаты, не-ASCII значения
+- [x] #9 Создан ADR в `backlog/decisions/` о `backlog/config.yml` как источнике истины по статусам, выполнен `npm run index-docs`
+- [x] #10 `npm run lint`, `npm test`, `npm run lint:docs` и `npm run pack:win` проходят
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Реализация
+
+**Новое**
+- `src/utils/taskStatus.ts` — общий чистый модуль (main + renderer, как `src/utils/assignee.ts`):
+  нормализация и нестрогое сопоставление статусов, `countStatuses`/`toLegacyTaskCounts`,
+  палитра (`statusVisual`, `OTHER_STATUS_VISUAL`), подписи (`statusLabel`, `statusGlyph`),
+  `statusOptions`, `fallbackStatusConfig`.
+- `electron/services/backlogConfigService.ts` — разбор `backlog/config.yml` настоящим YAML
+  (`gray-matter`/js-yaml, свои разделители вместо `---`), извлекает `statuses`, `default_status`,
+  `project_name`, `task_prefix`; все значения приводятся к строкам (правило 16). Любая ошибка →
+  fallback из четырёх статусов.
+- IPC `backlog:getConfig` + `window.api.getBacklogConfig`.
+
+**Изменено**
+- `useProjectStore`: поле `backlogConfig` (проектное — сброс при смене проекта, входит в
+  `ProjectCachedData`), грузится в `loadProjectData` вместе с задачами.
+- `KanbanBoard`: колонки строятся из `statuses`, сетка динамическая (`repeat(n, minmax(240px,1fr))`
+  + горизонтальная прокрутка), раскладка через `Map`, задача с неизвестным статусом падает в
+  колонку `default_status` с амберной пометкой её статуса. Правило 5 обобщено.
+- `TaskListView` / `TaskDetailModal`: `<option>` из конфига; текущий кастомный статус остаётся
+  в списке и не перезаписывается.
+- `projectScanner`: регулярка заменена сервисом; счётчики карточки — динамические, добавлено
+  поле `taskCounts.other` (сумма полей всегда равна `total`); в сайдбаре — амберный агрегат.
+- Аналитика (view + modal): строки распределения циклом по `statuses` + «прочие»;
+  «завершено» = `Done` или последний статус набора.
+- `BacklogTask.status` → `... | (string & {})`, `as any` в `backlogIpc` убран.
+- i18n (en/ru/types): `kanban.unknownStatusHint`, `kanban.otherStatuses`,
+  `sidebar.otherStatusesTooltip`.
+
+**Тесты**: `tests/unit/backlogConfigService.test.ts` (13 кейсов: валидный/блочный список, нет
+файла, битый YAML, пустой и нелистовой `statuses`, дубликаты, не-ASCII, Date/число/boolean,
+`default_status` вне набора и в другом регистре, строка `---` внутри конфига),
+`tests/unit/taskStatus.test.ts` (16 кейсов), новый кейс в `projectScanner.test.ts`,
+обновлён `projectScopedState.test.ts`.
+
+**ADR**: `decision-24` (accepted), `npm run index-docs` выполнен.
+
+**Проверки**: `npm run lint` — 0 ошибок, 504 предупреждения (baseline был 509);
+`npm test` — 638 passed; `npm run lint:docs` — ок; `npm run pack:win` — собрано в
+`release/win-unpacked/ProjectHub.exe`.
+
+**Оставлено за рамками (зафиксировано в decision-24 как долг)**: жёстко зашитые имена статусов
+в `prService` (перевод в Review при PR), `assignedTaskRules`, `milestoneService`,
+`remoteControlService`.
+<!-- SECTION:NOTES:END -->

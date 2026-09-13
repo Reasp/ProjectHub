@@ -1,3 +1,5 @@
+import type { BacklogProjectConfig } from '../utils/taskStatus';
+
 export interface ActionDefinition {
   name: string;
   command: string;
@@ -100,6 +102,8 @@ export interface ProjectInfo {
     inProgress: number;
     review: number;
     done: number;
+    /** Задачи со статусом вне четырёх стандартных (TASK-68): считаются в `total`. */
+    other: number;
   };
   ragStatus?: RagStatus;
   processStatus?: ProcessStatus;
@@ -143,7 +147,12 @@ export interface CreateMilestoneParams {
 export interface BacklogTask {
   id: string;
   title: string;
-  status: 'To Do' | 'In Progress' | 'Review' | 'Done';
+  /**
+   * Статус задачи как есть из frontmatter. Состав допустимых значений задаётся
+   * `statuses` в `backlog/config.yml` проекта (TASK-68, decision-24), поэтому тип —
+   * произвольная строка; стандартные значения Backlog.md оставлены подсказками.
+   */
+  status: 'To Do' | 'In Progress' | 'Review' | 'Done' | (string & {});
   labels: string[];
   milestone?: string;
   /** Человек (свободный текст) или агент/роль: `agent:<roleSlug>` / `agent:<roleSlug>@<hostId>` (TASK-60). */
@@ -457,6 +466,8 @@ export interface IElectronAPI {
 
   // Backlog Tasks & Real-time Watcher
   getTasks: (projectPath: string) => Promise<BacklogTask[]>;
+  /** Статусы и прочие настройки из `backlog/config.yml` проекта (TASK-68). */
+  getBacklogConfig: (projectPath: string) => Promise<BacklogProjectConfig>;
   /** Сырой markdown задачи (frontmatter + тело) по абсолютному пути файла; null, если файл не прочитан. */
   getTaskContent: (filePath: string) => Promise<string | null>;
   updateTaskStatus: (filePath: string, newStatus: string) => Promise<boolean>;

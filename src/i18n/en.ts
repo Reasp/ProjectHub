@@ -86,6 +86,7 @@ export const en: TranslationDictionary = {
     inProgressTooltip: 'In Progress',
     toDoTooltip: 'To Do',
     reviewTooltip: 'In Review',
+    otherStatusesTooltip: 'Other statuses',
     noTasks: 'no tasks',
     hideMenuCommand: 'hide menu',
     showMenuCommand: 'show menu'
@@ -442,7 +443,9 @@ export const en: TranslationDictionary = {
     tagsCol: 'Tags',
     criteriaCol: 'Criteria',
     dateCol: 'Date',
-    noTasksFound: 'No tasks found'
+    noTasksFound: 'No tasks found',
+    unknownStatusHint: 'Status is missing from statuses in backlog/config.yml of this project',
+    otherStatuses: 'Other statuses'
   },
   taskDetail: {
     title: 'Task Details',

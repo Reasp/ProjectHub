@@ -36,6 +36,14 @@ import { useFederationStore } from '../../store/useFederationStore';
 import { useDialog } from '../../hooks/useDialog';
 import { generateTaskDraft } from '../../services/aiAssistantService';
 import { MarkdownViewer } from '../common/MarkdownViewer';
+import {
+  matchStatus,
+  resolveDoneStatus,
+  statusGlyph,
+  statusLabel,
+  statusOptions,
+  DEFAULT_TASK_STATUS
+} from '../../utils/taskStatus';
 
 const ACTIVE_AGENT_STATUSES = new Set(['pending', 'preparing', 'running']);
 
@@ -65,8 +73,11 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     createPtySessionAction,
     selectedProject,
     updateTaskStatusLocal,
-    setActiveTab: setMainTab
+    setActiveTab: setMainTab,
+    backlogConfig
   } = useProjectStore();
+  // Статусы задаёт backlog/config.yml проекта, а не код ProjectHub (TASK-68, decision-24).
+  const taskStatuses = backlogConfig.statuses;
   const { openNewSwarmModal, swarms, runAssignedAgentAction } = useSwarmStore();
   const federationPeers = useFederationStore((s) => s.peers);
   const { rolesByProject, loadRolesAction } = useRolesStore();
@@ -80,7 +91,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   const [isRunningAssignedAgent, setIsRunningAssignedAgent] = useState(false);
 
   const [title, setTitle] = useState(task?.title || '');
-  const [status, setStatus] = useState<BacklogTask['status']>(task?.status || 'To Do');
+  const [status, setStatus] = useState<BacklogTask['status']>(task?.status || DEFAULT_TASK_STATUS);
   const [milestone, setMilestone] = useState(task?.milestone || '');
   const [assignee, setAssignee] = useState(task?.assignee?.[0] || '');
   const [description, setDescription] = useState(task?.description || '');
@@ -118,9 +129,12 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
         const branchName = `task/${taskIdNorm}`;
         const wt = await createWorktreeAction(branchName, true, 'HEAD');
         if (wt) {
-          if (status === 'To Do') {
-            setStatus('In Progress');
-            await updateTaskStatusLocal(task.id, 'In Progress');
+          // Автоперевод в работу возможен, только если такие статусы есть у проекта (TASK-68).
+          const todoStatus = matchStatus(taskStatuses, 'To Do');
+          const inProgressStatus = matchStatus(taskStatuses, 'In Progress');
+          if (inProgressStatus && todoStatus && matchStatus([todoStatus], status)) {
+            setStatus(inProgressStatus);
+            await updateTaskStatusLocal(task.id, inProgressStatus);
           }
           await createPtySessionAction(
             selectedProject.path,
@@ -187,7 +201,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   useEffect(() => {
     if (!task) return;
     setTitle(task.title || '');
-    setStatus(task.status || 'To Do');
+    setStatus(task.status || DEFAULT_TASK_STATUS);
     setMilestone(task.milestone || '');
     setAssignee(task.assignee?.[0] || '');
     setDescription(task.description || '');
@@ -233,7 +247,12 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   if (!task) return null;
 
   const handleStatusChange = (newStatus: BacklogTask['status']) => {
-    if (newStatus === 'Done' && (status === 'To Do' || status === 'In Progress')) {
+    const doneStatus = resolveDoneStatus(taskStatuses);
+    const reviewStatus = matchStatus(taskStatuses, 'Review');
+    const currentIsReviewOrDone =
+      (!!reviewStatus && matchStatus([reviewStatus], status) !== undefined) ||
+      (!!doneStatus && matchStatus([doneStatus], status) !== undefined);
+    if (reviewStatus && newStatus === doneStatus && !currentIsReviewOrDone) {
       setWarningMessage(t.taskDetail.reviewWarningRule5);
     } else {
       setWarningMessage(null);
@@ -382,13 +401,15 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                   </label>
                   <select
                     value={status}
-                    onChange={(e) => handleStatusChange(e.target.value as any)}
+                    onChange={(e) => handleStatusChange(e.target.value)}
                     className="w-full bg-[#10121d] border border-slate-700 rounded-lg px-3 py-1.5 text-slate-200 text-xs font-medium focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="To Do">○ To Do ({t.kanban.todo})</option>
-                    <option value="In Progress">◒ In Progress ({t.kanban.inProgress})</option>
-                    <option value="Review">◆ Review ({t.kanban.review})</option>
-                    <option value="Done">✔ Done ({t.kanban.done})</option>
+                    {/* Статусы проекта из backlog/config.yml плюс текущий, если он кастомный (TASK-68). */}
+                    {statusOptions(taskStatuses, status).map((option) => (
+                      <option key={option} value={option}>
+                        {`${statusGlyph(option)} ${statusLabel(option, t.kanban)}`}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

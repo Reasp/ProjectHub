@@ -258,6 +258,9 @@ export const Sidebar: React.FC = () => {
             const inProgressCount = project.taskCounts?.inProgress || 0;
             const reviewCount = project.taskCounts?.review || 0;
             const doneCount = project.taskCounts?.done || 0;
+            // Задачи со статусом вне четырёх стандартных (TASK-68): их набор задаёт
+            // backlog/config.yml проекта, в карточке они показаны одним агрегатом.
+            const otherCount = project.taskCounts?.other || 0;
             const activeProcs = project.processStatus?.runningCount || 0;
             const hasRagReady = project.ragStatus?.ready;
             const agentStatus = projectAgentStatuses[project.path];
@@ -524,6 +527,12 @@ export const Sidebar: React.FC = () => {
                         <span className="flex items-center gap-0.5 text-purple-400" title={t.sidebar.reviewTooltip}>
                           <Activity className="w-2.5 h-2.5" />
                           {reviewCount}
+                        </span>
+                      )}
+                      {otherCount > 0 && (
+                        <span className="flex items-center gap-0.5 text-amber-400" title={t.sidebar.otherStatusesTooltip}>
+                          <Layers className="w-2.5 h-2.5" />
+                          {otherCount}
                         </span>
                       )}
                     </div>

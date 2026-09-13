@@ -86,6 +86,7 @@ export const ru: TranslationDictionary = {
     inProgressTooltip: 'В работе (In Progress)',
     toDoTooltip: 'К выполнению (To Do)',
     reviewTooltip: 'На проверке (Review)',
+    otherStatusesTooltip: 'Прочие статусы',
     noTasks: 'нет задач',
     hideMenuCommand: 'скрой меню',
     showMenuCommand: 'покажи меню'
@@ -442,7 +443,9 @@ export const ru: TranslationDictionary = {
     tagsCol: 'Теги',
     criteriaCol: 'Критерии',
     dateCol: 'Дата',
-    noTasksFound: 'Задачи не найдены'
+    noTasksFound: 'Задачи не найдены',
+    unknownStatusHint: 'Статуса нет в списке statuses в backlog/config.yml проекта',
+    otherStatuses: 'Прочие статусы'
   },
   taskDetail: {
     title: 'Карточка задачи',

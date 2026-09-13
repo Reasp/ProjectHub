@@ -6,6 +6,13 @@ import { simpleGit } from 'simple-git';
 import type { ProjectInfo, RagStatus, ProcessStatus, RunningProcess, GitLastCommit } from '../../src/types/electron';
 import { projectRegistry } from './projectRegistry';
 import { isFilesystemRoot } from './appPaths';
+import { readBacklogConfig } from './backlogConfigService';
+import {
+  countStatuses,
+  toLegacyTaskCounts,
+  fallbackStatusConfig,
+  DEFAULT_TASK_STATUS
+} from '../../src/utils/taskStatus.js';
 
 const IGNORED_FOLDERS = new Set([
   'node_modules',
@@ -51,6 +58,15 @@ interface InspectCacheEntry {
   key: string;
   info: ProjectInfo;
   at: number;
+}
+
+/** Статус из frontmatter задачи строкой: YAML может отдать Date/число (правило 16). */
+function fmStatus(value: unknown): string {
+  if (value === undefined || value === null || value === '') return DEFAULT_TASK_STATUS;
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? DEFAULT_TASK_STATUS : value.toISOString().slice(0, 10);
+  }
+  return String(value);
 }
 
 const inspectCache = new Map<string, InspectCacheEntry>();
@@ -207,37 +223,29 @@ export async function inspectProject(folderPath: string, options: InspectProject
       }
     }
 
-    // 3. Read backlog/config.yml if available (takes precedence for display name)
-    if (hasBacklog && existsSync(path.join(normalizedPath, 'backlog', 'config.yml'))) {
-      try {
-        const rawBacklog = await fs.readFile(path.join(normalizedPath, 'backlog', 'config.yml'), 'utf-8');
-        const match = rawBacklog.match(/project_name:\s*["']?([^"'\r\n]+)["']?/);
-        if (match && match[1]) {
-          projectName = match[1].trim();
-        }
-      } catch (e) {
-        // ignore
-      }
+    // 3. Read backlog/config.yml if available (takes precedence for display name).
+    // Конфиг проекта задаёт и отображаемое имя, и состав статусов (TASK-68, decision-24).
+    const backlogConfig = hasBacklog ? await readBacklogConfig(normalizedPath) : fallbackStatusConfig();
+    if (backlogConfig.projectName) {
+      projectName = backlogConfig.projectName;
     }
 
-    // 4. Calculate Backlog task counts
-    const taskCounts = { total: 0, todo: 0, inProgress: 0, review: 0, done: 0 };
+    // 4. Calculate Backlog task counts по набору статусов из конфига проекта.
+    // Карточка проекта показывает четыре исторических счётчика плюс агрегат «прочие»,
+    // поэтому задача с кастомным статусом не пропадает из общего числа.
+    const rawTaskStatuses: string[] = [];
     if (hasBacklog && existsSync(path.join(normalizedPath, 'backlog', 'tasks'))) {
       try {
         const taskFiles = await fs.readdir(path.join(normalizedPath, 'backlog', 'tasks'));
         for (const file of taskFiles) {
           if (file.endsWith('.md')) {
-            taskCounts.total++;
             try {
               const content = await fs.readFile(path.join(normalizedPath, 'backlog', 'tasks', file), 'utf-8');
               const { data } = matter(content);
-              const status = data.status || 'To Do';
-              if (status === 'To Do') taskCounts.todo++;
-              else if (status === 'In Progress') taskCounts.inProgress++;
-              else if (status === 'Review') taskCounts.review++;
-              else if (status === 'Done') taskCounts.done++;
+              rawTaskStatuses.push(fmStatus(data.status));
             } catch (e) {
-              taskCounts.todo++;
+              // Нечитаемый/битый файл задачи — считаем как задачу в статусе по умолчанию.
+              rawTaskStatuses.push(backlogConfig.defaultStatus);
             }
           }
         }
@@ -245,6 +253,10 @@ export async function inspectProject(folderPath: string, options: InspectProject
         // ignore
       }
     }
+    const taskCounts = toLegacyTaskCounts(
+      countStatuses(backlogConfig.statuses, rawTaskStatuses),
+      backlogConfig.statuses
+    );
 
     // 5. Git status & last commit
     let gitBranch: string | undefined;

@@ -97,6 +97,7 @@ const api: IElectronAPI = {
 
   // Backlog Tasks & Real-time Watcher
   getTasks: (projectPath: string) => ipcRenderer.invoke('backlog:getTasks', projectPath),
+  getBacklogConfig: (projectPath: string) => ipcRenderer.invoke('backlog:getConfig', projectPath),
   getTaskContent: (filePath: string) => ipcRenderer.invoke('backlog:getTaskContent', filePath),
   updateTaskStatus: (filePath: string, newStatus: string) => ipcRenderer.invoke('backlog:updateTaskStatus', filePath, newStatus),
   saveTask: (filePath: string, content: string) => ipcRenderer.invoke('backlog:saveTask', filePath, content),

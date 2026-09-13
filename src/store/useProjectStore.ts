@@ -51,6 +51,7 @@ export function isProcessOfAction(p: ManagedProcess, workspaceRoot: string, def:
   return processWorkspaceRoot(p) === workspaceRoot && (p.name === def.name || p.command === def.command);
 }
 import { getDictionary, type Language } from '../i18n';
+import { fallbackStatusConfig, type BacklogProjectConfig } from '../utils/taskStatus';
 
 function formatLog(template: string, params?: Record<string, string | number>): string {
   if (!params) return template;
@@ -67,6 +68,8 @@ export interface RunActionOptions {
 
 export interface ProjectCachedData {
   tasks: BacklogTask[];
+  /** Статусы задач из `backlog/config.yml` проекта (TASK-68). */
+  backlogConfig: BacklogProjectConfig;
   gitLogs: GitCommit[];
   gitRepoDetails: GitRepoDetails | null;
   docsList: DocItem[];
@@ -128,6 +131,9 @@ function dropProjectCache(cache: Record<string, ProjectCachedData>, projectPath:
 export function emptyProjectScopedState() {
   return {
     tasks: [] as BacklogTask[],
+    // Состав статусов принадлежит проекту (TASK-68): до загрузки конфига нового проекта
+    // показываем стандартные четыре колонки, а не колонки предыдущего проекта.
+    backlogConfig: fallbackStatusConfig() as BacklogProjectConfig,
     gitLogs: [] as GitCommit[],
     gitRepoDetails: null as GitRepoDetails | null,
     gitSelectedFile: null as string | null,
@@ -161,6 +167,11 @@ interface ProjectState {
   projects: ProjectInfo[];
   selectedProject: ProjectInfo | null;
   tasks: BacklogTask[];
+  /**
+   * Конфиг Backlog.md выбранного проекта (TASK-68): состав и порядок статусов доски.
+   * Источник истины — `backlog/config.yml` проекта, а не код ProjectHub (decision-24).
+   */
+  backlogConfig: BacklogProjectConfig;
   gitLogs: GitCommit[];
   gitRepoDetails: GitRepoDetails | null;
   gitSelectedFile: string | null;
@@ -537,6 +548,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   projects: [],
   selectedProject: null,
   tasks: [],
+  backlogConfig: fallbackStatusConfig(),
   gitLogs: [],
   gitRepoDetails: null,
   gitSelectedFile: null,
@@ -814,6 +826,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         selectedProject,
         isProjectDataLoading: false,
         tasks: cached.tasks,
+        backlogConfig: cached.backlogConfig || fallbackStatusConfig(),
         gitLogs: cached.gitLogs,
         gitRepoDetails: cached.gitRepoDetails,
         docsList: cached.docsList,
@@ -1364,6 +1377,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
                 tasks: freshTasks,
                 projectDataCache: putProjectCache(state, curProject.path, {
                   ...(state.projectDataCache[curProject.path] || {
+                    backlogConfig: state.backlogConfig,
                     gitLogs: state.gitLogs,
                     gitRepoDetails: state.gitRepoDetails,
                     docsList: state.docsList,
@@ -1413,14 +1427,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           });
         }
 
-        const [tasks, logs] = await Promise.all([
+        const [tasks, logs, backlogConfig] = await Promise.all([
           window.api.getTasks(project.path),
-          window.api.getGitLog(project.path, 25)
+          window.api.getGitLog(project.path, 25),
+          // Конфиг проекта может отсутствовать в старой сборке preload — тогда fallback.
+          window.api.getBacklogConfig
+            ? window.api.getBacklogConfig(project.path)
+            : Promise.resolve(fallbackStatusConfig())
         ]);
 
         const isCurrent = get().selectedProject?.path === project.path;
         if (isCurrent) {
-          set({ tasks, gitLogs: logs, isProjectDataLoading: false });
+          set({ tasks, backlogConfig, gitLogs: logs, isProjectDataLoading: false });
         }
 
         // Update in-memory cache for instant switching
@@ -1432,6 +1450,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           return {
             projectDataCache: putProjectCache(state, project.path, {
               tasks,
+              backlogConfig,
               gitLogs: logs,
               gitRepoDetails: isCurrent ? state.gitRepoDetails : (prevCached?.gitRepoDetails || null),
               docsList: isCurrent ? state.docsList : (prevCached?.docsList || []),

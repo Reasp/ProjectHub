@@ -70,6 +70,39 @@ describe('mapWithConcurrency (аудит 3.4)', () => {
   });
 });
 
+describe('inspectProject: счётчики по статусам из backlog/config.yml (TASK-68)', () => {
+  let dir: string;
+
+  beforeAll(async () => {
+    await fs.mkdir(USER_DATA, { recursive: true });
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'projecthub-scanner-statuses-'));
+    await fs.mkdir(path.join(dir, 'backlog', 'tasks'), { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'backlog', 'config.yml'),
+      'project_name: "Custom Statuses"\nstatuses: ["To Do", "In Progress", "Blocked", "Review", "Done"]\n',
+      'utf-8'
+    );
+    await writeTask(dir, 1, 'To Do');
+    await writeTask(dir, 2, 'Blocked');
+    await writeTask(dir, 3, 'Testing');
+    await writeTask(dir, 4, 'done');
+    invalidateInspectCache();
+  });
+
+  afterAll(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('задачи с кастомным и незнакомым статусом попадают в other, но учитываются в total', async () => {
+    const info = await inspectProject(dir, { skipGit: true });
+    expect(info).not.toBeNull();
+    expect(info!.name).toBe('Custom Statuses');
+    // Blocked есть в конфиге, но не входит в четыре исторических поля карточки;
+    // Testing вообще не описан в конфиге — оба идут в other, done матчится без учёта регистра.
+    expect(info!.taskCounts).toEqual({ total: 4, todo: 1, inProgress: 0, review: 0, done: 1, other: 2 });
+  });
+});
+
 describe('inspectProject: кэш по mtime (аудит 3.4)', () => {
   let projectDir: string;
 
@@ -92,7 +125,7 @@ describe('inspectProject: кэш по mtime (аудит 3.4)', () => {
     const first = await inspectProject(projectDir, { useCache: true });
     expect(first).not.toBeNull();
     expect(first!.name).toBe('Cache Test');
-    expect(first!.taskCounts).toEqual({ total: 2, todo: 1, inProgress: 0, review: 0, done: 1 });
+    expect(first!.taskCounts).toEqual({ total: 2, todo: 1, inProgress: 0, review: 0, done: 1, other: 0 });
     expect(getInspectCacheSize()).toBe(1);
 
     await sleep(15);
@@ -115,7 +148,7 @@ describe('inspectProject: кэш по mtime (аудит 3.4)', () => {
     expect(keyAfter).not.toBe(keyBefore);
 
     const after = await inspectProject(projectDir, { useCache: true });
-    expect(after!.taskCounts).toEqual({ total: 2, todo: 0, inProgress: 1, review: 0, done: 1 });
+    expect(after!.taskCounts).toEqual({ total: 2, todo: 0, inProgress: 1, review: 0, done: 1, other: 0 });
     expect(after!.lastScannedAt).not.toBe(before!.lastScannedAt);
   });
 

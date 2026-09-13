@@ -20,6 +20,14 @@ import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
 import type { BacklogTask } from '../../types/electron';
+import {
+  matchStatus,
+  isKnownStatus,
+  fallbackColumnStatus,
+  resolveDoneStatus,
+  statusLabel,
+  statusVisual
+} from '../../utils/taskStatus';
 import { TaskDetailModal } from './TaskDetailModal';
 import { TaskListView } from './TaskListView';
 
@@ -40,15 +48,28 @@ export const KanbanBoard: React.FC = () => {
     saveFullTaskLocal,
     deleteTaskLocal,
     toggleCriterionLocal,
-    loadProjectData
+    loadProjectData,
+    backlogConfig
   } = useProjectStore();
 
-  const columns: { status: BacklogTask['status']; label: string; color: string; bg: string; borderHover: string }[] = [
-    { status: 'To Do', label: t.kanban.todo, color: 'text-slate-400', bg: 'border-slate-700/60', borderHover: 'border-slate-500' },
-    { status: 'In Progress', label: t.kanban.inProgress, color: 'text-amber-400', bg: 'border-amber-500/40', borderHover: 'border-amber-500' },
-    { status: 'Review', label: t.kanban.review, color: 'text-indigo-400', bg: 'border-indigo-500/40', borderHover: 'border-indigo-500' },
-    { status: 'Done', label: t.kanban.done, color: 'text-emerald-400', bg: 'border-emerald-500/40', borderHover: 'border-emerald-500' }
-  ];
+  // Колонки доски — из `statuses` в `backlog/config.yml` проекта (TASK-68, decision-24).
+  // Стандартные четыре статуса сохраняют прежние цвета и переведённые подписи,
+  // кастомные выводятся как есть и получают цвет из палитры по хэшу имени.
+  const statuses = backlogConfig.statuses;
+  const columns = useMemo(
+    () =>
+      statuses.map((status) => ({
+        status,
+        label: statusLabel(status, t.kanban),
+        ...statusVisual(status)
+      })),
+    [statuses, t]
+  );
+
+  /** Колонка для задач, чей статус не описан в конфиге: `default_status` проекта. */
+  const fallbackColumn = fallbackColumnStatus(backlogConfig);
+  const doneStatus = resolveDoneStatus(statuses);
+  const reviewStatus = matchStatus(statuses, 'Review');
 
   const [selectedTask, setSelectedTask] = useState<BacklogTask | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -56,7 +77,7 @@ export const KanbanBoard: React.FC = () => {
   const [newDesc, setNewDesc] = useState('');
   const [newLabels, setNewLabels] = useState('');
   const [searchTaskQuery, setSearchTaskQuery] = useState('');
-  const [dragOverColumn, setDragOverColumn] = useState<BacklogTask['status'] | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
 
   // Extract all unique labels
@@ -94,8 +115,26 @@ export const KanbanBoard: React.FC = () => {
     });
   }, [tasks, searchTaskQuery, selectedLabelFilter, selectedMilestoneFilter, milestones]);
 
+  // Раскладка по колонкам: сопоставление статуса нестрогое (регистр/пробелы не значимы),
+  // а задача с неизвестным статусом попадает в колонку по умолчанию с пометкой,
+  // а не исчезает с доски, как было до TASK-68.
+  const tasksByColumn = useMemo(() => {
+    const map = new Map<string, BacklogTask[]>();
+    for (const col of columns) map.set(col.status, []);
+    for (const taskItem of filteredTasks) {
+      const matched = matchStatus(statuses, taskItem.status || fallbackColumn);
+      const target = matched || fallbackColumn;
+      const bucket = map.get(target);
+      if (bucket) bucket.push(taskItem);
+      else map.set(target, [taskItem]);
+    }
+    return map;
+  }, [columns, filteredTasks, statuses, fallbackColumn]);
+
   // Progress metrics
-  const doneCount = tasks.filter((taskItem) => taskItem.status === 'Done').length;
+  const doneCount = doneStatus
+    ? tasks.filter((taskItem) => matchStatus([doneStatus], taskItem.status) !== undefined).length
+    : 0;
   const progressPercent = tasks.length > 0 ? Math.round((doneCount / tasks.length) * 100) : 0;
 
   // Drag & Drop handlers
@@ -105,7 +144,7 @@ export const KanbanBoard: React.FC = () => {
     setDraggingTaskId(taskId);
   };
 
-  const handleDragOver = (e: React.DragEvent, status: BacklogTask['status']) => {
+  const handleDragOver = (e: React.DragEvent, status: string) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (dragOverColumn !== status) {
@@ -117,7 +156,7 @@ export const KanbanBoard: React.FC = () => {
     setDragOverColumn(null);
   };
 
-  const handleDrop = async (e: React.DragEvent, targetStatus: BacklogTask['status']) => {
+  const handleDrop = async (e: React.DragEvent, targetStatus: string) => {
     e.preventDefault();
     setDragOverColumn(null);
     setDraggingTaskId(null);
@@ -128,8 +167,13 @@ export const KanbanBoard: React.FC = () => {
     const targetTask = tasks.find((taskItem) => taskItem.id === taskId);
     if (!targetTask || targetTask.status === targetStatus) return;
 
-    // Rule 5 check: moving to Done directly
-    if (targetStatus === 'Done' && (targetTask.status === 'To Do' || targetTask.status === 'In Progress')) {
+    // Rule 5 check: moving to Done directly.
+    // Предупреждение работает и на кастомном наборе: показывается при переносе в конечный
+    // статус, если в конфиге вообще есть Review и задача сейчас не в Review/Done.
+    const currentIsReviewOrDone =
+      (!!reviewStatus && matchStatus([reviewStatus], targetTask.status) !== undefined) ||
+      (!!doneStatus && matchStatus([doneStatus], targetTask.status) !== undefined);
+    if (reviewStatus && targetStatus === doneStatus && !currentIsReviewOrDone) {
       const proceed = await dialog.confirm({
         title: t.kanban.rule5Title,
         message: t.kanban.rule5Message.replace('{id}', targetTask.id),
@@ -139,7 +183,7 @@ export const KanbanBoard: React.FC = () => {
       });
       if (!proceed) {
         // Move to Review instead
-        updateTaskStatusLocal(taskId, 'Review');
+        updateTaskStatusLocal(taskId, reviewStatus);
         return;
       }
     }
@@ -315,15 +359,17 @@ export const KanbanBoard: React.FC = () => {
       {taskViewMode === 'list' ? (
         <TaskListView
           tasks={filteredTasks}
+          statuses={statuses}
           onSelectTask={setSelectedTask}
           onUpdateStatus={updateTaskStatusLocal}
         />
       ) : (
-        <div className="flex-1 grid grid-cols-4 gap-4 overflow-hidden">
+        <div
+          className="flex-1 grid gap-4 overflow-x-auto overflow-y-hidden"
+          style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(240px, 1fr))` }}
+        >
           {columns.map((col) => {
-            const colTasks = filteredTasks.filter(
-              (taskItem) => (taskItem.status || 'To Do') === col.status
-            );
+            const colTasks = tasksByColumn.get(col.status) || [];
             const isTarget = dragOverColumn === col.status;
 
             return (
@@ -340,21 +386,13 @@ export const KanbanBoard: React.FC = () => {
               >
                 {/* Column Header */}
                 <div
-                  className={`p-3 border-b border-slate-800 flex items-center justify-between ${col.bg}`}
+                  className={`p-3 border-b border-slate-800 flex items-center justify-between ${col.border}`}
                 >
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        col.status === 'To Do'
-                          ? 'bg-slate-400'
-                          : col.status === 'In Progress'
-                          ? 'bg-amber-400'
-                          : col.status === 'Review'
-                          ? 'bg-indigo-400'
-                          : 'bg-emerald-400'
-                      }`}
-                    />
-                    <span className={`text-xs font-semibold ${col.color}`}>{col.label}</span>
+                    <span className={`w-2 h-2 rounded-full ${col.dot}`} />
+                    <span className={`text-xs font-semibold ${col.text}`} title={col.status}>
+                      {col.label}
+                    </span>
                   </div>
                   <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">
                     {colTasks.length}
@@ -399,6 +437,18 @@ export const KanbanBoard: React.FC = () => {
                         <h4 className="text-xs font-semibold text-slate-100 group-hover:text-white line-clamp-2 leading-relaxed">
                           {task.title}
                         </h4>
+
+                        {/* Статус вне statuses конфига: задача показана в колонке по умолчанию,
+                            но её собственный статус не теряется и виден на карточке (TASK-68). */}
+                        {!isKnownStatus(statuses, task.status) && (
+                          <div
+                            title={t.kanban.unknownStatusHint}
+                            className="flex items-center gap-1 text-[9px] font-mono text-amber-300 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded w-fit"
+                          >
+                            <AlertCircle className="w-2.5 h-2.5 shrink-0" />
+                            <span>{task.status || '—'}</span>
+                          </div>
+                        )}
 
                         {/* Acceptance Criteria Progress Badge */}
                         {criteria.length > 0 && (

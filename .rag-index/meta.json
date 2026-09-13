@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "822909f4800a8c06447073e696b483dd79087990701aa46baf3770a9af177614",
+  "docsHash": "47ba93166153e50cdad98f8621e47aad169571cccd9d906da37b7a8369849d0c",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -21,6 +21,7 @@
     "backlog/decisions/decision-21 - Тяжёлые-вычисления-main-процесса-в-worker_threads-с-fallback-в-main.md",
     "backlog/decisions/decision-22 - Отложенные-вызовы-в-React-компонентах-только-через-useTimeoutState-useTimers.md",
     "backlog/decisions/decision-23 - Сброс-состояния-при-смене-проекта-в-рендерере.md",
+    "backlog/decisions/decision-24 - Состав-статусов-задач-задаёт-backlog-config.yml-проекта.md",
     "backlog/decisions/decision-3 - Backlog.md-как-единственный-источник-истины-для-задач-документов-и-решений.md",
     "backlog/decisions/decision-4 - Claude-Code-CLI-как-основной-агентный-движок-API-провайдеры-как-дополнение.md",
     "backlog/decisions/decision-5 - Модель-безопасности-десктопа-изоляция-рендерера-реестр-проектов-локальный-MCP-и-секреты.md",
@@ -38,6 +39,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 283,
-  "builtAt": "2026-09-12T03:46:54.741Z"
+  "chunks": 292,
+  "builtAt": "2026-09-13T13:01:18.879Z"
 }

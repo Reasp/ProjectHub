@@ -86,6 +86,7 @@ export interface TranslationDictionary {
     inProgressTooltip: string;
     toDoTooltip: string;
     reviewTooltip: string;
+    otherStatusesTooltip: string;
     noTasks: string;
     hideMenuCommand: string;
     showMenuCommand: string;
@@ -421,6 +422,8 @@ export interface TranslationDictionary {
     criteriaCol: string;
     dateCol: string;
     noTasksFound: string;
+    unknownStatusHint: string;
+    otherStatuses: string;
   };
   taskDetail: {
     title: string;

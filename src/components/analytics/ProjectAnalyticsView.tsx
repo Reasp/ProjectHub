@@ -15,6 +15,13 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
+import {
+  countStatuses,
+  resolveDoneStatus,
+  statusLabel,
+  statusVisual,
+  OTHER_STATUS_VISUAL
+} from '../../utils/taskStatus';
 import { useTranslation } from '../../i18n/useTranslation';
 
 export const ProjectAnalyticsView: React.FC = () => {
@@ -24,7 +31,8 @@ export const ProjectAnalyticsView: React.FC = () => {
     tasks,
     milestones,
     gitLogs,
-    gitRepoDetails
+    gitRepoDetails,
+    backlogConfig
   } = useProjectStore();
 
   if (!selectedProject) {
@@ -41,11 +49,32 @@ export const ProjectAnalyticsView: React.FC = () => {
 
   // Task Statistics
   const totalTasks = tasks.length;
-  const doneTasks = tasks.filter((t) => t.status === 'Done').length;
-  const inProgressTasks = tasks.filter((t) => t.status === 'In Progress').length;
-  const reviewTasks = tasks.filter((t) => t.status === 'Review').length;
-  const todoTasks = tasks.filter((t) => t.status === 'To Do').length;
+  // Метрики считаются по набору статусов проекта (TASK-68, decision-24): «завершено» —
+  // это Done, если он есть в конфиге, иначе последний статус. Задачи со статусом вне
+  // конфига попадают в агрегат «прочие», но всегда учитываются в общем количестве.
+  const statuses = backlogConfig.statuses;
+  const statusCounts = countStatuses(statuses, tasks.map((task) => task.status));
+  const doneStatus = resolveDoneStatus(statuses);
+  const doneTasks = doneStatus ? statusCounts.byStatus[doneStatus] || 0 : 0;
   const completionRate = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+  const statusRows = [
+    ...[...statuses].reverse().map((status) => ({
+      key: status,
+      label: statusLabel(status, t.kanban),
+      count: statusCounts.byStatus[status] || 0,
+      visual: statusVisual(status)
+    })),
+    ...(statusCounts.other > 0
+      ? [
+          {
+            key: '__other__',
+            label: t.kanban.otherStatuses,
+            count: statusCounts.other,
+            visual: OTHER_STATUS_VISUAL
+          }
+        ]
+      : [])
+  ];
 
   // Acceptance Criteria Statistics
   let totalCriteria = 0;
@@ -205,73 +234,25 @@ export const ProjectAnalyticsView: React.FC = () => {
           </div>
 
           <div className="space-y-3.5">
-            <div>
-              <div className="flex justify-between text-[11px] mb-1.5">
-                <span className="text-emerald-400 font-medium flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block shadow-sm shadow-emerald-400/50" /> {t.kanban.done}
-                </span>
-                <span className="font-mono text-slate-300">
-                  {doneTasks} ({totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0}%)
-                </span>
+            {statusRows.map((row) => (
+              <div key={row.key}>
+                <div className="flex justify-between text-[11px] mb-1.5">
+                  <span className={`${row.visual.chartText} font-medium flex items-center gap-1.5`}>
+                    <span className={`w-2.5 h-2.5 rounded-full ${row.visual.chartDot} inline-block shadow-sm`} />{' '}
+                    {row.label}
+                  </span>
+                  <span className="font-mono text-slate-300">
+                    {row.count} ({totalTasks > 0 ? Math.round((row.count / totalTasks) * 100) : 0}%)
+                  </span>
+                </div>
+                <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden">
+                  <div
+                    className={`h-full ${row.visual.chartBar} transition-all duration-500`}
+                    style={{ width: `${totalTasks > 0 ? (row.count / totalTasks) * 100 : 0}%` }}
+                  />
+                </div>
               </div>
-              <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500 transition-all duration-500"
-                  style={{ width: `${totalTasks > 0 ? (doneTasks / totalTasks) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-[11px] mb-1.5">
-                <span className="text-purple-400 font-medium flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-purple-400 inline-block shadow-sm shadow-purple-400/50" /> {t.kanban.review}
-                </span>
-                <span className="font-mono text-slate-300">
-                  {reviewTasks} ({totalTasks > 0 ? Math.round((reviewTasks / totalTasks) * 100) : 0}%)
-                </span>
-              </div>
-              <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden">
-                <div
-                  className="h-full bg-purple-500 transition-all duration-500"
-                  style={{ width: `${totalTasks > 0 ? (reviewTasks / totalTasks) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-[11px] mb-1.5">
-                <span className="text-cyan-400 font-medium flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block shadow-sm shadow-cyan-400/50" /> {t.kanban.inProgress}
-                </span>
-                <span className="font-mono text-slate-300">
-                  {inProgressTasks} ({totalTasks > 0 ? Math.round((inProgressTasks / totalTasks) * 100) : 0}%)
-                </span>
-              </div>
-              <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden">
-                <div
-                  className="h-full bg-cyan-500 transition-all duration-500"
-                  style={{ width: `${totalTasks > 0 ? (inProgressTasks / totalTasks) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-[11px] mb-1.5">
-                <span className="text-slate-400 font-medium flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-slate-500 inline-block" /> {t.kanban.todo}
-                </span>
-                <span className="font-mono text-slate-300">
-                  {todoTasks} ({totalTasks > 0 ? Math.round((todoTasks / totalTasks) * 100) : 0}%)
-                </span>
-              </div>
-              <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden">
-                <div
-                  className="h-full bg-slate-600 transition-all duration-500"
-                  style={{ width: `${totalTasks > 0 ? (todoTasks / totalTasks) * 100 : 0}%` }}
-                />
-              </div>
-            </div>
+            ))}
           </div>
         </div>
 
