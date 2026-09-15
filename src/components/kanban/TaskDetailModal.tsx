@@ -24,7 +24,8 @@ import {
   Zap,
   Bot,
   PlayCircle,
-  Loader2
+  Loader2,
+  Repeat
 } from 'lucide-react';
 import type { BacklogTask, TaskCriterion } from '../../types/electron';
 import { useProjectStore, samePath } from '../../store/useProjectStore';
@@ -812,6 +813,26 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             >
               <Zap className="w-3.5 h-3.5 text-amber-400" />
               <span>{t.taskDetail.inSwarmArena}</span>
+            </button>
+
+            {/* Цикл «до готовности» (TASK-75): модалка запуска открывается сразу в режиме done_loop */}
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                openNewSwarmModal({
+                  taskId: task.id,
+                  taskTitle: task.title,
+                  prompt: `[${task.id}]: ${task.title}\n\n${task.description || ''}`,
+                  mode: 'done_loop'
+                });
+                setMainTab('ai');
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-950/60 hover:bg-sky-900/80 text-sky-300 border border-sky-700/50 text-xs font-semibold shadow-sm transition"
+              title={t.taskDetail.runDoneLoopTooltip}
+            >
+              <Repeat className="w-3.5 h-3.5 text-sky-400" />
+              <span>{t.taskDetail.runDoneLoop}</span>
             </button>
 
             {/* Запуск назначенного агента (decision-9, TASK-60) */}

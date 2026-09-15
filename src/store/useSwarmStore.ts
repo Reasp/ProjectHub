@@ -5,8 +5,11 @@ import type {
   CheckDefinition,
   ComposeResult,
   ComposeSelection,
+  DoneLoopSettings,
   JudgeState,
+  SwarmMode,
   SwarmSession,
+  StartDoneLoopOptions,
   StartFanOutOptions,
   StartHandoffOptions,
   SwarmEventPayload,
@@ -23,14 +26,19 @@ interface SwarmState {
     taskId?: string;
     taskTitle?: string;
     prompt?: string;
+    /** Режим, в котором открыть модалку (карточка задачи открывает сразу `done_loop`). */
+    mode?: SwarmMode;
   } | null;
 
   loadSwarmsAction: (projectPath: string) => Promise<void>;
   setActiveSwarmId: (projectPath: string, swarmId: string | null) => void;
-  openNewSwarmModal: (initialConfig?: { taskId?: string; taskTitle?: string; prompt?: string }) => void;
+  openNewSwarmModal: (initialConfig?: { taskId?: string; taskTitle?: string; prompt?: string; mode?: SwarmMode }) => void;
   closeNewSwarmModal: () => void;
   startFanOutAction: (options: StartFanOutOptions) => Promise<SwarmSession | null>;
   startHandoffAction: (options: StartHandoffOptions) => Promise<SwarmSession | null>;
+  /** Цикл «до готовности» (TASK-75). */
+  startDoneLoopAction: (options: StartDoneLoopOptions) => Promise<SwarmSession | { error: string }>;
+  getDoneLoopConfigAction: (projectPath: string) => Promise<DoneLoopSettings | null>;
   /** Запустить агента, назначенного на задачу через assignee (decision-9, TASK-60). */
   runAssignedAgentAction: (options: {
     projectPath: string;
@@ -180,6 +188,45 @@ export const useSwarmStore = create<SwarmState>((set) => ({
     } catch (err) {
       console.error('[SwarmStore] Failed to start Handoff:', err);
       set({ isLoading: false });
+      return null;
+    }
+  },
+
+  startDoneLoopAction: async (options: StartDoneLoopOptions) => {
+    if (!window.api?.startSwarmDoneLoop) return { error: 'API not available' };
+    try {
+      set({ isLoading: true });
+      const result = await window.api.startSwarmDoneLoop(options);
+      if (!('id' in result)) {
+        set({ isLoading: false });
+        return result;
+      }
+      const projectPath = options.projectPath;
+      set((state) => {
+        const existing = state.swarms[projectPath] || [];
+        const filtered = existing.filter((s) => s.id !== result.id);
+        return {
+          swarms: { ...state.swarms, [projectPath]: [result, ...filtered] },
+          activeSwarmId: { ...state.activeSwarmId, [projectPath]: result.id },
+          isLoading: false,
+          isNewSwarmModalOpen: false,
+          initialNewSwarmConfig: null
+        };
+      });
+      return result;
+    } catch (err) {
+      console.error('[SwarmStore] Failed to start done-loop:', err);
+      set({ isLoading: false });
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+
+  getDoneLoopConfigAction: async (projectPath: string) => {
+    if (!window.api?.getDoneLoopConfig) return null;
+    try {
+      return await window.api.getDoneLoopConfig(projectPath);
+    } catch (err) {
+      console.error('[SwarmStore] Failed to load done-loop config:', err);
       return null;
     }
   },

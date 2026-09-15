@@ -39,6 +39,7 @@ import { useToast } from '../../../hooks/useTimeoutState';
 import { MarkdownViewer } from '../../common/MarkdownViewer';
 import { NewSwarmModal } from './NewSwarmModal';
 import { ArenaJudgePanel } from './ArenaJudgePanel';
+import { DoneLoopPanel } from './DoneLoopPanel';
 import { ArenaSettingsModal } from './ArenaSettingsModal';
 import { ComposeResultModal } from './ComposeResultModal';
 import type { AgentSlotState, SwarmSession, SwarmTranscript } from '../../../types/electron';
@@ -296,7 +297,10 @@ export const SwarmArenaView: React.FC = () => {
                 <option key={s.id} value={s.id}>
                   {t.swarm.runHistoryItem
                     .replace('{index}', String(projectSwarms.length - idx))
-                    .replace('{mode}', s.mode === 'fan_out' ? t.swarm.modeArena : t.swarm.modePipelineName)
+                    .replace(
+                      '{mode}',
+                      s.mode === 'fan_out' ? t.swarm.modeArena : s.mode === 'done_loop' ? t.doneLoop.modeName : t.swarm.modePipelineName
+                    )
                     .replace('{date}', new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}
                 </option>
               ))}
@@ -430,6 +434,10 @@ export const SwarmArenaView: React.FC = () => {
                       <>
                         <Zap className="w-3.5 h-3.5" /> Fan-Out Arena
                       </>
+                    ) : currentSwarm.mode === 'done_loop' ? (
+                      <>
+                        <RotateCcw className="w-3.5 h-3.5" /> {t.doneLoop.modeName}
+                      </>
                     ) : (
                       <>
                         <Layers className="w-3.5 h-3.5" /> Handoff Pipeline
@@ -560,6 +568,9 @@ export const SwarmArenaView: React.FC = () => {
                 onOpenCompose={() => setComposeOpen(true)}
               />
             )}
+
+            {/* Цикл «до готовности» (TASK-75) */}
+            {currentSwarm.mode === 'done_loop' && <DoneLoopPanel session={currentSwarm} />}
 
             {/* Side-by-Side Arena Grid (AC #4) */}
             <div>

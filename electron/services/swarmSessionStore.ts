@@ -117,7 +117,7 @@ export function migrateStoredSession(raw: unknown): SwarmSession | null {
   delete session.version;
 
   if (version <= 1) {
-    session.mode = session.mode === 'handoff' ? 'handoff' : 'fan_out';
+    session.mode = session.mode === 'handoff' || session.mode === 'done_loop' ? session.mode : 'fan_out';
     session.prompt = typeof session.prompt === 'string' ? session.prompt : '';
     session.baseBranch = typeof session.baseBranch === 'string' ? session.baseBranch : 'main';
     session.useWorktrees = session.useWorktrees !== false;

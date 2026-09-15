@@ -275,6 +275,9 @@ const api: IElectronAPI = {
   // Multi-Agent Swarm & Fleet Orchestration (TASK-54)
   startSwarmFanOut: (options: any) => ipcRenderer.invoke('swarm:startFanOut', options),
   startSwarmHandoff: (options: any) => ipcRenderer.invoke('swarm:startHandoff', options),
+  // Цикл «до готовности» (TASK-75)
+  startSwarmDoneLoop: (options: unknown) => ipcRenderer.invoke('swarm:startDoneLoop', options),
+  getDoneLoopConfig: (projectPath: string) => ipcRenderer.invoke('doneLoop:getConfig', projectPath),
   // Запуск агента, назначенного на задачу через assignee (decision-9, TASK-60)
   runAssignedAgent: (options: { projectPath: string; taskId: string; taskTitle?: string; prompt: string; roleSlug: string; hostId?: string }) =>
     ipcRenderer.invoke('swarm:runAssigned', options),

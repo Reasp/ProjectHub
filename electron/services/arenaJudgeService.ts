@@ -12,7 +12,7 @@
  */
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { processManager } from './processManager.js';
+import { executeCheck } from './checkRunner.js';
 import { aiAgentService, type AIMessage, type AIProviderConfig } from './aiAgentService.js';
 import { loadRoles } from './roleService.js';
 import { apiToolNamesForCategories } from './roleEngineAdapter.js';
@@ -20,13 +20,7 @@ import { findTaskFile } from './taskFileLookup.js';
 import { parseTaskBody, stripCriterionPrefix } from './backlogTaskFormat.js';
 import { fetchDiffImpact } from './gitNexusClient.js';
 import { loadArenaConfig } from './arenaConfig.js';
-import {
-  CHECK_OUTPUT_TAIL_CHARS,
-  checkStatusFromExit,
-  parseCheckOutput,
-  summarizeCheckResult,
-  tailOutput
-} from './arenaChecks.js';
+import { summarizeCheckResult } from './arenaChecks.js';
 import { autoMergeDecision, recommendCandidate, scoreCandidates, type CandidateScoreInput } from './arenaScoring.js';
 import { buildReviewerPrompt, parseReviewerResponse } from './reviewerPrompt.js';
 import type { ArenaConfig, CheckRunResult, JudgeState, ReviewerVerdict } from './arenaTypes.js';
@@ -286,32 +280,10 @@ export class ArenaJudgeService {
           job.result.detail = 'Прогон судьи отменён';
           return;
         }
-        job.result.status = 'running';
-        job.result.startedAt = Date.now();
+        const running = executeCheck(job.result, job, job.workdir!, signal);
         hooks.onUpdate(job.agent.id);
         hooks.log(job.agent, `[Судья] Проверка «${job.result.name}»: ${job.command}`);
-
-        const run = await processManager.runOnce(job.command, {
-          cwd: job.workdir!,
-          timeoutMs: job.timeoutMs,
-          signal,
-          portStrategy: job.portStrategy,
-          port: job.port
-        });
-
-        const counters = parseCheckOutput(job.result.kind, run.output);
-        const { text, truncated } = tailOutput(run.output, CHECK_OUTPUT_TAIL_CHARS);
-        job.result.exitCode = run.exitCode ?? undefined;
-        job.result.durationMs = run.durationMs;
-        job.result.outputTail = text;
-        job.result.outputTruncated = truncated || run.truncated;
-        Object.assign(job.result, counters);
-        if (run.error && run.exitCode === null) {
-          job.result.status = signal.aborted ? 'skipped' : 'error';
-          job.result.detail = run.error;
-        } else {
-          job.result.status = checkStatusFromExit(run.exitCode, run.timedOut);
-        }
+        await running;
 
         hooks.log(job.agent, `[Судья] «${job.result.name}» → ${summarizeCheckResult(job.result)}`);
         hooks.onUpdate(job.agent.id);

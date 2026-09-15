@@ -7,8 +7,10 @@ import type { AIProviderConfig } from './aiAgentService.js';
 import type { AgentUsage } from './agentCost.js';
 import type { RolePermissions } from './hitlTypes.js';
 import type { CandidateScore, CheckRunResult, JudgeState, ReviewerVerdict } from './arenaTypes.js';
+import type { DoneLoopState } from './doneLoopTypes.js';
 
-export type SwarmMode = 'fan_out' | 'handoff';
+/** `done_loop` — одиночный слот «до готовности» (TASK-75, decision-28). */
+export type SwarmMode = 'fan_out' | 'handoff' | 'done_loop';
 export type SwarmStatus =
   | 'idle'
   | 'preparing'
@@ -104,6 +106,8 @@ export interface AgentSlotState {
   error?: string;
   /** Сколько раз агент перезапускался после прерывания. */
   resumeCount?: number;
+  /** `session_id` Claude CLI из stream-json — для продолжения той же сессии (`--resume`, TASK-75). */
+  cliSessionId?: string;
   /** Результаты проверок автосудьи в worktree кандидата (TASK-61, decision-12). */
   checks?: CheckRunResult[];
   /** Балл кандидата с разложением по компонентам. */
@@ -161,6 +165,8 @@ export interface SwarmSession {
   restored?: boolean;
   /** Состояние автосудьи арены (TASK-61, decision-12). */
   judge?: JudgeState;
+  /** Состояние цикла «до готовности» (режим `done_loop`, TASK-75). */
+  doneLoop?: DoneLoopState;
 }
 
 export interface StartFanOutOptions {
@@ -191,6 +197,24 @@ export interface StartHandoffOptions {
     agent: AgentSlotConfig;
     instructions?: string;
   }[];
+}
+
+/** Запуск цикла «до готовности» (TASK-75): один слот, задача Backlog.md обязательна. */
+export interface StartDoneLoopOptions {
+  projectPath: string;
+  taskId: string;
+  taskTitle?: string;
+  prompt: string;
+  agent: AgentSlotConfig;
+  baseBranch?: string;
+  useWorktrees?: boolean;
+  autoCommitAgentResults?: boolean;
+  /** Бюджет цикла в USD (переопределяет `doneLoop.budgetUsd` проекта). */
+  budgetUsd?: number;
+  maxIterations?: number;
+  /** Подмножество проверок проекта по `id`. */
+  checkIds?: string[];
+  autoReview?: boolean;
 }
 
 export interface SwarmEventPayload {

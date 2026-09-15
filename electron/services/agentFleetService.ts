@@ -35,12 +35,15 @@ import {
 } from './agentCost.js';
 import { exportSwarmSessionJson, exportSwarmSessionMarkdown, summarizeSwarmSession } from './swarmExport.js';
 import { arenaJudgeService, judgeableAgents, type RunJudgeOptions } from './arenaJudgeService.js';
+import { doneLoopService, loadDoneLoopSettings, type DoneLoopRunResult } from './doneLoopService.js';
+import { findTaskFile } from './taskFileLookup.js';
 import type { ComposeResult, ComposeSelection, JudgeState } from './arenaTypes.js';
 import type {
   AgentSlotConfig,
   AgentSlotDiffSummary,
   AgentSlotState,
   HandoffStageState,
+  StartDoneLoopOptions,
   StartFanOutOptions,
   StartHandoffOptions,
   SwarmEventPayload,
@@ -56,6 +59,7 @@ export type {
   AgentSlotState,
   AgentSlotStatus,
   HandoffStageState,
+  StartDoneLoopOptions,
   StartFanOutOptions,
   StartHandoffOptions,
   SwarmEventPayload,
@@ -148,6 +152,10 @@ export class AgentFleetService extends EventEmitter {
   private abortControllers = new Map<string, Set<AbortController>>();
   private agentProcesses = new Map<string, Set<ChildProcess>>();
   private agentAbortControllers = new Map<string, Set<AbortController>>();
+  /** История диалога API-движка для продолжения той же сессии в цикле «до готовности» (TASK-75). */
+  private apiHistories = new Map<string, AIMessage[]>();
+  /** Usage предыдущих ходов цикла: итог хода (`replace`) складывается с ним, а не затирает его. */
+  private usageBaselines = new Map<string, AgentUsage>();
   private priceTable: PriceTable = BUILTIN_PRICE_TABLE;
   private priceTableLoaded = false;
   private readyPromise: Promise<void> = Promise.resolve();
@@ -309,7 +317,13 @@ export class AgentFleetService extends EventEmitter {
     mode: 'add' | 'replace',
     model?: string
   ): boolean {
-    const merged = mode === 'replace' ? usage : addUsage(agent.metrics.usage ?? emptyUsage(), usage);
+    const baseline = this.usageBaselines.get(agent.id);
+    const merged =
+      mode === 'replace'
+        ? baseline
+          ? addUsage(baseline, usage)
+          : usage
+        : addUsage(agent.metrics.usage ?? emptyUsage(), usage);
     const priced = priceUsage(merged, model ?? merged.model ?? agent.config.providerConfig?.model, this.priceTable);
     agent.metrics.usage = priced;
     agent.metrics.costUsd = priced.costUsd;
@@ -504,6 +518,8 @@ export class AgentFleetService extends EventEmitter {
 
     if (session.mode === 'handoff') {
       void this.executeHandoff(session, startIndex, true);
+    } else if (session.mode === 'done_loop') {
+      void this.executeDoneLoop(session, true);
     } else {
       void this.executeFanOut(session, true);
     }
@@ -742,6 +758,152 @@ export class AgentFleetService extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
+  // Цикл «до готовности» (TASK-75, decision-28)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Одиночный слот «до готовности»: ход агента → проверки → сверка критериев приёмки по отчёту →
+   * повтор с ошибками в той же сессии, пока задача не выполнена или не исчерпаны лимиты.
+   */
+  public async startDoneLoop(options: StartDoneLoopOptions): Promise<SwarmSession> {
+    const { projectPath, prompt, taskId } = options;
+    if (!taskId) throw new Error('Для режима «до готовности» нужна задача Backlog.md: цикл сверяет её критерии приёмки');
+    if (!options.agent) throw new Error('Не задан агент-исполнитель');
+    const task = await findTaskFile(projectPath, taskId);
+    if (!task) throw new Error(`Задача ${taskId} не найдена в backlog/tasks`);
+
+    const settings = await loadDoneLoopSettings(projectPath, {
+      maxIterations: options.maxIterations,
+      budgetUsd: options.budgetUsd,
+      checkIds: options.checkIds,
+      autoReview: options.autoReview
+    });
+    const swarmId = `swarm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const baseBranch = await this.detectBaseBranch(projectPath, options.baseBranch);
+    await this.getPriceTable();
+
+    const agentState = this.newAgentState(options.agent, options.agent.id || `done-${Date.now().toString(36)}`, Date.now());
+    const session: SwarmSession = {
+      id: swarmId,
+      projectPath,
+      taskId,
+      taskTitle: options.taskTitle ?? (typeof task.data.title === 'string' ? task.data.title : undefined),
+      mode: 'done_loop',
+      prompt,
+      baseBranch,
+      useWorktrees: options.useWorktrees !== false,
+      autoCommitAgentResults: options.autoCommitAgentResults !== false,
+      // Бюджет цикла заодно становится бюджетом сессии: `enforceBudget` остановит ход на лету.
+      ...(settings.budgetUsd ? { budgetUsd: settings.budgetUsd } : {}),
+      status: 'preparing',
+      createdAt: Date.now(),
+      agents: [agentState],
+      doneLoop: { settings, phase: 'running_agent', currentIteration: 0, iterations: [] }
+    };
+
+    this.sessions.set(swarmId, session);
+    this.ensureSessionTracking(swarmId);
+    this.emitSwarmEvent({ type: 'swarm_updated', swarmId, session });
+
+    void this.executeDoneLoop(session, false);
+    return session;
+  }
+
+  private async executeDoneLoop(session: SwarmSession, resume: boolean): Promise<void> {
+    session.status = 'running';
+    this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
+
+    const agent = session.agents[0];
+    if (!agent || !session.doneLoop) {
+      session.status = 'failed';
+      session.error = 'Сессия «до готовности» повреждена: нет агента или состояния цикла';
+      session.completedAt = Date.now();
+      this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
+      return;
+    }
+
+    if (resume) {
+      this.prepareAgentForResume(session, agent);
+    } else if (session.useWorktrees) {
+      try {
+        const branchName = `swarm/${session.id.slice(-6)}/done-${sanitizeSlug(session.taskId || agent.config.name || agent.id)}`;
+        agent.status = 'preparing';
+        this.log(session, agent, `[Swarm] Создание изолированного Git Worktree: ветка ${branchName}...`);
+        this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agent.id, session });
+        const wt = await worktreeService.addWorktree(session.projectPath, {
+          branch: branchName,
+          newBranch: true,
+          baseCommitOrBranch: session.baseBranch
+        });
+        agent.worktreePath = wt.path;
+        agent.worktreeBranch = wt.branch || branchName;
+        this.log(session, agent, `[Swarm] Изолированное рабочее дерево готово: ${wt.path}`);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.log(session, agent, `[Swarm Error] Не удалось создать worktree: ${message}. Запуск в основном каталоге.`);
+      }
+    }
+
+    const controller = new AbortController();
+    const abortSet = this.abortControllers.get(session.id);
+    abortSet?.add(controller);
+
+    let result: DoneLoopRunResult;
+    try {
+      result = await doneLoopService.run(
+        session,
+        agent,
+        {
+          runTurn: async (prompt, { continueSession }) => {
+            if (agent.metrics.usage) this.usageBaselines.set(agent.id, agent.metrics.usage);
+            await this.runSingleAgent(session, agent, prompt, { continueSession, suppressOutcomeEvent: true });
+          },
+          materialize: () => this.materializeAgentResult(session, agent),
+          onUpdate: () => this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agent.id, session }),
+          log: (line) => this.log(session, agent, line),
+          isStopped: () => session.status !== 'running' || controller.signal.aborted,
+          signal: controller.signal
+        },
+        { resume, resumeSuffix: RESUME_PROMPT_SUFFIX }
+      );
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error(`[AgentFleetService] Done-loop ${session.id} failed:`, err);
+      session.doneLoop.phase = 'failed';
+      session.doneLoop.outcome = 'agent_error';
+      session.doneLoop.reason = reason;
+      this.log(session, agent, `[Done-loop] ❌ Сбой цикла: ${reason}`);
+      result = { outcome: 'agent_error', reason };
+    } finally {
+      abortSet?.delete(controller);
+      this.usageBaselines.delete(agent.id);
+    }
+
+    // Приложение завершается: сессия уже помечена прерванной и сохранена, итог не подводим.
+    // Статус меняется снаружи (shutdown/stopSwarm), поэтому сужение типа TS здесь неверно.
+    if ((session.status as SwarmSession['status']) === 'interrupted') return;
+    this.apiHistories.delete(agent.id);
+
+    session.completedAt = Date.now();
+    const busBase = this.agentBusBase(session, agent);
+    const durationMs = session.completedAt - session.createdAt;
+    if (result.outcome === 'success') {
+      session.status = 'completed';
+      this.emitSwarmEvent({ type: 'swarm_completed', swarmId: session.id, session });
+      appEventBus.publish({ type: 'agent:finished', ...busBase, at: Date.now(), durationMs, outcome: 'done' });
+    } else if (result.outcome === 'stopped') {
+      if (session.status === 'running') session.status = 'stopped';
+      this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
+      appEventBus.publish({ type: 'agent:finished', ...busBase, at: Date.now(), durationMs, outcome: 'aborted' });
+    } else {
+      session.status = 'failed';
+      session.error = result.reason || 'Цикл «до готовности» не достиг цели';
+      this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
+      appEventBus.publish({ type: 'agent:failed', ...busBase, at: Date.now(), durationMs, error: `До готовности: ${session.error}` });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Автосудья (TASK-61, decision-12)
   // ---------------------------------------------------------------------------
 
@@ -942,7 +1104,13 @@ export class AgentFleetService extends EventEmitter {
   private async runSingleAgent(
     session: SwarmSession,
     agentState: AgentSlotState,
-    customPrompt?: string
+    customPrompt?: string,
+    turn: {
+      /** Продолжить ту же сессию движка (цикл «до готовности»): Claude CLI `--resume`, API — история. */
+      continueSession?: boolean;
+      /** Не публиковать `agent:finished/failed` — итог хода подводит цикл. */
+      suppressOutcomeEvent?: boolean;
+    } = {}
   ): Promise<void> {
     const targetPath = agentState.worktreePath || session.projectPath;
     const promptToRun = customPrompt || session.prompt;
@@ -969,27 +1137,18 @@ export class AgentFleetService extends EventEmitter {
     agentState.status = 'running';
     this.log(session, agentState, `[Swarm] Старт агента "${agentState.config.name}" (движок: ${agentState.config.engine})...`);
     this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
-    const busBase = {
-      sessionId: this.hitlSessionId(agentState),
-      projectPath: session.projectPath,
-      origin: this.hitlOrigin(session),
-      engine: agentState.config.engine,
-      agentId: agentState.id,
-      agentName: agentState.config.name,
-      role: agentState.config.role,
-      hostId: hitlService.currentHostId
-    };
+    const busBase = this.agentBusBase(session, agentState);
     appEventBus.publish({ type: 'agent:started', ...busBase, at: startTime });
 
     try {
       if (agentState.config.engine === 'claude-cli') {
-        await this.runClaudeCliAgent(session, agentState, targetPath, promptToRun, role);
+        await this.runClaudeCliAgent(session, agentState, targetPath, promptToRun, role, turn.continueSession === true);
       } else if (agentState.config.engine === 'codex-cli') {
         await this.runCodexCliAgent(session, agentState, targetPath, promptToRun, role);
       } else if (agentState.config.engine === 'gemini-cli') {
         await this.runGeminiCliAgent(session, agentState, targetPath, promptToRun, role);
       } else {
-        await this.runApiAgent(session, agentState, targetPath, promptToRun, role);
+        await this.runApiAgent(session, agentState, targetPath, promptToRun, role, turn.continueSession === true);
       }
 
       agentState.metrics.endTime = Date.now();
@@ -1044,7 +1203,9 @@ export class AgentFleetService extends EventEmitter {
       // Агент больше не ждёт ответов: снимаем его запросы из очереди HITL (TASK-57).
       hitlService.cancelSession(busBase.sessionId, `Агент "${agentState.config.name}" завершил работу`);
       const durationMs = agentState.metrics.durationMs;
-      if (agentState.status === 'failed') {
+      if (turn.suppressOutcomeEvent) {
+        // Ход цикла «до готовности»: итоговое событие публикует сам цикл (TASK-75).
+      } else if (agentState.status === 'failed') {
         appEventBus.publish({ type: 'agent:failed', ...busBase, at: Date.now(), durationMs, error: agentState.error || 'Ошибка агента' });
       } else {
         appEventBus.publish({
@@ -1057,6 +1218,20 @@ export class AgentFleetService extends EventEmitter {
       }
       this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
     }
+  }
+
+  /** Общие поля событий агента в шине (`agent:started/finished/failed`). */
+  private agentBusBase(session: SwarmSession, agentState: AgentSlotState) {
+    return {
+      sessionId: this.hitlSessionId(agentState),
+      projectPath: session.projectPath,
+      origin: this.hitlOrigin(session),
+      engine: agentState.config.engine,
+      agentId: agentState.id,
+      agentName: agentState.config.name,
+      role: agentState.config.role,
+      hostId: hitlService.currentHostId
+    };
   }
 
   /** sessionId агента в очереди HITL и событиях шины. */
@@ -1136,7 +1311,8 @@ export class AgentFleetService extends EventEmitter {
    * дальше течёт как `extraSystemPrompt` в `buildEngineInvocation` для любого движка одинаково.
    */
   private async buildExtraSystemPrompt(session: SwarmSession, agentState: AgentSlotState, targetPath: string): Promise<string | undefined> {
-    const addon = agentState.config.systemPromptAddon;
+    // Инструкция цикла «до готовности» (формат отчёта, правила) — одна для всех движков (TASK-75).
+    const addon = [agentState.config.systemPromptAddon, session.doneLoop?.instructions].filter(Boolean).join('\n\n') || undefined;
     if (!session.taskId) return addon;
     try {
       const context = await buildAgentContext({
@@ -1156,7 +1332,8 @@ export class AgentFleetService extends EventEmitter {
     agentState: AgentSlotState,
     targetPath: string,
     prompt: string,
-    role?: RoleDefinition
+    role?: RoleDefinition,
+    continueSession = false
   ): Promise<void> {
     const config: AIProviderConfig = agentState.config.providerConfig || {
       provider: 'anthropic',
@@ -1166,12 +1343,16 @@ export class AgentFleetService extends EventEmitter {
 
     // Системный промпт роли идёт отдельным полем (buildSystemPrompt), а не в тело сообщения —
     // так он одинаково применяется независимо от того, есть ли у роли `tools` (decision-9).
-    const roleSystemPrompt = [role?.systemPrompt, agentState.config.systemPromptAddon].filter(Boolean).join('\n\n') || undefined;
+    const roleSystemPrompt =
+      [role?.systemPrompt, agentState.config.systemPromptAddon, session.doneLoop?.instructions].filter(Boolean).join('\n\n') || undefined;
     const allowedToolNames = role?.tools && role.tools.length > 0 ? apiToolNamesForCategories(role.tools) : undefined;
 
+    // Повторный ход цикла «до готовности» продолжает тот же диалог (TASK-75).
+    const history = continueSession ? this.apiHistories.get(agentState.id) ?? [] : [];
     const messages: AIMessage[] = [
+      ...history,
       {
-        id: `msg-${Date.now()}-1`,
+        id: `msg-${Date.now()}-${history.length + 1}`,
         role: 'user',
         content: prompt,
         timestamp: new Date().toISOString()
@@ -1219,6 +1400,12 @@ export class AgentFleetService extends EventEmitter {
         },
         (finalMsg) => {
           agentState.finalOutput = finalMsg.content || outputBuffer;
+          if (session.mode === 'done_loop') {
+            this.apiHistories.set(agentState.id, [
+              ...messages,
+              { id: finalMsg.id || `msg-${Date.now()}-a`, role: 'assistant', content: agentState.finalOutput, timestamp: new Date().toISOString() }
+            ]);
+          }
           if (finalMsg.usage && !usageSeen) {
             this.recordUsage(session, agentState, finalMsg.usage, 'replace', config.model);
           }
@@ -1247,7 +1434,8 @@ export class AgentFleetService extends EventEmitter {
     agentState: AgentSlotState,
     targetPath: string,
     prompt: string,
-    role?: RoleDefinition
+    role?: RoleDefinition,
+    continueSession = false
   ): Promise<void> {
     // Human-in-the-loop через единый контур (TASK-57): без --dangerously-skip-permissions,
     // кроме залогированного fallback при недоступном MCP-сервере и включённом auto-approve.
@@ -1274,7 +1462,10 @@ export class AgentFleetService extends EventEmitter {
     const maxTurns = role?.maxTurns && role.maxTurns > 0 ? role.maxTurns : undefined;
 
     return new Promise((resolve, reject) => {
-      const args = ['-p', '--output-format', 'stream-json', '--verbose', ...hitl.args, ...invocation.args];
+      // Продолжение той же сессии Claude CLI в цикле «до готовности» (TASK-75).
+      const resumeArgs = continueSession && agentState.cliSessionId ? ['--resume', agentState.cliSessionId] : [];
+      if (resumeArgs.length > 0) this.log(session, agentState, `[Swarm] Продолжение сессии Claude CLI ${agentState.cliSessionId}`);
+      const args = ['-p', '--output-format', 'stream-json', '--verbose', ...resumeArgs, ...hitl.args, ...invocation.args];
 
       let child: ChildProcess;
       try {
@@ -1316,6 +1507,9 @@ export class AgentFleetService extends EventEmitter {
       };
 
       const handleEvent = (event: any) => {
+        if (typeof event.session_id === 'string' && event.session_id) {
+          agentState.cliSessionId = event.session_id;
+        }
         if (event.type === 'rate_limit_event' || event.rate_limit_info) {
           try {
             claudeUsageService.noteRateLimitEvent(event.rate_limit_info || event);

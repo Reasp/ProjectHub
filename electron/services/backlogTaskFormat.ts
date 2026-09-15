@@ -280,6 +280,60 @@ export function toggleCriterionInContent(content: string, index: number, complet
   return null;
 }
 
+export const FINAL_SUMMARY_BEGIN = '<!-- SECTION:FINAL_SUMMARY:BEGIN -->';
+export const FINAL_SUMMARY_END = '<!-- SECTION:FINAL_SUMMARY:END -->';
+const FINAL_SUMMARY_HEADING = /^##\s+Final Summary\s*$/i;
+const COMMENTS_HEADING = /^##\s+Comments\s*$/i;
+
+/**
+ * Записывает `## Final Summary` в нативном формате Backlog.md (маркеры `SECTION:FINAL_SUMMARY`).
+ * Существующая секция заменяется; новая вставляется перед `## Comments` или в конец файла.
+ */
+export function applyFinalSummary(content: string, summary: string): string {
+  const lines = content.split('\n');
+  const body = descriptionLines(summary);
+
+  const block = findMarkerBlock(lines, FINAL_SUMMARY_BEGIN, FINAL_SUMMARY_END);
+  if (block) {
+    lines.splice(block.start, block.end - block.start, ...body);
+    return lines.join('\n');
+  }
+
+  const replacement = ['', FINAL_SUMMARY_BEGIN, ...body, FINAL_SUMMARY_END, ''];
+  const section = findHeadingSection(lines, FINAL_SUMMARY_HEADING);
+  if (section) {
+    lines.splice(section.body.start, section.body.end - section.body.start, ...replacement);
+    return lines.join('\n');
+  }
+
+  const commentsAt = lines.findIndex((l) => COMMENTS_HEADING.test(l.trim()));
+  const insertAt = commentsAt === -1 ? lines.length : commentsAt;
+  const before = withoutTrailingBlanks(lines.slice(0, insertAt));
+  const after = lines.slice(insertAt);
+  return [...before, '', '## Final Summary', ...replacement, ...after].join('\n');
+}
+
+/**
+ * Возвращает отметки критериев к эталону `completed` (по порядку), не трогая тексты.
+ * Нужна циклу «до готовности»: критерии отмечает только ProjectHub (decision-28), правка агента
+ * откатывается. `null` — расхождений нет.
+ */
+export function restoreCriteriaFlags(content: string, completed: boolean[]): string | null {
+  const { criteria } = parseTaskBody(content);
+  let next = content;
+  let changed = false;
+  const count = Math.min(criteria.length, completed.length);
+  for (let i = 0; i < count; i++) {
+    if (criteria[i].completed === completed[i]) continue;
+    const updated = toggleCriterionInContent(next, i, completed[i]);
+    if (updated !== null) {
+      next = updated;
+      changed = true;
+    }
+  }
+  return changed ? next : null;
+}
+
 /** Тело нового файла задачи в нативном формате Backlog.md. */
 export function buildTaskBody(description: string, criteria: TaskCriterionLike[] = []): string {
   return [

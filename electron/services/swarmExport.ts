@@ -102,7 +102,8 @@ export function exportSwarmSessionMarkdown(session: SwarmSession, options: Markd
   const maxPatch = options.maxPatchChars ?? 30_000;
   const includePatch = options.includePatch !== false;
   const totals = summarizeSwarmSession(session);
-  const modeLabel = session.mode === 'handoff' ? 'Handoff (конвейер)' : 'Fan-Out (арена)';
+  const modeLabel =
+    session.mode === 'handoff' ? 'Handoff (конвейер)' : session.mode === 'done_loop' ? 'Done-loop (до готовности)' : 'Fan-Out (арена)';
   const lines: string[] = [];
 
   lines.push(`# Swarm-сессия ${session.id}`);
@@ -151,6 +152,22 @@ export function exportSwarmSessionMarkdown(session: SwarmSession, options: Markd
     lines.push('');
     for (const stage of session.handoffStages) {
       lines.push(`${stage.stageIndex + 1}. **${stage.role}** — ${statusLabel(stage.status)}${stage.durationMs ? ` (${fmtDuration(stage.durationMs)})` : ''}`);
+    }
+    lines.push('');
+  }
+
+  if (session.mode === 'done_loop' && session.doneLoop) {
+    const loop = session.doneLoop;
+    lines.push('## Итерации цикла «до готовности»');
+    lines.push('');
+    if (loop.outcome) lines.push(`Итог: **${loop.outcome}**${loop.reason ? ` — ${loop.reason}` : ''}`, '');
+    for (const it of loop.iterations) {
+      const failed = it.checks.filter((c) => c.status === 'failed' || c.status === 'timeout' || c.status === 'error').length;
+      const accepted = it.criteria.filter((c) => c.accepted).length;
+      lines.push(
+        `${it.index}. проверок упало ${failed}/${it.checks.length}, критериев засчитано ${accepted}/${it.criteria.length}` +
+          `${typeof it.costUsd === 'number' ? `, ${formatUsd(it.costUsd)}` : ''}${it.decision ? `, решение: ${it.decision}` : ''}`
+      );
     }
     lines.push('');
   }

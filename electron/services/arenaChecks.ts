@@ -40,7 +40,8 @@ export interface DefaultChecksInput {
   hasPyProject?: boolean;
 }
 
-function runScript(pm: string, script: string): string {
+/** Команда запуска скрипта `package.json` выбранным менеджером пакетов. */
+export function scriptCommand(pm: string, script: string): string {
   if (pm === 'yarn' || pm === 'bun') return `${pm} ${script}`;
   return `${pm} run ${script}`;
 }
@@ -65,7 +66,7 @@ export function defaultChecksFromProject(input: DefaultChecksInput): CheckDefini
         id: kind === 'custom' ? script : kind,
         kind,
         name,
-        command: runScript(packageManager, script),
+        command: scriptCommand(packageManager, script),
         timeoutMs: DEFAULT_CHECK_TIMEOUT_MS,
         blocking: true,
         enabled: true

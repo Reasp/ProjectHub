@@ -604,6 +604,9 @@ export interface IElectronAPI {
   // Multi-Agent Swarm & Fleet Orchestration (TASK-54)
   startSwarmFanOut: (options: StartFanOutOptions) => Promise<SwarmSession>;
   startSwarmHandoff: (options: StartHandoffOptions) => Promise<SwarmSession>;
+  /** Цикл «до готовности» (TASK-75). */
+  startSwarmDoneLoop: (options: StartDoneLoopOptions) => Promise<SwarmSession | { error: string }>;
+  getDoneLoopConfig: (projectPath: string) => Promise<DoneLoopSettings>;
   runAssignedAgent: (options: {
     projectPath: string;
     taskId: string;
@@ -1310,7 +1313,7 @@ declare global {
 
 // Multi-Agent Swarm & Fleet Orchestration Types (TASK-54, TASK-56)
 // Зеркало `electron/services/swarmTypes.ts` и `agentCost.ts`.
-export type SwarmMode = 'fan_out' | 'handoff';
+export type SwarmMode = 'fan_out' | 'handoff' | 'done_loop';
 export type SwarmStatus = 'idle' | 'preparing' | 'running' | 'completed' | 'failed' | 'stopped' | 'interrupted';
 export type AgentSlotStatus =
   | 'pending'
@@ -1538,6 +1541,8 @@ export interface AgentSlotState {
   commitStatus?: 'committed' | 'stashed' | 'no_changes' | 'pending';
   lastCommitHash?: string;
   resumeCount?: number;
+  /** `session_id` Claude CLI для `--resume` в цикле «до готовности» (TASK-75). */
+  cliSessionId?: string;
   /** Результаты проверок автосудьи (TASK-61). */
   checks?: CheckRunResult[];
   score?: CandidateScore;
@@ -1588,6 +1593,8 @@ export interface SwarmSession {
   restored?: boolean;
   /** Состояние автосудьи арены (TASK-61). */
   judge?: JudgeState;
+  /** Состояние цикла «до готовности» (TASK-75). */
+  doneLoop?: DoneLoopState;
 }
 
 export interface StartFanOutOptions {
@@ -1618,6 +1625,80 @@ export interface StartHandoffOptions {
     agent: AgentSlotConfig;
     instructions?: string;
   }[];
+}
+
+// ─── Цикл «до готовности» (TASK-75, decision-28); зеркало electron/services/doneLoopTypes.ts ───
+
+export type DoneLoopPhase = 'running_agent' | 'checking' | 'verifying' | 'finished' | 'failed' | 'stopped';
+export type DoneLoopOutcome = 'success' | 'iteration_limit' | 'budget' | 'agent_error' | 'task_error' | 'stopped';
+export type CriterionReportStatus = 'done' | 'not_done' | 'blocked';
+
+export interface CriterionVerification {
+  index: number;
+  text: string;
+  reported?: CriterionReportStatus;
+  evidence?: string;
+  accepted: boolean;
+  reason?: string;
+  alreadyChecked?: boolean;
+}
+
+export interface DoneLoopIteration {
+  index: number;
+  startedAt: number;
+  finishedAt?: number;
+  agentStatus?: string;
+  checks: CheckRunResult[];
+  reportFound: boolean;
+  reportError?: string;
+  reportSummary?: string;
+  criteria: CriterionVerification[];
+  costUsd?: number;
+  commitHash?: string;
+  tamperedCriteria?: boolean;
+  decision?: 'finish' | 'retry' | 'fail';
+}
+
+export interface DoneLoopSettings {
+  maxIterations: number;
+  budgetUsd?: number;
+  checks: CheckDefinition[];
+  autoReview: boolean;
+}
+
+export interface DoneLoopState {
+  settings: DoneLoopSettings;
+  phase: DoneLoopPhase;
+  currentIteration: number;
+  iterations: DoneLoopIteration[];
+  instructions?: string;
+  criteriaBaseline?: Array<{ text: string; completed: boolean }>;
+  outcome?: DoneLoopOutcome;
+  reason?: string;
+  totalCostUsd?: number;
+  task?: {
+    filePath?: string;
+    criteriaChecked: number[];
+    movedToReview?: boolean;
+    reviewStatus?: string;
+    finalSummaryWritten?: boolean;
+    error?: string;
+  };
+}
+
+export interface StartDoneLoopOptions {
+  projectPath: string;
+  taskId: string;
+  taskTitle?: string;
+  prompt: string;
+  agent: AgentSlotConfig;
+  baseBranch?: string;
+  useWorktrees?: boolean;
+  autoCommitAgentResults?: boolean;
+  budgetUsd?: number;
+  maxIterations?: number;
+  checkIds?: string[];
+  autoReview?: boolean;
 }
 
 export interface SwarmEventPayload {

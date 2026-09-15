@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { CheckDefinition } from './arenaTypes.js';
+import type { DoneLoopProjectSettings } from './doneLoopTypes.js';
 
 export interface ActionDefinition {
   name: string;
@@ -50,6 +51,8 @@ export interface ProjectActionConfig {
    */
   checks?: CheckDefinition[];
   arena?: ArenaSettings;
+  /** Настройки цикла «до готовности» (TASK-75): лимит итераций, бюджет, набор проверок. */
+  doneLoop?: DoneLoopProjectSettings;
 }
 
 const CONFIG_FILENAME = '.projecthub.json';

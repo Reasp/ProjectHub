@@ -17,9 +17,11 @@ import { claudeUsageService } from '../services/claudeUsageService';
 import {
   agentFleetService,
   type StartFanOutOptions,
+  type StartDoneLoopOptions,
   type StartHandoffOptions,
   type SwarmExportFormat
 } from '../services/agentFleetService';
+import { loadDoneLoopSettings } from '../services/doneLoopService';
 import { assertRegisteredProject } from '../services/projectPathGuard';
 import type { RunJudgeOptions } from '../services/arenaJudgeService';
 import { loadArenaConfig, saveArenaConfig } from '../services/arenaConfig';
@@ -225,6 +227,21 @@ export function registerAiIpc(ctx: IpcContext) {
   ipcMain.handle('swarm:startHandoff', async (_event, options: StartHandoffOptions) => {
     const safeProject = await assertRegisteredProject(options.projectPath);
     return await agentFleetService.startHandoff({ ...options, projectPath: safeProject });
+  });
+
+  // Цикл «до готовности» (TASK-75, decision-28)
+  ipcMain.handle('swarm:startDoneLoop', async (_event, options: StartDoneLoopOptions) => {
+    const safeProject = await assertRegisteredProject(options.projectPath);
+    try {
+      return await agentFleetService.startDoneLoop({ ...options, projectPath: safeProject });
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('doneLoop:getConfig', async (_event, projectPath: string) => {
+    const safeProject = await assertRegisteredProject(projectPath);
+    return await loadDoneLoopSettings(safeProject);
   });
 
   // Запуск агента, назначенного на задачу через assignee (decision-9 п.4, TASK-60)

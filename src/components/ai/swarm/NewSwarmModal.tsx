@@ -14,14 +14,19 @@ import {
   CheckCircle2,
   ListTodo,
   DollarSign,
-  TriangleAlert
+  TriangleAlert,
+  Repeat
 } from 'lucide-react';
 import { useSwarmStore } from '../../../store/useSwarmStore';
 import { useProjectStore } from '../../../store/useProjectStore';
 import { useRolesStore } from '../../../store/useRolesStore';
 import { useTranslation } from '../../../i18n';
+import { useDialog } from '../../../hooks/useDialog';
 import { unsupportedRoleFeatures } from '../../../lib/engineCapabilities';
-import type { AgentSlotConfig, SwarmMode } from '../../../types/electron';
+import type { AgentSlotConfig, DoneLoopSettings, SwarmMode } from '../../../types/electron';
+
+/** Слот исполнителя цикла «до готовности» по умолчанию — роль `implementer`, если она есть. */
+const DONE_LOOP_DEFAULT_NAME = 'Implementer';
 
 interface PresetOption {
   id: string;
@@ -160,11 +165,20 @@ export const NewSwarmModal: React.FC = () => {
   const { t } = useTranslation();
   const presets = useMemo(() => getPresets(t), [t]);
 
-  const { isNewSwarmModalOpen, closeNewSwarmModal, initialNewSwarmConfig, startFanOutAction, startHandoffAction, isLoading } =
-    useSwarmStore();
+  const {
+    isNewSwarmModalOpen,
+    closeNewSwarmModal,
+    initialNewSwarmConfig,
+    startFanOutAction,
+    startHandoffAction,
+    startDoneLoopAction,
+    getDoneLoopConfigAction,
+    isLoading
+  } = useSwarmStore();
+  const dialog = useDialog();
   const { selectedProject, tasks } = useProjectStore();
   const { rolesByProject, loadRolesAction } = useRolesStore();
-  const roles = rolesByProject[selectedProject?.path || ''] || [];
+  const roles = useMemo(() => rolesByProject[selectedProject?.path || ''] || [], [rolesByProject, selectedProject?.path]);
 
   useEffect(() => {
     if (isNewSwarmModalOpen) void loadRolesAction(selectedProject?.path);
@@ -185,12 +199,64 @@ export const NewSwarmModal: React.FC = () => {
     }
   }, [presets, agents.length]);
 
+  // Настройки цикла «до готовности» (TASK-75): дефолты из `.projecthub.json`, правка на запуск.
+  const [maxIterations, setMaxIterations] = useState<string>('');
+  const [autoReview, setAutoReview] = useState<boolean>(true);
+  const [loopConfig, setLoopConfig] = useState<DoneLoopSettings | null>(null);
+  const [selectedCheckIds, setSelectedCheckIds] = useState<string[] | null>(null);
+
   useEffect(() => {
     if (initialNewSwarmConfig) {
       if (initialNewSwarmConfig.taskId) setSelectedTaskId(initialNewSwarmConfig.taskId);
       if (initialNewSwarmConfig.prompt) setPrompt(initialNewSwarmConfig.prompt);
+      if (initialNewSwarmConfig.mode) setMode(initialNewSwarmConfig.mode);
     }
   }, [initialNewSwarmConfig]);
+
+  // В режиме «до готовности» один слот: по умолчанию роль implementer (подставляется, когда роли загрузились).
+  useEffect(() => {
+    if (!isNewSwarmModalOpen || mode !== 'done_loop') return;
+    const implementer = roles.find((r) => r.slug === 'implementer');
+    setAgents((prev) => {
+      const isDefaultSlot = prev.length === 1 && prev[0].id.startsWith('done-');
+      if (isDefaultSlot && (prev[0].roleSlug || !implementer || prev[0].name !== DONE_LOOP_DEFAULT_NAME)) return prev;
+      return [
+        {
+          id: `done-${Date.now().toString(36)}`,
+          name: DONE_LOOP_DEFAULT_NAME,
+          engine: implementer?.engine || 'claude-cli',
+          role: implementer?.name || t.doneLoop.agentLabel,
+          ...(implementer
+            ? { roleSlug: implementer.slug, budgetUsd: implementer.budgetUsd, permissions: implementer.permissions }
+            : {}),
+          ...(implementer && (implementer.model || implementer.provider)
+            ? {
+                providerConfig: {
+                  provider: (implementer.provider as NonNullable<AgentSlotConfig['providerConfig']>['provider']) || 'anthropic',
+                  model: implementer.model || 'default'
+                }
+              }
+            : {})
+        }
+      ];
+    });
+  }, [isNewSwarmModalOpen, mode, roles, t.doneLoop.agentLabel]);
+
+  useEffect(() => {
+    if (!isNewSwarmModalOpen || mode !== 'done_loop' || !selectedProject?.path) return;
+    let cancelled = false;
+    void getDoneLoopConfigAction(selectedProject.path).then((cfg) => {
+      if (cancelled || !cfg) return;
+      setLoopConfig(cfg);
+      setAutoReview(cfg.autoReview);
+      setMaxIterations(String(cfg.maxIterations));
+      setSelectedCheckIds(cfg.checks.map((c) => c.id));
+      if (cfg.budgetUsd) setBudgetUsd((prev) => prev || String(cfg.budgetUsd));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isNewSwarmModalOpen, mode, selectedProject?.path, getDoneLoopConfigAction]);
 
   if (!isNewSwarmModalOpen) return null;
 
@@ -265,6 +331,28 @@ export const NewSwarmModal: React.FC = () => {
     const parsedBudgetRaw = Number(budgetUsd.replace(',', '.'));
     const parsedBudget = Number.isFinite(parsedBudgetRaw) && parsedBudgetRaw > 0 ? parsedBudgetRaw : undefined;
 
+    if (mode === 'done_loop') {
+      if (!selectedTaskId) {
+        await dialog.alert(t.doneLoop.taskRequired);
+        return;
+      }
+      const iterations = Number(maxIterations);
+      const result = await startDoneLoopAction({
+        projectPath: selectedProject.path,
+        prompt: prompt.trim(),
+        taskId: selectedTaskId,
+        taskTitle: taskObj?.title,
+        useWorktrees,
+        budgetUsd: parsedBudget,
+        agent: agents[0],
+        ...(Number.isFinite(iterations) && iterations > 0 ? { maxIterations: iterations } : {}),
+        ...(selectedCheckIds ? { checkIds: selectedCheckIds } : {}),
+        autoReview
+      });
+      if (!('id' in result)) await dialog.alert(t.doneLoop.startError.replace('{error}', result.error));
+      return;
+    }
+
     if (mode === 'fan_out') {
       await startFanOutAction({
         projectPath: selectedProject.path,
@@ -328,7 +416,7 @@ export const NewSwarmModal: React.FC = () => {
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">
               {t.swarm.orchestrationMode}
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button
                 type="button"
                 onClick={() => setMode('fan_out')}
@@ -364,10 +452,27 @@ export const NewSwarmModal: React.FC = () => {
                   </div>
                 </div>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setMode('done_loop')}
+                className={`flex items-start gap-3 p-3.5 rounded-xl border text-left transition-all ${
+                  mode === 'done_loop'
+                    ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/40'
+                    : 'border-border bg-secondary/30 hover:bg-secondary/60 text-muted-foreground'
+                }`}
+              >
+                <Repeat className="w-5 h-5 shrink-0 mt-0.5" />
+                <div>
+                  <div className="text-sm font-semibold text-foreground">{t.doneLoop.modeTitle}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{t.doneLoop.modeDesc}</div>
+                </div>
+              </button>
             </div>
           </div>
 
-          {/* Быстрые пресеты */}
+          {/* Быстрые пресеты (не для одиночного цикла «до готовности») */}
+          {mode !== 'done_loop' && (
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground block mb-2">
               {t.swarm.readyPresets}
@@ -398,6 +503,7 @@ export const NewSwarmModal: React.FC = () => {
               })}
             </div>
           </div>
+          )}
 
           {/* Привязка к задаче Backlog */}
           <div>
@@ -428,6 +534,9 @@ export const NewSwarmModal: React.FC = () => {
                 </option>
               ))}
             </select>
+            {mode === 'done_loop' && !selectedTaskId && (
+              <p className="text-[11px] text-amber-500 mt-1">{t.doneLoop.taskRequired}</p>
+            )}
           </div>
 
           {/* Промпт задачи */}
@@ -449,15 +558,17 @@ export const NewSwarmModal: React.FC = () => {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {mode === 'fan_out' ? t.swarm.arenaContenders : t.swarm.pipelineStages} ({agents.length})
+                {mode === 'fan_out' ? t.swarm.arenaContenders : mode === 'done_loop' ? t.doneLoop.agentLabel : t.swarm.pipelineStages} ({agents.length})
               </label>
-              <button
-                type="button"
-                onClick={handleAddAgent}
-                className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium"
-              >
-                <Plus className="w-3.5 h-3.5" /> {t.swarm.addContender}
-              </button>
+              {mode !== 'done_loop' && (
+                <button
+                  type="button"
+                  onClick={handleAddAgent}
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium"
+                >
+                  <Plus className="w-3.5 h-3.5" /> {t.swarm.addContender}
+                </button>
+              )}
             </div>
 
             <div className="space-y-2.5">
@@ -596,6 +707,79 @@ export const NewSwarmModal: React.FC = () => {
             </div>
           </div>
 
+          {/* Настройки цикла «до готовности» (TASK-75) */}
+          {mode === 'done_loop' && (
+            <div className="p-3.5 rounded-xl border border-primary/30 bg-primary/5 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold text-foreground">{t.doneLoop.maxIterationsLabel}</div>
+                    <div className="text-[11px] text-muted-foreground">{t.doneLoop.maxIterationsDesc}</div>
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={20}
+                    step={1}
+                    value={maxIterations}
+                    onChange={(e) => setMaxIterations(e.target.value)}
+                    placeholder="5"
+                    className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs w-16 text-right"
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold text-foreground">{t.doneLoop.autoReviewLabel}</div>
+                    <div className="text-[11px] text-muted-foreground">{t.doneLoop.autoReviewDesc}</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={autoReview}
+                    onChange={(e) => setAutoReview(e.target.checked)}
+                    className="w-4 h-4 rounded-sm border-border text-primary focus:ring-primary accent-primary"
+                  />
+                </label>
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-foreground">{t.doneLoop.checksLabel}</div>
+                <div className="text-[11px] text-muted-foreground mb-1.5">{t.doneLoop.checksDesc}</div>
+                {!loopConfig ? (
+                  <div className="text-[11px] text-muted-foreground">{t.doneLoop.checksLoading}</div>
+                ) : loopConfig.checks.length === 0 ? (
+                  <div className="text-[11px] text-amber-500">{t.doneLoop.checksNone}</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {loopConfig.checks.map((check) => {
+                      const checked = selectedCheckIds?.includes(check.id) ?? true;
+                      return (
+                        <label
+                          key={check.id}
+                          title={check.command}
+                          className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] cursor-pointer ${
+                            checked ? 'border-primary/40 bg-primary/10 text-foreground' : 'border-border bg-secondary/30 text-muted-foreground'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) =>
+                              setSelectedCheckIds((prev) => {
+                                const current = prev ?? loopConfig.checks.map((c) => c.id);
+                                return e.target.checked ? [...new Set([...current, check.id])] : current.filter((id) => id !== check.id);
+                              })
+                            }
+                            className="w-3 h-3 accent-primary"
+                          />
+                          {check.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Бюджет сессии (TASK-56) */}
           <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-secondary/20 gap-4">
             <div className="flex items-center gap-2.5">
@@ -648,11 +832,11 @@ export const NewSwarmModal: React.FC = () => {
             </button>
             <button
               type="submit"
-              disabled={isLoading || !prompt.trim() || agents.length === 0}
+              disabled={isLoading || !prompt.trim() || agents.length === 0 || (mode === 'done_loop' && !selectedTaskId)}
               className="inline-flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 shadow-md transition-all"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              {mode === 'fan_out' ? t.swarm.launchArena : t.swarm.launchPipeline}
+              {mode === 'fan_out' ? t.swarm.launchArena : mode === 'done_loop' ? t.doneLoop.launch : t.swarm.launchPipeline}
             </button>
           </div>
         </form>

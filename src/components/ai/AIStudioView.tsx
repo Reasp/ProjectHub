@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useAIStudioStore, type AISession } from '../../store/useAIStudioStore';
 import { useProjectStore } from '../../store/useProjectStore';
+import { useSwarmStore } from '../../store/useSwarmStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
 import { AISettingsModal } from './AISettingsModal';
@@ -133,6 +134,13 @@ export const AIStudioView: React.FC = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isStreaming, projectApprovals.length]);
+
+  // NewSwarmModal живёт внутри SwarmArenaView: запуск из карточки задачи («В Swarm Arena»,
+  // «До готовности», TASK-75) должен показать арену, иначе модалка открыта, но не видна.
+  const isNewSwarmModalOpen = useSwarmStore((s) => s.isNewSwarmModalOpen);
+  useEffect(() => {
+    if (isNewSwarmModalOpen) setAiViewMode('swarm');
+  }, [isNewSwarmModalOpen]);
 
   if (!selectedProject) {
     return (
