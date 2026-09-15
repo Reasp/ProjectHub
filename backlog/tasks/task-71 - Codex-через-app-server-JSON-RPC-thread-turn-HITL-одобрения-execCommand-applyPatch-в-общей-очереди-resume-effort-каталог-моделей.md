@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-09-15 03:06'
+updated_date: '2026-09-15 03:30'
 labels:
   - ai
   - codex
@@ -19,7 +20,7 @@ references:
   - 'https://openai.com/index/unlocking-the-codex-harness/'
   - 'https://gist.github.com/oneryalcin/ee2c27e2d8aa040da8fbe7eebcc2ecea'
   - 'https://codex.danielvaughan.com/2026/04/15/codex-app-server-complete-guide/'
-priority: high
+priority: medium
 type: feature
 ---
 
@@ -61,3 +62,9 @@ type: feature
 - [ ] #7 decision-26 переведён в accepted после ручного smoke-теста с реальным codex; результаты в notes
 - [ ] #8 npm run lint/test/check-bundle зелёные, npm run pack:win собран
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-09-15: приоритет снижен до Medium — Codex не оплачен и не установлен, а стратегия ProjectHub — независимость от конкретного вендора (decision-26 п. 0). Задача остаётся актуальной как поддержка ещё одного движка через единый адаптер (decision-4 п. 4): Codex app-server работает не только с моделями OpenAI, но и с любым model_provider из config.toml (в том числе локальными OpenAI-совместимыми серверами). Ни одна функция Harness 3.0 не должна зависеть от наличия Codex.
+<!-- SECTION:NOTES:END -->
