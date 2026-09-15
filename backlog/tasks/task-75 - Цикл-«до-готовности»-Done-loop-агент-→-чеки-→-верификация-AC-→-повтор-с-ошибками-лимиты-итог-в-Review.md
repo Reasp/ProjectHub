@@ -3,11 +3,11 @@ id: TASK-75
 title: >-
   Цикл «до готовности» (Done-loop): агент → чеки → верификация AC → повтор с
   ошибками, лимиты, итог в Review
-status: Review
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-15 03:11'
-updated_date: '2026-09-15 11:43'
+updated_date: '2026-09-15 11:55'
 labels:
   - swarm
   - arena
