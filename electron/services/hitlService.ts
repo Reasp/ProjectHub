@@ -13,7 +13,8 @@ import type {
   HitlEngine,
   HitlOrigin,
   HitlOutcome,
-  HitlRequest
+  HitlRequest,
+  HitlScreenshots
 } from './hitlTypes.js';
 
 /**
@@ -268,6 +269,11 @@ export class HitlService extends EventEmitter {
     return this.cancelWhere(() => true, reason, 'cancelled');
   }
 
+  /** Отменяет ожидающие запросы по условию (kill-switch управления компьютером, TASK-82). */
+  public cancelMatching(predicate: (req: HitlRequest) => boolean, reason?: string): HitlRequest[] {
+    return this.cancelWhere(predicate, reason, 'cancelled');
+  }
+
   /**
    * Завершение приложения: промисы отклоняются, но записи остаются на диске как `orphaned`,
    * чтобы после перезапуска попасть в панель и аудит.
@@ -321,12 +327,20 @@ export class HitlService extends EventEmitter {
     return id;
   }
 
-  /** Результат выполнения одобренного действия (exit-код команды, ошибка записи и т.п.). */
-  public recordOutcome(requestId: string, outcome: HitlOutcome, detail?: string): void {
+  /** Результат выполнения одобренного действия (exit-код команды, ошибка записи, скриншоты до/после). */
+  public recordOutcome(requestId: string, outcome: HitlOutcome, detail?: string, extra: { screenshots?: HitlScreenshots } = {}): void {
     const known = this.decided.get(requestId);
     if (!known) return;
     const base = this.auditBase(known.request);
-    void this.audit?.append({ ...base, ts: new Date(this.now()).toISOString(), kind: 'outcome', outcome, detail: detail ? truncateComment(detail, 300) : undefined });
+    const screenshots = extra.screenshots && (extra.screenshots.before || extra.screenshots.after) ? extra.screenshots : undefined;
+    void this.audit?.append({
+      ...base,
+      ts: new Date(this.now()).toISOString(),
+      kind: 'outcome',
+      outcome,
+      detail: detail ? truncateComment(detail, 300) : undefined,
+      ...(screenshots ? { screenshots } : {})
+    });
   }
 
   /** Запуск агента без HITL (`--dangerously-skip-permissions`) — обязательно в аудит и в шину. */

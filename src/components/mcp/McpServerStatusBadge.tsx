@@ -11,8 +11,10 @@ import {
   ExternalLink,
   Terminal,
   Activity,
-  X
+  X,
+  Monitor
 } from 'lucide-react';
+import { ComputerUseSettingsModal } from '../computer/ComputerUseSettingsModal';
 
 import type { McpServerStatus } from '../../types/electron';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -22,6 +24,7 @@ export const McpServerStatusBadge: React.FC = () => {
   const { t } = useTranslation();
   const [status, setStatus] = useState<McpServerStatus | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [isComputerUseOpen, setIsComputerUseOpen] = useState(false);
   // Индикатор «скопировано» гаснет сам; таймер снимается при размонтировании (TASK-50)
   const [copiedKey, showCopiedKey] = useToast<string>(2500);
 
@@ -187,6 +190,16 @@ export const McpServerStatusBadge: React.FC = () => {
               </div>
             )}
 
+            {/* Управление компьютером через прокси computer_* (TASK-82) */}
+            <button
+              type="button"
+              onClick={() => setIsComputerUseOpen(true)}
+              className="w-full flex items-center gap-2 p-3 rounded-xl bg-orange-950/30 border border-orange-500/30 text-orange-200 hover:bg-orange-900/40 text-xs font-semibold transition"
+            >
+              <Monitor className="w-4 h-4" />
+              {t.computerUse.openSettings}
+            </button>
+
             {/* Token & Security */}
             <div className="space-y-1.5 text-xs">
               <div className="flex items-center justify-between text-slate-400 text-[11px]">
@@ -295,6 +308,7 @@ export const McpServerStatusBadge: React.FC = () => {
         </div>,
         document.body
       )}
+      <ComputerUseSettingsModal isOpen={isComputerUseOpen} onClose={() => setIsComputerUseOpen(false)} />
     </>
   );
 };

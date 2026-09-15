@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, shell, session, crashReporter } from 'electron';
+import { app, BrowserWindow, dialog, shell, session, crashReporter, screen } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -21,6 +21,7 @@ import { updaterService } from './services/updaterService';
 import { notificationService } from './services/notificationService';
 import { trayService } from './services/trayService';
 import { telegramService } from './services/telegramService';
+import { computerUseService, type ComputerOverlayState } from './services/computerUseService';
 import { registerAllIpc } from './ipc';
 
 // Локальные crash-репорты (TASK-58, decision-14 п.4, decision-7): дампы падений остаются на диске
@@ -49,6 +50,8 @@ process.env.VITE_PUBLIC = app.isPackaged
 
 let win: BrowserWindow | null = null;
 let voiceOverlayWin: BrowserWindow | null = null;
+/** Оверлей «Агент управляет компьютером» поверх всех окон (TASK-82, decision-27 п. 4). */
+let computerOverlayWin: BrowserWindow | null = null;
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
 // ───────────────────────────── Защита рендерера (TASK-30) ─────────────────────────────
@@ -90,7 +93,7 @@ function isAppUrl(url: string): boolean {
 }
 
 function isOwnWindowContents(contents: Electron.WebContents): boolean {
-  const own = [win, voiceOverlayWin].filter(
+  const own = [win, voiceOverlayWin, computerOverlayWin].filter(
     (w): w is BrowserWindow => Boolean(w) && !w!.isDestroyed()
   );
   return own.some((w) => w.webContents.id === contents.id);
@@ -314,6 +317,78 @@ function createVoiceOverlayWindow(): BrowserWindow {
   return voiceOverlayWin;
 }
 
+const COMPUTER_OVERLAY_SIZE = { width: 420, height: 64 };
+
+/**
+ * Оверлей «Агент управляет компьютером» с кнопкой Стоп (TASK-82): отдельное окно поверх всех окон
+ * системы, а не модалка внутри ProjectHub — пользователь видит его, даже когда окно приложения
+ * свёрнуто. Не перехватывает фокус (focusable: false), чтобы не мешать действиям агента.
+ */
+function createComputerOverlayWindow(): BrowserWindow {
+  if (computerOverlayWin && !computerOverlayWin.isDestroyed()) {
+    return computerOverlayWin;
+  }
+
+  const distPath = path.join(__dirname, '../dist');
+  const indexPath = path.join(distPath, 'index.html');
+  const preloadCjs = path.join(__dirname, 'preload.cjs');
+  const preloadJs = path.join(__dirname, 'preload.js');
+  const preloadPath = existsSync(preloadCjs) ? preloadCjs : preloadJs;
+  const workArea = screen.getPrimaryDisplay().workArea;
+
+  computerOverlayWin = new BrowserWindow({
+    width: COMPUTER_OVERLAY_SIZE.width,
+    height: COMPUTER_OVERLAY_SIZE.height,
+    x: Math.round(workArea.x + (workArea.width - COMPUTER_OVERLAY_SIZE.width) / 2),
+    y: workArea.y + 12,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    show: false,
+    focusable: false,
+    hasShadow: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: preloadPath,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
+    }
+  });
+
+  computerOverlayWin.setAlwaysOnTop(true, 'screen-saver');
+  computerOverlayWin.setVisibleOnAllWorkspaces(true);
+  hardenWebContents(computerOverlayWin.webContents);
+
+  if (VITE_DEV_SERVER_URL) {
+    computerOverlayWin.loadURL(`${VITE_DEV_SERVER_URL}#/computer-overlay`);
+  } else {
+    computerOverlayWin.loadFile(indexPath, { hash: '/computer-overlay' });
+  }
+
+  computerOverlayWin.on('closed', () => {
+    computerOverlayWin = null;
+  });
+
+  return computerOverlayWin;
+}
+
+function syncComputerOverlay(state: ComputerOverlayState): void {
+  if (!state.active) {
+    if (computerOverlayWin && !computerOverlayWin.isDestroyed()) computerOverlayWin.hide();
+    return;
+  }
+  const overlay = createComputerOverlayWindow();
+  const send = () => {
+    if (!overlay.isDestroyed()) overlay.webContents.send('computerUse:overlay', state);
+  };
+  if (overlay.webContents.isLoading()) overlay.webContents.once('did-finish-load', send);
+  else send();
+  if (!overlay.isVisible()) overlay.showInactive();
+}
+
 // Регистрация всех доменных IPC обработчиков (TASK-46)
 registerAllIpc({
   getMainWindow: () => win,
@@ -492,6 +567,15 @@ async function performGracefulShutdown() {
   }
 
   try {
+    // Рантайм управления компьютером — дочерний процесс npx/node; глобальная горячая клавиша kill-switch.
+    await computerUseService.shutdown();
+    if (computerOverlayWin && !computerOverlayWin.isDestroyed()) computerOverlayWin.destroy();
+    computerOverlayWin = null;
+  } catch (e) {
+    console.warn('[Main] Error stopping computer use runtime:', e);
+  }
+
+  try {
     await mcpServerService.stop();
   } catch (e) {
     console.warn('[Main] Error stopping MCP server:', e);
@@ -583,6 +667,22 @@ app.whenReady().then(() => {
     .init({ dir: path.join(getUserDataDir(), 'hitl'), auditDir: path.join(getUserDataDir(), 'audit') })
     .catch((err) => {
       console.error('[Main] Failed to init HITL service:', err);
+    });
+
+  // Управление компьютером через MCP-прокси (TASK-82): настройки <userData>/computer-use.json,
+  // скриншоты аудита — рядом с HITL-аудитом. Kill-switch прерывает сессии AI Studio, управлявшие компьютером.
+  computerUseService.configure({
+    onOverlay: syncComputerOverlay,
+    onKillSwitch: ({ sessionIds }) => {
+      for (const sessionId of sessionIds) {
+        if (!sessionId.startsWith('external-')) claudeBridgeService.abortSession(sessionId);
+      }
+    }
+  });
+  computerUseService
+    .init({ dir: getUserDataDir(), auditDir: path.join(getUserDataDir(), 'audit') })
+    .catch((err) => {
+      console.error('[Main] Failed to init computer use service:', err);
     });
 
   claudeBridgeService.setCliPermissionBroker({

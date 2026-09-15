@@ -84,6 +84,18 @@ function combinedSystemPrompt(role: RoleDefinition | undefined, extra: string | 
   return [role?.systemPrompt?.trim(), extra?.trim()].filter(Boolean).join('\n\n');
 }
 
+/**
+ * Выносит `--append-system-prompt <текст>` из аргументов CLI. Claude CLI запускается через оболочку
+ * (`shell: true`), а cmd.exe обрезает командную строку на первом переводе строки: многострочный
+ * системный промпт роли терял всё после первой строки вместе со следующими флагами. Вызывающий код
+ * пишет текст во временный файл и передаёт `--append-system-prompt-file` (TASK-82).
+ */
+export function extractAppendSystemPrompt(args: string[]): { args: string[]; systemPrompt?: string } {
+  const index = args.indexOf('--append-system-prompt');
+  if (index < 0 || index + 1 >= args.length) return { args: [...args] };
+  return { args: [...args.slice(0, index), ...args.slice(index + 2)], systemPrompt: args[index + 1] };
+}
+
 export function buildEngineInvocation(input: EngineInvocationInput): EngineInvocation {
   const { engine, role, extraSystemPrompt, model, budgetUsd, autoApprove } = input;
   const capabilities = ENGINE_CAPABILITIES[engine];

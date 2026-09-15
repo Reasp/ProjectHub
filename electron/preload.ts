@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
 /** Полезная нагрузка события pty:removed — автоудаление завершившейся сессии (TASK-50). */
 type PtyRemovedPayload = { sessionId: string; title: string; reason: 'ttl' };
@@ -12,6 +12,9 @@ import type {
   CreateProjectOptions,
   ManagedProcess,
   McpServerStatus,
+  ComputerOverlayState,
+  ComputerUseSettings,
+  ComputerUseStatus,
   NotificationAction,
   NotificationDelivery,
   NotificationSettings,
@@ -405,6 +408,30 @@ const api: IElectronAPI = {
     ipcRenderer.on('mcp:remoteAction', handler);
     return () => {
       ipcRenderer.removeListener('mcp:remoteAction', handler);
+    };
+  },
+
+  // Управление компьютером через MCP-прокси: настройки, kill-switch, диагностика (TASK-82)
+  getComputerUseStatus: () => ipcRenderer.invoke('computerUse:getStatus'),
+  getComputerUseSettings: () => ipcRenderer.invoke('computerUse:getSettings'),
+  saveComputerUseSettings: (patch: Partial<ComputerUseSettings>) => ipcRenderer.invoke('computerUse:saveSettings', patch),
+  engageComputerKillSwitch: (reason?: 'overlay' | 'manual') => ipcRenderer.invoke('computerUse:engageKillSwitch', reason),
+  releaseComputerKillSwitch: () => ipcRenderer.invoke('computerUse:releaseKillSwitch'),
+  startComputerUseRuntime: () => ipcRenderer.invoke('computerUse:startRuntime'),
+  runComputerUseDiagnostics: () => ipcRenderer.invoke('computerUse:diagnostics'),
+  takeComputerTestScreenshot: () => ipcRenderer.invoke('computerUse:testScreenshot'),
+  onComputerUseStatusChanged: (callback: (status: ComputerUseStatus) => void) => {
+    const handler = (_event: IpcRendererEvent, status: ComputerUseStatus) => callback(status);
+    ipcRenderer.on('computerUse:statusChanged', handler);
+    return () => {
+      ipcRenderer.removeListener('computerUse:statusChanged', handler);
+    };
+  },
+  onComputerOverlayState: (callback: (state: ComputerOverlayState) => void) => {
+    const handler = (_event: IpcRendererEvent, state: ComputerOverlayState) => callback(state);
+    ipcRenderer.on('computerUse:overlay', handler);
+    return () => {
+      ipcRenderer.removeListener('computerUse:overlay', handler);
     };
   },
 

@@ -60,6 +60,25 @@ interface RawPart {
   text: string;
 }
 
+/**
+ * Инструкция accessibility-first для агентов с инструментами `computer_*` (TASK-82, decision-27 п. 5).
+ * Одна для всех движков и моделей: сначала дерево доступности и действия по элементам — так
+ * справляются модели без vision и тратится меньше токенов; скриншот — для проверки результата.
+ * `toolPrefix` — как инструменты видны движку (`computer_` у API-агента, `mcp__projecthub-hitl__computer_` у Claude CLI).
+ */
+export function buildComputerUseInstructions(toolPrefix = 'computer_'): string {
+  const t = (name: string) => `${toolPrefix}${name}`;
+  return [
+    '## Управление компьютером',
+    `Тебе доступны инструменты ${toolPrefix}* — управление рабочим столом пользователя через ProjectHub. Порядок работы:`,
+    `1. Сначала структура, а не пиксели: ${t('list_windows')} или ${t('get_frontmost_app')}, затем ${t('get_ui_tree')} / ${t('find_element')} с window_id из списка окон.`,
+    `2. Действуй по элементам: ${t('click_element')}, ${t('set_value')}, ${t('press_button')}, ${t('select_menu_item')}. Приложение — ${t('open_application')} (на Windows имя процесса, например notepad.exe). Ввод текста и сочетания клавиш — ${t('type')} / ${t('key')} с target_app или target_window_id.`,
+    `3. ${t('screenshot')} — чтобы проверить результат или если дерево доступности пустое. Координаты с изображения передавай с coordinate_space: "screenshot", ProjectHub пересчитает их; bounds из дерева доступности уже экранные.`,
+    `4. Координатные клики (${t('left_click')} и подобные) — крайний случай.`,
+    '5. Действия вне разрешённых приложений, в файловых диалогах и опасные инструменты требуют подтверждения человека. Отказ, блокировку или kill-switch не обходи другими инструментами — остановись и сообщи пользователю.'
+  ].join('\n');
+}
+
 /** Чистая обрезка по бюджету символов — приоритет `task` > `rag` > `gitnexus` > `git`. */
 export function assembleContext(rawParts: RawPart[], maxChars: number): AgentContextResult {
   const byKey = new Map(rawParts.filter((p) => p.text.trim().length > 0).map((p) => [p.key, p.text.trim()]));

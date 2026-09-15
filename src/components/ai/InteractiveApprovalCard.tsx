@@ -11,7 +11,8 @@ import {
   CircleDot,
   Circle,
   CornerDownLeft,
-  Sparkles
+  Sparkles,
+  Monitor
 } from 'lucide-react';
 import type { ApprovalRequest, QuestionOption } from '../../types/electron';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -348,7 +349,11 @@ export const InteractiveApprovalCard: React.FC<InteractiveApprovalCardProps> = (
           {/* Command preview */}
           {request.command && (
             <div className="p-2.5 rounded-lg bg-[#0c0e15] border border-slate-800 flex items-center gap-2 font-mono text-xs text-emerald-400 overflow-x-auto">
-              <Terminal className="w-4 h-4 text-slate-500 shrink-0" />
+              {request.type === 'computer_action' ? (
+                <Monitor className="w-4 h-4 text-slate-500 shrink-0" />
+              ) : (
+                <Terminal className="w-4 h-4 text-slate-500 shrink-0" />
+              )}
               <span className="select-all">{request.command}</span>
             </div>
           )}

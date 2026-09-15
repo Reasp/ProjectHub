@@ -211,6 +211,61 @@ export interface CreateProjectOptions {
   initGit?: boolean;
 }
 
+// ─────────────── Управление компьютером через MCP-прокси (TASK-82), зеркало computerPolicy/computerUseService ───────────────
+
+export interface ComputerAllowlistEntry {
+  app?: string;
+  title?: string;
+}
+
+export interface ComputerPolicySettings {
+  allowlist: ComputerAllowlistEntry[];
+  outsideAllowlist: 'ask' | 'deny';
+  onlyAllowlistedWindows: boolean;
+  fileDialogTitles: string[];
+}
+
+export interface ComputerUseSettings {
+  enabled: boolean;
+  policy: ComputerPolicySettings;
+  killSwitchHotkey: string;
+  takeoverDetection: boolean;
+  takeoverThresholdPx: number;
+  auditScreenshots: boolean;
+}
+
+export type ComputerRuntimeState = 'stopped' | 'starting' | 'ready' | 'error';
+export type ComputerKillSwitchReason = 'hotkey' | 'human-takeover' | 'overlay' | 'manual';
+
+export interface ComputerUseStatus {
+  enabled: boolean;
+  runtimeState: ComputerRuntimeState;
+  runtimeError: string | null;
+  runtimePackage: string;
+  tools: { exported: number; hidden: number; unknown: string[]; missing: string[] } | null;
+  killSwitch: { engaged: boolean; reason?: ComputerKillSwitchReason; at?: number };
+  hotkey: { accelerator: string; registered: boolean };
+  activeSession: { sessionId: string; label: string; since: number; lastActionAt: number } | null;
+}
+
+export interface ComputerOverlayState {
+  active: boolean;
+  label?: string;
+  killSwitch: boolean;
+  hotkey: string;
+}
+
+export interface ComputerUseDiagnostics {
+  ok: boolean;
+  runtime: {
+    ok?: boolean;
+    summary?: { passed: number; warned: number; failed: number; skipped: number };
+    checks?: Array<{ id: string; status: string; summary: string; remediation?: string }>;
+  } | null;
+  status: ComputerUseStatus;
+  error?: string;
+}
+
 /** Статус встроенного MCP HTTP/SSE-сервера (main → renderer через getMcpStatus/onMcpStatusChanged). */
 export interface McpServerStatus {
   isRunning: boolean;
@@ -669,6 +724,17 @@ export interface IElectronAPI {
   setMcpAppState: (state: { activeProject?: any; activeTab?: string }) => Promise<boolean>;
   /** Push-статус MCP-сервера из main (старт/стоп, токен, SSE-сессии) — вместо опроса по таймеру. */
   onMcpStatusChanged: (callback: (status: McpServerStatus) => void) => () => void;
+  // Управление компьютером через MCP-прокси (TASK-82)
+  getComputerUseStatus: () => Promise<ComputerUseStatus>;
+  getComputerUseSettings: () => Promise<ComputerUseSettings>;
+  saveComputerUseSettings: (patch: Partial<ComputerUseSettings>) => Promise<ComputerUseSettings>;
+  engageComputerKillSwitch: (reason?: 'overlay' | 'manual') => Promise<ComputerUseStatus>;
+  releaseComputerKillSwitch: () => Promise<ComputerUseStatus>;
+  startComputerUseRuntime: () => Promise<ComputerUseStatus>;
+  runComputerUseDiagnostics: () => Promise<ComputerUseDiagnostics>;
+  takeComputerTestScreenshot: () => Promise<{ ok: boolean; dataUrl?: string; text?: string; error?: string }>;
+  onComputerUseStatusChanged: (callback: (status: ComputerUseStatus) => void) => () => void;
+  onComputerOverlayState: (callback: (state: ComputerOverlayState) => void) => () => void;
   onRemoteAction: (callback: (action: { type: string; payload: any }) => void) => () => void;
 
   // System Voice Overlay
@@ -798,7 +864,7 @@ export interface ApprovalRequest {
   id: string;
   sessionId: string;
   projectPath: string;
-  type: 'command' | 'file_write' | 'question' | 'subagent_dispatch';
+  type: 'command' | 'file_write' | 'question' | 'subagent_dispatch' | 'computer_action';
   title: string;
   details?: string;
   command?: string;
@@ -883,7 +949,7 @@ export interface AutoApproveRules {
 
 // ─────────────────── Единый HITL-контур (TASK-57), зеркало electron/services/hitlTypes.ts ───────────────────
 
-export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned';
+export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external';
 export type HitlEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
 export type HitlDecisionSourceKind = 'local' | 'remote' | 'mcp' | 'auto' | 'timeout' | 'cancelled' | 'shutdown';
 export type HitlOutcome = 'executed' | 'failed' | 'not_executed' | 'session_gone';
@@ -958,6 +1024,8 @@ export interface HitlAuditEntry {
   waitedMs?: number;
   outcome?: HitlOutcome;
   detail?: string;
+  /** Скриншоты до/после для computer_action (TASK-82). */
+  screenshots?: { before?: string; after?: string };
 }
 
 export interface HitlAuditQuery {

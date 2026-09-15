@@ -15,8 +15,9 @@ import { appEventBus } from './eventBus.js';
 import type { HitlOrigin } from './hitlTypes.js';
 import { getUserDataDir, getHandoffReportsDir } from './appPaths.js';
 import { loadRoles } from './roleService.js';
-import { buildEngineInvocation, apiToolNamesForCategories } from './roleEngineAdapter.js';
+import { buildEngineInvocation, apiToolNamesForCategories, extractAppendSystemPrompt } from './roleEngineAdapter.js';
 import { buildAgentContext } from './contextBuilder.js';
+import { taskAllowsComputerUse } from './computerPolicy.js';
 import type { RoleDefinition } from './roleTypes.js';
 import { SwarmSessionStore } from './swarmSessionStore.js';
 import { appendLiveOutput, pushAgentLog, resetLiveOutput } from './swarmLogBuffer.js';
@@ -1272,7 +1273,13 @@ export class AgentFleetService extends EventEmitter {
       role: agentState.config.role,
       permissions,
       // Агент роя работает в своём worktree — карточки одобрения и диффы берут файлы оттуда (TASK-62).
-      workspaceRoot: targetPath
+      workspaceRoot: targetPath,
+      // Управление компьютером в цикле «до готовности» — только по явному разрешению задачи (TASK-82).
+      doneLoop: session.mode === 'done_loop',
+      taskAllowsComputerUse:
+        session.mode === 'done_loop' && session.taskId
+          ? taskAllowsComputerUse((await findTaskFile(session.projectPath, session.taskId).catch(() => null))?.data.labels)
+          : false
     };
     const onChunk = (chunk: { approvalRequest?: { title: string; type: string } }) => {
       if (chunk.approvalRequest) {
@@ -1461,11 +1468,34 @@ export class AgentFleetService extends EventEmitter {
     });
     const maxTurns = role?.maxTurns && role.maxTurns > 0 ? role.maxTurns : undefined;
 
+    // Системный промпт роли и инструкция цикла многострочные: через оболочку (shell: true) cmd.exe
+    // обрезал бы их на первом переводе строки вместе с последующими флагами — передаём файлом (TASK-82).
+    const extracted = extractAppendSystemPrompt(invocation.args);
+    let systemPromptFile: string | null = null;
+    if (extracted.systemPrompt) {
+      try {
+        const dir = path.join(getUserDataDir(), 'claude-prompts');
+        await fs.mkdir(dir, { recursive: true });
+        systemPromptFile = path.join(dir, `${hitlSessionId.replace(/[^a-zA-Z0-9_-]/g, '_')}-${Date.now()}.md`);
+        await fs.writeFile(systemPromptFile, extracted.systemPrompt, { encoding: 'utf-8', mode: 0o600 });
+      } catch (err) {
+        releaseHitl();
+        throw new Error(`Не удалось подготовить системный промпт агента: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+      }
+    }
+    const invocationArgs = systemPromptFile
+      ? [...extracted.args, '--append-system-prompt-file', `"${systemPromptFile.replace(/"/g, '\\"')}"`]
+      : extracted.args;
+    const releaseAgentResources = () => {
+      releaseHitl();
+      if (systemPromptFile) fs.unlink(systemPromptFile).catch(() => { /* файл мог быть уже удалён */ });
+    };
+
     return new Promise((resolve, reject) => {
       // Продолжение той же сессии Claude CLI в цикле «до готовности» (TASK-75).
       const resumeArgs = continueSession && agentState.cliSessionId ? ['--resume', agentState.cliSessionId] : [];
       if (resumeArgs.length > 0) this.log(session, agentState, `[Swarm] Продолжение сессии Claude CLI ${agentState.cliSessionId}`);
-      const args = ['-p', '--output-format', 'stream-json', '--verbose', ...resumeArgs, ...hitl.args, ...invocation.args];
+      const args = ['-p', '--output-format', 'stream-json', '--verbose', ...resumeArgs, ...hitl.args, ...invocationArgs];
 
       let child: ChildProcess;
       try {
@@ -1480,7 +1510,7 @@ export class AgentFleetService extends EventEmitter {
           }
         });
       } catch (e: any) {
-        releaseHitl();
+        releaseAgentResources();
         this.log(session, agentState, `[Swarm] ⚠️ Claude CLI недоступен напрямую (${e.message}), запуск через API fallback.`);
         return this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
       }
@@ -1502,7 +1532,7 @@ export class AgentFleetService extends EventEmitter {
         finished = true;
         procSet?.delete(child);
         this.untrackAgentProcess(agentState.id, child);
-        releaseHitl();
+        releaseAgentResources();
         fn();
       };
 

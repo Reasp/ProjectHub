@@ -9,6 +9,7 @@ import { HotkeysHelpModal } from './components/layout/HotkeysHelpModal';
 import { VoiceControlWidget } from './components/voice/VoiceControlWidget';
 import { DialogHost } from './components/common/DialogHost';
 import { HitlCenterModal } from './components/hitl/HitlCenterModal';
+import { ComputerControlBanner } from './components/computer/ComputerControlBanner';
 import { NotificationSettingsModal } from './components/notifications/NotificationSettingsModal';
 import { RemoteHostsModal } from './components/federation/RemoteHostsModal';
 import { useProjectStore } from './store/useProjectStore';
@@ -340,6 +341,7 @@ export const App: React.FC = () => {
 
       {/* Центр решений HITL: очередь всех сессий и история (TASK-57) */}
       <HitlCenterModal />
+      <ComputerControlBanner />
 
       {/* Настройки уведомлений: каналы, тихие часы, Telegram-бот (TASK-63) */}
       <NotificationSettingsModal />

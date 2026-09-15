@@ -19,6 +19,9 @@ import {
 import matter from 'gray-matter';
 import { hitlService } from './hitlService.js';
 import { secretStorageService } from './secretStorageService.js';
+import type { RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { computerUseService, type ComputerCallContext } from './computerUseService.js';
+import { jsonSchemaToZodShape } from './jsonSchemaToZod.js';
 
 /** Ключ персистентного токена MCP-сервера в safeStorage (TASK-58): переживает перезапуск приложения. */
 const MCP_TOKEN_SECRET_KEY = 'mcp_server_token';
@@ -65,6 +68,8 @@ interface SseSession {
   mcpServer: McpServer;
   /** Сессия AI Studio, для которой Claude CLI запрашивает разрешения (query-параметр SSE-URL). */
   hitlSessionId?: string;
+  /** Зарегистрированные инструменты прокси управления компьютером `computer_*` (TASK-82). */
+  computerTools: RegisteredTool[];
 }
 
 class McpServerService {
@@ -80,6 +85,13 @@ class McpServerService {
 
   constructor() {
     this.token = `ph_mcp_${crypto.randomBytes(12).toString('hex')}`;
+    // Набор computer_* меняется при включении/выключении функции и после запуска рантайма —
+    // подключённые клиенты получают notifications/tools/list_changed от SDK при перерегистрации.
+    const resync = () => {
+      for (const [sseSessionId, session] of this.sseSessions) this.syncComputerTools(session, sseSessionId);
+    };
+    computerUseService.on('toolsChanged', resync);
+    computerUseService.on('settingsChanged', resync);
   }
 
   /**
@@ -653,6 +665,56 @@ class McpServerService {
   }
 
   /**
+   * Прокси управления компьютером (TASK-82, decision-27 п. 2): `computer_*` ре-экспортируются в каждом
+   * подключении, когда функция включена и рантайм отдал список инструментов. Политику, HITL, аудит и
+   * kill-switch применяет `computerUseService` — одинаково для Claude CLI, внешних клиентов и API-агента.
+   */
+  private syncComputerTools(session: SseSession, sseSessionId: string): void {
+    for (const tool of session.computerTools) {
+      try {
+        tool.remove();
+      } catch {
+        /* уже удалён */
+      }
+    }
+    session.computerTools = [];
+    for (const def of computerUseService.listProxyTools()) {
+      try {
+        const registered = session.mcpServer.registerTool(
+          def.name,
+          { title: def.name, description: def.description, inputSchema: jsonSchemaToZodShape(def.inputSchema) },
+          async (args: Record<string, unknown>) => {
+            const ctx = this.computerCallContext(session.hitlSessionId, sseSessionId);
+            if (!ctx) {
+              return { isError: true, content: [{ type: 'text' as const, text: 'ProjectHub: сессия агента завершена — действие отклонено.' }] };
+            }
+            const res = await computerUseService.callTool(def.name, args, ctx);
+            return {
+              isError: res.isError,
+              content: res.content.map((c) =>
+                c.type === 'image' ? { type: 'image' as const, data: c.data, mimeType: c.mimeType } : { type: 'text' as const, text: c.text }
+              )
+            };
+          }
+        );
+        session.computerTools.push(registered);
+      } catch (err) {
+        console.warn(`[MCPServer] Не удалось зарегистрировать ${def.name}:`, err);
+      }
+    }
+  }
+
+  /** Сессия с `phSession` — агент ProjectHub (контекст из claudeBridgeService); без него — внешний MCP-клиент. */
+  private computerCallContext(hitlSessionId: string | undefined, sseSessionId: string): ComputerCallContext | null {
+    if (hitlSessionId) return claudeBridgeService.getComputerCallContext(hitlSessionId);
+    return {
+      sessionId: `external-${sseSessionId}`,
+      projectPath: String(this.currentAppState.activeProject?.path ?? ''),
+      origin: 'external'
+    };
+  }
+
+  /**
    * Host должен указывать на loopback — защита от DNS rebinding
    * (страница на evil.com с A-записью 127.0.0.1 присылает Host: evil.com).
    */
@@ -749,12 +811,16 @@ class McpServerService {
       const transport = new SSEServerTransport('/message', res);
       const sessionId = transport.sessionId;
       const mcpServer = this.createMcpServer(hitlSessionId);
-      this.sseSessions.set(sessionId, { transport, mcpServer, hitlSessionId });
+      const session: SseSession = { transport, mcpServer, hitlSessionId, computerTools: [] };
+      this.sseSessions.set(sessionId, session);
+      // Инструменты управления компьютером (TASK-82) — до connect, чтобы попасть в первый tools/list.
+      this.syncComputerTools(session, sessionId);
       this.broadcastStatus();
 
       transport.onclose = () => {
         console.log(`[MCPServer] SSE Session ${sessionId} closed`);
         this.sseSessions.delete(sessionId);
+        computerUseService.forgetSession(`external-${sessionId}`);
         this.broadcastStatus();
       };
 

@@ -21,6 +21,7 @@ const DEFAULT_CONFIG = {
     envTools: true,
     bootstrap: true,
     lightrag: false, // требует Python + Ollama — опциональная тяжёлая фича, по умолчанию выключена
+    computerUse: false, // управление компьютером через прокси ProjectHub (decision-27) — только по явному включению
   },
 };
 

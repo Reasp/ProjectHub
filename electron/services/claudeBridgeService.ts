@@ -19,7 +19,11 @@ import { claudeUsageService } from './claudeUsageService.js';
 import { parseClaudeResultEvent, priceUsage, type AgentUsage } from './agentCost.js';
 import { hitlService, ApprovalCancelledError } from './hitlService.js';
 import { appEventBus } from './eventBus.js';
-import { buildAgentContext } from './contextBuilder.js';
+import { buildAgentContext, buildComputerUseInstructions } from './contextBuilder.js';
+import { computerUseService, type ComputerCallContext } from './computerUseService.js';
+import { COMPUTER_TOOL_PREFIX } from './computerToolCatalog.js';
+import type { ToolExecutionResult } from './apiToolLoop.js';
+import { searchProjectDocs } from './ragSearch.js';
 import {
   applyRolePermissions,
   evaluateToolRequest,
@@ -244,6 +248,10 @@ export interface CliPermissionMeta {
   permissions?: RolePermissions;
   /** Рабочее дерево сессии (worktree), если агент запущен не в основном дереве (TASK-62). */
   workspaceRoot?: string;
+  /** Агент работает в цикле «до готовности» (TASK-75): управление компьютером — только с разрешения задачи (TASK-82). */
+  doneLoop?: boolean;
+  /** Задача явно разрешила управление компьютером (label `computer-use`). */
+  taskAllowsComputerUse?: boolean;
 }
 
 interface CliPermissionContext extends CliPermissionMeta {
@@ -376,6 +384,32 @@ class ClaudeBridgeService extends EventEmitter {
   }
 
   /**
+   * Контекст вызова `computer_*` для CLI-сессии, подключённой к MCP-серверу с `phSession` (TASK-82):
+   * источник, агент, роль, флаги Done-loop и канал карточек одобрения той же сессии. null — сессия
+   * завершена, прокси отклоняет действие.
+   */
+  public getComputerCallContext(sessionId: string): ComputerCallContext | null {
+    const ctx = this.cliPermissionContexts.get(sessionId);
+    if (!ctx) return null;
+    return {
+      sessionId,
+      projectPath: ctx.projectPath,
+      origin: ctx.origin ?? 'studio',
+      engine: ctx.engine ?? 'claude-cli',
+      agentId: ctx.agentId,
+      agentName: ctx.agentName,
+      role: ctx.role,
+      doneLoop: ctx.doneLoop,
+      taskAllowsComputerUse: ctx.taskAllowsComputerUse,
+      // Allowlist приложений — явное согласие пользователя; сузить его может только роль (decision-9),
+      // а не глобальный переключатель auto-approve команд и записи файлов.
+      autoApprove: ctx.permissions?.autoApprove,
+      approvalTimeoutMs: this.approvalTimeoutMs(ctx.config),
+      onApprovalRequest: (request) => ctx.onChunk({ approvalRequest: request })
+    };
+  }
+
+  /**
    * Результат инструмента Claude CLI (событие `user` → `tool_result` stream-json): если инструмент
    * проходил через HITL, результат записывается в аудит по requestId.
    */
@@ -470,6 +504,12 @@ class ClaudeBridgeService extends EventEmitter {
         command: commandOf() || undefined
       });
       return deny(verdict.reason || `Инструмент ${toolName} отклонён политикой (${verdict.rule}).`);
+    }
+
+    // Инструменты управления компьютером прокси ProjectHub: политику, HITL и аудит применяет сам
+    // прокси (computerUseService, TASK-82) — второй запрос через permission_prompt не нужен.
+    if (toolName.startsWith(`mcp__${CLI_HITL_MCP_SERVER_NAME}__${COMPUTER_TOOL_PREFIX}`)) {
+      return allow();
     }
 
     if (toolName === 'AskUserQuestion') {
@@ -1146,30 +1186,14 @@ class ClaudeBridgeService extends EventEmitter {
       return this.runClaudeCliTask(req, onChunk, onComplete, onError);
     }
 
+    const perms = { canAutoCommands, canAutoWrite, canAutoRead, canAutoSubagents };
     try {
-      // Stream Claude thought & tool planning through aiAgentService
+      // Многошаговый tool-loop (TASK-82): инструменты исполняются по ходу ответа модели, их результаты
+      // возвращаются модели до финального ответа. Раньше вызовы исполнялись в обработчике чанка, а
+      // модель результата не получала.
       await aiAgentService.streamChat(
         req,
-        async (chunk) => {
-          onChunk(chunk);
-          if (!chunk.toolCall) return;
-
-          // Обработчик чанка никто не await'ит: отклонение промиса (отмена одобрения при
-          // abortSession) или ошибка инструмента иначе стали бы unhandled rejection.
-          try {
-            await this.handleApiToolCall(chunk.toolCall, req, rules, { canAutoCommands, canAutoWrite, canAutoRead, canAutoSubagents }, onChunk);
-          } catch (err: any) {
-            const tc = chunk.toolCall;
-            if (err instanceof ApprovalCancelledError) {
-              tc.status = 'rejected';
-              tc.result = err.message;
-            } else {
-              tc.status = 'error';
-              tc.result = `Error: ${err?.message || String(err)}`;
-            }
-            onChunk({ toolCall: tc });
-          }
-        },
+        onChunk,
         (completedMsg) => {
           this.finishSession(sessionId, projectPath, 'done', 'Задача успешно выполнена');
           onComplete(completedMsg);
@@ -1177,6 +1201,10 @@ class ClaudeBridgeService extends EventEmitter {
         (err) => {
           this.finishSession(sessionId, projectPath, 'error', `Ошибка: ${err}`);
           onError(err);
+        },
+        {
+          executeTool: (tc) => this.executeApiTool(tc, req, rules, perms, onChunk),
+          computerTools: req.mode === 'agent' ? computerUseService.listProxyTools() : []
         }
       );
       // streamChat при AbortError не зовёт ни onComplete, ни onError — закрываем сессию как отменённую.
@@ -1187,6 +1215,95 @@ class ClaudeBridgeService extends EventEmitter {
       this.finishSession(sessionId, projectPath, 'error', err.message);
       onError(err.message);
     }
+  }
+
+  /**
+   * Исполнитель tool-loop API-агента (TASK-82): `computer_*` — через прокси управления компьютером
+   * (политика, HITL, аудит внутри), остальные — через прежний контур разрешений `handleApiToolCall`.
+   * Чтение файла, список каталога и поиск по документации раньше только проверялись и модели ничего
+   * не возвращали — теперь возвращают результат.
+   */
+  private async executeApiTool(
+    tc: AIToolCall,
+    req: { sessionId: string; projectPath: string; config: AIProviderConfig; workspaceRoot?: string },
+    rules: AutoApproveRules | undefined,
+    perms: { canAutoCommands: boolean; canAutoWrite: boolean; canAutoRead: boolean; canAutoSubagents: boolean },
+    onChunk: (chunk: ClaudeBridgeMessageChunk) => void
+  ): Promise<ToolExecutionResult> {
+    const { sessionId, projectPath } = req;
+    try {
+      if (tc.name.startsWith(COMPUTER_TOOL_PREFIX)) {
+        tc.status = 'running';
+        onChunk({ toolCall: { ...tc } });
+        const res = await computerUseService.callTool(tc.name, tc.args, {
+          sessionId,
+          projectPath,
+          origin: 'studio',
+          engine: 'api',
+          approvalTimeoutMs: this.approvalTimeoutMs(req.config),
+          onApprovalRequest: (request) => onChunk({ approvalRequest: request })
+        });
+        const text = res.content.map((c) => (c.type === 'text' ? c.text : '')).filter(Boolean).join('\n');
+        const images = res.content.flatMap((c) => (c.type === 'image' ? [{ mimeType: c.mimeType, data: c.data }] : []));
+        tc.status = res.isError ? 'error' : 'done';
+        tc.result = [text, images.length > 0 ? `[изображений: ${images.length}]` : ''].filter(Boolean).join('\n');
+        onChunk({ toolCall: tc });
+        return { content: text, isError: res.isError, images };
+      }
+      await this.handleApiToolCall(tc, req, rules, perms, onChunk);
+      if (tc.result === undefined && tc.status !== 'rejected' && tc.status !== 'error') {
+        await this.executeReadOnlyApiTool(tc, req.workspaceRoot?.trim() || projectPath, projectPath, onChunk);
+      }
+    } catch (err: any) {
+      if (err instanceof ApprovalCancelledError) {
+        tc.status = 'rejected';
+        tc.result = err.message;
+      } else {
+        tc.status = 'error';
+        tc.result = `Error: ${err?.message || String(err)}`;
+      }
+      onChunk({ toolCall: tc });
+    }
+    const content = typeof tc.result === 'string' ? tc.result : tc.result === undefined ? 'OK' : JSON.stringify(tc.result);
+    return { content, isError: tc.status === 'error' || tc.status === 'rejected' };
+  }
+
+  /** Инструменты API-агента только для чтения, прошедшие проверку разрешений в `handleApiToolCall`. */
+  private async executeReadOnlyApiTool(
+    tc: AIToolCall,
+    workDir: string,
+    projectPath: string,
+    onChunk: (chunk: ClaudeBridgeMessageChunk) => void
+  ): Promise<void> {
+    const maxChars = 100_000;
+    if (tc.name === 'read_file' || tc.name === 'read') {
+      const filePath = String(tc.args.filePath || tc.args.path || '');
+      if (!filePath || !isInsideProject(workDir, filePath)) {
+        tc.status = 'rejected';
+        tc.result = `Чтение отклонено: путь "${filePath}" находится вне корня проекта.`;
+      } else {
+        const text = await fs.readFile(path.resolve(workDir, filePath), 'utf-8');
+        tc.status = 'done';
+        tc.result = text.length > maxChars ? `${text.slice(0, maxChars)}\n…[файл усечён]` : text;
+      }
+    } else if (tc.name === 'list_dir') {
+      const subDir = String(tc.args.subDir || '');
+      if (subDir && !isInsideProject(workDir, subDir)) {
+        tc.status = 'rejected';
+        tc.result = `Каталог "${subDir}" находится вне корня проекта.`;
+      } else {
+        const entries = await fs.readdir(path.resolve(workDir, subDir || '.'), { withFileTypes: true });
+        tc.status = 'done';
+        tc.result = entries.map((e) => (e.isDirectory() ? `${e.name}/` : e.name)).sort().join('\n') || '(пусто)';
+      }
+    } else if (tc.name === 'search_rag') {
+      const results = await searchProjectDocs({ projectPath, query: String(tc.args.query || ''), mode: 'all', limit: 5 });
+      tc.status = 'done';
+      tc.result = results.map((r) => `- [${r.category}] ${r.fileRelative}${r.heading ? ` — ${r.heading}` : ''}: ${r.snippet}`).join('\n') || 'Ничего не найдено';
+    } else {
+      return;
+    }
+    onChunk({ toolCall: tc });
   }
 
   /** Запуск команды агента: в фоне через processManager (background: true) или с ожиданием и таймаутом. */
@@ -1497,6 +1614,8 @@ class ClaudeBridgeService extends EventEmitter {
 
     // Контекст задачи (TASK-64) — задача/AC, RAG, GitNexus и git-статус в системный промпт
     // Claude CLI через тот же канал `--append-system-prompt`, что и роли в agentFleetService.
+    // Инструкция accessibility-first — когда сессии доступны инструменты computer_* (TASK-82).
+    const systemAddon: string[] = [];
     if (req.taskId) {
       try {
         const agentContext = await buildAgentContext({
@@ -1504,13 +1623,33 @@ class ClaudeBridgeService extends EventEmitter {
           taskId: req.taskId,
           enabledParts: req.contextParts
         });
-        if (agentContext.combined) {
-          cliArgs.push('--append-system-prompt', agentContext.combined);
-        }
+        if (agentContext.combined) systemAddon.push(agentContext.combined);
       } catch (err) {
         console.warn('[claudeBridgeService] contextBuilder failed:', err);
       }
     }
+    if (computerUseService.listProxyTools().length > 0) {
+      systemAddon.push(buildComputerUseInstructions(`mcp__${CLI_HITL_MCP_SERVER_NAME}__${COMPUTER_TOOL_PREFIX}`));
+    }
+    // Многострочный текст передаётся файлом: CLI запускается через оболочку (shell: true), и cmd.exe
+    // обрезает командную строку на первом переводе строки — без файла терялись --mcp-config,
+    // --permission-prompt-tool и --output-format, а CLI отвечал пустым сообщением (TASK-82).
+    let systemPromptFile: string | null = null;
+    if (systemAddon.length > 0) {
+      try {
+        const promptDir = path.join(PROJECT_HUB_CLAUDE_DIR, 'hitl');
+        await fs.mkdir(promptDir, { recursive: true });
+        systemPromptFile = path.join(promptDir, `${sessionId.replace(/[^a-zA-Z0-9_-]/g, '_')}.append-system-prompt.md`);
+        await fs.writeFile(systemPromptFile, systemAddon.join('\n\n'), { encoding: 'utf-8', mode: 0o600 });
+        cliArgs.push('--append-system-prompt-file', quoteShellArg(systemPromptFile));
+      } catch (err) {
+        console.warn('[claudeBridgeService] Не удалось записать системный промпт во временный файл:', err);
+        systemPromptFile = null;
+      }
+    }
+    const removeSystemPromptFile = () => {
+      if (systemPromptFile) fs.unlink(systemPromptFile).catch(() => { /* файл мог быть уже удалён */ });
+    };
 
     // Human-in-the-loop (TASK-42): разрешения запрашиваются через встроенный MCP-сервер
     // до выполнения инструмента. --dangerously-skip-permissions — только как запасной
@@ -1546,6 +1685,7 @@ class ClaudeBridgeService extends EventEmitter {
     const cleanupHitl = () => {
       this.cliPermissionContexts.delete(sessionId);
       hitl?.cleanup();
+      removeSystemPromptFile();
     };
     const hitlEnv = hitl?.env ?? { MCP_TOOL_TIMEOUT: String(CLI_MCP_TOOL_TIMEOUT_MS) };
 

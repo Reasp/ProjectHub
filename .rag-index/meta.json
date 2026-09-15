@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "76bb6d138c596384a53afc15ff66d241682ec32088d82bb2dcbb01c21086b0e1",
+  "docsHash": "99b7ca051833006af7a4eb0dc9cc485373ca911d79aa602f6eab21397717d0eb",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -26,6 +26,7 @@
     "backlog/decisions/decision-26 - Независимость-от-вендора-LLM-Codex-app-server-универсальный-OpenAI-совместимый-провайдер-и-тиры-моделей.md",
     "backlog/decisions/decision-27 - Управление-компьютером-через-MCP-прокси-ProjectHub-с-HITL-по-классам-действий.md",
     "backlog/decisions/decision-28 - Цикл-до-готовности-замкнутый-контур-агент-проверки-критерии-приёмки-отмечает-только-harness.md",
+    "backlog/decisions/decision-29 - Изоляция-домашнего-каталога-в-unit-тестах.md",
     "backlog/decisions/decision-3 - Backlog.md-как-единственный-источник-истины-для-задач-документов-и-решений.md",
     "backlog/decisions/decision-4 - Claude-Code-CLI-как-основной-агентный-движок-API-провайдеры-как-дополнение.md",
     "backlog/decisions/decision-5 - Модель-безопасности-десктопа-изоляция-рендерера-реестр-проектов-локальный-MCP-и-секреты.md",
@@ -44,6 +45,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 350,
-  "builtAt": "2026-09-15T11:35:14.755Z"
+  "chunks": 358,
+  "builtAt": "2026-09-15T14:03:49.477Z"
 }

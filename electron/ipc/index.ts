@@ -12,6 +12,7 @@ import { registerRolesIpc } from './rolesIpc';
 import { registerDiagnosticsIpc } from './diagnosticsIpc';
 import { registerNotificationsIpc } from './notificationsIpc';
 import { registerFederationIpc } from './federationIpc';
+import { registerComputerUseIpc } from './computerUseIpc';
 
 export type { IpcContext } from './types';
 
@@ -29,4 +30,5 @@ export function registerAllIpc(ctx: IpcContext) {
   registerDiagnosticsIpc();
   registerNotificationsIpc();
   registerFederationIpc();
+  registerComputerUseIpc();
 }

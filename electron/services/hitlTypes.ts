@@ -7,11 +7,19 @@
  */
 
 /** Откуда пришёл агент, запросивший разрешение. */
-export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned';
+/** `external` — внешний MCP-клиент (Claude Code в терминале, Antigravity) через прокси ProjectHub (TASK-82). */
+export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external';
 
 export type HitlEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
 
-export type HitlRequestType = 'command' | 'file_write' | 'question' | 'subagent_dispatch';
+/** `computer_action` — действие управления компьютером через прокси `computer_*` (TASK-82, decision-27). */
+export type HitlRequestType = 'command' | 'file_write' | 'question' | 'subagent_dispatch' | 'computer_action';
+
+/** Скриншоты «до/после» действия управления компьютером — пути к файлам в каталоге аудита. */
+export interface HitlScreenshots {
+  before?: string;
+  after?: string;
+}
 
 export interface QuestionOption {
   id: string;
@@ -134,6 +142,8 @@ export interface HitlAuditEntry {
   waitedMs?: number;
   outcome?: HitlOutcome;
   detail?: string;
+  /** Скриншоты до/после для `computer_action` (TASK-82). */
+  screenshots?: HitlScreenshots;
 }
 
 export interface HitlAuditQuery {

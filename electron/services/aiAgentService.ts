@@ -4,11 +4,23 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { searchProjectDocs } from './ragSearch.js';
-import { buildAgentContext } from './contextBuilder.js';
+import { buildAgentContext, buildComputerUseInstructions } from './contextBuilder.js';
 import { secretStorageService } from './secretStorageService.js';
 import matter from 'gray-matter';
 import { assertInsideProject, isInsideProject } from './pathGuard.js';
-import { usageFromAnthropic, usageFromOpenAI, type AgentUsage } from './agentCost.js';
+import { addUsage, usageFromAnthropic, usageFromOpenAI, type AgentUsage } from './agentCost.js';
+import { isToolAllowed } from './hitlPolicy.js';
+import {
+  DEFAULT_MAX_TOOL_STEPS,
+  OpenAIToolCallAccumulator,
+  buildAnthropicToolTurn,
+  buildOpenAIToolTurn,
+  toOpenAITools,
+  type AnthropicAssistantBlock,
+  type AnthropicToolDefinition,
+  type LoopToolCall,
+  type ToolExecutionResult
+} from './apiToolLoop.js';
 
 export interface AutoApproveRules {
   enabled: boolean;
@@ -91,6 +103,47 @@ export interface AIStreamRequest {
    * из общего `backlog/` основного дерева (`projectPath`).
    */
   workspaceRoot?: string;
+}
+
+/** Инструмент прокси управления компьютером в формате, который отдаёт `computerUseService.listProxyTools()`. */
+export interface StreamChatComputerTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, any>;
+}
+
+/** Параметры многошагового tool-loop (TASK-82). */
+export interface StreamChatOptions {
+  /** Исполнитель вызова: без него tool-loop выключен (один запрос, вызовы уходят чанками). */
+  executeTool?: (toolCall: AIToolCall) => Promise<ToolExecutionResult>;
+  /** Инструменты `computer_*`, добавляемые к инструментам агента (только с исполнителем). */
+  computerTools?: StreamChatComputerTool[];
+  /** Лимит запросов к модели в одном ходе. */
+  maxSteps?: number;
+}
+
+/** Итог одного запроса к модели. */
+interface ModelTurn {
+  text: string;
+  thought: string;
+  toolCalls: AIToolCall[];
+  usage: AgentUsage | null;
+  /** Блоки ответа Anthropic для возврата модели на следующем шаге. */
+  blocks: AnthropicAssistantBlock[];
+}
+
+/** Накопленный результат хода по всем шагам tool-loop. */
+interface ToolLoopState {
+  fullText: string;
+  fullThought: string;
+  toolCalls: AIToolCall[];
+  usage: AgentUsage | null;
+}
+
+function abortError(): Error {
+  const err = new Error('Aborted');
+  err.name = 'AbortError';
+  return err;
 }
 
 export interface ClaudeAuthStatus {
@@ -286,31 +339,72 @@ class AIAgentService {
 
   /**
    * Main Stream Chat Dispatcher
+   *
+   * С `options.executeTool` — многошаговый tool-loop (TASK-82): вызовы инструментов из ответа модели
+   * исполняются, результаты возвращаются модели, и так до ответа без вызовов или лимита шагов.
+   * Без исполнителя — прежнее поведение: один запрос, вызовы уходят чанками (API-путь Swarm/Done-loop).
    */
   public async streamChat(
     req: AIStreamRequest,
     onChunk: (payload: AIStreamChunkPayload) => void,
     onComplete: (msg: AIMessage) => void,
-    onError: (err: string) => void
+    onError: (err: string) => void,
+    options: StreamChatOptions = {}
   ): Promise<void> {
     const controller = new AbortController();
     this.activeControllers.set(req.sessionId, controller);
 
     try {
+      const computerTools = req.mode === 'agent' && options.executeTool
+        ? (options.computerTools ?? []).filter((t) => isToolAllowed(t.name, req.allowedToolNames))
+        : [];
       const systemPrompt = await this.buildSystemPrompt(
         req.projectPath,
         req.mode,
         req.roleSystemPrompt,
         req.taskId,
         req.contextParts,
-        req.workspaceRoot
+        req.workspaceRoot,
+        computerTools.length > 0
       );
+      const tools: AnthropicToolDefinition[] = req.mode === 'agent'
+        ? [
+            ...this.getAnthropicTools(req.allowedToolNames),
+            ...computerTools.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }))
+          ]
+        : [];
+      const loop: ToolLoopState = { fullText: '', fullThought: '', toolCalls: [], usage: null };
+      const maxSteps = options.maxSteps ?? DEFAULT_MAX_TOOL_STEPS;
 
       if (req.config.provider === 'anthropic') {
-        await this.streamAnthropic(req, systemPrompt, controller.signal, onChunk, onComplete, onError);
+        await this.runAnthropicLoop(req, systemPrompt, tools, controller.signal, onChunk, loop, maxSteps, options.executeTool);
       } else {
-        await this.streamOpenAICompatible(req, systemPrompt, controller.signal, onChunk, onComplete, onError);
+        // OpenAI-совместимым провайдерам инструменты отдаются только вместе с исполнителем:
+        // без него вызовы остались бы без результата.
+        await this.runOpenAICompatibleLoop(
+          req,
+          systemPrompt,
+          options.executeTool ? tools : [],
+          controller.signal,
+          onChunk,
+          loop,
+          maxSteps,
+          options.executeTool
+        );
       }
+
+      if (loop.usage) onChunk({ usage: loop.usage });
+      onComplete({
+        id: `msg-${Date.now()}`,
+        role: 'assistant',
+        content: loop.fullText,
+        thought: loop.fullThought || undefined,
+        toolCalls: loop.toolCalls.length > 0
+          ? loop.toolCalls.map((tc) => ({ ...tc, status: tc.status || (tc.diff ? 'pending' : 'done') }))
+          : undefined,
+        timestamp: new Date().toISOString(),
+        ...(loop.usage ? { usage: loop.usage } : {})
+      });
     } catch (err: any) {
       if (err.name === 'AbortError') {
         onChunk({ text: '\n\n*(Отменено пользователем)*' });
@@ -322,32 +416,91 @@ class AIAgentService {
     }
   }
 
+  private accumulateTurn(loop: ToolLoopState, turn: ModelTurn): void {
+    loop.fullText += turn.text;
+    loop.fullThought += turn.thought;
+    loop.toolCalls.push(...turn.toolCalls);
+    if (turn.usage) loop.usage = loop.usage ? addUsage(loop.usage, turn.usage) : turn.usage;
+  }
+
+  /** Разделитель текста между шагами tool-loop — чтобы ответы шагов не слипались. */
+  private separateSteps(loop: ToolLoopState, turn: ModelTurn, onChunk: (payload: AIStreamChunkPayload) => void): void {
+    if (!turn.text) return;
+    loop.fullText += '\n\n';
+    onChunk({ text: '\n\n' });
+  }
+
   /**
-   * Anthropic Claude API Streaming
+   * Исполняет вызовы шага по одному. `null` — цикл завершён: нет исполнителя, нет вызовов или
+   * достигнут лимит шагов (тогда вызовы не исполняются, пользователь видит пометку).
    */
-  private async streamAnthropic(
+  private async executeToolStep(
+    calls: AIToolCall[],
+    step: number,
+    maxSteps: number,
+    loop: ToolLoopState,
+    onChunk: (payload: AIStreamChunkPayload) => void,
+    signal: AbortSignal,
+    executeTool?: StreamChatOptions['executeTool']
+  ): Promise<Array<{ call: LoopToolCall; result: ToolExecutionResult }> | null> {
+    if (!executeTool || calls.length === 0) return null;
+    if (step + 1 >= maxSteps) {
+      const note = `\n\n*(Остановлено: достигнут лимит шагов с инструментами — ${maxSteps})*`;
+      loop.fullText += note;
+      onChunk({ text: note });
+      return null;
+    }
+    const results: Array<{ call: LoopToolCall; result: ToolExecutionResult }> = [];
+    for (const tc of calls) {
+      if (signal.aborted) throw abortError();
+      results.push({ call: { id: tc.id, name: tc.name, args: tc.args }, result: await executeTool(tc) });
+    }
+    if (signal.aborted) throw abortError();
+    return results;
+  }
+
+  /**
+   * Anthropic Claude API: tool-loop поверх потоковых запросов Messages API.
+   */
+  private async runAnthropicLoop(
     req: AIStreamRequest,
     systemPrompt: string,
+    tools: AnthropicToolDefinition[],
     signal: AbortSignal,
     onChunk: (payload: AIStreamChunkPayload) => void,
-    onComplete: (msg: AIMessage) => void,
-    onError: (err: string) => void
+    loop: ToolLoopState,
+    maxSteps: number,
+    executeTool?: StreamChatOptions['executeTool']
   ): Promise<void> {
     const apiKey = req.config.apiKey?.trim();
     if (!apiKey) {
       throw new Error('API ключ Anthropic не указан. Пожалуйста, откройте настройки AI Studio и укажите ключ.');
     }
-
-    const endpoint = 'https://api.anthropic.com/v1/messages';
-    const messages = req.messages
+    const messages: unknown[] = req.messages
       .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .map((m) => ({
-        role: m.role,
-        content: m.content
-      }));
+      .map((m) => ({ role: m.role, content: m.content }));
 
-    const tools = req.mode === 'agent' ? this.getAnthropicTools(req.allowedToolNames) : undefined;
+    for (let step = 0; ; step++) {
+      const turn = await this.requestAnthropic(req, apiKey, systemPrompt, messages, tools, signal, onChunk);
+      this.accumulateTurn(loop, turn);
+      const results = await this.executeToolStep(turn.toolCalls, step, maxSteps, loop, onChunk, signal, executeTool);
+      if (!results) break;
+      messages.push(...buildAnthropicToolTurn(turn.blocks, results));
+      this.separateSteps(loop, turn, onChunk);
+    }
+  }
 
+  /** Один потоковый запрос к Anthropic Messages API. */
+  private async requestAnthropic(
+    req: AIStreamRequest,
+    apiKey: string,
+    systemPrompt: string,
+    messages: unknown[],
+    tools: AnthropicToolDefinition[],
+    signal: AbortSignal,
+    onChunk: (payload: AIStreamChunkPayload) => void
+  ): Promise<ModelTurn> {
+    const endpoint = 'https://api.anthropic.com/v1/messages';
     const body: Record<string, any> = {
       model: req.config.model || 'claude-3-7-sonnet-20250219',
       max_tokens: 4096,
@@ -356,7 +509,7 @@ class AIAgentService {
       stream: true
     };
 
-    if (tools && tools.length > 0) {
+    if (tools.length > 0) {
       body.tools = tools;
     }
 
@@ -388,7 +541,8 @@ class AIAgentService {
     let fullText = '';
     let fullThought = '';
     const toolCalls: AIToolCall[] = [];
-    let currentTool: { id: string; name: string; argsStr: string } | null = null;
+    const blocks = new Map<number, AnthropicAssistantBlock>();
+    let currentTool: { id: string; name: string; argsStr: string; index: number } | null = null;
     let usage: AgentUsage | null = null;
 
     const reader = response.body?.getReader();
@@ -413,6 +567,7 @@ class AIAgentService {
 
         try {
           const parsed = JSON.parse(dataStr);
+          const index = typeof parsed.index === 'number' ? parsed.index : blocks.size;
           if (parsed.type === 'message_start' && parsed.message?.usage) {
             // Входные токены и кэш известны сразу; output_tokens придут в message_delta.
             usage = usageFromAnthropic(parsed.message.usage, parsed.message.model || body.model) ?? usage;
@@ -433,24 +588,32 @@ class AIAgentService {
             if (merged) usage = merged;
           }
           if (parsed.type === 'content_block_delta') {
+            const block = blocks.get(index);
             if (parsed.delta?.type === 'text_delta') {
               const chunk = parsed.delta.text;
               fullText += chunk;
+              if (block?.type === 'text') block.text += chunk;
               onChunk({ text: chunk });
             } else if (parsed.delta?.type === 'thinking_delta') {
               const chunk = parsed.delta.thinking;
               fullThought += chunk;
+              if (block?.type === 'thinking') block.thinking += chunk;
               onChunk({ thought: chunk });
+            } else if (parsed.delta?.type === 'signature_delta') {
+              if (block?.type === 'thinking') block.signature = (block.signature ?? '') + parsed.delta.signature;
             } else if (parsed.delta?.type === 'input_json_delta' && currentTool) {
               currentTool.argsStr += parsed.delta.partial_json;
             }
           } else if (parsed.type === 'content_block_start') {
-            if (parsed.content_block?.type === 'tool_use') {
-              currentTool = {
-                id: parsed.content_block.id,
-                name: parsed.content_block.name,
-                argsStr: ''
-              };
+            const cb = parsed.content_block;
+            if (cb?.type === 'tool_use') {
+              currentTool = { id: cb.id, name: cb.name, argsStr: '', index };
+            } else if (cb?.type === 'text') {
+              blocks.set(index, { type: 'text', text: cb.text || '' });
+            } else if (cb?.type === 'thinking') {
+              blocks.set(index, { type: 'thinking', thinking: cb.thinking || '', signature: cb.signature || '' });
+            } else if (cb?.type === 'redacted_thinking') {
+              blocks.set(index, { type: 'redacted_thinking', data: cb.data });
             }
           } else if (parsed.type === 'content_block_stop') {
             if (currentTool) {
@@ -487,6 +650,7 @@ class AIAgentService {
                 };
               }
 
+              blocks.set(currentTool.index, { type: 'tool_use', id: currentTool.id, name: currentTool.name, input: args });
               toolCalls.push(toolCall);
               onChunk({ toolCall });
               currentTool = null;
@@ -498,32 +662,17 @@ class AIAgentService {
       }
     }
 
-    if (usage) onChunk({ usage });
-    onComplete({
-      id: `msg-${Date.now()}`,
-      role: 'assistant',
-      content: fullText,
-      thought: fullThought || undefined,
-      toolCalls: toolCalls.length > 0 ? toolCalls.map((tc) => ({
-        ...tc,
-        status: tc.status || (tc.diff ? 'pending' : 'done')
-      })) : undefined,
-      timestamp: new Date().toISOString(),
-      ...(usage ? { usage } : {})
-    });
+    return {
+      text: fullText,
+      thought: fullThought,
+      toolCalls,
+      usage,
+      blocks: Array.from(blocks.entries()).sort((a, b) => a[0] - b[0]).map(([, block]) => block)
+    };
   }
 
-  /**
-   * OpenAI Compatible API Streaming (OpenRouter, DeepSeek, Ollama, etc.)
-   */
-  private async streamOpenAICompatible(
-    req: AIStreamRequest,
-    systemPrompt: string,
-    signal: AbortSignal,
-    onChunk: (payload: AIStreamChunkPayload) => void,
-    onComplete: (msg: AIMessage) => void,
-    onError: (err: string) => void
-  ): Promise<void> {
+  /** Эндпоинт и заголовки OpenAI-совместимого провайдера (OpenRouter, DeepSeek, Ollama, custom). */
+  private openAICompatibleEndpoint(req: AIStreamRequest): { endpoint: string; headers: Record<string, string> } {
     let endpoint = 'https://openrouter.ai/api/v1/chat/completions';
     const headers: Record<string, string> = {
       'content-type': 'application/json'
@@ -551,8 +700,26 @@ class AIAgentService {
       endpoint = req.config.baseUrl || 'http://localhost:8000/v1/chat/completions';
       if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
     }
+    return { endpoint, headers };
+  }
 
-    const messages = [
+  /**
+   * OpenAI Compatible API (OpenRouter, DeepSeek, Ollama, etc.): tool-loop поверх Chat Completions.
+   * Изображения из результатов инструментов не передаются (модели без vision) — у OpenAI-совместимых
+   * провайдеров нет флага возможностей модели до TASK-70.
+   */
+  private async runOpenAICompatibleLoop(
+    req: AIStreamRequest,
+    systemPrompt: string,
+    tools: AnthropicToolDefinition[],
+    signal: AbortSignal,
+    onChunk: (payload: AIStreamChunkPayload) => void,
+    loop: ToolLoopState,
+    maxSteps: number,
+    executeTool?: StreamChatOptions['executeTool']
+  ): Promise<void> {
+    const { endpoint, headers } = this.openAICompatibleEndpoint(req);
+    const messages: unknown[] = [
       { role: 'system', content: systemPrompt },
       ...req.messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -561,13 +728,38 @@ class AIAgentService {
           content: m.content
         }))
     ];
+    const openAITools = tools.length > 0 ? toOpenAITools(tools) : undefined;
 
+    for (let step = 0; ; step++) {
+      const turn = await this.requestOpenAICompatible(req, endpoint, headers, messages, openAITools, step, signal, onChunk);
+      this.accumulateTurn(loop, turn);
+      const results = await this.executeToolStep(turn.toolCalls, step, maxSteps, loop, onChunk, signal, executeTool);
+      if (!results) break;
+      messages.push(...buildOpenAIToolTurn(turn.text, results, { vision: false }));
+      this.separateSteps(loop, turn, onChunk);
+    }
+  }
+
+  /** Один потоковый запрос Chat Completions; `delta.tool_calls` собираются в вызовы инструментов. */
+  private async requestOpenAICompatible(
+    req: AIStreamRequest,
+    endpoint: string,
+    headers: Record<string, string>,
+    messages: unknown[],
+    tools: ReturnType<typeof toOpenAITools> | undefined,
+    step: number,
+    signal: AbortSignal,
+    onChunk: (payload: AIStreamChunkPayload) => void
+  ): Promise<ModelTurn> {
     const body: Record<string, any> = {
       model: req.config.model || 'deepseek/deepseek-chat',
       messages,
       temperature: req.config.temperature ?? 0.7,
       stream: true
     };
+    if (tools && tools.length > 0) {
+      body.tools = tools;
+    }
     // Usage в последнем чанке стрима — для учёта стоимости (TASK-56). Ollama поле не понимает.
     if (req.config.provider !== 'ollama') {
       body.stream_options = { include_usage: true };
@@ -585,64 +777,90 @@ class AIAgentService {
 
     if (!response.ok) {
       const errText = await response.text();
+      if (tools && /does not support tools|tool(s)? (is|are) not supported|tool_choice/i.test(errText)) {
+        throw new Error(
+          `Модель «${body.model}» у провайдера ${req.config.provider} не поддерживает вызов инструментов (tools). `
+          + `Для режима агента выберите модель с tool calling. Ответ API (${response.status}): ${errText}`
+        );
+      }
       throw new Error(`API Error (${response.status}): ${errText}`);
     }
 
     let fullText = '';
     let fullThought = '';
     let usage: AgentUsage | null = null;
+    const accumulator = new OpenAIToolCallAccumulator();
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('Response body is empty');
+    type OpenAIDelta = { content?: string; reasoning_content?: string; tool_calls?: unknown };
+    type OpenAIStreamPayload = { usage?: unknown; model?: string; choices?: Array<{ delta?: OpenAIDelta; message?: OpenAIDelta }> };
+    const handlePayload = (parsed: OpenAIStreamPayload) => {
+      if (parsed.usage) {
+        usage = usageFromOpenAI(parsed.usage, parsed.model || body.model) ?? usage;
+      }
+      const choice = parsed.choices?.[0];
+      // Потоковый ответ несёт delta, непотоковый (некоторые серверы при tools) — message.
+      const delta = choice?.delta ?? choice?.message;
+      if (delta) {
+        if (delta.reasoning_content) {
+          fullThought += delta.reasoning_content;
+          onChunk({ thought: delta.reasoning_content });
+        }
+        if (delta.content) {
+          fullText += delta.content;
+          onChunk({ text: delta.content });
+        }
+        if (delta.tool_calls) {
+          accumulator.push(delta.tool_calls);
+        }
+      }
+    };
 
-    const decoder = new TextDecoder();
-    let buffer = '';
+    if (!(response.headers.get('content-type') || '').includes('text/event-stream') && response.body) {
+      const text = await response.text();
+      try {
+        handlePayload(JSON.parse(text));
+      } catch {
+        // Не JSON — пробуем разобрать как поток SSE ниже нельзя (тело уже прочитано), игнорируем.
+      }
+    } else {
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('Response body is empty');
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      const decoder = new TextDecoder();
+      let buffer = '';
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-        const dataStr = trimmed.slice(6);
-        if (dataStr === '[DONE]') continue;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-        try {
-          const parsed = JSON.parse(dataStr);
-          if (parsed.usage) {
-            usage = usageFromOpenAI(parsed.usage, parsed.model || body.model) ?? usage;
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+          const dataStr = trimmed.slice(6);
+          if (dataStr === '[DONE]') continue;
+
+          try {
+            handlePayload(JSON.parse(dataStr));
+          } catch (e) {
+            // ignore chunk parse errors
           }
-          const delta = parsed.choices?.[0]?.delta;
-          if (delta) {
-            if (delta.reasoning_content) {
-              fullThought += delta.reasoning_content;
-              onChunk({ thought: delta.reasoning_content });
-            }
-            if (delta.content) {
-              fullText += delta.content;
-              onChunk({ text: delta.content });
-            }
-          }
-        } catch (e) {
-          // ignore chunk parse errors
         }
       }
     }
 
-    if (usage) onChunk({ usage });
-    onComplete({
-      id: `msg-${Date.now()}`,
-      role: 'assistant',
-      content: fullText,
-      thought: fullThought || undefined,
-      timestamp: new Date().toISOString(),
-      ...(usage ? { usage } : {})
-    });
+    const toolCalls: AIToolCall[] = accumulator.finalize(`call-${step}`).map((call) => ({
+      id: call.id,
+      name: call.name,
+      args: call.args,
+      status: 'pending'
+    }));
+    for (const toolCall of toolCalls) onChunk({ toolCall });
+
+    return { text: fullText, thought: fullThought, toolCalls, usage, blocks: [] };
   }
 
   /**
@@ -654,7 +872,9 @@ class AIAgentService {
     roleSystemPrompt?: string,
     taskId?: string,
     contextParts?: AIStreamRequest['contextParts'],
-    workspaceRoot?: string
+    workspaceRoot?: string,
+    /** Агенту доступны инструменты `computer_*` — добавить инструкцию accessibility-first (TASK-82). */
+    computerUse = false
   ): Promise<string> {
     // Рабочий каталог — активное дерево (worktree), задачи и документация — общий backlog проекта.
     const workDir = workspaceRoot?.trim() || projectPath;
@@ -672,7 +892,7 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
       }
     }
 
-    return [base, roleSystemPrompt, taskContext].filter(Boolean).join('\n\n');
+    return [base, roleSystemPrompt, taskContext, computerUse ? buildComputerUseInstructions() : ''].filter(Boolean).join('\n\n');
   }
 
   /**

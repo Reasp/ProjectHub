@@ -14,8 +14,9 @@ function parseArgs(argv) {
   return args;
 }
 
-const ALL_FEATURES = ['docsRag', 'envTools', 'backlogMcp', 'bootstrap', 'gitnexus', 'lightrag'];
-const DEFAULT_ON = ['docsRag', 'envTools', 'backlogMcp', 'bootstrap', 'gitnexus']; // lightrag — опционально, по умолчанию выключен
+const ALL_FEATURES = ['docsRag', 'envTools', 'backlogMcp', 'bootstrap', 'gitnexus', 'lightrag', 'computerUse'];
+// lightrag и computerUse — опционально, по умолчанию выключены (decision-27 п. 6: управление компьютером — самый опасный инструмент).
+const DEFAULT_ON = ['docsRag', 'envTools', 'backlogMcp', 'bootstrap', 'gitnexus'];
 
 async function ask(rl, question, fallback) {
   const answer = (await rl.question(`${question} `)).trim();
@@ -52,6 +53,8 @@ async function resolveInteractively(args) {
           bootstrap: 'Кросс-платформенный bootstrap окружения (git/node/…)',
           gitnexus: 'GitNexus — граф кода для impact-анализа и рефакторинга (MCP, требует установленного gitnexus CLI)',
           lightrag: 'LightRAG — граф технической документации (Python + локальная LLM через Ollama, тяжело)',
+          computerUse:
+            'Управление компьютером (computer_*) через прокси ProjectHub — HITL, allowlist, kill-switch; нужен запущенный ProjectHub и PROJECTHUB_MCP_TOKEN',
         }[f];
         const answer = (await ask(rl, `${label}? [${def}]`, defAnswer)).toLowerCase();
         if (answer === 'y' || answer === 'yes' || answer === 'д' || answer === 'да') features.push(f);
@@ -64,7 +67,7 @@ async function resolveInteractively(args) {
   }
 }
 
-const MCP_KEYS = ['docs-rag', 'env-tools', 'backlog', 'docs-graph', 'gitnexus'];
+const MCP_KEYS = ['docs-rag', 'env-tools', 'backlog', 'docs-graph', 'gitnexus', 'projecthub-computer'];
 
 function buildDesiredMcpServers(prefix, features) {
   const desired = {};
@@ -83,6 +86,11 @@ function buildDesiredMcpServers(prefix, features) {
   }
   if (features.includes('lightrag')) {
     desired['docs-graph'] = { command: 'node', args: [`${prefix}scripts/lightrag/lightrag-server.mjs`] };
+  }
+  if (features.includes('computerUse')) {
+    // stdio-мост к MCP-прокси ProjectHub: политику, HITL, аудит и kill-switch применяет приложение,
+    // а не движок. Токен берётся из PROJECTHUB_MCP_TOKEN и в коммитящийся конфиг не пишется (TASK-82).
+    desired['projecthub-computer'] = { command: 'node', args: [`${prefix}scripts/computer-use/computer-use-bridge.mjs`] };
   }
   return desired;
 }
@@ -142,8 +150,14 @@ async function main() {
   const mcpPaths = mergeMcpConfig(projectRootAbs, resolved.features);
   console.log(
     `\nОбновлены ${mcpPaths.map((p) => path.relative(INFRA_ROOT, p)).join(', ')} ` +
-      '(записи docs-rag/env-tools/backlog/docs-graph/gitnexus синхронизированы с включёнными фичами).',
+      '(записи docs-rag/env-tools/backlog/docs-graph/gitnexus/projecthub-computer синхронизированы с включёнными фичами).',
   );
+  if (config.features.computerUse) {
+    console.log(
+      '\ncomputerUse: включите «Управление компьютером» в ProjectHub (бейдж MCP) и задайте PROJECTHUB_MCP_TOKEN ' +
+        '(токен из того же окна) в окружении агента — в конфиг MCP токен не пишется.',
+    );
+  }
 
   console.log('\nДальше:');
   if (config.features.docsRag) console.log('  npm run index-docs     # собрать векторный индекс документации');

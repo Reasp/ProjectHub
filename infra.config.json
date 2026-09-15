@@ -6,6 +6,7 @@
     "backlogMcp": true,
     "bootstrap": true,
     "gitnexus": true,
-    "lightrag": true
+    "lightrag": true,
+    "computerUse": false
   }
 }

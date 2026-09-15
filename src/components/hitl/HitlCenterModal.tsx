@@ -19,7 +19,8 @@ import {
   ChevronDown,
   ChevronUp,
   AlertTriangle,
-  FolderOpen
+  FolderOpen,
+  Monitor
 } from 'lucide-react';
 import { useHitlStore } from '../../store/useHitlStore';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -50,6 +51,7 @@ const TypeIcon: React.FC<{ type: ApprovalRequest['type']; className?: string }> 
   if (type === 'command') return <Terminal className={className} />;
   if (type === 'file_write') return <FileCode className={className} />;
   if (type === 'subagent_dispatch') return <GitFork className={className} />;
+  if (type === 'computer_action') return <Monitor className={className} />;
   return <HelpCircle className={className} />;
 };
 
@@ -57,7 +59,8 @@ const originStyle: Record<string, string> = {
   studio: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
   swarm: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30',
   handoff: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
-  assigned: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+  assigned: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+  external: 'bg-orange-500/15 text-orange-300 border-orange-500/30'
 };
 
 export const HitlCenterModal: React.FC = () => {
