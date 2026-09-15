@@ -13,9 +13,10 @@ tags:
 ---
 # Ландшафт агентных harness 2026 — анализ пробелов ProjectHub и план Harness 3.0
 
-> **Дата**: "2026-09-15". **Статус**: аналитика + роадмап (milestone `Harness 3.0`, задачи TASK-69…TASK-81).
-> Принятые из этого документа решения вынесены в [[decision-25]] (TTS) и [[decision-26]] (независимость
-> от вендора LLM, Codex app-server, универсальный провайдер, тиры моделей); остальные ADR создаются
+> **Дата**: "2026-09-15". **Статус**: аналитика + роадмап (milestone `Harness 3.0`, задачи TASK-69…TASK-83).
+> Принятые из этого документа решения вынесены в [[decision-25]] (TTS), [[decision-26]] (независимость
+> от вендора LLM, Codex app-server, универсальный провайдер, тиры моделей) и [[decision-27]]
+> (управление компьютером через MCP-прокси); остальные ADR создаются
 > в задачах, где решение принимается (правило 18).
 
 ## 0. Принцип: любая LLM, никакого «флагмана по умолчанию»
@@ -52,8 +53,8 @@ GPT-6 Astra выпущена OpenAI 3–4 сентября 2026 вместе с 
 Что из этого важно для harness — и одинаково применимо к любой будущей модели любого вендора:
 
 1. **Computer use стал рабочим.** Harness, который не даёт агенту посмотреть на результат
-   (запустить приложение, снять скриншот, прокликать сценарий), теряет половину ценности
-   современных моделей — TASK-78.
+   (запустить приложение, снять скриншот, прокликать сценарий) и управлять рабочим столом, теряет
+   половину ценности современных моделей — TASK-82 (рабочий стол), TASK-78 (браузер/Electron).
 2. **Заметки вместо сжатия контекста.** Astra ведёт структурированные «context notes» между
    окнами контекста. Это можно воспроизвести на уровне harness для всех движков: память проекта и
    заметки хода — TASK-76.
@@ -105,7 +106,9 @@ harness. Ниже — что считается «best-in-class» по кажд�
 | Чекпоинты / rewind, трасса | снимок перед изменением, `/rewind`, `duration_ms` | авто-коммит результата, без отката по ходам и таймлайна | TASK-72 |
 | Декомпозиция и параллель | plan mode, субагенты, автоделегирование | fan-out/handoff без подзадач | TASK-80 |
 | Роли и политики вне ProjectHub | нативные субагенты и хуки | роли действуют только при запуске из ProjectHub | TASK-77 |
-| Визуальная верификация / computer use | Playwright MCP, скриншоты | нет | TASK-78 |
+| Управление компьютером (курсор, клавиатура, окна, a11y) | Claude Code desktop control, Windows-MCP, computer-use-mcp | нет | TASK-82 |
+| Визуальная верификация браузера/Electron | Playwright MCP, скриншоты | нет | TASK-78 |
+| Голосовое управление 2.0 | push-to-talk, wake word, диалог, диктовка | regex-интенты, hands-free, без диалога и диктовки | TASK-83 |
 | Автоматическое ревью PR | ultrareview, BugBot | LLM-ревьюер только в Arena | TASK-81 |
 | Безопасность цепочки поставок | аудит зависимостей, сканер секретов | не реализовано (doc-6 §4.2) | TASK-73 |
 | Локальный нейросетевой TTS | Piper/Kokoro оффлайн | системный `speechSynthesis` | TASK-69 |
@@ -128,7 +131,8 @@ flowchart LR
     T76[TASK-76 память агента]
     T77[TASK-77 экспорт ролей и хуки]
     T73[TASK-73 Security Health]
-    T69[TASK-69 Piper TTS]
+    T69[TASK-69 Piper TTS] --> T83[TASK-83 голос 2.0]
+    T82[TASK-82 управление компьютером] --> T83
 ```
 
 Рекомендуемая очередность (по ценности на единицу усилий):
@@ -138,7 +142,8 @@ flowchart LR
 3. **TASK-76 память** и **TASK-72 чекпоинты/трасса** — «взрослая» наблюдаемость и накопление знаний.
 4. **TASK-74 Automations** → **TASK-81 авто-ревью**, **TASK-79 тиры**, **TASK-77 роли/хуки**.
 5. **TASK-71 Codex app-server** — когда появится оплаченный Codex; закрывает долг из [[decision-4]].
-6. **TASK-80 планировщик**, **TASK-78 визуальная верификация**, **TASK-73 Security Health**, **TASK-69 Piper TTS** — по спросу.
+6. **TASK-82 управление компьютером** → **TASK-69 Piper TTS** → **TASK-83 голос 2.0** — голосовой контур «сказал → агент сделал на экране → ответил голосом» ([[decision-27]]).
+7. **TASK-80 планировщик**, **TASK-78 визуальная верификация**, **TASK-73 Security Health** — по спросу.
 
 Инварианты для всех задач: независимость от модели и вендора (§0), чистые модули с unit-тестами
 (правило 17), ADR в той же задаче (правило 18), модалки через `createPortal` ([[decision-17]]),
@@ -164,6 +169,7 @@ flowchart LR
 - Claude Agent SDK (TypeScript): https://code.claude.com/docs/en/agent-sdk/typescript
 - Обзоры harness'ов 2026: https://ssojet.com/blog/ai-coding-agents-compared , https://www.firecrawl.dev/blog/best-ai-coding-agents , https://www.vellum.ai/blog/best-ai-coding-agents
 - OpenAI-совместимые локальные серверы: https://github.com/ollama/ollama/blob/main/docs/openai.md
+- Управление компьютером: https://github.com/zavora-ai/computer-use-mcp , https://github.com/CursorTouch/Windows-MCP , https://github.com/sbroenne/mcp-windows , https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool , https://devops.com/claude-code-can-now-run-your-desktop/
 - Piper: https://github.com/OHF-Voice/piper1-gpl , https://huggingface.co/rhasspy/piper-voices/tree/main/ru/ru_RU , https://www.promptquorum.com/power-local-llm/piper-tts-review
 - sherpa-onnx: https://www.npmjs.com/package/sherpa-onnx-node , https://k2-fsa.github.io/sherpa/onnx/tts/piper.html
 - Локальные TTS 2026 (Kokoro без русского): https://localaimaster.com/blog/best-local-tts-models , https://contracollective.com/blog/kokoro-vs-piper-vs-xtts-local-text-to-speech-m5-max-2026

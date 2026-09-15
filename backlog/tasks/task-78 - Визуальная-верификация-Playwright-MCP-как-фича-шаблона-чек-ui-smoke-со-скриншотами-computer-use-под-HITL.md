@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-09-15 03:13'
+updated_date: '2026-09-15 03:44'
 labels:
   - ai
   - playwright
@@ -39,3 +40,9 @@ GPT-6 Astra — первая модель с сильным computer use (OSWorl
 - [ ] #4 Скриншоты принимаются как evidence в отчёте Done-loop
 - [ ] #5 Computer use вне проекта требует HITL-одобрения и запрещён в Automations; lint/test зелёные
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-09-15: уточнение границ — эта задача про браузерную/Electron-верификацию через Playwright. Полное управление компьютером (курсор, клавиатура, окна, a11y-дерево) вынесено в TASK-82 (MCP-прокси поверх @zavora-ai/computer-use-mcp, decision-27); пункт 5 об ограничениях computer use применяется через политику TASK-82.
+<!-- SECTION:NOTES:END -->
