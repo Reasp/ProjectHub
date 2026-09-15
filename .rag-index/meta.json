@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "7bd02475edafed2ba9d3eb0a4569da1e106b6bc62ccd7f0b45b03067082dd353",
+  "docsHash": "03cbb8c92bbcfd5dcedeb36cfc539df8ff7da141b96057697ab05e62c3b7f165",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -22,6 +22,8 @@
     "backlog/decisions/decision-22 - Отложенные-вызовы-в-React-компонентах-только-через-useTimeoutState-useTimers.md",
     "backlog/decisions/decision-23 - Сброс-состояния-при-смене-проекта-в-рендерере.md",
     "backlog/decisions/decision-24 - Состав-статусов-задач-задаёт-backlog-config.yml-проекта.md",
+    "backlog/decisions/decision-25 - Локальный-TTS-на-голосах-Piper-через-sherpa-onnx-в-worker-main-процесса.md",
+    "backlog/decisions/decision-26 - Codex-app-server-как-протокол-интеграции-нативный-провайдер-OpenAI-и-тиры-моделей-вместо-жёстких-id.md",
     "backlog/decisions/decision-3 - Backlog.md-как-единственный-источник-истины-для-задач-документов-и-решений.md",
     "backlog/decisions/decision-4 - Claude-Code-CLI-как-основной-агентный-движок-API-провайдеры-как-дополнение.md",
     "backlog/decisions/decision-5 - Модель-безопасности-десктопа-изоляция-рендерера-реестр-проектов-локальный-MCP-и-секреты.md",
@@ -30,6 +32,7 @@
     "backlog/decisions/decision-8 - Результаты-агентов-материализуются-в-git-авто-коммит-в-worktree-и-безопасное-слияние.md",
     "backlog/decisions/decision-9 - Роль-агента-как-first-class-сущность.md",
     "backlog/docs/doc-1 - App-Icon-Concepts.md",
+    "backlog/docs/doc-10 - GPT-6-Astra-и-ландшафт-агентных-harness-2026-—-анализ-пробелов-ProjectHub-и-план-Harness-3.0.md",
     "backlog/docs/doc-2 - Architecture-Concept.md",
     "backlog/docs/doc-3 - Tech-Stack-Analysis.md",
     "backlog/docs/doc-4 - Deployment-Guide.md",
@@ -39,6 +42,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 293,
-  "builtAt": "2026-09-13T13:12:12.543Z"
+  "chunks": 326,
+  "builtAt": "2026-09-15T03:17:34.811Z"
 }
