@@ -6,7 +6,11 @@
 
 <p align="center">
   <b>Agentic Development Environment (ADE)</b><br/>
-  Десктопный командный центр, в котором AI-агенты работают как полноценные участники команды, а не как автодополнение в редакторе.
+  A desktop command center where AI agents work as full members of the team, not as autocomplete in an editor.
+</p>
+
+<p align="center">
+  <b>English</b> · <a href="README.ru.md">Русский</a>
 </p>
 
 <p align="center">
@@ -20,77 +24,77 @@
 
 ---
 
-## Почему ADE, а не IDE
+## Why an ADE, not an IDE
 
-IDE построена вокруг одного человека, который печатает код в одном рабочем каталоге. В 2026 году это уже не то, как выглядит разработка. Код пишут агенты: Claude Code, Codex, локальные модели. Человек ставит задачи, следит за ходом работы, принимает решения в критических точках и выбирает лучший результат.
+An IDE is built around one person typing code in one working directory. In 2026 that is no longer what development looks like. Code is written by agents: Claude Code, Codex, local models. The human sets tasks, monitors progress, makes decisions at critical points and picks the best result.
 
-**ProjectHub** спроектирован именно под этот процесс. Это не редактор с чат-панелью сбоку, а среда, где:
+**ProjectHub** is designed for exactly this workflow. It is not an editor with a chat panel on the side, but an environment where:
 
-- **Единица работы — задача, а не файл.** Задачи живут в `backlog/` как markdown, агент берёт их в работу, а доска обновляется в реальном времени.
-- **Агентов много, и они работают параллельно.** Каждый получает свой Git Worktree, свою ветку и свой терминал. Никаких конфликтов в общем рабочем каталоге.
-- **Человек остаётся в контуре.** Каждый опасный шаг агента проходит через Human-in-the-loop, и подтвердить его можно с рабочего стола, с телефона или из Telegram.
-- **Среда сама является инструментом для агентов.** ProjectHub поднимает собственный MCP-сервер, через который внешние агенты управляют проектами, процессами и интерфейсом.
-- **Знания проекта доступны и человеку, и машине.** Документация, архитектурные решения и задачи индексируются в векторную базу и отдаются агентам через MCP.
+- **The unit of work is a task, not a file.** Tasks live in `backlog/` as markdown, agents pick them up, and the board updates in real time.
+- **There are many agents, and they work in parallel.** Each one gets its own Git worktree, its own branch and its own terminal. No conflicts in a shared working directory.
+- **The human stays in the loop.** Every risky agent step goes through human-in-the-loop approval, which can be granted from the desktop, a phone or Telegram.
+- **The environment is itself a tool for agents.** ProjectHub runs its own MCP server, through which external agents control projects, processes and the UI.
+- **Project knowledge is available to both humans and machines.** Documentation, architecture decisions and tasks are indexed into a vector database and served to agents over MCP.
 
-Один экран вместо десятка терминалов, вкладок браузера и окон Git-клиента.
+One screen instead of a dozen terminals, browser tabs and Git client windows.
 
 ---
 
-## Что умеет ProjectHub
+## What ProjectHub does
 
-### 🧠 Оркестрация AI-агентов
+### 🧠 AI agent orchestration
 
-| Модуль | Что делает |
+| Module | What it does |
 |---|---|
-| **AI Studio** | Полноэкранный агентный чат с потоковым выводом, блоками рассуждений, интерактивными карточками Tool Use и построчными Diff-карточками «Принять / Отклонить». Контекстные теги `@Task`, `@GitStatus`, `@Docs`. |
-| **Мультипровайдер** | Anthropic API, OpenRouter, DeepSeek, локальная Ollama и любой OpenAI-совместимый эндпоинт. Ключи хранятся через Electron `safeStorage`. |
-| **Обёртка Claude Code CLI** | AI Studio работает как GUI над Claude Code без API-ключа: дерево подагентов, индикаторы статуса на проектах в сайдбаре («работает», «ждёт решения», «завершено»), учёт квоты. |
-| **Human-in-the-loop** | Разрешения Claude Code перехватываются встроенным MCP-сервером **до** выполнения инструмента. Карточка одобрения появляется в GUI, в мобильном клиенте и в Telegram. Отмена сессии = автоматический `deny`. |
-| **Swarm Arena** | Одна задача отправляется сразу нескольким агентам (Fan-Out): Claude Code, Codex CLI, API-модели. Каждый агент изолирован в собственном worktree. Экран Side-by-Side показывает логи, метрики и диффы всех участников. **Pick Winner** в один клик сливает ветку победителя и чистит остальное. |
-| **Handoff-конвейер** | Цепочка ролей: архитектор пишет спецификацию → кодер реализует → ревьюер проверяет. Результат каждого этапа становится входом следующего. |
-| **AI-помощник для рутины** | Генерация описаний задач, сообщений коммитов и PR из контекста проекта. |
+| **AI Studio** | Full-screen agent chat with streaming output, reasoning blocks, interactive Tool Use cards and line-by-line Accept / Reject diff cards. Context tags `@Task`, `@GitStatus`, `@Docs`. |
+| **Multi-provider** | Anthropic API, OpenRouter, DeepSeek, local Ollama and any OpenAI-compatible endpoint. Keys are stored via Electron `safeStorage`. |
+| **Claude Code CLI wrapper** | AI Studio works as a GUI on top of Claude Code without an API key: sub-agent tree, status indicators on projects in the sidebar ("working", "awaiting decision", "done"), quota tracking. |
+| **Human-in-the-loop** | Claude Code permission requests are intercepted by the built-in MCP server **before** the tool runs. The approval card appears in the GUI, the mobile client and Telegram. Cancelling the session = automatic `deny`. |
+| **Swarm Arena** | One task is sent to several agents at once (fan-out): Claude Code, Codex CLI, API models. Each agent is isolated in its own worktree. The side-by-side view shows logs, metrics and diffs of every participant. **Pick Winner** merges the winning branch in one click and cleans up the rest. |
+| **Handoff pipeline** | A chain of roles: architect writes the spec → coder implements → reviewer checks. The output of each stage becomes the input of the next. |
+| **AI assistant for routine work** | Generates task descriptions, commit messages and PR descriptions from project context. |
 
-### 🌿 Git как первоклассный объект
+### 🌿 Git as a first-class citizen
 
-- Граф коммитов, ветки, стеш, stage/unstage, коммиты с автопривязкой к ID задачи.
-- Split / Unified Diff Viewer с подсветкой синтаксиса.
-- **Git Worktrees**: создание дерева под задачу прямо из карточки (`task/<id>` → `.worktrees/<id>`), терминалы с `cwd` в worktree, диалог завершения с диффом и безопасным слиянием.
-- **PR Hub**: GitHub и GitLab, создание PR из ветки задачи, статусы проверок, автоматический перевод задачи в `Review` и `Done`.
+- Commit graph, branches, stash, stage/unstage, commits automatically linked to a task ID.
+- Split / unified diff viewer with syntax highlighting.
+- **Git worktrees**: create a worktree for a task straight from its card (`task/<id>` → `.worktrees/<id>`), terminals with `cwd` in the worktree, a completion dialog with diff and safe merge.
+- **PR Hub**: GitHub and GitLab, creating PRs from a task branch, check statuses, automatic task transition to `Review` and `Done`.
 
-### 📋 Управление проектами поверх Backlog.md
+### 📋 Project management on top of Backlog.md
 
-- Автоматическое обнаружение проектов на дисках и реестр с живыми индикаторами: ветка, ahead/behind, незакоммиченные файлы, статус dev-серверов и агентов.
-- Kanban и табличный вид с drag-and-drop, чеклистами Acceptance Criteria, тегами и приоритетами. Все изменения пишутся в нативный формат Backlog.md.
-- Майлстоуны и дорожная карта с прогрессом по этапам.
-- Документация и ADR (Architecture Decision Records) со встроенным Markdown-редактором и Mermaid-диаграммами.
-- Аналитика проекта: готовность задач, контрибьюторы Git, распределение тегов, статистика векторного индекса.
-- Мастер создания нового проекта из шаблона с выбором модулей инфраструктуры.
+- Automatic project discovery across drives and a registry with live indicators: branch, ahead/behind, uncommitted files, dev server and agent status.
+- Kanban and table views with drag-and-drop, Acceptance Criteria checklists, tags and priorities. All changes are written in the native Backlog.md format.
+- Milestones and a roadmap with per-stage progress.
+- Documentation and ADRs (Architecture Decision Records) with a built-in Markdown editor and Mermaid diagrams.
+- Project analytics: task completion, Git contributors, tag distribution, vector index statistics.
+- New project wizard based on a template, with a choice of infrastructure modules.
 
-### ⚙️ Рантайм и процессы
+### ⚙️ Runtime and processes
 
-- Менеджер фоновых процессов: dev-серверы, вотчеры, скрипты. Старт, стоп, рестарт, живые логи, защита от зависших портов.
-- Встроенный мульти-терминал на `node-pty` + `xterm.js` с параллельными сессиями Claude Code и Shell в каталоге любого проекта или worktree.
-- **Action Runner**: конфигурируемые кнопки Run / Test / Deploy, настройки хранятся в `.projecthub.json` проекта.
-- File Explorer с Git-бейджами и быстрым редактором.
+- Background process manager: dev servers, watchers, scripts. Start, stop, restart, live logs, protection against stuck ports.
+- Built-in multi-terminal on `node-pty` + `xterm.js` with parallel Claude Code and shell sessions in any project or worktree directory.
+- **Action Runner**: configurable Run / Test / Deploy buttons, settings stored in the project's `.projecthub.json`.
+- File Explorer with Git badges and a quick editor.
 
-### 🔍 Знания и интероперабельность
+### 🔍 Knowledge and interoperability
 
-- Векторный RAG-поиск по документации всех проектов (LanceDB + многоязычные эмбеддинги, `Ctrl+K`). Индекс коммитится в репозиторий вместе с документами.
-- **ProjectHub Native MCP Server** (HTTP/SSE, `127.0.0.1:42042`, токен авторизации): переключение проектов и вкладок, отправка промптов в AI Studio, управление процессами, чтение бэклога, HITL-подтверждения. Конфигурация копируется в один клик для Claude Code, Claude Desktop, Cursor и других клиентов.
-- Дружит с любым агентом, который умеет MCP: Claude Code, Google Antigravity, Cursor, Windsurf.
+- Vector RAG search across the documentation of all projects (LanceDB + multilingual embeddings, `Ctrl+K`). The index is committed to the repository together with the documents.
+- **ProjectHub Native MCP Server** (HTTP/SSE, `127.0.0.1:42042`, auth token): switching projects and tabs, sending prompts to AI Studio, managing processes, reading the backlog, HITL approvals. The config can be copied in one click for Claude Code, Claude Desktop, Cursor and other clients.
+- Works with any MCP-capable agent: Claude Code, Google Antigravity, Cursor, Windsurf.
 
-### 📡 Управление откуда угодно
+### 📡 Control from anywhere
 
-- **Голосовое управление**: навигация, запуск процессов, коммиты, диктовка в AI Studio, hands-free режим. Web Speech API или локальный Whisper, настраиваемые фразы и синонимы, горячее переключение гарнитуры.
-- **Remote Control**: мобильный веб-клиент для проектов, задач, процессов, терминала и AI Studio. Режимы LAN Direct и Server Relay (identity на Ed25519, per-device токены) со сквозным шифрованием AES-256-GCM, сопряжение по QR-коду.
-- **Федерация компьютеров**: несколько машин с ProjectHub видят друг друга в каталоге (через свой relay или прямо в локальной сети) и открываются одна из другой в hub-режиме — проекты, задачи, процессы, агенты и очередь HITL удалённой машины в том же интерфейсе. Задачу можно назначить агенту на конкретной машине: `assignee: agent:<роль>@<hostId>`.
-- **Telegram Mini App и бот**: полноценный клиент внутри Telegram с нативными компонентами WebApp, push-уведомления о падениях процессов и запросах HITL, автоматический HTTPS-туннель, объединение нескольких машин разработчика в единый Hub.
-- Глобальные горячие клавиши и палитра быстрых действий.
-- Интерфейс на английском и русском с мгновенным переключением.
+- **Voice control**: navigation, starting processes, commits, dictation into AI Studio, hands-free mode. Web Speech API or local Whisper, customizable phrases and synonyms, hot-swapping headsets.
+- **Remote Control**: a mobile web client for projects, tasks, processes, terminal and AI Studio. LAN Direct and Server Relay modes (Ed25519 identity, per-device tokens) with end-to-end AES-256-GCM encryption, QR code pairing.
+- **Machine federation**: several machines running ProjectHub see each other in a directory (via your own relay or directly on the local network) and can open one another in hub mode — the remote machine's projects, tasks, processes, agents and HITL queue in the same UI. A task can be assigned to an agent on a specific machine: `assignee: agent:<role>@<hostId>`.
+- **Telegram Mini App and bot**: a full client inside Telegram with native WebApp components, push notifications about crashed processes and HITL requests, an automatic HTTPS tunnel, and combining several developer machines into a single hub.
+- Global hotkeys and a quick action palette.
+- English and Russian UI with instant switching.
 
 ---
 
-## Архитектура в двух словах
+## Architecture at a glance
 
 ```mermaid
 flowchart LR
@@ -108,7 +112,7 @@ flowchart LR
     RAG[ragSearch · LanceDB]
   end
 
-  subgraph Agents["Агенты"]
+  subgraph Agents["Agents"]
     CC[Claude Code CLI]
     CX[Codex CLI]
     API[Anthropic · OpenRouter · DeepSeek · Ollama]
@@ -120,162 +124,164 @@ flowchart LR
   CC -- permission_prompt --> MCP
   MCP --> UI
   Fleet --> WT
-  RC --> Mobile[Мобильный клиент · Telegram Mini App]
-  External[Внешние агенты: Claude Code, Cursor, Antigravity] -- MCP --> MCP
+  RC --> Mobile[Mobile client · Telegram Mini App]
+  External[External agents: Claude Code, Cursor, Antigravity] -- MCP --> MCP
 ```
 
-Каждый проект, которым управляет ProjectHub, устроен по единому шаблону: `backlog/` для задач и документации, коммитимый векторный индекс `.rag-index/`, менеджер процессов `env-tools`, правила и MCP-конфиги для агентов в `.claude/` и `.agents/`. ProjectHub понимает эту структуру из коробки, а мастер создания проектов разворачивает её за один шаг.
+Every project managed by ProjectHub follows the same template: `backlog/` for tasks and documentation, a committed vector index `.rag-index/`, the `env-tools` process manager, and agent rules and MCP configs in `.claude/` and `.agents/`. ProjectHub understands this structure out of the box, and the project wizard sets it up in a single step.
 
 ---
 
-## Технологический стек
+## Tech stack
 
-| Слой | Технологии |
+| Layer | Technologies |
 |---|---|
-| Десктоп | Electron, Vite, electron-builder |
+| Desktop | Electron, Vite, electron-builder |
 | UI | React 19, TypeScript 6, Tailwind CSS v4, Lucide, Zustand |
-| Git | simple-git, Git Worktrees, собственный diff-парсер |
-| Терминал и процессы | node-pty, @xterm/xterm, tree-kill |
-| AI и агенты | Anthropic API, Claude Code CLI, Codex CLI, OpenRouter, DeepSeek, Ollama, @modelcontextprotocol/sdk |
-| Знания | LanceDB, @huggingface/transformers (`multilingual-e5-small`), gray-matter, Mermaid |
-| Голос | Web Speech API, локальный Whisper, AudioWorklet |
+| Git | simple-git, Git worktrees, custom diff parser |
+| Terminal and processes | node-pty, @xterm/xterm, tree-kill |
+| AI and agents | Anthropic API, Claude Code CLI, Codex CLI, OpenRouter, DeepSeek, Ollama, @modelcontextprotocol/sdk |
+| Knowledge | LanceDB, @huggingface/transformers (`multilingual-e5-small`), gray-matter, Mermaid |
+| Voice | Web Speech API, local Whisper, AudioWorklet |
 | Remote | WebSocket LAN Direct/Relay, Ed25519 identity, AES-256-GCM (Web Crypto), Telegram WebApp SDK |
-| Качество | ESLint (typescript-eslint, react-hooks), Vitest, валидатор документации, проверка externals бандла |
+| Quality | ESLint (typescript-eslint, react-hooks), Vitest, documentation validator, bundle externals check |
 
 ---
 
-## Быстрый старт
+## Quick start
 
-Требования: **Node.js 18+** (рекомендуется 22), **Git**. Для агентных функций: установленный `claude` (Claude Code CLI) и/или `codex`, либо API-ключи провайдеров.
+Requirements: **Node.js 18+** (22 recommended), **Git**. For agent features: an installed `claude` (Claude Code CLI) and/or `codex`, or provider API keys.
 
 ```bash
 git clone git@github.com:Reasp/ProjectHub.git
 cd ProjectHub
 npm install
 
-# режим разработки (Vite + Electron с hot reload)
+# development mode (Vite + Electron with hot reload)
 npm run dev
 
-# быстрая распакованная сборка: release/win-unpacked/ProjectHub.exe
+# fast unpacked build: release/win-unpacked/ProjectHub.exe
 npm run pack:win
 
-# portable-сборка для Windows / DMG для macOS
+# portable build for Windows / DMG for macOS
 npm run dist:win
 npm run dist:mac
 ```
 
-Полная проверка перед коммитом:
+Full check before committing:
 
 ```bash
-npm run lint:docs     # frontmatter, таблицы, картинки, актуальность RAG-индекса
-npm run lint          # ESLint, 0 ошибок
-npm test              # unit-тесты Vitest
-npm run build         # всё вышеперечисленное + tsc + vite build + check-bundle
+npm run lint:docs     # frontmatter, tables, images, RAG index freshness
+npm run lint          # ESLint, 0 errors
+npm test              # Vitest unit tests
+npm run build         # all of the above + tsc + vite build + check-bundle
 ```
 
-Опционально:
+Optional:
 
 ```bash
-npm run remote-relay  # свой relay-сервер для Remote Control
-npm run telegram-bot  # Telegram-бот и Mini App
-npm run index-docs    # пересобрать векторный индекс документации
+npm run remote-relay  # your own relay server for Remote Control
+npm run telegram-bot  # Telegram bot and Mini App
+npm run index-docs    # rebuild the documentation vector index
 ```
 
 ---
 
-## CI/CD и релизы
+## CI/CD and releases
 
-CI (`.github/workflows/ci.yml`) гоняет полный локальный гейт (`npm run build`: validate-docs,
-check-index, ESLint, Vitest, `tsc`, `vite build`, `check-bundle`) на матрице
-`windows-latest` / `macos-latest` / `ubuntu-latest` на каждый PR и push в `master`, плюс
-собирает распакованный `--dir`-билд на каждой ОС как артефакт (для быстрой ручной проверки, не
-для распространения).
+CI (`.github/workflows/ci.yml`) runs the full local gate (`npm run build`: validate-docs,
+check-index, ESLint, Vitest, `tsc`, `vite build`, `check-bundle`) on a
+`windows-latest` / `macos-latest` / `ubuntu-latest` matrix for every PR and push to `master`, and
+also builds an unpacked `--dir` build on each OS as an artifact (for quick manual checks, not
+for distribution).
 
-Релиз (`.github/workflows/release.yml`) запускается на тег `v*` (например `v0.2.0`): на каждой
-ОС проходит тот же гейт, затем `electron-builder --publish always` собирает и публикует
-дистрибутивы в GitHub Release тега вместе с `latest.yml` / `latest-mac.yml` / `latest-linux.yml`,
-по которым `electron-updater` проверяет обновления:
+The release workflow (`.github/workflows/release.yml`) is triggered by a `v*` tag (e.g. `v0.2.0`): on each
+OS the same gate runs, then `electron-builder --publish always` builds and publishes
+the distributables to the tag's GitHub Release along with `latest.yml` / `latest-mac.yml` / `latest-linux.yml`,
+which `electron-updater` uses to check for updates:
 
-| ОС | Форматы | Автообновление |
+| OS | Formats | Auto-update |
 |---|---|---|
-| Windows | `nsis` (установщик), `portable` | да (nsis) |
-| macOS | `dmg`, `zip` | нет — сборка без подписи (decision-14); приложение показывает ссылку на релиз вместо автоустановки |
-| Linux | `AppImage` | да |
+| Windows | `nsis` (installer), `portable` | yes (nsis) |
+| macOS | `dmg`, `zip` | no — unsigned build (decision-14); the app shows a link to the release instead of installing automatically |
+| Linux | `AppImage` | yes |
 
-Чтобы выпустить релиз: поднять `version` в `package.json`, закоммитить, поставить тег
-(`git tag v0.2.0 && git push origin v0.2.0`) — остальное делает workflow. Токен репозитория
-(`GITHUB_TOKEN`) для публикации в Releases пробрасывается Actions автоматически, отдельно
-настраивать нечего.
+To cut a release: bump `version` in `package.json`, commit, and push a tag
+(`git tag v0.2.0 && git push origin v0.2.0`) — the workflow does the rest. The repository token
+(`GITHUB_TOKEN`) for publishing to Releases is provided by Actions automatically; there is nothing
+else to configure.
 
-**Защита ветки `master`**: включить в GitHub → Settings → Branches → правило для `master` —
-`Require a pull request before merging` и `Require status checks to pass` с обязательной
-проверкой `build (ubuntu-latest)` / `build (windows-latest)` / `build (macos-latest)` из CI.
-Слияние в `master` идёт только через PR с зелёным CI; агент не коммитит и не мержит в `master`
-самостоятельно (правило 9 CLAUDE.md) — это делает пользователь.
+**`master` branch protection**: in GitHub → Settings → Branches, add a rule for `master` with
+`Require a pull request before merging` and `Require status checks to pass`, requiring the
+`build (ubuntu-latest)` / `build (windows-latest)` / `build (macos-latest)` checks from CI.
+Merges into `master` go only through PRs with green CI; agents do not commit or merge into `master`
+on their own (rule 9 of CLAUDE.md) — that is up to the user.
 
-Диагностика на месте: вкладка «Диагностика» (иконка в шапке рядом с MCP) показывает версию,
-проверяет обновления по кнопке и на старте, и собирает архив логов (`main.log` + ротации +
-локальные crash-дампы, без отправки куда-либо — decision-7) для приложения к багрепорту.
+On-site diagnostics: the "Diagnostics" tab (icon in the header next to MCP) shows the version,
+checks for updates on demand and at startup, and collects a log archive (`main.log` + rotations +
+local crash dumps, never sent anywhere — decision-7) to attach to a bug report.
 
 ---
 
-## Структура репозитория
+## Repository layout
 
 ```
 ProjectHub/
 ├── electron/
-│   ├── main.ts                 # точка входа main-процесса
-│   ├── ipc/                    # типизированные IPC-хэндлеры по доменам (ai, git, backlog, ...)
+│   ├── main.ts                 # main process entry point
+│   ├── ipc/                    # typed IPC handlers by domain (ai, git, backlog, ...)
 │   ├── services/               # agentFleetService, claudeBridgeService, mcpServerService,
 │   │                           # worktreeService, processManager, ptyService, remoteControlService ...
-│   └── workers/                # RAG и тяжёлые задачи в utilityProcess
+│   └── workers/                # RAG and heavy jobs in utilityProcess
 ├── src/
 │   ├── components/             # ai (AI Studio, Swarm Arena), git, kanban, terminal, voice, remote ...
-│   ├── store/                  # Zustand-сторы
+│   ├── store/                  # Zustand stores
 │   ├── i18n/                   # en / ru
 │   └── hooks/
 ├── scripts/
-│   ├── rag/                    # индексация и MCP-сервер docs-rag
-│   ├── env/                    # MCP-сервер env-tools
-│   ├── remote-relay-server.mjs # relay для Remote Control
-│   └── telegram-bot.mjs        # Telegram-бот
+│   ├── rag/                    # indexing and the docs-rag MCP server
+│   ├── env/                    # env-tools MCP server
+│   ├── remote-relay-server.mjs # relay for Remote Control
+│   └── telegram-bot.mjs        # Telegram bot
 ├── backlog/
-│   ├── tasks/  completed/      # задачи (Backlog.md)
-│   ├── docs/                   # документация проекта
-│   └── decisions/              # ADR
+│   ├── tasks/  completed/      # tasks (Backlog.md)
+│   ├── docs/                   # project documentation
+│   └── decisions/              # ADRs
 ├── tests/unit/                 # Vitest
-├── .claude/  .agents/          # правила, скиллы и MCP-конфиги для Claude Code и Antigravity
-└── infra.config.json           # включённые модули инфраструктуры
+├── .claude/  .agents/          # rules, skills and MCP configs for Claude Code and Antigravity
+└── infra.config.json           # enabled infrastructure modules
 ```
 
 ---
 
-## Документация
+## Documentation
 
-- [Концепция и архитектура](backlog/docs/doc-2%20-%20Architecture-Concept.md)
-- [Контекст проекта и состояние системы](backlog/docs/doc-9%20-%20Контекст-проекта-и-состояние-системы-Context-Dump.md)
-- [Human-in-the-loop для Claude Code CLI](backlog/docs/doc-8%20-%20Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md)
-- [Руководство по RAG](backlog/docs/doc-5%20-%20RAG-Guide.md)
-- [Развёртывание инфраструктуры на новом проекте](backlog/docs/doc-4%20-%20Deployment-Guide.md)
-- [Ревью безопасности и дорожная карта](backlog/docs/doc-6%20-%20Comprehensive-Review-Security-And-Feature-Roadmap.md)
-- [ADR-1: выбор архитектуры и стека](backlog/decisions/decision-1%20-%20Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md)
-- [Правила работы с инфраструктурой для агентов](infra-dev.md)
+Project documentation is currently written in Russian.
 
----
-
-## Куда это идёт
-
-ProjectHub — это ставка на то, что следующая среда разработки будет строиться вокруг оркестрации, а не вокруг текстового редактора. Ближайшие направления:
-
-- новые движки для Swarm Arena (Aider, OpenCode, Gemini CLI) и автоматическая оценка результатов ревью-агентом;
-- политики автономности: от «подтверждать каждый шаг» до «разбудить меня, если упали тесты»;
-- облачные раннеры как часть того же пула машин, что и федерация десктопов;
-- сборки для Linux.
-
-Идеи, баги и PR приветствуются.
+- [Concept and architecture](backlog/docs/doc-2%20-%20Architecture-Concept.md)
+- [Project context and system state](backlog/docs/doc-9%20-%20Контекст-проекта-и-состояние-системы-Context-Dump.md)
+- [Human-in-the-loop for Claude Code CLI](backlog/docs/doc-8%20-%20Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md)
+- [RAG guide](backlog/docs/doc-5%20-%20RAG-Guide.md)
+- [Deploying the infrastructure to a new project](backlog/docs/doc-4%20-%20Deployment-Guide.md)
+- [Security review and feature roadmap](backlog/docs/doc-6%20-%20Comprehensive-Review-Security-And-Feature-Roadmap.md)
+- [ADR-1: architecture and tech stack choice](backlog/decisions/decision-1%20-%20Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md)
+- [Infrastructure rules for agents](infra-dev.md)
 
 ---
 
-## Лицензия
+## Where this is heading
+
+ProjectHub is a bet that the next development environment will be built around orchestration rather than a text editor. Near-term directions:
+
+- new engines for Swarm Arena (Aider, OpenCode, Gemini CLI) and automatic scoring of results by a reviewer agent;
+- autonomy policies: from "confirm every step" to "wake me up if the tests fail";
+- cloud runners as part of the same machine pool as the desktop federation;
+- Linux builds.
+
+Ideas, bug reports and PRs are welcome.
+
+---
+
+## License
 
 [MIT](LICENSE)
