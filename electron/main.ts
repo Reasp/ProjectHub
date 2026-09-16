@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { claudeBridgeService } from './services/claudeBridgeService';
 import { localWhisperService } from './services/localWhisperService';
 import { ragWorkerClient } from './services/ragWorkerClient';
+import { piperTtsService } from './services/piperTtsService';
 import { mcpServerService } from './services/mcpServerService';
 import { remoteControlService } from './services/remoteControlService';
 import { federationClientService } from './services/federationClientService';
@@ -564,6 +565,12 @@ async function performGracefulShutdown() {
     await ragWorkerClient.dispose();
   } catch (e) {
     console.warn('[Main] Error disposing RAG search worker:', e);
+  }
+
+  try {
+    await piperTtsService.dispose();
+  } catch (e) {
+    console.warn('[Main] Error disposing local TTS worker:', e);
   }
 
   try {

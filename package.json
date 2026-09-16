@@ -149,7 +149,14 @@
       "**/*.node",
       "**/@lancedb/**",
       "**/apache-arrow/**",
-      "**/node-pty/**"
+      "**/node-pty/**",
+      "**/sherpa-onnx-node/**",
+      "**/sherpa-onnx-win-x64/**",
+      "**/sherpa-onnx-win-ia32/**",
+      "**/sherpa-onnx-linux-x64/**",
+      "**/sherpa-onnx-linux-arm64/**",
+      "**/sherpa-onnx-darwin-x64/**",
+      "**/sherpa-onnx-darwin-arm64/**"
     ],
     "portable": {
       "useZip": true
@@ -176,6 +183,7 @@
     "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "sherpa-onnx-node": "^1.13.8",
     "simple-git": "^3.36.0",
     "tailwind-merge": "^3.6.0",
     "tree-kill": "^1.2.2",

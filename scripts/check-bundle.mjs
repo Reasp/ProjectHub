@@ -39,7 +39,7 @@ for (const s of specifiers) {
 }
 
 // 3. Нативные модули обязаны быть внешними импортами по имени пакета.
-const mustBeExternal = ['node-pty', '@lancedb/lancedb', '@huggingface/transformers'];
+const mustBeExternal = ['node-pty', '@lancedb/lancedb', '@huggingface/transformers', 'sherpa-onnx-node'];
 const usedExternals = [...specifiers].filter((s) => deps.some((d) => s === d || s.startsWith(`${d}/`)));
 for (const name of mustBeExternal) {
   const referenced = src.includes(name);

@@ -3,10 +3,10 @@ id: TASK-69
 title: >-
   Локальный нейросетевой TTS на голосах Piper (sherpa-onnx в worker
   main-процесса), кастомизация и импорт пользовательских голосов
-status: To Do
+status: Review
 assignee: []
 created_date: '2026-09-15 00:02'
-updated_date: '2026-09-15 02:33'
+updated_date: '2026-09-16 04:06'
 labels:
   - voice
   - tts
@@ -24,6 +24,34 @@ references:
   - >-
     backlog/decisions/decision-21 -
     Тяжёлые-вычисления-main-процесса-в-worker_threads-с-fallback-в-main.md
+modified_files:
+  - electron/services/ttsTextSplit.ts
+  - electron/services/piperVoiceConfig.ts
+  - electron/services/ttsVoiceRegistry.ts
+  - electron/services/ttsVoiceStore.ts
+  - electron/services/piperTtsService.ts
+  - electron/workers/ttsWorker.mjs
+  - electron/ipc/ttsIpc.ts
+  - electron/ipc/index.ts
+  - electron/main.ts
+  - electron/preload.ts
+  - src/services/ttsPlayer.ts
+  - src/services/voiceService.ts
+  - src/components/voice/VoiceSettingsModal.tsx
+  - src/components/voice/VoiceControlWidget.tsx
+  - src/types/electron.d.ts
+  - src/i18n/types.ts
+  - src/i18n/ru.ts
+  - src/i18n/en.ts
+  - tests/unit/ttsTextSplit.test.ts
+  - tests/unit/piperVoiceConfig.test.ts
+  - tests/unit/ttsVoiceRegistry.test.ts
+  - tests/unit/ttsVoiceStore.test.ts
+  - package.json
+  - scripts/check-bundle.mjs
+  - >-
+    backlog/decisions/decision-25 -
+    Локальный-TTS-на-голосах-Piper-через-sherpa-onnx-в-worker-main-процесса.md
 priority: medium
 type: feature
 ---
@@ -91,3 +119,114 @@ type: feature
 6. Сборка: externals, asarUnpack, `pack-win.mjs`; `npm run pack:win`, ручной smoke (read_tasks, stop_reading, смена устройства вывода).
 7. decision-25 → accepted с замерами; `npm run index-docs`; задача → Review.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Спайк (шаг 1) — вариант A подтверждён
+
+Проверено 2026-09-16 на Windows 10, Electron 44.0.0, Node 22.16.0, sherpa-onnx-node 1.13.8, голос
+`vits-piper-ru_RU-irina-medium`. Вариант B (WASM в рендерере) не понадобился.
+
+- **Нативный модуль грузится из упакованного приложения.** `require` по пути внутрь `app.asar`
+  работает — Electron прозрачно подменяет файлы распакованными из `app.asar.unpacked`.
+- **Главная находка: в Electron V8 запрещены external buffers.** `generate()` падает с
+  «External buffers are not allowed» и в главном потоке, и в воркере. Лечится
+  `enableExternalBuffer: false` в каждом запросе. В обычном node ошибки нет — ловушка для
+  разработки вне Electron, поэтому вынесена отдельным пунктом в decision-25.
+- **`**/*.node` в asarUnpack недостаточно:** рядом с `sherpa-onnx.node` должны лежать его DLL
+  (`onnxruntime.dll` 17 МБ и др.), поэтому в asarUnpack добавлены целиком каталоги платформенных
+  пакетов. Пересборка не нужна — модуль на N-API (`npmRebuild: false` сохранён).
+- **ABI:** N-API стабилен между Node 22 (modules 127) и Electron 44 (modules 149).
+
+## Замеры (AC#6 выполнен с запасом)
+
+| Метрика | Значение |
+|---|---|
+| Загрузка модели | 818–980 мс (872 мс в воркере из упакованного `app.asar`) |
+| RTF | 0.061–0.071 (в 14–16 раз быстрее реального времени) |
+| Первый чанк | 53 мс в node, 209–263 мс в Electron |
+| RSS после загрузки / после генерации | ~134–143 МБ / ~235–290 МБ |
+
+## Импорт пользовательских голосов
+
+«Сырая» модель Piper с Hugging Face **не принимается** sherpa: `'sample_rate' does not exist in
+the metadata`, причём процесс **аварийно завершается** (exit 127), а не бросает исключение. Отсюда
+два следствия: чужие модели проверяются только в воркере, и metadata приходится добавлять.
+
+Решение без Python и без protobuf-зависимости: ONNX — это protobuf `ModelProto`, где
+`metadata_props` — repeated-поле 14, а элементы repeated-поля можно дописать в конец сообщения.
+Дописывание 128 байт делает модель с HF рабочей (проверено на реальном файле). `tokens.txt`
+строится из `phoneme_id_map` — сверено с релизным `tokens.txt` sherpa, 151 символ, полное
+совпадение. Поля `phoneme_type` в реальных конфигах с HF нет, признак espeak — `espeak.voice`.
+
+## Архитектура
+
+- Чистые модули без Electron/React: `ttsTextSplit` (предложения, сокращения, лимит длины),
+  `piperVoiceConfig` (валидация конфига, tokens.txt, protobuf-metadata), `ttsVoiceRegistry`
+  (6 голосов с реальными sha256, пути кэша, защита от обхода каталога).
+- `ttsVoiceStore` — загрузка с прогрессом и проверкой sha256, распаковка системным `tar`
+  (bzip2 в Node нет), импорт, удаление. `espeak-ng-data` (18 МБ) хранится **один раз** и общий
+  для всех голосов, включая импортированные.
+- `piperTtsService` + `ttsWorker.mjs` — ленивая загрузка, очередь с `jobId`, таймауты 45/90 с,
+  до 2 перезапусков. Отмена реальная: возврат `0` из `onProgress` прерывает синтез внутри sherpa.
+- Рендерер: `ttsPlayer` (AudioContext на частоте модели, `setSinkId`, склейка чанков встык),
+  маршрутизация в `voiceService.speak`, глушение VAD на время собственной речи.
+
+## Отступление от decision-21 (зафиксировано в ADR)
+
+In-process fallback в main намеренно **не** сделан: синтез в main заблокировал бы event loop на
+всю фразу, а деградация уже есть уровнем выше — рендерер возвращается к системному
+`speechSynthesis`. При недоступности воркера сервис переходит в `unavailable` с кодом причины
+(`native_module_missing`, `worker_crashed`, …), который рендерер переводит через i18n и
+показывает в настройках.
+
+## Что проверено автоматически и что требует ручной проверки
+
+Проверено: синтез и отмена через **реальный воркер из упакованного `app.asar`**; загрузка
+нативного модуля из release-сборки; импорт голоса (fs, metadata, tokens.txt, манифест, ошибки)
+интеграционным тестом; 75 unit-тестов на чистые модули и хранилище.
+
+Требует ручного клика в UI (для этого задача и уходит в Review): скачивание голоса кнопкой с
+прогрессом, звучание через выбранное устройство вывода (`setSinkId`), реакция VAD на собственную
+речь, команды `read_tasks` / `read_doc` / `stop_reading` с загруженным голосом. Звук и GUI
+headless-проверкой не подтверждаются.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Добавлен второй движок озвучки — локальный нейросетевой TTS на голосах Piper (VITS/ONNX) через
+`sherpa-onnx-node` в `worker_threads` main-процесса, рядом с системным `speechSynthesis`.
+
+**Спайк решил архитектуру:** вариант A подтверждён на упакованном приложении, вариант B (WASM)
+не понадобился. Ключевая находка — в Electron запрещены external buffers, синтез требует
+`enableExternalBuffer: false`; а для asarUnpack недостаточно `**/*.node`, нужны целиком каталоги
+платформенных пакетов с DLL. Обе находки зафиксированы в decision-25 (`proposed` → `accepted`)
+вместе с фактическими замерами и лицензионными заметками (GPL-3 espeak-ng, датасет RHVoice
+«Unknown» — поэтому ни модели, ни espeak-ng-data в бандл не входят).
+
+**Производительность:** RTF 0.061–0.071, первый чанк 209–263 мс в Electron, загрузка модели
+~0.9 с — AC#6 выполнен с большим запасом. Генерация идёт по предложениям, PCM уходит в рендерер
+чанками, звук играет через `AudioContext` с `setSinkId`, чего системный движок не умеет.
+
+**Импорт своих голосов** работает без Python и без protobuf-зависимости: `tokens.txt` строится из
+`phoneme_id_map`, а metadata дописывается в конец `.onnx` как элементы repeated-поля
+`metadata_props`. Битые модели не роняют приложение — они загружаются только в воркере, потому
+что sherpa на модели без metadata завершает процесс, а не бросает исключение.
+
+**Проверки:** `npm run lint` — 0 ошибок (503 предупреждения, ровно baseline, новых нет);
+`npm test` — 80 файлов, 834 теста, все зелёные (75 новых); `npx tsc --noEmit` чисто;
+`npm run check-bundle` и `npm run lint:docs` зелёные; `npm run index-docs` пересобран;
+`npm run pack:win` собран, `release/win-unpacked/ProjectHub.exe` обновлён, `ttsWorker.mjs` лежит
+внутри `app.asar`, а sherpa с DLL — в `app.asar.unpacked`. Синтез и отмена дополнительно
+прогнаны через реальный воркер, поднятый **из упакованного `app.asar`**.
+
+**Осознанное отступление:** у этого воркера нет in-process fallback (decision-21 п. 5) — синтез в
+main заблокировал бы event loop; деградация сделана уровнем выше, в системный `speechSynthesis`,
+с показом причины в настройках. Отступление описано в decision-25.
+
+Задача уходит в Review: автоматически проверено всё, кроме того, что требует живого GUI и звука —
+скачивание голоса кнопкой с прогрессом, вывод в выбранное устройство, отсутствие реакции VAD на
+собственную речь и голосовые команды `read_tasks` / `read_doc` / `stop_reading`.
+<!-- SECTION:FINAL_SUMMARY:END -->

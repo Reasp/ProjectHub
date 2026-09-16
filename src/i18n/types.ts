@@ -263,6 +263,38 @@ export interface TranslationDictionary {
       whisperError: string;
       whisperNotLoaded: string;
       whisperWarmup: string;
+      // Локальный TTS на голосах Piper (TASK-69)
+      tabTts: string;
+      ttsEngineLabel: string;
+      ttsEngineSystem: string;
+      ttsEnginePiper: string;
+      ttsEngineHint: string;
+      ttsVoiceLabel: string;
+      ttsVoiceNotInstalled: string;
+      ttsVoiceInstalled: string;
+      ttsDownload: string;
+      ttsDownloading: string;
+      ttsDownloadVerify: string;
+      ttsDownloadExtract: string;
+      ttsCancelDownload: string;
+      ttsDelete: string;
+      ttsDeleteConfirm: string;
+      ttsImport: string;
+      ttsImportHint: string;
+      ttsImported: string;
+      ttsPreview: string;
+      ttsPreviewText: string;
+      ttsSpeed: string;
+      ttsVolume: string;
+      ttsStatusReady: string;
+      ttsStatusLoading: string;
+      ttsStatusUnavailable: string;
+      ttsStatusNotLoaded: string;
+      ttsEspeakMissing: string;
+      ttsSourceImported: string;
+      ttsNoVoices: string;
+      /** Коды ошибок main-процесса переводятся здесь: main не хранит строки интерфейса. */
+      ttsErrors: Record<string, string>;
       apiKeyLabel: string;
       apiKeyPlaceholder: string;
       apiKeySafeNotice: string;

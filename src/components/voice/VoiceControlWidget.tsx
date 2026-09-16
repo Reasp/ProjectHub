@@ -345,9 +345,9 @@ export const VoiceControlWidget: React.FC = () => {
       }
 
       if (cmd.intent === 'stop_reading') {
-        if (typeof window !== 'undefined' && window.speechSynthesis) {
-          window.speechSynthesis.cancel();
-        }
+        // Останавливаем оба движка: системный speechSynthesis и локальный Piper —
+        // отмена генерации по jobId плюс очистка очереди воспроизведения (TASK-69)
+        void voiceService.stopSpeaking();
         return;
       }
 

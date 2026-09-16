@@ -381,6 +381,74 @@ export interface LocalWhisperStatusInfo {
   respawnAttempts?: number;
 }
 
+// ─── Локальный TTS на голосах Piper (TASK-69, decision-25) ───
+export type TtsVoiceLanguage = 'ru' | 'en';
+export type TtsVoiceSource = 'builtin' | 'imported';
+
+export interface TtsVoiceListItem {
+  id: string;
+  label: string;
+  language: TtsVoiceLanguage;
+  source: TtsVoiceSource;
+  installed: boolean;
+  downloading: boolean;
+  /** Размер архива для ещё не скачанного голоса. */
+  archiveBytes?: number;
+  /** Размер установленного голоса на диске. */
+  sizeBytes?: number;
+  sampleRate?: number;
+}
+
+export interface TtsStatusInfo {
+  status: 'unloaded' | 'loading' | 'ready' | 'error' | 'unavailable';
+  voiceId: string | null;
+  sampleRate: number | null;
+  workerActive: boolean;
+  queueLength: number;
+  loadTimeMs?: number;
+  respawnAttempts: number;
+  error?: string;
+  /** Код причины недоступности — рендерер переводит его через i18n. */
+  errorCode?: string;
+  available: boolean;
+  espeakDataInstalled: boolean;
+}
+
+export interface TtsDownloadProgress {
+  voiceId: string;
+  phase: 'download' | 'verify' | 'extract' | 'done';
+  receivedBytes: number;
+  totalBytes: number;
+}
+
+export interface TtsChunkPayload {
+  jobId: string;
+  samples: Float32Array;
+  sampleRate: number;
+  index: number;
+}
+
+export interface TtsDonePayload {
+  jobId: string;
+  timeMs: number;
+  audioSec: number;
+  chunks: number;
+}
+
+export interface TtsErrorPayload {
+  jobId: string;
+  error: string;
+}
+
+export interface TtsOperationResult {
+  ok: boolean;
+  error?: string;
+  errorCode?: string;
+  detail?: string;
+  canceled?: boolean;
+  voice?: TtsVoiceListItem;
+}
+
 export interface GitFileStatus {
   path: string;
   index: string; // 'M', 'A', 'D', '?'
@@ -705,6 +773,28 @@ export interface IElectronAPI {
   transcribeLocalWhisper: (audioData: number[] | Float32Array, language?: 'ru' | 'en') => Promise<{ text: string; timeMs: number }>;
   getLocalWhisperStatus: () => Promise<LocalWhisperStatusInfo>;
   warmupLocalWhisper: () => Promise<LocalWhisperStatusInfo>;
+
+  // Локальный TTS на голосах Piper (TASK-69)
+  getTtsStatus: () => Promise<TtsStatusInfo>;
+  listTtsVoices: () => Promise<TtsVoiceListItem[]>;
+  downloadTtsVoice: (voiceId: string) => Promise<TtsOperationResult>;
+  cancelTtsVoiceDownload: (voiceId: string) => Promise<boolean>;
+  deleteTtsVoice: (voiceId: string) => Promise<TtsOperationResult>;
+  importTtsVoice: () => Promise<TtsOperationResult>;
+  warmupTts: (voiceId: string) => Promise<TtsStatusInfo>;
+  speakTts: (req: {
+    jobId: string;
+    text: string;
+    voiceId: string;
+    speed?: number;
+    speakerId?: number;
+  }) => Promise<{ ok: boolean; error?: string }>;
+  cancelTts: (jobId: string) => Promise<boolean>;
+  cancelAllTts: () => Promise<boolean>;
+  onTtsChunk: (callback: (chunk: TtsChunkPayload) => void) => () => void;
+  onTtsDone: (callback: (info: TtsDonePayload) => void) => () => void;
+  onTtsError: (callback: (info: TtsErrorPayload) => void) => () => void;
+  onTtsDownloadProgress: (callback: (progress: TtsDownloadProgress) => void) => () => void;
 
   // System
   getPlatform: () => Promise<string>;

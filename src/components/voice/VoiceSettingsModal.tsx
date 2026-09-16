@@ -19,7 +19,12 @@ import {
   Volume2,
   RefreshCw,
   CheckCircle2,
-  Radio
+  Radio,
+  Download,
+  Trash2,
+  Upload,
+  Play,
+  Speech
 } from 'lucide-react';
 import {
   voiceService,
@@ -28,7 +33,12 @@ import {
   type WhisperProvider,
   type AudioDeviceInfo
 } from '../../services/voiceService';
-import type { LocalWhisperStatusInfo } from '../../types/electron';
+import type {
+  LocalWhisperStatusInfo,
+  TtsDownloadProgress,
+  TtsStatusInfo,
+  TtsVoiceListItem
+} from '../../types/electron';
 import { CONFIGURABLE_COMMANDS, type CommandPhraseDefinition } from '../../services/voiceCommandPhrases';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
@@ -39,7 +49,7 @@ interface VoiceSettingsModalProps {
   onClose: () => void;
 }
 
-type TabType = 'devices' | 'phrases' | 'recognition' | 'cheatsheet';
+type TabType = 'devices' | 'phrases' | 'recognition' | 'tts' | 'cheatsheet';
 
 export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, onClose }) => {
   const { t, language } = useTranslation();
@@ -82,6 +92,98 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
       setWhisperStatus(st);
     } finally {
       setIsWarmingUp(false);
+    }
+  };
+
+  // ── Локальный TTS на голосах Piper (TASK-69) ──
+  const [ttsStatus, setTtsStatus] = useState<TtsStatusInfo | null>(null);
+  const [ttsVoices, setTtsVoices] = useState<TtsVoiceListItem[]>([]);
+  const [ttsProgress, setTtsProgress] = useState<Record<string, TtsDownloadProgress>>({});
+  const [isImportingVoice, setIsImportingVoice] = useState(false);
+  const [isPreviewingVoice, setIsPreviewingVoice] = useState(false);
+  const [ttsNotice, showTtsNotice] = useToast<string>(6000);
+
+  /** main возвращает код ошибки, а текст живёт здесь — иначе строки интерфейса утекли бы в main. */
+  const translateTtsError = (code?: string, fallback?: string): string =>
+    (code && t.voice.settingsModal.ttsErrors[code]) || fallback || '';
+
+  const refreshTtsState = async () => {
+    if (!window.api?.getTtsStatus) return;
+    const [status, voices] = await Promise.all([
+      window.api.getTtsStatus().catch(() => null),
+      window.api.listTtsVoices?.().catch(() => []) ?? []
+    ]);
+    setTtsStatus(status);
+    setTtsVoices(voices);
+  };
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'tts') return;
+    void refreshTtsState();
+    // Прогресс загрузки приходит событиями из main, а не опросом по таймеру
+    const unsub = window.api?.onTtsDownloadProgress?.((progress) => {
+      setTtsProgress((prev) => ({ ...prev, [progress.voiceId]: progress }));
+      if (progress.phase === 'done') void refreshTtsState();
+    });
+    return () => {
+      unsub?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, activeTab]);
+
+  const handleSelectTtsVoice = (voiceId: string) => {
+    voiceService.saveConfig({ ttsVoiceId: voiceId });
+    setVoiceConfig((c) => ({ ...c, ttsVoiceId: voiceId }));
+  };
+
+  const handleDownloadVoice = async (voiceId: string) => {
+    const res = await window.api?.downloadTtsVoice?.(voiceId);
+    if (res && !res.ok && !res.canceled) {
+      showTtsNotice(translateTtsError(res.errorCode, res.error));
+    } else if (res?.ok) {
+      handleSelectTtsVoice(voiceId);
+    }
+    await refreshTtsState();
+  };
+
+  const handleCancelVoiceDownload = async (voiceId: string) => {
+    await window.api?.cancelTtsVoiceDownload?.(voiceId);
+    await refreshTtsState();
+  };
+
+  const handleDeleteVoice = async (voice: TtsVoiceListItem) => {
+    const confirmed = await dialog.confirm(
+      t.voice.settingsModal.ttsDeleteConfirm.replace('{name}', voice.label)
+    );
+    if (!confirmed) return;
+    await window.api?.deleteTtsVoice?.(voice.id);
+    await refreshTtsState();
+  };
+
+  const handleImportVoice = async () => {
+    setIsImportingVoice(true);
+    try {
+      const res = await window.api?.importTtsVoice?.();
+      if (res?.ok && res.voice) {
+        showTtsNotice(t.voice.settingsModal.ttsImported.replace('{name}', res.voice.label || res.voice.id));
+        voiceService.saveConfig({ ttsVoiceId: res.voice.id });
+        setVoiceConfig(voiceService.getConfig());
+      } else if (res && !res.ok && !res.canceled) {
+        showTtsNotice(translateTtsError(res.errorCode, res.error));
+      }
+    } finally {
+      setIsImportingVoice(false);
+      await refreshTtsState();
+    }
+  };
+
+  const handlePreviewVoice = async () => {
+    if (isPreviewingVoice) return;
+    setIsPreviewingVoice(true);
+    try {
+      await voiceService.speak(t.voice.settingsModal.ttsPreviewText, language === 'ru' ? 'ru' : 'en');
+    } finally {
+      setIsPreviewingVoice(false);
     }
   };
 
@@ -281,6 +383,18 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
             >
               <Sliders className="w-4 h-4" />
               <span>{t.voice.settingsModal.tabRecognition}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('tts')}
+              className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-all ${
+                activeTab === 'tts'
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Speech className="w-4 h-4" />
+              <span>{t.voice.settingsModal.tabTts}</span>
             </button>
 
             <button
@@ -822,7 +936,265 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
           )}
 
           {/* ───────────────────────────────────────────────────────────── */}
-          {/* TAB 3: CHEAT SHEET & QUICK REFERENCE                          */}
+          {/* TAB 3: LOCAL NEURAL TTS (PIPER VOICES)                        */}
+          {/* ───────────────────────────────────────────────────────────── */}
+          {activeTab === 'tts' && (
+            <div className="space-y-4 text-xs">
+              {ttsNotice && (
+                <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-xs text-amber-200 flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <span className="font-medium">{ttsNotice}</span>
+                </div>
+              )}
+
+              {/* Выбор движка озвучки */}
+              <div className="space-y-2 p-4 rounded-xl bg-slate-950/60 border border-slate-800">
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  {t.voice.settingsModal.ttsEngineLabel}
+                </label>
+                <select
+                  value={voiceConfig.ttsEngine}
+                  onChange={(e) => {
+                    const ttsEngine = e.target.value as 'system' | 'piper';
+                    void voiceService.stopSpeaking();
+                    voiceService.saveConfig({ ttsEngine });
+                    setVoiceConfig((c) => ({ ...c, ttsEngine }));
+                  }}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="system">{t.voice.settingsModal.ttsEngineSystem}</option>
+                  <option value="piper">{t.voice.settingsModal.ttsEnginePiper}</option>
+                </select>
+
+                {voiceConfig.ttsEngine === 'piper' && (
+                  <>
+                    <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-[11px] text-indigo-300 flex items-start gap-2">
+                      <Zap className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <span>{t.voice.settingsModal.ttsEngineHint}</span>
+                    </div>
+
+                    {/* Статус движка: причина недоступности видна сразу (AC#7) */}
+                    <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-2 text-[11px]">
+                      {ttsStatus?.status === 'ready' ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                      ) : ttsStatus?.status === 'loading' ? (
+                        <RefreshCw className="w-4 h-4 text-indigo-400 shrink-0 animate-spin" />
+                      ) : ttsStatus && !ttsStatus.available ? (
+                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                      ) : (
+                        <Radio className="w-4 h-4 text-slate-500 shrink-0" />
+                      )}
+                      <span className="text-slate-300 min-w-0 truncate">
+                        {ttsStatus?.status === 'ready'
+                          ? t.voice.settingsModal.ttsStatusReady +
+                            (ttsStatus.loadTimeMs ? ` (${(ttsStatus.loadTimeMs / 1000).toFixed(1)} s)` : '')
+                          : ttsStatus?.status === 'loading'
+                          ? t.voice.settingsModal.ttsStatusLoading
+                          : ttsStatus && !ttsStatus.available
+                          ? `${t.voice.settingsModal.ttsStatusUnavailable}: ${translateTtsError(ttsStatus.errorCode, ttsStatus.error)}`
+                          : t.voice.settingsModal.ttsStatusNotLoaded}
+                      </span>
+                    </div>
+
+                    {ttsStatus && !ttsStatus.espeakDataInstalled && (
+                      <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-[11px] text-amber-200 flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <span>{t.voice.settingsModal.ttsEspeakMissing}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Каталог голосов */}
+              {voiceConfig.ttsEngine === 'piper' && (
+                <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-semibold text-white">
+                      <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                        <Speech className="w-4 h-4" />
+                      </div>
+                      <span>{t.voice.settingsModal.ttsVoiceLabel}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleImportVoice()}
+                      disabled={isImportingVoice}
+                      className="flex items-center gap-1.5 text-[11px] font-semibold text-purple-300 hover:text-white px-2.5 py-1 rounded-lg bg-purple-950/40 border border-purple-500/30 hover:bg-purple-900/50 transition disabled:opacity-50"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{t.voice.settingsModal.ttsImport}</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {ttsVoices.length === 0 && (
+                      <div className="p-4 text-center text-slate-500 text-[11px] bg-slate-900/40 rounded-lg border border-slate-800">
+                        {t.voice.settingsModal.ttsNoVoices}
+                      </div>
+                    )}
+
+                    {ttsVoices.map((voice) => {
+                      const progress = ttsProgress[voice.id];
+                      const isBusy = Boolean(progress && progress.phase !== 'done') || voice.downloading;
+                      const percent =
+                        progress && progress.totalBytes > 0
+                          ? Math.min(100, Math.round((progress.receivedBytes / progress.totalBytes) * 100))
+                          : 0;
+                      const isSelected = voiceConfig.ttsVoiceId === voice.id;
+
+                      return (
+                        <div
+                          key={voice.id}
+                          className={`p-3 rounded-lg border transition flex items-center justify-between gap-3 ${
+                            isSelected
+                              ? 'bg-indigo-950/30 border-indigo-500/40'
+                              : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <label className="flex items-center gap-2.5 min-w-0 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="tts-voice"
+                              checked={isSelected}
+                              disabled={!voice.installed}
+                              onChange={() => handleSelectTtsVoice(voice.id)}
+                              className="accent-indigo-500 shrink-0 disabled:opacity-40"
+                            />
+                            <span className="min-w-0">
+                              <span className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-white truncate">{voice.label}</span>
+                                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-400 font-mono uppercase">
+                                  {voice.language}
+                                </span>
+                                {voice.source === 'imported' && (
+                                  <span className="px-1.5 py-0.5 rounded bg-purple-500/15 text-[10px] text-purple-300 border border-purple-500/30">
+                                    {t.voice.settingsModal.ttsSourceImported}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="block text-[10px] text-slate-500 truncate mt-0.5">
+                                {isBusy
+                                  ? progress?.phase === 'verify'
+                                    ? t.voice.settingsModal.ttsDownloadVerify
+                                    : progress?.phase === 'extract'
+                                    ? t.voice.settingsModal.ttsDownloadExtract
+                                    : `${t.voice.settingsModal.ttsDownloading} ${percent}%`
+                                  : voice.installed
+                                  ? `${t.voice.settingsModal.ttsVoiceInstalled}${
+                                      voice.sizeBytes ? ` · ${Math.round(voice.sizeBytes / 1048576)} MB` : ''
+                                    }`
+                                  : `${t.voice.settingsModal.ttsVoiceNotInstalled}${
+                                      voice.archiveBytes ? ` · ${Math.round(voice.archiveBytes / 1048576)} MB` : ''
+                                    }`}
+                              </span>
+                            </span>
+                          </label>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {isBusy ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleCancelVoiceDownload(voice.id)}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold transition"
+                              >
+                                {t.voice.settingsModal.ttsCancelDownload}
+                              </button>
+                            ) : voice.installed ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteVoice(voice)}
+                                title={t.voice.settingsModal.ttsDelete}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => void handleDownloadVoice(voice.id)}
+                                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold transition"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>{t.voice.settingsModal.ttsDownload}</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Скорость, громкость и прослушивание */}
+              {voiceConfig.ttsEngine === 'piper' && (
+                <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-slate-300 font-semibold">
+                      <span>{t.voice.settingsModal.ttsSpeed}</span>
+                      <span className="font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                        {voiceConfig.ttsSpeed.toFixed(2)}×
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="2"
+                      step="0.05"
+                      value={voiceConfig.ttsSpeed}
+                      onChange={(e) => {
+                        const ttsSpeed = Number(e.target.value);
+                        voiceService.saveConfig({ ttsSpeed });
+                        setVoiceConfig((c) => ({ ...c, ttsSpeed }));
+                      }}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-slate-300 font-semibold">
+                      <span>{t.voice.settingsModal.ttsVolume}</span>
+                      <span className="font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                        {Math.round(voiceConfig.ttsVolume * 100)}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={voiceConfig.ttsVolume}
+                      onChange={(e) => {
+                        const ttsVolume = Number(e.target.value);
+                        voiceService.saveConfig({ ttsVolume });
+                        setVoiceConfig((c) => ({ ...c, ttsVolume }));
+                      }}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 pt-1">
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      {t.voice.settingsModal.ttsImportHint}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handlePreviewVoice()}
+                      disabled={isPreviewingVoice}
+                      className="flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-[11px] font-semibold transition"
+                    >
+                      <Play className={`w-3.5 h-3.5 ${isPreviewingVoice ? 'animate-pulse' : ''}`} />
+                      <span>{t.voice.settingsModal.ttsPreview}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ───────────────────────────────────────────────────────────── */}
+          {/* TAB 4: CHEAT SHEET & QUICK REFERENCE                          */}
           {/* ───────────────────────────────────────────────────────────── */}
           {activeTab === 'cheatsheet' && (
             <div className="space-y-3 text-xs">

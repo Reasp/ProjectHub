@@ -20,7 +20,11 @@ import type {
   NotificationSettings,
   NotificationSeverity,
   RagSearchOptions,
-  StartProcessOptions
+  StartProcessOptions,
+  TtsChunkPayload,
+  TtsDonePayload,
+  TtsDownloadProgress,
+  TtsErrorPayload
 } from '../src/types/electron';
 
 const api: IElectronAPI = {
@@ -376,6 +380,48 @@ const api: IElectronAPI = {
   getLocalWhisperStatus: () => ipcRenderer.invoke('voice:getLocalWhisperStatus'),
   // Ленивый прогрев модели: вызывается при первом включении hands-free или из настроек
   warmupLocalWhisper: () => ipcRenderer.invoke('voice:warmupLocalWhisper'),
+
+  // Локальный TTS на голосах Piper (TASK-69): генерация в воркере main, воспроизведение в рендерере
+  getTtsStatus: () => ipcRenderer.invoke('tts:getStatus'),
+  listTtsVoices: () => ipcRenderer.invoke('tts:listVoices'),
+  downloadTtsVoice: (voiceId: string) => ipcRenderer.invoke('tts:downloadVoice', voiceId),
+  cancelTtsVoiceDownload: (voiceId: string) => ipcRenderer.invoke('tts:cancelDownload', voiceId),
+  deleteTtsVoice: (voiceId: string) => ipcRenderer.invoke('tts:deleteVoice', voiceId),
+  importTtsVoice: () => ipcRenderer.invoke('tts:importVoice'),
+  warmupTts: (voiceId: string) => ipcRenderer.invoke('tts:warmup', voiceId),
+  speakTts: (req: { jobId: string; text: string; voiceId: string; speed?: number; speakerId?: number }) =>
+    ipcRenderer.invoke('tts:speak', req),
+  cancelTts: (jobId: string) => ipcRenderer.invoke('tts:cancel', jobId),
+  cancelAllTts: () => ipcRenderer.invoke('tts:cancelAll'),
+  // PCM приходит чанками по мере готовности: Float32Array переживает structured clone как есть
+  onTtsChunk: (callback: (chunk: TtsChunkPayload) => void) => {
+    const handler = (_event: IpcRendererEvent, chunk: TtsChunkPayload) => callback(chunk);
+    ipcRenderer.on('tts:chunk', handler);
+    return () => {
+      ipcRenderer.removeListener('tts:chunk', handler);
+    };
+  },
+  onTtsDone: (callback: (info: TtsDonePayload) => void) => {
+    const handler = (_event: IpcRendererEvent, info: TtsDonePayload) => callback(info);
+    ipcRenderer.on('tts:done', handler);
+    return () => {
+      ipcRenderer.removeListener('tts:done', handler);
+    };
+  },
+  onTtsError: (callback: (info: TtsErrorPayload) => void) => {
+    const handler = (_event: IpcRendererEvent, info: TtsErrorPayload) => callback(info);
+    ipcRenderer.on('tts:error', handler);
+    return () => {
+      ipcRenderer.removeListener('tts:error', handler);
+    };
+  },
+  onTtsDownloadProgress: (callback: (progress: TtsDownloadProgress) => void) => {
+    const handler = (_event: IpcRendererEvent, progress: TtsDownloadProgress) => callback(progress);
+    ipcRenderer.on('tts:downloadProgress', handler);
+    return () => {
+      ipcRenderer.removeListener('tts:downloadProgress', handler);
+    };
+  },
 
   // System
   getPlatform: () => ipcRenderer.invoke('system:getPlatform'),

@@ -11,9 +11,12 @@ export type VoiceState =
   | 'error';
 
 export type VoiceEngine = 'whisper' | 'webspeech';
+/** Движок озвучки: системный speechSynthesis или локальный Piper в воркере main (TASK-69). */
+export type TtsEngine = 'system' | 'piper';
 export type WhisperProvider = 'local' | 'groq' | 'openai';
 
 import { getDefaultCommandPhrases } from './voiceCommandPhrases';
+import { ttsPlayer } from './ttsPlayer';
 import type { LocalWhisperStatusInfo } from '../types/electron';
 
 export interface AudioDeviceInfo {
@@ -31,6 +34,14 @@ export interface VoiceConfig {
   whisperEndpoint: string;
   language: 'ru' | 'en';
   ttsEnabled: boolean;
+  /** Какой движок озвучивает текст (TASK-69). */
+  ttsEngine: TtsEngine;
+  /** Идентификатор голоса Piper; пустая строка — выбрать по языку. */
+  ttsVoiceId: string;
+  /** Скорость речи Piper: 1.0 — как записано в модели. */
+  ttsSpeed: number;
+  /** Громкость воспроизведения Piper: 0..1. */
+  ttsVolume: number;
   handsFree: boolean; // Continuous listening without touching buttons
   vadSilenceThresholdMs: number; // Silence duration before cutting chunk (default: 480ms)
   customCommandPhrases?: Record<string, string[]>;
@@ -47,6 +58,11 @@ const DEFAULT_CONFIG: VoiceConfig = {
   whisperEndpoint: 'http://127.0.0.1:8000/v1/audio/transcriptions',
   language: 'ru',
   ttsEnabled: true,
+  // По умолчанию остаётся системный движок: модели Piper ещё не скачаны (decision-25)
+  ttsEngine: 'system',
+  ttsVoiceId: '',
+  ttsSpeed: 1.0,
+  ttsVolume: 1.0,
   handsFree: true, // Hands-Free by default
   vadSilenceThresholdMs: 480,
   customCommandPhrases: getDefaultCommandPhrases(),
@@ -81,6 +97,8 @@ class VoiceService {
 
   private isSpeaking = false;
   private isPaused = false;
+  /** Пока приложение говорит само, VAD не слушает — иначе оно реагирует на собственную речь. */
+  private ttsMuted = false;
   private speechStartTime = 0;
   private lastSoundTime = 0;
   private currentPhraseChunks: Float32Array[] = [];
@@ -868,7 +886,8 @@ class VoiceService {
   private processAudioChunkVAD(chunk: Float32Array) {
     if (chunk.length === 0) return;
 
-    if (this.isPaused) {
+    // Пауза пользователя или собственная речь приложения: звук не анализируем
+    if (this.isPaused || this.ttsMuted) {
       this.onAudioLevelCallbacks.forEach((cb) => {
         try { cb(0, false); } catch (e) {}
       });
@@ -1183,24 +1202,183 @@ class VoiceService {
   // ─────────────────────────────────────────────────────────────────
   // 3. Text-To-Speech (TTS) Synthesis
   // ─────────────────────────────────────────────────────────────────
-  speak(text: string, lang?: 'ru' | 'en'): Promise<void> {
-    return new Promise((resolve) => {
-      if (typeof window === 'undefined' || !window.speechSynthesis || !this.config.ttsEnabled) {
+  /** Подписки на потоковые события синтеза из main ставятся один раз при первом обращении. */
+  private ttsListenersBound = false;
+  private ttsJobCounter = 0;
+  private activeTtsJob: {
+    id: string;
+    finish: (playedAudio: boolean) => void;
+    playedChunks: number;
+    generationDone: boolean;
+  } | null = null;
+  private lastTtsError: string | null = null;
+
+  /** Последняя причина, по которой локальный движок не сработал (показывается в настройках). */
+  getLastTtsError(): string | null {
+    return this.lastTtsError;
+  }
+
+  private setTtsMuted(muted: boolean) {
+    this.ttsMuted = muted;
+    // Сбрасываем накопленную фразу, чтобы хвост собственной речи не ушёл в распознавание
+    if (muted) this.resetVAD();
+  }
+
+  /** Голос по умолчанию для языка, если пользователь не выбрал свой (см. ttsVoiceRegistry). */
+  private resolveTtsVoiceId(lang: 'ru' | 'en'): string {
+    if (this.config.ttsVoiceId) return this.config.ttsVoiceId;
+    return lang === 'en' ? 'en_US-amy-medium' : 'ru_RU-irina-medium';
+  }
+
+  private bindTtsListeners() {
+    if (this.ttsListenersBound || typeof window === 'undefined' || !window.api?.onTtsChunk) return;
+    this.ttsListenersBound = true;
+
+    window.api.onTtsChunk((chunk) => {
+      const job = this.activeTtsJob;
+      if (!job || job.id !== chunk.jobId) return;
+      void ttsPlayer
+        .enqueue(chunk.jobId, chunk.samples, chunk.sampleRate, {
+          sinkId: this.config.audioOutputDeviceId || '',
+          volume: this.config.ttsVolume
+        })
+        .then((accepted) => {
+          if (accepted) job.playedChunks += 1;
+        });
+    });
+
+    window.api.onTtsDone((info) => {
+      const job = this.activeTtsJob;
+      if (!job || job.id !== info.jobId) return;
+      job.generationDone = true;
+      // Генерация завершена, но очередь может ещё звучать — ждём её опустошения
+      if (!ttsPlayer.isPlaying) job.finish(job.playedChunks > 0);
+    });
+
+    window.api.onTtsError((info) => {
+      const job = this.activeTtsJob;
+      if (!job || job.id !== info.jobId) return;
+      this.lastTtsError = info.error;
+      job.finish(job.playedChunks > 0);
+    });
+
+    ttsPlayer.onEnded(() => {
+      const job = this.activeTtsJob;
+      if (job && job.generationDone) job.finish(job.playedChunks > 0);
+    });
+  }
+
+  /**
+   * Озвучивает текст выбранным движком. Если локальный Piper недоступен или не успел выдать
+   * ни одного чанка, происходит деградация в системный `speechSynthesis` — без краха (AC#7).
+   */
+  async speak(text: string, lang?: 'ru' | 'en'): Promise<void> {
+    if (typeof window === 'undefined' || !this.config.ttsEnabled) return;
+    const language = lang || this.config.language;
+
+    if (this.config.ttsEngine === 'piper') {
+      const handled = await this.speakWithPiper(text, language);
+      if (handled) return;
+    }
+
+    return this.speakWithSystem(text, language);
+  }
+
+  /**
+   * Локальный синтез: main отдаёт PCM по предложениям, звук играет через AudioContext с
+   * выбранным устройством вывода.
+   * @returns true, если озвучка состоялась; false — нужен системный движок
+   */
+  private async speakWithPiper(text: string, lang: 'ru' | 'en'): Promise<boolean> {
+    const api = window.api;
+    if (!api?.speakTts || !api.getTtsStatus) return false;
+
+    try {
+      const status = await api.getTtsStatus();
+      if (!status?.available) {
+        this.lastTtsError = status?.error || 'Local TTS engine is unavailable';
+        return false;
+      }
+    } catch (err) {
+      this.lastTtsError = err instanceof Error ? err.message : String(err);
+      return false;
+    }
+
+    this.bindTtsListeners();
+    const jobId = `tts-${++this.ttsJobCounter}-${Date.now()}`;
+    await ttsPlayer.begin(jobId);
+    this.setTtsMuted(true);
+
+    const played = await new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (playedAudio: boolean) => {
+        if (settled) return;
+        settled = true;
+        if (this.activeTtsJob?.id === jobId) this.activeTtsJob = null;
+        this.setTtsMuted(false);
+        resolve(playedAudio);
+      };
+      this.activeTtsJob = { id: jobId, finish, playedChunks: 0, generationDone: false };
+
+      api
+        .speakTts({ jobId, text, voiceId: this.resolveTtsVoiceId(lang), speed: this.config.ttsSpeed })
+        .then((res) => {
+          if (!res?.ok) {
+            this.lastTtsError = res?.error || 'Local TTS synthesis failed';
+            finish(false);
+          }
+        })
+        .catch((err) => {
+          this.lastTtsError = err instanceof Error ? err.message : String(err);
+          finish(false);
+        });
+    });
+
+    if (played) this.lastTtsError = null;
+    return played;
+  }
+
+  private speakWithSystem(text: string, lang: 'ru' | 'en'): Promise<void> {
+    return new Promise<void>((resolve) => {
+      if (typeof window === 'undefined' || !window.speechSynthesis) {
         resolve();
         return;
       }
 
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = (lang || this.config.language) === 'en' ? 'en-US' : 'ru-RU';
+      utterance.lang = lang === 'en' ? 'en-US' : 'ru-RU';
       utterance.rate = 1.1;
       utterance.pitch = 1.0;
 
       utterance.onend = () => resolve();
       utterance.onerror = () => resolve();
 
+      this.setTtsMuted(true);
       window.speechSynthesis.speak(utterance);
+    }).then(() => {
+      this.setTtsMuted(false);
     });
+  }
+
+  /** Останавливает озвучку обоими движками: и генерацию по jobId, и воспроизведение. */
+  async stopSpeaking(): Promise<void> {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+
+    const job = this.activeTtsJob;
+    if (job) {
+      try {
+        await window.api?.cancelTts?.(job.id);
+      } catch {
+        // воркер мог уже завершиться — остановки воспроизведения достаточно
+      }
+      job.finish(job.playedChunks > 0);
+    }
+
+    await ttsPlayer.stop();
+    this.setTtsMuted(false);
   }
 }
 

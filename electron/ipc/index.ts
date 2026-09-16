@@ -13,6 +13,7 @@ import { registerDiagnosticsIpc } from './diagnosticsIpc';
 import { registerNotificationsIpc } from './notificationsIpc';
 import { registerFederationIpc } from './federationIpc';
 import { registerComputerUseIpc } from './computerUseIpc';
+import { registerTtsIpc } from './ttsIpc';
 
 export type { IpcContext } from './types';
 
@@ -23,6 +24,7 @@ export function registerAllIpc(ctx: IpcContext) {
   registerAiIpc(ctx);
   registerFilesIpc();
   registerVoiceIpc(ctx);
+  registerTtsIpc(ctx);
   registerMcpIpc();
   registerProcessIpc();
   registerHitlIpc(ctx);
