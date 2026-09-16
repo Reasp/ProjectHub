@@ -1,10 +1,10 @@
 ---
 id: TASK-86
 title: 'Аудит HITL: решение помечается decidedBy local без подтверждённого клика'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-16 00:25'
-updated_date: '2026-09-16 02:00'
+updated_date: '2026-09-16 10:38'
 labels:
   - hitl
   - audit
