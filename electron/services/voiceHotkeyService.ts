@@ -160,7 +160,14 @@ class VoiceHotkeyService {
    * запись десятки раз в секунду.
    */
   private handleFire(now: number): void {
+    const sinceLast = this.hold.lastFireAt > 0 ? now - this.hold.lastFireAt : -1;
     const isNewPress = registerFire(this.hold, now, this.timing);
+    // Уровень debug: при работающем автоповторе это десятки строк в секунду на каждое удержание.
+    // Для разбора детекта удержания приложение запускают с PROJECTHUB_LOG_LEVEL=debug.
+    logger.debug(
+      `[VoiceHotkey] Срабатывание: ${isNewPress ? 'новое нажатие' : 'автоповтор'}, ` +
+        `интервал ${sinceLast} мс, дедлайн ${this.hold.deadlineMs} мс, в серии ${this.hold.fireCount}`
+    );
     this.scheduleReleaseCheck(now);
     if (!isNewPress) return;
 
@@ -202,6 +209,7 @@ class VoiceHotkeyService {
   private startCapture(): void {
     if (this.recording) return;
     this.recording = true;
+    logger.info(`[VoiceHotkey] Старт записи (режим: ${this.settings.mode})`);
     this.handlers?.onCapture(true, { mode: this.settings.mode, durationMs: 0 });
     this.broadcastStatus();
   }
@@ -210,6 +218,7 @@ class VoiceHotkeyService {
     if (!this.recording) return;
     this.recording = false;
     const durationMs = Math.max(0, this.hold.lastFireAt - this.hold.firstFireAt);
+    logger.info(`[VoiceHotkey] Стоп записи: удержание ${durationMs} мс, срабатываний ${this.hold.fireCount}`);
     this.handlers?.onCapture(false, { mode: this.settings.mode, durationMs });
     this.broadcastStatus();
   }

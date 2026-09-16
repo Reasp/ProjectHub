@@ -62,8 +62,26 @@ const MODIFIERS = new Set([
 const FORBIDDEN_KEYS = new Set(['f12']);
 
 /**
- * Accelerator пригоден, если это минимум один модификатор плюс ровно одна обычная клавиша.
- * Чистый модификатор (например, «держи правый Alt») в globalShortcut невыразим.
+ * Одиночные клавиши, которые допустимо занять под глобальный хоткей целиком: ими не набирают
+ * текст, поэтому перехват их во всей системе ничего не ломает. Буквы и цифры сюда не входят —
+ * глобально перехваченная «A» сделала бы невозможным ввод этой буквы в любом приложении.
+ *
+ * Правый Ctrl отдельно назначить нельзя: акселераторы Electron не различают левый и правый
+ * модификатор, а чистый модификатор не является допустимым акселератором вовсе ([[decision-30]]).
+ */
+const STANDALONE_KEYS = new Set(['capslock', 'scrolllock', 'pause', 'insert']);
+
+function isStandaloneKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  if (FORBIDDEN_KEYS.has(normalized)) return false;
+  if (STANDALONE_KEYS.has(normalized)) return true;
+  return /^f([1-9]|1[0-9]|2[0-4])$/.test(normalized);
+}
+
+/**
+ * Accelerator пригоден, если это либо одиночная «безопасная» клавиша (см. {@link STANDALONE_KEYS}),
+ * либо минимум один модификатор плюс ровно одна обычная клавиша. Чистый модификатор
+ * («держи правый Ctrl») в globalShortcut невыразим.
  */
 export function isValidAccelerator(value: unknown): boolean {
   if (typeof value !== 'string') return false;
@@ -71,11 +89,13 @@ export function isValidAccelerator(value: unknown): boolean {
   if (!trimmed) return false;
 
   const segments = trimmed.split('+');
-  if (segments.length < 2 || segments.length > 5) return false;
+  if (segments.length < 1 || segments.length > 5) return false;
   // Пустой сегмент («Control++A», «Control+») делает accelerator невалидным.
   if (segments.some((segment) => segment.trim().length === 0)) return false;
 
   const parts = segments.map((segment) => segment.trim());
+  if (parts.length === 1) return isStandaloneKey(parts[0]);
+
   const key = parts[parts.length - 1];
   const mods = parts.slice(0, -1);
 

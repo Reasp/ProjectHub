@@ -27,6 +27,18 @@ describe('isValidAccelerator: горячая клавиша push-to-talk (TASK-8
     }
   });
 
+  it('принимает одиночные клавиши, которыми не набирают текст', () => {
+    for (const accelerator of ['CapsLock', 'ScrollLock', 'Pause', 'Insert', 'F13', 'F24', 'f9']) {
+      expect(isValidAccelerator(accelerator), accelerator).toBe(true);
+    }
+  });
+
+  it('одиночные буквы и цифры отвергаются: глобальный перехват лишил бы их во всех программах', () => {
+    for (const accelerator of ['A', 'Space', 'Enter', '5', 'Escape']) {
+      expect(isValidAccelerator(accelerator), accelerator).toBe(false);
+    }
+  });
+
   it('отвергает мусор, повторы модификаторов и пустые сегменты', () => {
     for (const accelerator of ['', '   ', 'Space', 'Control++A', 'Control+', '+A', 'Ctrl+Ctrl+A', 'Hyper+A']) {
       expect(isValidAccelerator(accelerator), accelerator).toBe(false);
