@@ -43,13 +43,22 @@ const MENU_LIST_LIMIT = 5;
 const STATE_LABEL: Record<TrayState, string> = {
   idle: 'Простой: активных агентов нет',
   working: 'Агенты работают',
-  attention: 'Требуется решение человека'
+  attention: 'Требуется решение человека',
+  recording: 'Идёт запись голоса'
 };
 
 class TrayService {
   private tray: Tray | null = null;
   private handlers: TrayHandlers | null = null;
   private state: TrayState = 'idle';
+  /**
+   * Запись голоса по push-to-talk (TASK-83). Отдельный флаг, а не значение `state`: состояние
+   * трея пересчитывается `notificationService.refreshTray()` на каждом событии шины и затёрло бы
+   * индикацию записи уже через мгновение.
+   */
+  private recording = false;
+  /** Какая иконка реально выставлена: состояние и запись вместе решают, что показывать. */
+  private appliedIcon: TrayState | null = null;
   private isQuitting = false;
 
   public configure(handlers: TrayHandlers): void {
@@ -78,15 +87,36 @@ class TrayService {
 
   public setState(state: TrayState): void {
     if (!this.tray || this.tray.isDestroyed()) return;
-    if (state !== this.state) {
-      this.state = state;
-      try {
-        this.tray.setImage(getTrayIcon(state));
-      } catch (err) {
-        logger.warn(`[Tray] Failed to set icon: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
+    this.state = state;
+    this.applyIcon();
     this.refresh();
+  }
+
+  /** Индикация записи голоса; приоритетнее рабочего состояния, но не запроса к человеку. */
+  public setRecording(active: boolean): void {
+    if (this.recording === active) return;
+    this.recording = active;
+    if (!this.tray || this.tray.isDestroyed()) return;
+    this.applyIcon();
+    this.refresh();
+  }
+
+  /** Что показывать: запрос человеку важнее записи, запись важнее фоновой работы агентов. */
+  private effectiveState(): TrayState {
+    if (this.state === 'attention') return 'attention';
+    return this.recording ? 'recording' : this.state;
+  }
+
+  private applyIcon(): void {
+    if (!this.tray || this.tray.isDestroyed()) return;
+    const next = this.effectiveState();
+    if (next === this.appliedIcon) return;
+    try {
+      this.tray.setImage(getTrayIcon(next));
+      this.appliedIcon = next;
+    } catch (err) {
+      logger.warn(`[Tray] Failed to set icon: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** Пересобрать меню и подсказку: очередь и список сессий меняются на каждом событии шины. */
@@ -95,7 +125,7 @@ class TrayService {
     const pending = safeCall(this.handlers.getPendingHitl, []);
     const sessions = safeCall(this.handlers.getActiveSessions, []);
 
-    const tooltipParts = ['ProjectHub', STATE_LABEL[this.state]];
+    const tooltipParts = ['ProjectHub', STATE_LABEL[this.effectiveState()]];
     if (pending.length) tooltipParts.push(`Ожидают решения: ${pending.length}`);
     if (sessions.length) tooltipParts.push(`Активных сессий: ${sessions.length}`);
     try {
@@ -105,7 +135,7 @@ class TrayService {
     }
 
     const template: MenuItemConstructorOptions[] = [
-      { label: `ProjectHub — ${STATE_LABEL[this.state]}`, enabled: false },
+      { label: `ProjectHub — ${STATE_LABEL[this.effectiveState()]}`, enabled: false },
       { type: 'separator' },
       { label: 'Открыть ProjectHub', click: () => this.handlers?.showWindow() }
     ];

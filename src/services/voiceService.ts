@@ -16,6 +16,8 @@ export type TtsEngine = 'system' | 'piper';
 export type WhisperProvider = 'local' | 'groq' | 'openai';
 
 import { getDefaultCommandPhrases } from './voiceCommandPhrases';
+import { DEFAULT_WAKE_WORD_PHRASES } from './wakeWord';
+import { DEFAULT_BARGE_IN, createBargeInState, feedBargeIn, resetBargeIn } from './bargeInDetector';
 import { ttsPlayer } from './ttsPlayer';
 import type { LocalWhisperStatusInfo } from '../types/electron';
 
@@ -48,6 +50,29 @@ export interface VoiceConfig {
   audioInputDeviceId?: string; // ID of selected microphone (empty string = system default)
   audioOutputDeviceId?: string; // ID of selected output (empty string = system default)
   autoSwitchOnDeviceChange?: boolean; // Hotplug: auto switch when headset connects/disconnects
+  /**
+   * Ключевое слово активации (TASK-83): пока включено, в hands-free выполняются только фразы,
+   * начинающиеся с обращения. Выключено по умолчанию — иначе сломался бы привычный сценарий,
+   * где команда произносится сразу.
+   */
+  wakeWordEnabled?: boolean;
+  wakeWordPhrases?: string[];
+  /** Нераспознанную регулярками фразу разбирает настроенная модель (TASK-83 п. 2). */
+  llmFallbackEnabled?: boolean;
+  /** Речь пользователя прерывает озвучку приложения (barge-in, TASK-83 п. 3). */
+  bargeInEnabled?: boolean;
+  /**
+   * Режим диалога (TASK-83 п. 3): краткая сводка финального ответа агента читается вслух.
+   * Выключено по умолчанию — до сих пор озвучка включалась только явной командой («прочитай
+   * задачи»), и делать её самопроизвольной без спроса нельзя.
+   */
+  speakAgentAnswers?: boolean;
+  /** Озвучивать вопросы агента, вынесенные на подтверждение человеку. */
+  speakHitlQuestions?: boolean;
+  /** Расставлять знаки препинания в диктуемом тексте настроенной моделью (TASK-83 п. 5). */
+  dictationPunctuation?: boolean;
+  /** Пользователь уже подтвердил, что диктовка печатает в чужие окна — второй раз не спрашиваем. */
+  dictationConfirmed?: boolean;
 }
 
 const DEFAULT_CONFIG: VoiceConfig = {
@@ -68,7 +93,15 @@ const DEFAULT_CONFIG: VoiceConfig = {
   customCommandPhrases: getDefaultCommandPhrases(),
   audioInputDeviceId: '',
   audioOutputDeviceId: '',
-  autoSwitchOnDeviceChange: true
+  autoSwitchOnDeviceChange: true,
+  wakeWordEnabled: false,
+  wakeWordPhrases: [...DEFAULT_WAKE_WORD_PHRASES],
+  llmFallbackEnabled: true,
+  bargeInEnabled: true,
+  speakAgentAnswers: false,
+  speakHitlQuestions: false,
+  dictationPunctuation: false,
+  dictationConfirmed: false
 };
 
 const STORAGE_KEY = 'projecthub_voice_config';
@@ -99,6 +132,21 @@ class VoiceService {
   private isPaused = false;
   /** Пока приложение говорит само, VAD не слушает — иначе оно реагирует на собственную речь. */
   private ttsMuted = false;
+
+  // ── Push-to-talk (TASK-83): границы фразы задаёт клавиша, а не детектор тишины ──
+  private pushToTalkActive = false;
+  /** Микрофон был открыт ради удержания — после отпускания его надо закрыть обратно. */
+  private pushToTalkOwnedCapture = false;
+  private pushToTalkSamples = 0;
+  /** Состояние детектора перебивания: судит только громкость во время собственной речи. */
+  private bargeInState = createBargeInState();
+  /** Страховка от «залипшей» клавиши: дольше этого одна фраза не пишется. */
+  private static readonly PUSH_TO_TALK_MAX_SAMPLES = 16000 * 60;
+  private onPushToTalkCallbacks: Set<(active: boolean) => void> = new Set();
+
+  /** Режим системной диктовки (TASK-83 п. 5): распознанное печатается в активное окно. */
+  private dictationActive = false;
+  private onDictationCallbacks: Set<(active: boolean) => void> = new Set();
   private speechStartTime = 0;
   private lastSoundTime = 0;
   private currentPhraseChunks: Float32Array[] = [];
@@ -874,6 +922,7 @@ class VoiceService {
     this.isSpeaking = false;
     this.speechStartTime = 0;
     this.lastSoundTime = 0;
+    this.pushToTalkSamples = 0;
     this.currentPhraseChunks = [];
     this.preRollIndex = 0;
     this.preRollFilled = false;
@@ -886,8 +935,46 @@ class VoiceService {
   private processAudioChunkVAD(chunk: Float32Array) {
     if (chunk.length === 0) return;
 
+    // Push-to-talk: пока клавиша удерживается, пишем всё подряд. Границы фразы задаёт пользователь,
+    // поэтому ни порог тишины, ни пауза, ни глушение на время собственной речи здесь не действуют —
+    // удержание клавиши это и есть команда «слушай меня сейчас».
+    if (this.pushToTalkActive) {
+      this.currentPhraseChunks.push(new Float32Array(chunk));
+      this.pushToTalkSamples += chunk.length;
+
+      let sumSquares = 0;
+      for (let i = 0; i < chunk.length; i++) {
+        sumSquares += chunk[i] * chunk[i];
+      }
+      const level = Math.min(1, Math.sqrt(sumSquares / chunk.length) * 15);
+      this.onAudioLevelCallbacks.forEach((cb) => {
+        try { cb(level, true); } catch (e) {}
+      });
+
+      if (this.pushToTalkSamples >= VoiceService.PUSH_TO_TALK_MAX_SAMPLES) {
+        console.warn('[VoiceService] Push-to-talk phrase hit the 60s cap, dispatching early');
+        void this.endPushToTalk();
+      }
+      return;
+    }
+
     // Пауза пользователя или собственная речь приложения: звук не анализируем
     if (this.isPaused || this.ttsMuted) {
+      // Исключение — barge-in (TASK-83 п. 3). Гейт остаётся прежним: фразы во время озвучки не
+      // накапливаются и в распознавание не уходят. Но громкую и достаточно долгую речь человека мы
+      // всё же замечаем и замолкаем — иначе перебить приложение голосом было бы нечем.
+      if (this.ttsMuted && this.config.bargeInEnabled !== false) {
+        let sumSquares = 0;
+        for (let i = 0; i < chunk.length; i++) {
+          sumSquares += chunk[i] * chunk[i];
+        }
+        const rms = Math.sqrt(sumSquares / chunk.length);
+        if (feedBargeIn(this.bargeInState, rms, Date.now(), DEFAULT_BARGE_IN)) {
+          console.log('[VoiceService] Barge-in: речь пользователя во время озвучки, останавливаем TTS');
+          void this.stopSpeaking();
+        }
+      }
+
       this.onAudioLevelCallbacks.forEach((cb) => {
         try { cb(0, false); } catch (e) {}
       });
@@ -972,7 +1059,7 @@ class VoiceService {
    * Finalizes phrase, sends it to the background Whisper thread,
    * while keeping the audio capture thread running uninterrupted!
    */
-  private finalizeAndDispatchPhrase() {
+  private finalizeAndDispatchPhrase(): Promise<void> {
     this.isSpeaking = false;
     this.setState('transcribing');
 
@@ -990,16 +1077,17 @@ class VoiceService {
     }
 
     this.currentPhraseChunks = [];
+    this.pushToTalkSamples = 0;
 
     // Ignore tiny blips (< 0.28s)
     if (totalSamples < 4500) {
       this.setState('listening_handsfree');
-      return;
+      return Promise.resolve();
     }
 
     console.log(`[VoiceService] Hands-Free phrase captured (${(totalSamples / 16000).toFixed(2)}s). Dispatching to Whisper worker...`);
 
-    this.dispatchToWhisper(fullPhrase)
+    return this.dispatchToWhisper(fullPhrase)
       .then((text) => {
         if (text && text.trim()) {
           const clean = text.trim();
@@ -1200,6 +1288,114 @@ class VoiceService {
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // 2.1 Push-to-talk по глобальной горячей клавише (TASK-83, п. 1)
+  // ─────────────────────────────────────────────────────────────────
+  get isPushToTalkActive(): boolean {
+    return this.pushToTalkActive;
+  }
+
+  onPushToTalkChange(callback: (active: boolean) => void): () => void {
+    this.onPushToTalkCallbacks.add(callback);
+    try {
+      callback(this.pushToTalkActive);
+    } catch (e) {}
+    return () => {
+      this.onPushToTalkCallbacks.delete(callback);
+    };
+  }
+
+  private notifyPushToTalk() {
+    this.onPushToTalkCallbacks.forEach((cb) => {
+      try { cb(this.pushToTalkActive); } catch (e) {}
+    });
+  }
+
+  /**
+   * Клавиша нажата: начинаем запись. Если hands-free выключен, микрофон открывается на время
+   * удержания и закрывается после отпускания. Собственная озвучка при этом прерывается — удержание
+   * клавиши означает «слушай меня», то есть работает как barge-in.
+   */
+  async beginPushToTalk(): Promise<boolean> {
+    if (this.pushToTalkActive) return true;
+
+    const wasListening = this.isListening;
+    if (!wasListening) {
+      const started = await this.startHandsFreeListening();
+      if (!started) return false;
+    }
+
+    // Web Speech API сам решает, где границы фразы: удержанием им управлять нечем, поэтому
+    // для него push-to-talk сводится к включению распознавания на время удержания.
+    if (this.config.engine === 'webspeech') {
+      this.pushToTalkOwnedCapture = !wasListening;
+      this.pushToTalkActive = true;
+      this.notifyPushToTalk();
+      return true;
+    }
+
+    void this.stopSpeaking();
+    this.pushToTalkOwnedCapture = !wasListening;
+    this.isPaused = false;
+    this.resetVAD();
+    this.pushToTalkActive = true;
+    this.setState('speech_detected');
+    this.notifyPushToTalk();
+    return true;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // 2.2 Режим системной диктовки (TASK-83, п. 5)
+  // ─────────────────────────────────────────────────────────────────
+  get isDictationActive(): boolean {
+    return this.dictationActive;
+  }
+
+  onDictationChange(callback: (active: boolean) => void): () => void {
+    this.onDictationCallbacks.add(callback);
+    try {
+      callback(this.dictationActive);
+    } catch (e) {}
+    return () => {
+      this.onDictationCallbacks.delete(callback);
+    };
+  }
+
+  setDictationActive(active: boolean) {
+    if (this.dictationActive === active) return;
+    this.dictationActive = active;
+    this.onDictationCallbacks.forEach((cb) => {
+      try { cb(active); } catch (e) {}
+    });
+  }
+
+  /** Клавиша отпущена: накопленная фраза немедленно уходит в распознавание. */
+  async endPushToTalk(): Promise<void> {
+    if (!this.pushToTalkActive) return;
+    this.pushToTalkActive = false;
+    this.notifyPushToTalk();
+
+    const ownedCapture = this.pushToTalkOwnedCapture;
+    this.pushToTalkOwnedCapture = false;
+
+    if (this.config.engine === 'webspeech') {
+      if (ownedCapture) this.stopListening();
+      return;
+    }
+
+    const pending = this.currentPhraseChunks.length > 0 ? this.finalizeAndDispatchPhrase() : Promise.resolve();
+
+    if (!ownedCapture) {
+      await pending;
+      return;
+    }
+
+    // Микрофон открывали ради удержания — закрываем, но только после того, как фраза ушла в Whisper.
+    await pending.catch(() => {});
+    this.cleanupAudio();
+    this.setState('idle');
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   // 3. Text-To-Speech (TTS) Synthesis
   // ─────────────────────────────────────────────────────────────────
   /** Подписки на потоковые события синтеза из main ставятся один раз при первом обращении. */
@@ -1220,6 +1416,8 @@ class VoiceService {
 
   private setTtsMuted(muted: boolean) {
     this.ttsMuted = muted;
+    // Каждая реплика судится заново: и старт озвучки, и её конец сбрасывают детектор перебивания.
+    resetBargeIn(this.bargeInState);
     // Сбрасываем накопленную фразу, чтобы хвост собственной речи не ушёл в распознавание
     if (muted) this.resetVAD();
   }

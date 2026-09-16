@@ -381,6 +381,96 @@ export interface LocalWhisperStatusInfo {
   respawnAttempts?: number;
 }
 
+// ─── Push-to-talk и LLM-классификатор голосовых команд (TASK-83), зеркало pushToTalkPolicy/voiceCommandClassifier ───
+
+export type PushToTalkMode = 'hold' | 'toggle';
+
+export interface PushToTalkSettings {
+  enabled: boolean;
+  accelerator: string;
+  mode: PushToTalkMode;
+  trayIndicator: boolean;
+  firstRepeatMs: number;
+  repeatGraceMs: number;
+}
+
+export interface PushToTalkStatus {
+  settings: PushToTalkSettings;
+  /** `false` — сочетание занято другим приложением. */
+  registered: boolean;
+  recording: boolean;
+  /** Режим удержания доступен только там, где у горячих клавиш есть автоповтор (Windows). */
+  supportsHold: boolean;
+}
+
+export interface PushToTalkEvent {
+  active: boolean;
+  mode: PushToTalkMode;
+  durationMs: number;
+}
+
+export type VoiceIntentType = 'navigation' | 'action' | 'ai_control' | 'computer' | 'dictation' | 'unknown';
+
+export interface VoiceClassification {
+  intent: string;
+  type: VoiceIntentType;
+  payload?: Record<string, unknown>;
+  /** 0..1; ниже порога команда не выполняется, а переспрашивается голосом. */
+  confidence: number;
+  source: 'json' | 'bare' | 'none';
+  error?: string;
+}
+
+export interface VoiceClassifyRequest {
+  transcript: string;
+  language?: 'ru' | 'en';
+  /** Открытые проекты — подсказка модели для «переключись на …». */
+  projectNames?: string[];
+  hasPendingApproval?: boolean;
+}
+
+export interface VoiceClassifyResponse {
+  ok: boolean;
+  /** Ответ взят из кэша частых фраз, модель не опрашивалась. */
+  cached?: boolean;
+  result: VoiceClassification | null;
+  /** Уверенности достаточно, чтобы выполнять команду без голосового переспроса. */
+  confident?: boolean;
+  model?: string;
+  provider?: string;
+  error?: string;
+}
+
+/** Голосовая команда управления компьютером: один ход агента с инструментами computer_* (TASK-83). */
+export interface VoiceComputerTaskRequest {
+  task: string;
+  projectPath: string;
+}
+
+export interface VoiceComputerTaskResponse {
+  ok: boolean;
+  /** Короткий итог для озвучки. */
+  text?: string;
+  /** Код причины (`computer_use_disabled`, `timeout`, …) либо сообщение об ошибке. */
+  error?: string;
+}
+
+/** Системная диктовка: распознанный текст печатается в активное окно (TASK-83). */
+export interface VoiceDictateRequest {
+  text: string;
+  projectPath: string;
+  /** Расставить знаки препинания настроенной моделью перед печатью. */
+  punctuate?: boolean;
+}
+
+export interface VoiceDictateResponse {
+  ok: boolean;
+  /** Что было напечатано с учётом пунктуации. */
+  typed?: string;
+  detail?: string;
+  error?: string;
+}
+
 // ─── Локальный TTS на голосах Piper (TASK-69, decision-25) ───
 export type TtsVoiceLanguage = 'ru' | 'en';
 export type TtsVoiceSource = 'builtin' | 'imported';
@@ -773,6 +863,15 @@ export interface IElectronAPI {
   transcribeLocalWhisper: (audioData: number[] | Float32Array, language?: 'ru' | 'en') => Promise<{ text: string; timeMs: number }>;
   getLocalWhisperStatus: () => Promise<LocalWhisperStatusInfo>;
   warmupLocalWhisper: () => Promise<LocalWhisperStatusInfo>;
+
+  // Глобальный push-to-talk и классификатор свободных команд (TASK-83)
+  getPushToTalkStatus: () => Promise<PushToTalkStatus>;
+  savePushToTalkSettings: (patch: Partial<PushToTalkSettings>) => Promise<PushToTalkStatus>;
+  classifyVoiceCommand: (request: VoiceClassifyRequest) => Promise<VoiceClassifyResponse>;
+  runVoiceComputerTask: (request: VoiceComputerTaskRequest) => Promise<VoiceComputerTaskResponse>;
+  dictateVoiceText: (request: VoiceDictateRequest) => Promise<VoiceDictateResponse>;
+  onPushToTalk: (callback: (event: PushToTalkEvent) => void) => () => void;
+  onPushToTalkStatus: (callback: (status: PushToTalkStatus) => void) => () => void;
 
   // Локальный TTS на голосах Piper (TASK-69)
   getTtsStatus: () => Promise<TtsStatusInfo>;

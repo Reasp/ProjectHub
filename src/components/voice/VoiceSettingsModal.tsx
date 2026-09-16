@@ -16,6 +16,7 @@ import {
   Check,
   AlertCircle,
   Headphones,
+  Keyboard,
   Volume2,
   RefreshCw,
   CheckCircle2,
@@ -35,6 +36,8 @@ import {
 } from '../../services/voiceService';
 import type {
   LocalWhisperStatusInfo,
+  PushToTalkSettings,
+  PushToTalkStatus,
   TtsDownloadProgress,
   TtsStatusInfo,
   TtsVoiceListItem
@@ -49,7 +52,7 @@ interface VoiceSettingsModalProps {
   onClose: () => void;
 }
 
-type TabType = 'devices' | 'phrases' | 'recognition' | 'tts' | 'cheatsheet';
+type TabType = 'devices' | 'phrases' | 'recognition' | 'tts' | 'dialog' | 'cheatsheet';
 
 export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, onClose }) => {
   const { t, language } = useTranslation();
@@ -57,7 +60,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
   const [activeTab, setActiveTab] = useState<TabType>('devices');
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>(voiceService.getConfig());
   const [phrasesMap, setPhrasesMap] = useState<Record<string, string[]>>({});
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'tabs' | 'panels' | 'ai' | 'approval'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'tabs' | 'panels' | 'ai' | 'approval' | 'dialog'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [newPhraseInputs, setNewPhraseInputs] = useState<Record<string, string>>({});
   // Индикатор сброса гаснет сам; таймер снимается при размонтировании (TASK-50)
@@ -102,6 +105,30 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
   const [isImportingVoice, setIsImportingVoice] = useState(false);
   const [isPreviewingVoice, setIsPreviewingVoice] = useState(false);
   const [ttsNotice, showTtsNotice] = useToast<string>(6000);
+
+  // ── Push-to-talk, ключевое слово и разбор моделью (TASK-83) ──
+  const [pttStatus, setPttStatus] = useState<PushToTalkStatus | null>(null);
+  const [acceleratorDraft, setAcceleratorDraft] = useState('');
+  const [acceleratorRejected, setAcceleratorRejected] = useState(false);
+  const [newWakePhrase, setNewWakePhrase] = useState('');
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'dialog') return;
+    let cancelled = false;
+
+    void window.api?.getPushToTalkStatus?.().then((status) => {
+      if (cancelled || !status) return;
+      setPttStatus(status);
+      setAcceleratorDraft(status.settings.accelerator);
+    });
+
+    // Статус приходит из main и когда настройки меняет другое окно, и когда идёт запись.
+    const unsub = window.api?.onPushToTalkStatus?.((status) => setPttStatus(status));
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [isOpen, activeTab]);
 
   /** main возвращает код ошибки, а текст живёт здесь — иначе строки интерфейса утекли бы в main. */
   const translateTtsError = (code?: string, fallback?: string): string =>
@@ -316,6 +343,35 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
     return t.voice.settingsModal.commandTitles[cmd.intent] || cmd.intent;
   };
 
+  /**
+   * Настройки горячей клавиши живут в main (`<userData>/voice-hotkey.json`), а не в localStorage:
+   * main должен знать сочетание при старте, до загрузки окна. Проверку значения делает тот же
+   * санитайзер, что и при чтении файла, поэтому UI просто сравнивает отправленное с принятым.
+   */
+  const savePushToTalk = async (patch: Partial<PushToTalkSettings>) => {
+    const status = await window.api?.savePushToTalkSettings?.(patch);
+    if (!status) return;
+    setPttStatus(status);
+    setAcceleratorDraft(status.settings.accelerator);
+    setAcceleratorRejected(
+      typeof patch.accelerator === 'string' && patch.accelerator.trim() !== status.settings.accelerator
+    );
+  };
+
+  const wakePhrases = voiceConfig.wakeWordPhrases ?? [];
+
+  const applyWakePhrases = (next: string[]) => {
+    voiceService.saveConfig({ wakeWordPhrases: next });
+    setVoiceConfig((c) => ({ ...c, wakeWordPhrases: next }));
+  };
+
+  const handleAddWakePhrase = () => {
+    const value = newWakePhrase.trim().toLowerCase();
+    setNewWakePhrase('');
+    if (!value || wakePhrases.includes(value)) return;
+    applyWakePhrases([...wakePhrases, value]);
+  };
+
   return createPortal(
     <div
       onClick={(e) => {
@@ -395,6 +451,18 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
             >
               <Speech className="w-4 h-4" />
               <span>{t.voice.settingsModal.tabTts}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('dialog')}
+              className={`flex items-center gap-2 py-3 px-3 text-xs font-semibold border-b-2 transition-all ${
+                activeTab === 'dialog'
+                  ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <Keyboard className="w-4 h-4" />
+              <span>{t.voice.settingsModal.tabDialog}</span>
             </button>
 
             <button
@@ -600,7 +668,8 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                       { id: 'tabs', label: t.voice.settingsModal.categoryTabs },
                       { id: 'panels', label: t.voice.settingsModal.categoryPanels },
                       { id: 'ai', label: t.voice.settingsModal.categoryAi },
-                      { id: 'approval', label: t.voice.settingsModal.categoryApproval }
+                      { id: 'approval', label: t.voice.settingsModal.categoryApproval },
+                      { id: 'dialog', label: t.voice.settingsModal.categoryDialog }
                     ] as const
                   ).map((cat) => (
                     <button
@@ -1194,7 +1263,313 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
           )}
 
           {/* ───────────────────────────────────────────────────────────── */}
-          {/* TAB 4: CHEAT SHEET & QUICK REFERENCE                          */}
+          {/* TAB 4: DIALOG, PUSH-TO-TALK, WAKE WORD & DICTATION            */}
+          {/* ───────────────────────────────────────────────────────────── */}
+          {activeTab === 'dialog' && (
+            <div className="space-y-4 text-xs">
+              {/* Глобальный push-to-talk */}
+              <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="font-semibold text-white flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                        <Keyboard className="w-4 h-4" />
+                      </div>
+                      <span>{t.voice.settingsModal.pttTitle}</span>
+                      {pttStatus?.recording && (
+                        <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-[10px] text-rose-300 border border-rose-500/40 animate-pulse">
+                          {t.voice.settingsModal.pttRecordingNow}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed max-w-xl">
+                      {t.voice.settingsModal.pttDesc}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void savePushToTalk({ enabled: !(pttStatus?.settings.enabled ?? true) })}
+                    title={t.voice.settingsModal.pttEnable}
+                    className={`w-12 h-6 rounded-full transition p-0.5 flex items-center shrink-0 ${
+                      pttStatus?.settings.enabled ? 'bg-indigo-600 justify-end' : 'bg-slate-800 justify-start'
+                    }`}
+                  >
+                    <span className="w-5 h-5 rounded-full bg-white shadow-md" />
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1.5">
+                    {t.voice.settingsModal.pttHotkey}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={acceleratorDraft}
+                      onChange={(e) => {
+                        setAcceleratorDraft(e.target.value);
+                        setAcceleratorRejected(false);
+                      }}
+                      onBlur={() => {
+                        if (acceleratorDraft.trim() && acceleratorDraft.trim() !== pttStatus?.settings.accelerator) {
+                          void savePushToTalk({ accelerator: acceleratorDraft.trim() });
+                        }
+                      }}
+                      placeholder={t.voice.settingsModal.pttHotkeyHint}
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="mt-1.5 flex items-center gap-1.5 text-[10px]">
+                    {acceleratorRejected ? (
+                      <span className="text-rose-400 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {t.voice.settingsModal.pttHotkeyInvalid}
+                      </span>
+                    ) : pttStatus?.settings.enabled && !pttStatus.registered ? (
+                      <span className="text-amber-400 flex items-center gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {t.voice.settingsModal.pttHotkeyTaken}
+                      </span>
+                    ) : pttStatus?.registered ? (
+                      <span className="text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                        {t.voice.settingsModal.pttHotkeyOk}
+                      </span>
+                    ) : (
+                      <span className="text-slate-500">{t.voice.settingsModal.pttHotkeyHint}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1.5">{t.voice.settingsModal.pttMode}</label>
+                  <select
+                    value={pttStatus?.settings.mode ?? 'toggle'}
+                    onChange={(e) => void savePushToTalk({ mode: e.target.value as PushToTalkSettings['mode'] })}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="hold" disabled={pttStatus ? !pttStatus.supportsHold : false}>
+                      {t.voice.settingsModal.pttModeHold}
+                    </option>
+                    <option value="toggle">{t.voice.settingsModal.pttModeToggle}</option>
+                  </select>
+                  {pttStatus && !pttStatus.supportsHold && (
+                    <div className="mt-1.5 text-[10px] text-slate-500">
+                      {t.voice.settingsModal.pttModeHoldUnavailable}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-4 pt-1">
+                  <span className="text-slate-300 font-semibold">{t.voice.settingsModal.pttTray}</span>
+                  <button
+                    type="button"
+                    onClick={() => void savePushToTalk({ trayIndicator: !(pttStatus?.settings.trayIndicator ?? true) })}
+                    className={`w-12 h-6 rounded-full transition p-0.5 flex items-center shrink-0 ${
+                      pttStatus?.settings.trayIndicator ? 'bg-emerald-600 justify-end' : 'bg-slate-800 justify-start'
+                    }`}
+                  >
+                    <span className="w-5 h-5 rounded-full bg-white shadow-md" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Ключевое слово */}
+              <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="font-semibold text-white flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                        <Radio className="w-4 h-4" />
+                      </div>
+                      <span>{t.voice.settingsModal.wakeWordTitle}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed max-w-xl">
+                      {t.voice.settingsModal.wakeWordDesc}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !voiceConfig.wakeWordEnabled;
+                      voiceService.saveConfig({ wakeWordEnabled: next });
+                      setVoiceConfig((c) => ({ ...c, wakeWordEnabled: next }));
+                    }}
+                    className={`w-12 h-6 rounded-full transition p-0.5 flex items-center shrink-0 ${
+                      voiceConfig.wakeWordEnabled ? 'bg-purple-600 justify-end' : 'bg-slate-800 justify-start'
+                    }`}
+                  >
+                    <span className="w-5 h-5 rounded-full bg-white shadow-md" />
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1.5">
+                    {t.voice.settingsModal.wakeWordPhrases}
+                  </label>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {wakePhrases.map((phrase) => (
+                      <span
+                        key={phrase}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border bg-slate-900/90 text-slate-200 border-slate-700/70 hover:border-purple-500/50 transition"
+                      >
+                        <span>«{phrase}»</span>
+                        <button
+                          type="button"
+                          onClick={() => applyWakePhrases(wakePhrases.filter((p) => p !== phrase))}
+                          className="p-0.5 rounded hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 transition"
+                          title={t.voice.settingsModal.removePhraseTitle.replace('{phrase}', phrase)}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <div className="inline-flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={newWakePhrase}
+                        onChange={(e) => setNewWakePhrase(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddWakePhrase();
+                          }
+                        }}
+                        placeholder={t.voice.settingsModal.wakeWordAddPlaceholder}
+                        className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700/80 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 w-44"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddWakePhrase}
+                        disabled={!newWakePhrase.trim()}
+                        className="p-1 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:hover:bg-purple-600 text-white transition"
+                        title={t.voice.settingsModal.addPhraseButton}
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Диалог: озвучка ответов, вопросов и перебивание */}
+              <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-4">
+                {(
+                  [
+                    {
+                      key: 'speakAgentAnswers' as const,
+                      title: t.voice.settingsModal.dialogSpeakTitle,
+                      desc: t.voice.settingsModal.dialogSpeakDesc,
+                      on: voiceConfig.speakAgentAnswers === true
+                    },
+                    {
+                      key: 'speakHitlQuestions' as const,
+                      title: t.voice.settingsModal.dialogHitlTitle,
+                      desc: t.voice.settingsModal.dialogHitlDesc,
+                      on: voiceConfig.speakHitlQuestions === true
+                    },
+                    {
+                      key: 'bargeInEnabled' as const,
+                      title: t.voice.settingsModal.bargeInTitle,
+                      desc: t.voice.settingsModal.bargeInDesc,
+                      on: voiceConfig.bargeInEnabled !== false
+                    }
+                  ]
+                ).map((row) => (
+                  <div key={row.key} className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="font-semibold text-white flex items-center gap-2">
+                        <Volume2 className="w-4 h-4 text-emerald-400" />
+                        <span>{row.title}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed max-w-xl">{row.desc}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !row.on;
+                        voiceService.saveConfig({ [row.key]: next });
+                        setVoiceConfig((c) => ({ ...c, [row.key]: next }));
+                      }}
+                      className={`w-12 h-6 rounded-full transition p-0.5 flex items-center shrink-0 ${
+                        row.on ? 'bg-emerald-600 justify-end' : 'bg-slate-800 justify-start'
+                      }`}
+                    >
+                      <span className="w-5 h-5 rounded-full bg-white shadow-md" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Системная диктовка */}
+              <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                <div className="space-y-1">
+                  <div className="font-semibold text-white flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      <Keyboard className="w-4 h-4" />
+                    </div>
+                    <span>{t.voice.settingsModal.dictationTitle}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed max-w-xl">
+                    {t.voice.settingsModal.dictationDesc}
+                  </p>
+                </div>
+
+                <div className="flex items-start justify-between gap-4 pt-1">
+                  <div className="space-y-1">
+                    <div className="text-slate-300 font-semibold">
+                      {t.voice.settingsModal.dictationPunctuationTitle}
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed max-w-xl">
+                      {t.voice.settingsModal.dictationPunctuationDesc}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !voiceConfig.dictationPunctuation;
+                      voiceService.saveConfig({ dictationPunctuation: next });
+                      setVoiceConfig((c) => ({ ...c, dictationPunctuation: next }));
+                    }}
+                    className={`w-12 h-6 rounded-full transition p-0.5 flex items-center shrink-0 ${
+                      voiceConfig.dictationPunctuation ? 'bg-amber-600 justify-end' : 'bg-slate-800 justify-start'
+                    }`}
+                  >
+                    <span className="w-5 h-5 rounded-full bg-white shadow-md" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Разбор свободных команд моделью */}
+              <div className="p-4 rounded-xl bg-indigo-950/30 border border-indigo-500/30 flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="font-semibold text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-indigo-400" />
+                    <span>{t.voice.settingsModal.llmFallbackTitle}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-relaxed max-w-xl">
+                    {t.voice.settingsModal.llmFallbackDesc}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = voiceConfig.llmFallbackEnabled === false;
+                    voiceService.saveConfig({ llmFallbackEnabled: next });
+                    setVoiceConfig((c) => ({ ...c, llmFallbackEnabled: next }));
+                  }}
+                  className={`w-12 h-6 rounded-full transition p-0.5 flex items-center shrink-0 ${
+                    voiceConfig.llmFallbackEnabled !== false ? 'bg-indigo-600 justify-end' : 'bg-slate-800 justify-start'
+                  }`}
+                >
+                  <span className="w-5 h-5 rounded-full bg-white shadow-md" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ───────────────────────────────────────────────────────────── */}
+          {/* TAB 5: CHEAT SHEET & QUICK REFERENCE                          */}
           {/* ───────────────────────────────────────────────────────────── */}
           {activeTab === 'cheatsheet' && (
             <div className="space-y-3 text-xs">

@@ -207,7 +207,23 @@ export const en: TranslationDictionary = {
       noActiveTasks: 'No active tasks in current project',
       activeTasksList: 'Active tasks {count}: {list}',
       docsSection: 'Documentation for {name}',
-      defaultChatTitle: 'chat {n}'
+      defaultChatTitle: 'chat {n}',
+      wakeWordArmed: 'Listening, say the command',
+      classifying: 'Parsing the command…',
+      classified: 'Command: {command}',
+      notUnderstood: 'Command not understood: "{text}"',
+      confirmIntent: 'I am not sure what you meant. Please repeat the command.',
+      modelUnavailable: 'The command parsing model is unavailable',
+      pushToTalkRecording: 'Recording via hotkey…',
+      computerUseDisabled: 'Computer control is disabled in settings',
+      hitlSpokenPrefix: 'The agent asks: {title}',
+      hitlNothingPending: 'Nothing is waiting for approval',
+      dictationOn: 'Dictating into the active window. Say "stop dictation" to exit',
+      dictationOff: 'Dictation is off',
+      dictationTyped: 'Typed: "{text}"',
+      dictationFailed: 'Could not type the text: {error}',
+      computerTaskRunning: 'Working on the computer…',
+      computerTaskFailed: 'Could not run the command on the computer'
     },
     settingsModal: {
       title: 'Talon Voice & Whisper Settings',
@@ -352,8 +368,52 @@ export const en: TranslationDictionary = {
         quick_commit: 'Quick Prompt: Commit',
         quick_deploy: 'Quick Prompt: Deploy',
         agent_approve: 'Approve Agent Action',
-        agent_reject: 'Reject Agent Action'
-      }
+        agent_reject: 'Reject Agent Action',
+        dictation_start: 'Start System Dictation',
+        dictation_stop: 'Stop System Dictation'
+      },
+      tabDialog: 'Dialog & dictation',
+      pttTitle: 'Global push-to-talk',
+      pttDesc:
+        'The hotkey is registered system-wide, so recording starts even when the ProjectHub window is minimized. While the key is held, the whole utterance is captured — the silence detector does not cut the phrase.',
+      pttEnable: 'Enable hotkey',
+      pttHotkey: 'Key combination',
+      pttHotkeyHint: 'Modifiers plus one regular key, for example Control+Shift+Space',
+      pttHotkeyInvalid: 'Combination is not valid — the previous one was kept',
+      pttHotkeyTaken: 'Combination is taken by another application',
+      pttHotkeyOk: 'Registered with the system',
+      pttMode: 'Mode',
+      pttModeHold: 'Hold the key (records while held)',
+      pttModeToggle: 'Press to start, press again to stop',
+      pttModeHoldUnavailable: 'Hold mode is Windows-only: other systems do not auto-repeat hotkeys',
+      pttTray: 'Show recording with a tray icon',
+      pttRecordingNow: 'Recording',
+      wakeWordTitle: 'Wake word',
+      wakeWordDesc:
+        'While enabled, Hands-Free mode only runs phrases that start with the wake word: "Hub, open tasks". You can say the wake word alone — the next phrase is then taken as the command. Matching runs on the existing Whisper transcript, no extra model required.',
+      wakeWordPhrases: 'Wake phrases',
+      wakeWordAddPlaceholder: 'New wake phrase...',
+      llmFallbackTitle: 'Model-based parsing of free-form commands',
+      llmFallbackDesc:
+        'A phrase the rules did not recognize is parsed by the model selected in AI Studio settings — any model, including a local one. On low confidence the command is not executed; ProjectHub asks again by voice.',
+      dialogSpeakTitle: 'Speak agent answers',
+      dialogSpeakDesc:
+        "The agent's final answer is read aloud as a short summary: code blocks, diffs and tables are skipped, and a long answer is cut at a sentence boundary.",
+      dialogHitlTitle: 'Speak agent questions',
+      dialogHitlDesc:
+        'Approval requests are read aloud and can be answered by voice: "approve", "reject", "option two". Requests from other sessions are included, not just the current chat.',
+      bargeInTitle: 'Interrupt by voice',
+      bargeInDesc:
+        'Speaking while the app reads aloud stops the playback. It takes loud, continuous speech — a random click or noise will not stop it.',
+      categoryDialog: 'Dialog & dictation',
+      dictationTitle: 'System dictation',
+      dictationDesc:
+        'Recognized text is typed into the active window of any application through computer control. Windows outside the allowlist require confirmation for every action. Say "stop dictation" to leave the mode.',
+      dictationConfirm:
+        'Enable dictation? Recognized speech will be typed into the active window of another application — the one currently focused, not ProjectHub. Actions follow the window allowlist and computer-control confirmations.',
+      dictationPunctuationTitle: 'Punctuation via the model',
+      dictationPunctuationDesc:
+        'Before typing, the text is sent to the configured model to add punctuation and capitalization. Words are not changed. If the model is unavailable, the original text is typed.'
     },
     voiceBadges: {
       tasks: 'tasks',

@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 
 /**
- * Генератор иконок системного трея (TASK-63): рисует три PNG 32x32 и перезаписывает
+ * Генератор иконок системного трея (TASK-63): рисует четыре PNG 32x32 и перезаписывает
  * electron/services/trayIcons.ts, где они вшиты как base64. Запускается вручную при смене
- * палитры состояний (idle / working / attention), в сборку не входит.
+ * палитры состояний (idle / working / attention / recording), в сборку не входит.
  */
 
 const SIZE = 32;
@@ -118,7 +118,9 @@ function draw(ringColor, coreColor, dot) {
 const map = {
   idle: draw('#94a3b8', '#64748b', null).toString('base64'),
   working: draw('#60a5fa', '#3b82f6', null).toString('base64'),
-  attention: draw('#fbbf24', '#f59e0b', '#ef4444').toString('base64')
+  attention: draw('#fbbf24', '#f59e0b', '#ef4444').toString('base64'),
+  // Запись голоса (TASK-83): красный, как привычная индикация записи.
+  recording: draw('#fca5a5', '#ef4444', null).toString('base64')
 };
 
 const wrap = (b) => {
@@ -136,7 +138,8 @@ import type { TrayState } from './notificationTypes.js';
  *
  * PNG 32×32 вшиты в код как data URI, а не лежат файлами: трей поднимается до загрузки окна и
  * одинаково работает в dev и в упакованном приложении, где public/ уже внутри app.asar.
- * Кольцо с заливкой: idle — серый, working — синий, attention — жёлтый с красной точкой.
+ * Кольцо с заливкой: idle — серый, working — синий, attention — жёлтый с красной точкой,
+ * recording — красный (идёт запись голоса, TASK-83).
  * Генератор изображений — scripts/gen-tray-icons.mjs (запускается вручную при смене палитры).
  */
 
@@ -146,7 +149,9 @@ ${wrap(map.idle)},
   working:
 ${wrap(map.working)},
   attention:
-${wrap(map.attention)}
+${wrap(map.attention)},
+  recording:
+${wrap(map.recording)}
 };
 
 const cache = new Map<TrayState, NativeImage>();

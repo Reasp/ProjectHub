@@ -10,6 +10,7 @@ import matter from 'gray-matter';
 import { assertInsideProject, isInsideProject } from './pathGuard.js';
 import { addUsage, usageFromAnthropic, usageFromOpenAI, type AgentUsage } from './agentCost.js';
 import { isToolAllowed } from './hitlPolicy.js';
+import { resolveOpenAICompatibleEndpoint } from './llmEndpoint.js';
 import {
   DEFAULT_MAX_TOOL_STEPS,
   OpenAIToolCallAccumulator,
@@ -121,6 +122,38 @@ export interface StreamChatOptions {
   /** Лимит запросов к модели в одном ходе. */
   maxSteps?: number;
 }
+
+/**
+ * Одноразовый служебный запрос к модели (TASK-83): «отправить промпт — получить текст».
+ *
+ * В отличие от `streamChat`, здесь нет ни инструментов, ни сборки контекста проекта, ни
+ * вендорской преамбулы «You are Claude Code» — служебным задачам вроде классификации голосовой
+ * команды всё это только мешает. Провайдера и модель выбирает пользователь ([[decision-26]] п. 0):
+ * своего дефолта у метода нет, при пустой модели он честно падает с ошибкой.
+ */
+export interface LlmCompleteRequest {
+  prompt: string;
+  /** Системная инструкция задачи; по умолчанию её нет вовсе. */
+  system?: string;
+  /** Переопределение конфигурации; без него берётся текущая настройка пользователя. */
+  config?: AIProviderConfig;
+  /** Потолок ответа: служебным запросам хватает десятков токенов. */
+  maxTokens?: number;
+  /** По умолчанию 0 — служебные запросы должны быть воспроизводимыми. */
+  temperature?: number;
+  /** Ограничение ожидания; по истечении запрос прерывается. */
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
+export interface LlmCompleteResult {
+  text: string;
+  model: string;
+  provider: string;
+}
+
+const DEFAULT_COMPLETE_TIMEOUT_MS = 20_000;
+const DEFAULT_COMPLETE_MAX_TOKENS = 512;
 
 /** Итог одного запроса к модели. */
 interface ModelTurn {
@@ -299,6 +332,124 @@ class AIAgentService {
       controller.abort();
       this.activeControllers.delete(sessionId);
     }
+  }
+
+  /**
+   * Одноразовый запрос к настроенной модели без стрима, инструментов и контекста проекта.
+   *
+   * Сознательно не идёт через `claudeBridgeService`: тот при провайдере `anthropic` без ключа
+   * запускает процесс Claude CLI, что для служебного запроса недопустимо ни по задержке, ни по
+   * привязке к вендору ([[decision-26]] п. 0). Если у выбранного провайдера нет ключа, метод
+   * честно возвращает ошибку, а вызывающий код деградирует — молча подменять провайдера нельзя.
+   */
+  public async complete(req: LlmCompleteRequest): Promise<LlmCompleteResult> {
+    const config = req.config ?? (await this.getConfig());
+    const model = config.model?.trim();
+    if (!model) {
+      throw new Error('Модель не выбрана в настройках AI Studio.');
+    }
+
+    const timeoutMs = req.timeoutMs ?? DEFAULT_COMPLETE_TIMEOUT_MS;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const forwardAbort = () => controller.abort();
+    req.signal?.addEventListener('abort', forwardAbort);
+
+    try {
+      const text =
+        config.provider === 'anthropic'
+          ? await this.completeAnthropic(req, config, model, controller.signal)
+          : await this.completeOpenAICompatible(req, config, model, controller.signal);
+      return { text, model, provider: config.provider };
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error(`Модель «${model}» не ответила за ${timeoutMs} мс.`, { cause: err });
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+      req.signal?.removeEventListener('abort', forwardAbort);
+    }
+  }
+
+  /** Messages API одним непотоковым запросом. */
+  private async completeAnthropic(
+    req: LlmCompleteRequest,
+    config: AIProviderConfig,
+    model: string,
+    signal: AbortSignal
+  ): Promise<string> {
+    const apiKey = config.apiKey?.trim();
+    if (!apiKey) {
+      throw new Error('API ключ Anthropic не указан: служебные запросы к модели идут по API, а не через Claude CLI.');
+    }
+
+    const body: Record<string, unknown> = {
+      model,
+      max_tokens: req.maxTokens ?? DEFAULT_COMPLETE_MAX_TOKENS,
+      messages: [{ role: 'user', content: req.prompt }],
+      temperature: req.temperature ?? 0,
+      stream: false
+    };
+    if (req.system) body.system = req.system;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(body),
+      signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`Anthropic API Error (${response.status}): ${await response.text()}`);
+    }
+
+    const data = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
+    return (data.content ?? [])
+      .filter((block) => block?.type === 'text' && typeof block.text === 'string')
+      .map((block) => block.text as string)
+      .join('')
+      .trim();
+  }
+
+  /** Chat Completions одним непотоковым запросом: OpenRouter, DeepSeek, Ollama, custom. */
+  private async completeOpenAICompatible(
+    req: LlmCompleteRequest,
+    config: AIProviderConfig,
+    model: string,
+    signal: AbortSignal
+  ): Promise<string> {
+    const { endpoint, headers } = resolveOpenAICompatibleEndpoint(config);
+    const messages: Array<{ role: string; content: string }> = [];
+    if (req.system) messages.push({ role: 'system', content: req.system });
+    messages.push({ role: 'user', content: req.prompt });
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: req.temperature ?? 0,
+        max_tokens: req.maxTokens ?? DEFAULT_COMPLETE_MAX_TOKENS,
+        stream: false
+      }),
+      signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`API Error (${response.status}): ${await response.text()}`);
+    }
+
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: unknown } }>;
+    };
+    const content = data.choices?.[0]?.message?.content;
+    return typeof content === 'string' ? content.trim() : '';
   }
 
   /**
@@ -671,36 +822,12 @@ class AIAgentService {
     };
   }
 
-  /** Эндпоинт и заголовки OpenAI-совместимого провайдера (OpenRouter, DeepSeek, Ollama, custom). */
+  /**
+   * Эндпоинт и заголовки OpenAI-совместимого провайдера (OpenRouter, DeepSeek, Ollama, custom).
+   * Логика живёт в чистом модуле `llmEndpoint` — её переиспользует и одноразовый вызов `complete`.
+   */
   private openAICompatibleEndpoint(req: AIStreamRequest): { endpoint: string; headers: Record<string, string> } {
-    let endpoint = 'https://openrouter.ai/api/v1/chat/completions';
-    const headers: Record<string, string> = {
-      'content-type': 'application/json'
-    };
-
-    const apiKey = req.config.apiKey?.trim();
-
-    if (req.config.provider === 'openrouter') {
-      if (!apiKey) {
-        throw new Error('API ключ OpenRouter не указан в настройках.');
-      }
-      headers['Authorization'] = `Bearer ${apiKey}`;
-      headers['HTTP-Referer'] = 'https://projecthub.local';
-      headers['X-Title'] = 'ProjectHub AI Studio';
-    } else if (req.config.provider === 'deepseek') {
-      if (!apiKey) {
-        throw new Error('API ключ DeepSeek не указан в настройках.');
-      }
-      endpoint = 'https://api.deepseek.com/chat/completions';
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    } else if (req.config.provider === 'ollama') {
-      const base = (req.config.baseUrl || 'http://127.0.0.1:11434').replace(/\/+$/, '');
-      endpoint = `${base}/v1/chat/completions`;
-    } else if (req.config.provider === 'custom') {
-      endpoint = req.config.baseUrl || 'http://localhost:8000/v1/chat/completions';
-      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-    }
-    return { endpoint, headers };
+    return resolveOpenAICompatibleEndpoint(req.config);
   }
 
   /**

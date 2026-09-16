@@ -101,8 +101,12 @@ export interface NotificationSettings {
   telegramBotAutoStart: boolean;
 }
 
-/** Состояние иконки трея. */
-export type TrayState = 'idle' | 'working' | 'attention';
+/**
+ * Состояние иконки трея. `recording` выставляется не по событиям шины, а отдельным флагом
+ * `trayService.setRecording` (TASK-83): запись голоса длится секунды и не должна зависеть от
+ * `computeTrayState`, который пересчитывается на каждом событии.
+ */
+export type TrayState = 'idle' | 'working' | 'attention' | 'recording';
 
 /** Что main сообщает рендереру о доставке (звук, тост). */
 export interface NotificationDelivery {

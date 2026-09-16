@@ -19,8 +19,14 @@ import type {
   NotificationDelivery,
   NotificationSettings,
   NotificationSeverity,
+  PushToTalkEvent,
+  PushToTalkSettings,
+  PushToTalkStatus,
   RagSearchOptions,
   StartProcessOptions,
+  VoiceClassifyRequest,
+  VoiceComputerTaskRequest,
+  VoiceDictateRequest,
   TtsChunkPayload,
   TtsDonePayload,
   TtsDownloadProgress,
@@ -380,6 +386,30 @@ const api: IElectronAPI = {
   getLocalWhisperStatus: () => ipcRenderer.invoke('voice:getLocalWhisperStatus'),
   // Ленивый прогрев модели: вызывается при первом включении hands-free или из настроек
   warmupLocalWhisper: () => ipcRenderer.invoke('voice:warmupLocalWhisper'),
+
+  // Глобальный push-to-talk и LLM-классификатор свободных команд (TASK-83)
+  getPushToTalkStatus: () => ipcRenderer.invoke('voice:getPushToTalkStatus'),
+  savePushToTalkSettings: (patch: Partial<PushToTalkSettings>) =>
+    ipcRenderer.invoke('voice:savePushToTalkSettings', patch),
+  classifyVoiceCommand: (request: VoiceClassifyRequest) => ipcRenderer.invoke('voice:classifyCommand', request),
+  // Голос → компьютер и системная диктовка: HITL и allowlist применяет прокси в main (TASK-82)
+  runVoiceComputerTask: (request: VoiceComputerTaskRequest) => ipcRenderer.invoke('voice:runComputerTask', request),
+  dictateVoiceText: (request: VoiceDictateRequest) => ipcRenderer.invoke('voice:dictateText', request),
+  // Горячая клавиша живёт в main, поэтому работает и при свёрнутом окне: старт/стоп приходят событием
+  onPushToTalk: (callback: (event: PushToTalkEvent) => void) => {
+    const handler = (_event: IpcRendererEvent, payload: PushToTalkEvent) => callback(payload);
+    ipcRenderer.on('voice:push-to-talk', handler);
+    return () => {
+      ipcRenderer.removeListener('voice:push-to-talk', handler);
+    };
+  },
+  onPushToTalkStatus: (callback: (status: PushToTalkStatus) => void) => {
+    const handler = (_event: IpcRendererEvent, status: PushToTalkStatus) => callback(status);
+    ipcRenderer.on('voice:push-to-talk-status', handler);
+    return () => {
+      ipcRenderer.removeListener('voice:push-to-talk-status', handler);
+    };
+  },
 
   // Локальный TTS на голосах Piper (TASK-69): генерация в воркере main, воспроизведение в рендерере
   getTtsStatus: () => ipcRenderer.invoke('tts:getStatus'),

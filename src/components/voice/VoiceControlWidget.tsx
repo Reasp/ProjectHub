@@ -10,9 +10,12 @@ import {
   voiceService,
   type VoiceState
 } from '../../services/voiceService';
-import { parseVoiceCommand } from '../../services/voiceCommandParser';
+import { parseVoiceCommand, type ParsedVoiceCommand } from '../../services/voiceCommandParser';
+import { applyWakeGate, createWakeWindow } from '../../services/wakeWord';
+import { summarizeForSpeech } from '../../services/ttsSummary';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useAIStudioStore } from '../../store/useAIStudioStore';
+import { useHitlStore } from '../../store/useHitlStore';
 import { getDictionary } from '../../i18n';
 import { useDialog } from '../../hooks/useDialog';
 import { useTimers, useToast } from '../../hooks/useTimeoutState';
@@ -39,6 +42,8 @@ export const VoiceControlWidget: React.FC = () => {
   const transcriptRef = useRef(transcript);
   const audioLevelRef = useRef(audioLevel);
   const lastAudioSyncRef = useRef<number>(0);
+  /** Окно ожидания команды после ключевого слова (TASK-83). */
+  const wakeWindowRef = useRef(createWakeWindow());
 
   useEffect(() => {
     transcriptRef.current = transcript;
@@ -53,7 +58,7 @@ export const VoiceControlWidget: React.FC = () => {
     voiceService.setLanguage(language === 'ru' ? 'ru' : 'en');
   }, [language]);
 
-  const executeCommand = useCallback(async (rawText: string) => {
+  const executeCommand = useCallback(async (cmd: ParsedVoiceCommand) => {
     const {
       projects,
       selectedProject,
@@ -90,7 +95,6 @@ export const VoiceControlWidget: React.FC = () => {
       sendApprovalResponse
     } = useAIStudioStore.getState();
 
-    const cmd = parseVoiceCommand(rawText, voiceService.getCommandPhrases());
     setLastFeedback(cmd.feedbackText);
 
     // No voiceService.speak(...) here — all routine action feedback is purely visual
@@ -210,24 +214,37 @@ export const VoiceControlWidget: React.FC = () => {
         }
       }
 
-      // D. Human-in-the-Loop Approvals (Approve / Reject / Option Select)
-      else if (projectPath) {
-        const activeApprovals = pendingApprovals[projectPath] || [];
-        const topApproval = activeApprovals[0];
+      // D. Human-in-the-Loop: сначала карточка активной сессии AI Studio, затем общая очередь HITL.
+      // Второе важно: запросы внешних сессий и `computer_action` от MCP-моста в pendingApprovals
+      // AI Studio не попадают вовсе — голосом они раньше были недоступны (TASK-83 п. 3).
+      else {
+        const studioTop = projectPath ? (pendingApprovals[projectPath] || [])[0] : undefined;
+        const hitlTop = useHitlStore.getState().pending[0];
 
-        if (cmd.intent === 'agent_approve') {
-          if (topApproval) {
-            await sendApprovalResponse(projectPath, topApproval.id, true);
+        const decide = async (approved: boolean, text?: string): Promise<boolean> => {
+          if (studioTop && projectPath) {
+            await sendApprovalResponse(projectPath, studioTop.id, approved, text);
+            return true;
           }
-        } else if (cmd.intent === 'agent_reject') {
-          if (topApproval) {
-            await sendApprovalResponse(projectPath, topApproval.id, false);
+          if (hitlTop) {
+            await useHitlStore.getState().decide(hitlTop.id, approved, text);
+            return true;
           }
-        } else if (cmd.intent === 'agent_select_option' && topApproval?.questionData) {
+          return false;
+        };
+
+        if (cmd.intent === 'agent_approve' || cmd.intent === 'agent_reject') {
+          const handled = await decide(cmd.intent === 'agent_approve');
+          if (!handled) setLastFeedback(t.voice.feedback.hitlNothingPending);
+        } else if (cmd.intent === 'agent_select_option') {
+          const target = studioTop?.questionData ? studioTop : hitlTop?.questionData ? hitlTop : null;
+          const options = target?.questionData?.options || [];
           const optIdx = cmd.payload?.optionIndex ?? 0;
-          const options = topApproval.questionData.options || [];
-          if (options[optIdx]) {
-            await sendApprovalResponse(projectPath, topApproval.id, true, options[optIdx].label);
+          const picked = optIdx === -1 ? options[options.length - 1] : options[optIdx];
+          if (picked) {
+            await decide(true, picked.label);
+          } else {
+            setLastFeedback(t.voice.feedback.hitlNothingPending);
           }
         }
       }
@@ -339,6 +356,29 @@ export const VoiceControlWidget: React.FC = () => {
     // 4. ACTION RUNNER & QUICK ACTIONS
     // ─────────────────────────────────────────────────────────────
     else if (cmd.type === 'action') {
+      // Диктовка печатает в чужие окна, поэтому первое включение подтверждается явно (TASK-83 п. 5).
+      if (cmd.intent === 'dictation_start') {
+        const status = await window.api?.getComputerUseStatus?.().catch(() => null);
+        if (!status?.enabled) {
+          setLastFeedback(t.voice.feedback.computerUseDisabled);
+          return;
+        }
+        if (!voiceService.getConfig().dictationConfirmed) {
+          const confirmed = await dialog.confirm(t.voice.settingsModal.dictationConfirm);
+          if (!confirmed) return;
+          voiceService.saveConfig({ dictationConfirmed: true });
+        }
+        voiceService.setDictationActive(true);
+        setLastFeedback(t.voice.feedback.dictationOn);
+        return;
+      }
+
+      if (cmd.intent === 'dictation_stop') {
+        voiceService.setDictationActive(false);
+        setLastFeedback(t.voice.feedback.dictationOff);
+        return;
+      }
+
       if (cmd.intent === 'toggle_pause') {
         voiceService.togglePause();
         return;
@@ -437,6 +477,146 @@ export const VoiceControlWidget: React.FC = () => {
     }, 4500);
   }, [setTimer]);
 
+  /**
+   * Путь распознанной фразы до команды (TASK-83).
+   *
+   * Сначала — ключевое слово: пока оно включено, выполняются только фразы с обращением. Дальше
+   * быстрый разбор регулярками, и лишь то, что он не узнал, уходит на разбор настроенной модели.
+   * Такой порядок держит привычные команды мгновенными и бесплатными, а модель подключает только
+   * к свободной речи.
+   */
+  const handleTranscript = useCallback(async (rawText: string) => {
+    const config = voiceService.getConfig();
+    const { language: lang } = useProjectStore.getState();
+    const dict = getDictionary(lang);
+    const speakLang = lang === 'ru' ? 'ru' : 'en';
+
+    // Режим диктовки: всё услышанное печатается в активное окно, кроме явной команды выхода.
+    // Ключевое слово здесь намеренно не применяется — диктуют прозу, а не команды, и требовать
+    // обращения перед каждой фразой было бы бессмысленно.
+    if (voiceService.isDictationActive) {
+      const spoken = parseVoiceCommand(rawText, voiceService.getCommandPhrases());
+      if (spoken.intent === 'dictation_stop') {
+        voiceService.setDictationActive(false);
+        setLastFeedback(dict.voice.feedback.dictationOff);
+        return;
+      }
+
+      const typedResponse = await window.api
+        ?.dictateVoiceText?.({
+          text: rawText,
+          projectPath: useProjectStore.getState().selectedProject?.path || '',
+          punctuate: config.dictationPunctuation === true
+        })
+        .catch(() => null);
+
+      if (!typedResponse?.ok) {
+        const reason =
+          typedResponse?.error === 'computer_use_disabled'
+            ? dict.voice.feedback.computerUseDisabled
+            : typedResponse?.error || dict.voice.feedback.computerTaskFailed;
+        setLastFeedback(dict.voice.feedback.dictationFailed.replace('{error}', reason));
+        return;
+      }
+      setLastFeedback(dict.voice.feedback.dictationTyped.replace('{text}', typedResponse.typed || rawText));
+      return;
+    }
+
+    const gate = applyWakeGate(
+      rawText,
+      {
+        enabled: config.wakeWordEnabled === true,
+        phrases: config.wakeWordPhrases,
+        now: Date.now()
+      },
+      wakeWindowRef.current
+    );
+
+    if (gate.awaitingCommand) {
+      setLastFeedback(dict.voice.feedback.wakeWordArmed);
+      return;
+    }
+    if (!gate.accepted || !gate.command) return;
+
+    const parsed = parseVoiceCommand(gate.command, voiceService.getCommandPhrases());
+    if (parsed.type !== 'dictation') {
+      await executeCommand(parsed);
+      return;
+    }
+
+    // Регулярки не узнали фразу. Без разрешения пользователя или без доступного IPC остаёмся на
+    // прежнем поведении — показываем распознанный текст и ничего не выполняем.
+    if (config.llmFallbackEnabled === false || !window.api?.classifyVoiceCommand) {
+      await executeCommand(parsed);
+      return;
+    }
+
+    setLastFeedback(dict.voice.feedback.classifying);
+
+    const { projects, activeProjectPaths, selectedProject } = useProjectStore.getState();
+    const { pendingApprovals } = useAIStudioStore.getState();
+    const response = await window.api
+      .classifyVoiceCommand({
+        transcript: gate.command,
+        language: speakLang,
+        projectNames: projects.filter((p) => activeProjectPaths.includes(p.path)).map((p) => p.name),
+        hasPendingApproval: (pendingApprovals[selectedProject?.path || ''] || []).length > 0
+      })
+      .catch(() => null);
+
+    if (!response?.ok || !response.result) {
+      setLastFeedback(dict.voice.feedback.modelUnavailable);
+      return;
+    }
+
+    const result = response.result;
+    if (result.intent === 'unknown') {
+      setLastFeedback(dict.voice.feedback.notUnderstood.replace('{text}', gate.command));
+      return;
+    }
+
+    // Низкая уверенность — не гадаем, а переспрашиваем голосом (AC #2).
+    if (!response.confident) {
+      const question = dict.voice.feedback.confirmIntent;
+      setLastFeedback(question);
+      void voiceService.speak(question, speakLang);
+      return;
+    }
+
+    // Голос → компьютер (TASK-83 п. 4): задача уходит агенту с инструментами computer_*, а HITL,
+    // allowlist и kill-switch остаются на стороне прокси. Итог короткий и озвучивается.
+    if (result.type === 'computer') {
+      setLastFeedback(dict.voice.feedback.computerTaskRunning);
+      const task = typeof result.payload?.task === 'string' ? result.payload.task : gate.command;
+      const taskResponse = await window.api
+        ?.runVoiceComputerTask?.({
+          task,
+          projectPath: useProjectStore.getState().selectedProject?.path || ''
+        })
+        .catch(() => null);
+
+      const spoken =
+        taskResponse?.ok && taskResponse.text
+          ? summarizeForSpeech(taskResponse.text, { maxChars: 200 })
+          : taskResponse?.error === 'computer_use_disabled'
+            ? dict.voice.feedback.computerUseDisabled
+            : dict.voice.feedback.computerTaskFailed;
+
+      setLastFeedback(spoken);
+      void voiceService.speak(spoken, speakLang);
+      return;
+    }
+
+    const title = dict.voice.settingsModal.commandTitles[result.intent] || result.intent;
+    await executeCommand({
+      // Интенты диктовки исполняются в ветке действий, отдельного типа у них в рендерере нет.
+      type: result.type === 'unknown' || result.type === 'dictation' ? 'action' : result.type,
+      intent: result.intent,
+      payload: result.payload,
+      feedbackText: dict.voice.feedback.classified.replace('{command}', title)
+    });
+  }, [executeCommand]);
+
   // Подписки на voiceService и внешние события создаются один раз при монтировании.
   // executeCommand стабилен (все данные читаются через getState()), поэтому эффект
   // не пересоздаётся при изменении сторов.
@@ -478,7 +658,7 @@ export const VoiceControlWidget: React.FC = () => {
       syncToOverlay({ transcript: text });
 
       if (isFinal && text.trim()) {
-        void executeCommand(text.trim());
+        void handleTranscript(text.trim());
       }
     });
 
@@ -493,6 +673,52 @@ export const VoiceControlWidget: React.FC = () => {
       } else if (action === 'toggle-pause') {
         voiceService.togglePause();
       }
+    });
+
+    // Глобальный push-to-talk: клавиша зарегистрирована в main, поэтому работает и при свёрнутом
+    // окне — сюда приходят только команды «начать/закончить запись» (TASK-83, AC #1).
+    const unsubPushToTalk = window.api?.onPushToTalk?.((event) => {
+      if (event.active) {
+        void voiceService.beginPushToTalk();
+      } else {
+        void voiceService.endPushToTalk();
+      }
+    });
+
+    const unsubPushToTalkState = voiceService.onPushToTalkChange((active) => {
+      if (active) {
+        setLastFeedback(getDictionary(useProjectStore.getState().language).voice.feedback.pushToTalkRecording);
+      }
+      syncToOverlay();
+    });
+
+    // Озвучка финального ответа агента (TASK-83 п. 3). Стор лишь сообщает, что ответ готов; что
+    // именно читать и читать ли вообще — решается здесь, где живут настройки голоса.
+    const handleAgentAnswer = (event: Event) => {
+      const detail = (event as CustomEvent<{ text?: string }>).detail;
+      const cfg = voiceService.getConfig();
+      if (!cfg.speakAgentAnswers || !cfg.ttsEnabled) return;
+      const spoken = summarizeForSpeech(detail?.text || '');
+      if (!spoken) return;
+      // Предыдущую реплику всегда гасим: два speak() внахлёст подвешивают первый промис.
+      void voiceService.stopSpeaking().then(() => voiceService.speak(spoken));
+    };
+    window.addEventListener('projecthub:agent-answer', handleAgentAnswer);
+
+    // Вопрос агента, вынесенный на подтверждение, проговаривается вслух — ответить можно голосом.
+    let lastSpokenHitlId: string | null = null;
+    const unsubHitl = useHitlStore.subscribe((state) => {
+      const cfg = voiceService.getConfig();
+      const top = state.pending[0];
+      if (!top) {
+        lastSpokenHitlId = null;
+        return;
+      }
+      if (!cfg.speakHitlQuestions || !cfg.ttsEnabled || top.id === lastSpokenHitlId) return;
+      lastSpokenHitlId = top.id;
+      const dict = getDictionary(useProjectStore.getState().language);
+      const title = top.questionData?.title || top.title;
+      void voiceService.speak(dict.voice.feedback.hitlSpokenPrefix.replace('{title}', title));
     });
 
     const unsubDeviceNotice = voiceService.onDeviceNotice((notice) => {
@@ -520,10 +746,14 @@ export const VoiceControlWidget: React.FC = () => {
       unsubResult();
       unsubError();
       unsubExternal?.();
+      unsubPushToTalk?.();
+      unsubPushToTalkState();
+      unsubHitl();
       unsubDeviceNotice();
+      window.removeEventListener('projecthub:agent-answer', handleAgentAnswer);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [executeCommand, setTimer]);
+  }, [handleTranscript, setTimer]);
 
   const isHandsFreeActive = voiceService.isListening;
   const isSpeech = voiceState === 'speech_detected' || isSpeakingDetected;

@@ -6,7 +6,8 @@ import type { TrayState } from './notificationTypes.js';
  *
  * PNG 32×32 вшиты в код как data URI, а не лежат файлами: трей поднимается до загрузки окна и
  * одинаково работает в dev и в упакованном приложении, где public/ уже внутри app.asar.
- * Кольцо с заливкой: idle — серый, working — синий, attention — жёлтый с красной точкой.
+ * Кольцо с заливкой: idle — серый, working — синий, attention — жёлтый с красной точкой,
+ * recording — красный (идёт запись голоса, TASK-83).
  * Генератор изображений — scripts/gen-tray-icons.mjs (запускается вручную при смене палитры).
  */
 
@@ -31,7 +32,13 @@ const PNG_BASE64: Record<TrayState, string> = {
     "F+x9vSQsKDIuIm4DcSbD5+3Bu234HR3vVeQ55lfHH2Xkolhtlu0a1HEswJeEPdPB/ProVbYcok6IYgX2vbL1d02938B48zCa+ReD" +
     "r8fDdbGSJjecaFhAHQlYGQhYoe1dl9jv/ysBlS8BEuAq60vVSSjmIgG+xL73K9sQew/2I4l9B0/auhDBt7ZG+EdFnY99KUZhL/E+" +
     "KOr7rA8jRTuH7QmOhskPViKsbdk2JGjNowIbsW4zatySwVik+G/yI/MrbUrVELY6NjeguALyWNvzKi4mKNuDqu6DRlczmNv408vp" +
-    "zjzfPwRd9PLTgq8AAAAASUVORK5CYII="
+    "zjzfPwRd9PLTgq8AAAAASUVORK5CYII=",
+  recording:
+    "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAABMklEQVR42tVXMQrDMAwspF/I6qXQl3jJmnd4zZi3ZLoP5A0ZO/cN" +
+    "2TIHBCkGtRRXjp00xa7hIDiy7mzLsnw6/VsjoCSgIsAQ0DIM95W/Ij0zyUDAEsDAtuejyK2zMYLYhR1jvl3qfgexi37z1hBwJeB+" +
+    "APkT1td1y8zXyDsCagIUAQVDcV8XEFHGCOhXiFXEeLUipI8JOGmg2Rm88b74qI1HkAdEjOIR9Rh3kuNJ62bS+jZpPTPsd+MR0UVN" +
+    "ypNklEN8YbLFA/vvIsTER7KSIj84+wD5S0TkKpTvBpVgUAvLvkSicQTUgv8qtP9qx+zFVfBsg3k3aAWDwhEwbxAwOwIKwX+blYDk" +
+    "W5A8CNMew+SJKJdUnPYySn4dZ1GQZFGSJS9KsyjLs3iYZPM0y+Jx+sv2AHEQZ2dWoJSzAAAAAElFTkSuQmCC"
 };
 
 const cache = new Map<TrayState, NativeImage>();

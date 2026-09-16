@@ -1,7 +1,7 @@
 export interface CommandPhraseDefinition {
   intent: string;
   type: 'navigation' | 'action' | 'ai_control';
-  category: 'tabs' | 'panels' | 'ai' | 'approval';
+  category: 'tabs' | 'panels' | 'ai' | 'approval' | 'dialog';
   nameKey: string;
   descKey: string;
   defaultPhrases: string[];
@@ -213,6 +213,27 @@ export const CONFIGURABLE_COMMANDS: CommandPhraseDefinition[] = [
     descKey: 'agentRejectDesc',
     defaultPhrases: ['отклонить', 'отклони', 'запретить', 'запрети', 'отмена', 'нет', 'reject', 'deny'],
     feedbackText: 'Действие отклонено'
+  },
+
+  // ── Диалог и диктовка (TASK-83) ──
+  {
+    intent: 'dictation_start',
+    type: 'action',
+    category: 'dialog',
+    nameKey: 'dictationStart',
+    descKey: 'dictationStartDesc',
+    defaultPhrases: ['диктовка', 'включи диктовку', 'режим диктовки', 'печатай за мной', 'dictation', 'start dictation'],
+    feedbackText: 'Включаю режим диктовки'
+  },
+  {
+    intent: 'dictation_stop',
+    type: 'action',
+    category: 'dialog',
+    nameKey: 'dictationStop',
+    descKey: 'dictationStopDesc',
+    // Эти фразы — единственный выход из режима: всё остальное, что слышно, печатается как текст.
+    defaultPhrases: ['конец диктовки', 'стоп диктовка', 'закончить диктовку', 'выключи диктовку', 'stop dictation', 'end dictation'],
+    feedbackText: 'Выключаю режим диктовки'
   }
 ];
 

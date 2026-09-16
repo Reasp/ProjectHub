@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "f188e771549bda9bdb4ec5d304a4e62df420545982570483458900f34718b09d",
+  "docsHash": "84fda3c5262fe2a1dcbf11363c6099fc90e2c3c011841518bdf23ff7ba2613cb",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -28,6 +28,8 @@
     "backlog/decisions/decision-28 - Цикл-до-готовности-замкнутый-контур-агент-проверки-критерии-приёмки-отмечает-только-harness.md",
     "backlog/decisions/decision-29 - Изоляция-домашнего-каталога-в-unit-тестах.md",
     "backlog/decisions/decision-3 - Backlog.md-как-единственный-источник-истины-для-задач-документов-и-решений.md",
+    "backlog/decisions/decision-30 - Push-to-talk-на-автоповторе-globalShortcut-и-wake-word-по-транскрипту.md",
+    "backlog/decisions/decision-31 - Схема-ответа-LLM-классификатора-голосовых-команд.md",
     "backlog/decisions/decision-4 - Claude-Code-CLI-как-основной-агентный-движок-API-провайдеры-как-дополнение.md",
     "backlog/decisions/decision-5 - Модель-безопасности-десктопа-изоляция-рендерера-реестр-проектов-локальный-MCP-и-секреты.md",
     "backlog/decisions/decision-6 - Git-worktree-как-единица-изоляции-задачи-и-агента.md",
@@ -45,6 +47,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 373,
-  "builtAt": "2026-09-16T03:52:21.462Z"
+  "chunks": 393,
+  "builtAt": "2026-09-16T05:15:09.908Z"
 }

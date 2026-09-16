@@ -208,6 +208,23 @@ export interface TranslationDictionary {
       activeTasksList: string;
       docsSection: string;
       defaultChatTitle: string;
+      // Push-to-talk, ключевое слово и LLM-разбор команд (TASK-83)
+      wakeWordArmed: string;
+      classifying: string;
+      classified: string;
+      notUnderstood: string;
+      confirmIntent: string;
+      modelUnavailable: string;
+      pushToTalkRecording: string;
+      computerUseDisabled: string;
+      hitlSpokenPrefix: string;
+      hitlNothingPending: string;
+      dictationOn: string;
+      dictationOff: string;
+      dictationTyped: string;
+      dictationFailed: string;
+      computerTaskRunning: string;
+      computerTaskFailed: string;
     };
     settingsModal: {
       title: string;
@@ -309,6 +326,40 @@ export interface TranslationDictionary {
       cheatAiExamples: string;
       instantSaveHint: string;
       commandTitles: Record<string, string>;
+      // Вкладка «Диалог и диктовка» (TASK-83)
+      tabDialog: string;
+      pttTitle: string;
+      pttDesc: string;
+      pttEnable: string;
+      pttHotkey: string;
+      pttHotkeyHint: string;
+      pttHotkeyInvalid: string;
+      pttHotkeyTaken: string;
+      pttHotkeyOk: string;
+      pttMode: string;
+      pttModeHold: string;
+      pttModeToggle: string;
+      pttModeHoldUnavailable: string;
+      pttTray: string;
+      pttRecordingNow: string;
+      wakeWordTitle: string;
+      wakeWordDesc: string;
+      wakeWordPhrases: string;
+      wakeWordAddPlaceholder: string;
+      llmFallbackTitle: string;
+      llmFallbackDesc: string;
+      dialogSpeakTitle: string;
+      dialogSpeakDesc: string;
+      dialogHitlTitle: string;
+      dialogHitlDesc: string;
+      bargeInTitle: string;
+      bargeInDesc: string;
+      categoryDialog: string;
+      dictationTitle: string;
+      dictationDesc: string;
+      dictationConfirm: string;
+      dictationPunctuationTitle: string;
+      dictationPunctuationDesc: string;
     };
     voiceBadges: {
       tasks: string;

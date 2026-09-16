@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, shell, session, crashReporter, screen } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, shell, session, crashReporter, screen } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
@@ -23,6 +23,7 @@ import { notificationService } from './services/notificationService';
 import { trayService } from './services/trayService';
 import { telegramService } from './services/telegramService';
 import { computerUseService, type ComputerOverlayState } from './services/computerUseService';
+import { voiceHotkeyService } from './services/voiceHotkeyService';
 import { registerAllIpc } from './ipc';
 
 // Локальные crash-репорты (TASK-58, decision-14 п.4, decision-7): дампы падений остаются на диске
@@ -574,6 +575,13 @@ async function performGracefulShutdown() {
   }
 
   try {
+    // Глобальная горячая клавиша push-to-talk снимается до выхода (TASK-83).
+    voiceHotkeyService.shutdown();
+  } catch (e) {
+    console.warn('[Main] Error stopping voice hotkey service:', e);
+  }
+
+  try {
     // Рантайм управления компьютером — дочерний процесс npx/node; глобальная горячая клавиша kill-switch.
     await computerUseService.shutdown();
     if (computerOverlayWin && !computerOverlayWin.isDestroyed()) computerOverlayWin.destroy();
@@ -619,6 +627,16 @@ async function performGracefulShutdown() {
   app.exit(0);
   process.exit(0);
 }
+
+// Страховка: даже если graceful shutdown не дойдёт до своих try-блоков, глобальные горячие
+// клавиши снимаются до завершения процесса.
+app.on('will-quit', () => {
+  try {
+    globalShortcut.unregisterAll();
+  } catch {
+    // приложение уже закрывается
+  }
+});
 
 app.on('before-quit', (event) => {
   // Явный выход (меню трея, app.quit, обновление): окно больше не сворачивается в трей.
@@ -691,6 +709,25 @@ app.whenReady().then(() => {
     .catch((err) => {
       console.error('[Main] Failed to init computer use service:', err);
     });
+
+  // Глобальный push-to-talk (TASK-83): клавиша живёт в main, поэтому запись включается и при
+  // свёрнутом окне. Сам микрофон — в рендерере, сюда приходят только команды старт/стоп.
+  voiceHotkeyService.configure({
+    onCapture: (active, info) => {
+      trayService.setRecording(active && voiceHotkeyService.getSettings().trayIndicator);
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('voice:push-to-talk', { active, ...info });
+      }
+    },
+    onStatus: (status) => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('voice:push-to-talk-status', status);
+      }
+    }
+  });
+  voiceHotkeyService.init({ dir: getUserDataDir() }).catch((err) => {
+    console.error('[Main] Failed to init voice hotkey service:', err);
+  });
 
   claudeBridgeService.setCliPermissionBroker({
     ensureEndpoint: () => mcpServerService.ensurePermissionEndpoint()

@@ -731,6 +731,17 @@ export const useAIStudioStore = create<AIStudioState>()(
           cleanup();
           // Ответ завершён — записываем сессию сразу, не дожидаясь дебаунса (TASK-35, AC #1).
           void sessionPersister.flushNow();
+
+          // Голосовой диалог (TASK-83 п. 3): стор лишь сообщает, что ответ готов. Решение, читать
+          // ли его вслух, и подготовка текста остаются в голосовом модуле — иначе стор потянул бы
+          // за собой настройки TTS и правила чистки от кода.
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent('projecthub:agent-answer', {
+                detail: { projectPath, sessionId: activeSessionId, text: completedMsg.content || '' }
+              })
+            );
+          }
         });
 
         const unsubError = window.api.onAIError(streamId, (err) => {
