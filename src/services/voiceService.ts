@@ -624,6 +624,10 @@ class VoiceService {
         };
 
         this.recognition.onresult = (event: any) => {
+          // Пока говорит само приложение (или распознавание на паузе), результат — это его
+          // собственная озвучка: гейт ttsMuted стоял только в Whisper-конвейере (TASK-87, дефект 5)
+          if (this.isPaused || this.ttsMuted) return;
+
           let interimTranscript = '';
           let finalTranscript = '';
 
@@ -1532,6 +1536,11 @@ class VoiceService {
     }
 
     this.bindTtsListeners();
+    // Повторный speak() без stopSpeaking(): предыдущее задание завершается явно, иначе его промис
+    // не резолвится никогда (события придут с чужим jobId и будут отброшены), а генерация в main
+    // продолжит считать уже ненужный текст (TASK-87, дефект 4)
+    await this.finishActiveTtsJob();
+
     const jobId = `tts-${++this.ttsJobCounter}-${Date.now()}`;
     await ttsPlayer.begin(jobId);
     this.setTtsMuted(true);
@@ -1588,21 +1597,28 @@ class VoiceService {
     });
   }
 
+  /**
+   * Завершает текущее задание синтеза: отменяет генерацию в main и резолвит его промис.
+   * Общий путь для stopSpeaking() и для новой озвучки поверх текущей.
+   */
+  private async finishActiveTtsJob(): Promise<void> {
+    const job = this.activeTtsJob;
+    if (!job) return;
+    try {
+      await window.api?.cancelTts?.(job.id);
+    } catch {
+      // воркер мог уже завершиться — остановки воспроизведения достаточно
+    }
+    job.finish(job.playedChunks > 0);
+  }
+
   /** Останавливает озвучку обоими движками: и генерацию по jobId, и воспроизведение. */
   async stopSpeaking(): Promise<void> {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
 
-    const job = this.activeTtsJob;
-    if (job) {
-      try {
-        await window.api?.cancelTts?.(job.id);
-      } catch {
-        // воркер мог уже завершиться — остановки воспроизведения достаточно
-      }
-      job.finish(job.playedChunks > 0);
-    }
+    await this.finishActiveTtsJob();
 
     await ttsPlayer.stop();
     this.setTtsMuted(false);

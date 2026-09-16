@@ -16,16 +16,15 @@ import { Worker } from 'node:worker_threads';
 import { getWorkerScriptCandidates } from './appPaths';
 import { splitTextForTts } from './ttsTextSplit';
 import { getInstalledVoice, type InstalledVoice } from './ttsVoiceStore';
+import type { PiperTtsUnavailableCode } from './ttsErrorCodes';
 
 export type PiperTtsStatus = 'unloaded' | 'loading' | 'ready' | 'error' | 'unavailable';
 
-/** Причина недоступности — рендерер переводит код в текст (i18n), main не хранит строки UI. */
-export type PiperTtsUnavailableCode =
-  | 'worker_script_missing'
-  | 'native_module_missing'
-  | 'worker_crashed'
-  | 'voice_not_installed'
-  | 'load_failed';
+/**
+ * Причина недоступности — рендерер переводит код в текст (i18n), main не хранит строки UI.
+ * Сам список живёт в `ttsErrorCodes` — оттуда его берёт тест покрытия переводов.
+ */
+export type { PiperTtsUnavailableCode };
 
 export interface PiperTtsState {
   status: PiperTtsStatus;

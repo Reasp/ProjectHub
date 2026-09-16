@@ -77,7 +77,7 @@ export function registerTtsIpc(ctx: IpcContext) {
    */
   ipcMain.handle('tts:importVoice', async () => {
     const win = ctx.getMainWindow();
-    if (!win || win.isDestroyed()) return { ok: false, error: 'no_window' };
+    if (!win || win.isDestroyed()) return { ok: false, error: 'no_window', errorCode: 'no_window' };
 
     const modelPick = await dialog.showOpenDialog(win, {
       title: 'Piper voice model (.onnx)',
@@ -123,7 +123,9 @@ export function registerTtsIpc(ctx: IpcContext) {
   ipcMain.handle(
     'tts:speak',
     async (_event, req: { jobId: string; text: string; voiceId: string; speed?: number; speakerId?: number }) => {
-      if (!req?.jobId || !req?.text || !req?.voiceId) return { ok: false, error: 'invalid_request' };
+      if (!req?.jobId || !req?.text || !req?.voiceId) {
+        return { ok: false, error: 'invalid_request', errorCode: 'invalid_request' };
+      }
       // Не ждём окончания синтеза: чанки идут событиями, ответ возвращается сразу
       void piperTtsService.speak(req, {
         onChunk: (chunk) => send('tts:chunk', chunk),

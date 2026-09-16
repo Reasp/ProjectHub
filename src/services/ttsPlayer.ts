@@ -104,10 +104,12 @@ class TtsPlayer {
     sampleRate: number,
     options: { sinkId?: string; volume?: number } = {}
   ): Promise<boolean> {
-    if (this.activeJobId !== null && jobId !== this.activeJobId) return false;
+    // Чанк принимается только для задания, начатого begin(). Прежнее условие пропускало любой
+    // чанк при activeJobId === null, то есть сразу после stop() звук мог ожить и сделать
+    // отменённое задание активным (TASK-87, дефект 3)
+    if (this.activeJobId === null || jobId !== this.activeJobId) return false;
     if (!samples || samples.length === 0) return false;
 
-    this.activeJobId = jobId;
     const ctx = await this.ensureContext(sampleRate, options.sinkId ?? '', options.volume ?? 1);
     if (!ctx) return false;
     // Пока готовился контекст, задание могли отменить

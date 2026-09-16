@@ -14,8 +14,6 @@ import { createWriteStream, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import path from 'node:path';
 import { ensureModelsCacheDir } from './appPaths';
 import {
@@ -40,8 +38,9 @@ import {
   parsePiperVoiceConfig,
   PiperVoiceConfigError
 } from './piperVoiceConfig';
-
-const execFileAsync = promisify(execFile);
+import { ArchiveExtractError, extractTarBz2 } from './archiveExtract';
+import { parseContentLength, resolveTotalBytes } from './ttsDownloadProgress';
+import type { TtsVoiceStoreErrorCode } from './ttsErrorCodes';
 
 /** Хвост ONNX, в котором ищем metadata: она пишется в конец файла. */
 const METADATA_TAIL_BYTES = 64 * 1024;
@@ -84,23 +83,15 @@ export interface DownloadProgress {
   totalBytes: number;
 }
 
-export type TtsVoiceStoreErrorCode =
-  | 'invalid_voice_id'
-  | 'unknown_voice'
-  | 'download_failed'
-  | 'checksum_mismatch'
-  | 'extract_failed'
-  | 'tar_unavailable'
-  | 'model_not_found'
-  | 'config_not_found'
-  | 'espeak_data_missing'
-  | 'already_installed';
+/** Полный список кодов — в `ttsErrorCodes`: оттуда же его берёт тест покрытия переводов. */
+export type { TtsVoiceStoreErrorCode };
 
 export class TtsVoiceStoreError extends Error {
   readonly code: TtsVoiceStoreErrorCode;
   readonly detail?: string;
-  constructor(code: TtsVoiceStoreErrorCode, detail?: string) {
-    super(detail ? `${code}: ${detail}` : code);
+  /** `options.cause` передаётся при перебрасывании пойманной ошибки, чтобы не терять исходную. */
+  constructor(code: TtsVoiceStoreErrorCode, detail?: string, options?: ErrorOptions) {
+    super(detail ? `${code}: ${detail}` : code, options);
     this.name = 'TtsVoiceStoreError';
     this.code = code;
     this.detail = detail;
@@ -230,24 +221,37 @@ async function sha256File(filePath: string): Promise<string> {
 }
 
 /**
- * Распаковка `.tar.bz2` системным `tar`: он есть в Windows 10 1803+, macOS и Linux.
- * Отдельной зависимости-декомпрессора в приложение не добавляем — bzip2 в Node нет.
+ * Распаковка `.tar.bz2` внутри процесса (decision-32).
+ *
+ * Системный `tar` оказался неприменим: на Windows bsdtar собран без bz2lib и зовёт отсутствующий
+ * `bzip2 -d`, а GNU tar читает `-f C:\...` как «хост:путь». Поэтому внешних программ здесь нет.
  */
 async function extractArchive(archivePath: string, targetDir: string): Promise<void> {
   await fs.mkdir(targetDir, { recursive: true });
   try {
-    // Жёсткий таймаут: зависший tar не должен навсегда подвесить установку голоса
-    await execFileAsync('tar', ['-xjf', archivePath, '-C', targetDir], {
-      maxBuffer: 8 * 1024 * 1024,
-      timeout: 10 * 60 * 1000,
-      windowsHide: true
-    });
+    await extractTarBz2(archivePath, targetDir);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (/ENOENT|not recognized|not found/i.test(message)) {
-      throw new TtsVoiceStoreError('tar_unavailable', message);
+    if (err instanceof ArchiveExtractError) {
+      const code: TtsVoiceStoreErrorCode = err.code === 'unsafe_entry' ? 'unsafe_archive_entry' : 'archive_corrupted';
+      throw new TtsVoiceStoreError(code, err.detail ?? err.message, { cause: err });
     }
-    throw new TtsVoiceStoreError('extract_failed', message);
+    const message = err instanceof Error ? err.message : String(err);
+    throw new TtsVoiceStoreError('extract_failed', message, { cause: err });
+  }
+}
+
+/**
+ * Убирает временные каталоги от прерванных загрузок (AC#1).
+ *
+ * Чужие активные загрузки не трогаются: другой голос может качаться параллельно, и его
+ * `.staging` ещё нужен.
+ */
+async function cleanupStaleTempArtifacts(root: string): Promise<void> {
+  const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    const match = /^\.(.+)\.(download|staging)$/.exec(entry.name);
+    if (!match || activeDownloads.has(match[1])) continue;
+    await fs.rm(path.join(root, entry.name), { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -271,11 +275,16 @@ export async function downloadBuiltinVoice(
   if (!isValidVoiceId(voiceId)) throw new TtsVoiceStoreError('invalid_voice_id', voiceId);
   const definition = getBuiltinVoice(voiceId);
   if (!definition) throw new TtsVoiceStoreError('unknown_voice', voiceId);
-  if (activeDownloads.has(voiceId)) throw new TtsVoiceStoreError('already_installed', 'download already in progress');
+  if (activeDownloads.has(voiceId)) throw new TtsVoiceStoreError('download_in_progress', voiceId);
 
   const models = await ttsRoot();
   const voiceDir = getVoiceDir(models, voiceId);
-  const tmpArchive = path.join(getTtsRootDir(models), `.${voiceId}.download`);
+  const root = getTtsRootDir(models);
+  const tmpArchive = path.join(root, `.${voiceId}.download`);
+  const stagingDir = path.join(root, `.${voiceId}.staging`);
+  // Хвосты прошлых неудачных попыток — до того, как эта загрузка станет активной
+  await cleanupStaleTempArtifacts(root);
+
   const controller = new AbortController();
   activeDownloads.set(voiceId, controller);
 
@@ -285,26 +294,34 @@ export async function downloadBuiltinVoice(
     if (!response.ok || !response.body) {
       throw new TtsVoiceStoreError('download_failed', `HTTP ${response.status}`);
     }
-    const totalBytes = Number(response.headers.get('content-length')) || definition.archiveBytes;
+    // Знаменатель берётся только из Content-Length: при chunked-ответе его нет, и проценты от
+    // размера из реестра были бы выдуманными — тогда показываем мегабайты (TASK-87, дефект 6)
+    const contentLength = parseContentLength(response.headers.get('content-length'));
     let received = 0;
+    const report = (phase: DownloadProgress['phase']) =>
+      onProgress?.({
+        voiceId,
+        phase,
+        receivedBytes: received,
+        totalBytes: resolveTotalBytes(contentLength, received, phase)
+      });
 
     const source = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
     source.on('data', (chunk: Buffer) => {
       received += chunk.length;
-      onProgress?.({ voiceId, phase: 'download', receivedBytes: received, totalBytes });
+      report('download');
     });
     await pipeline(source, createWriteStream(tmpArchive));
 
     // 2. Контрольная сумма
-    onProgress?.({ voiceId, phase: 'verify', receivedBytes: received, totalBytes });
+    report('verify');
     const actual = await sha256File(tmpArchive);
     if (actual !== definition.sha256) {
       throw new TtsVoiceStoreError('checksum_mismatch', `expected ${definition.sha256}, got ${actual}`);
     }
 
     // 3. Распаковка во временный каталог рядом, затем перенос
-    onProgress?.({ voiceId, phase: 'extract', receivedBytes: received, totalBytes });
-    const stagingDir = path.join(getTtsRootDir(models), `.${voiceId}.staging`);
+    report('extract');
     await fs.rm(stagingDir, { recursive: true, force: true });
     await extractArchive(tmpArchive, stagingDir);
 
@@ -330,7 +347,6 @@ export async function downloadBuiltinVoice(
       await fs.cp(unpacked, voiceDir, { recursive: true });
       await fs.rm(unpacked, { recursive: true, force: true });
     });
-    await fs.rm(stagingDir, { recursive: true, force: true });
 
     // 4. Манифест
     const paths = getVoicePaths(models, voiceId, definition.modelFile);
@@ -374,12 +390,14 @@ export async function downloadBuiltinVoice(
     };
     await fs.writeFile(path.join(voiceDir, VOICE_MANIFEST_FILE), JSON.stringify(installed, null, 2), 'utf8');
 
-    onProgress?.({ voiceId, phase: 'done', receivedBytes: received, totalBytes });
+    report('done');
     console.log(`[TtsVoiceStore] Voice ${voiceId} installed (${Math.round(installed.sizeBytes / 1048576)} MB)`);
     return installed;
   } finally {
     activeDownloads.delete(voiceId);
+    // Мусор убирается на любом пути: ошибка распаковки, несовпадение sha256, отмена (AC#1)
     await fs.rm(tmpArchive, { force: true }).catch(() => {});
+    await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 

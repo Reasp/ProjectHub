@@ -3,15 +3,39 @@ id: TASK-87
 title: >-
   Дефекты локального TTS: staging-мусор, непереведённый код ошибки, webspeech
   без ttsMuted
-status: To Do
+status: Review
 assignee: []
 created_date: '2026-09-16 05:33'
-updated_date: '2026-09-16 10:53'
+updated_date: '2026-09-16 11:20'
 labels:
   - bug
   - tts
   - voice
 dependencies: []
+modified_files:
+  - electron/services/tarReader.ts
+  - electron/services/archiveExtract.ts
+  - electron/services/ttsErrorCodes.ts
+  - electron/services/ttsDownloadProgress.ts
+  - electron/services/ttsVoiceStore.ts
+  - electron/services/piperVoiceConfig.ts
+  - electron/services/piperTtsService.ts
+  - electron/ipc/ttsIpc.ts
+  - src/services/ttsPlayer.ts
+  - src/services/voiceService.ts
+  - src/components/voice/VoiceSettingsModal.tsx
+  - src/i18n/ru.ts
+  - src/i18n/en.ts
+  - tests/unit/tarReader.test.ts
+  - tests/unit/archiveExtract.test.ts
+  - tests/unit/ttsPlayer.test.ts
+  - tests/unit/ttsErrorCodes.test.ts
+  - tests/unit/ttsDownloadProgress.test.ts
+  - >-
+    backlog/decisions/decision-32 -
+    Распаковка-архивов-голосов-внутри-процесса-вместо-системного-tar.md
+  - package.json
+  - package-lock.json
 priority: medium
 type: bug
 ---
@@ -51,6 +75,76 @@ type: bug
 - [ ] #7 Регрессии покрыты unit-тестами там, где логика чистая (ttsPlayer, словарь кодов ошибок)
 - [ ] #8 Скачивание и установка встроенного голоса проходят на машине, где в PATH приложения нет bzip2 и системный tar собран без поддержки bzip2 (воспроизведено на Windows с bsdtar/libarchive 3.5.2)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Корневая причина (комментарий #1, #2) и решение
+
+Внешний `tar` убран из кода полностью — вместе с обеими причинами отказа. Выбран вариант 1 из
+комментария #1, усиленный: в процессе распаковывается не только bzip2, но и сам tar, потому что
+комментарий #2 показал, что GNU tar падает на `-f C:\...` ещё до декомпрессора. Оставлять внешний
+`tar` означало бы чинить одну ветку отказа из двух.
+
+Решение зафиксировано в **decision-32** (статус `accepted`); пункт 8 decision-25 («распаковка
+системным tar») им отменён, остальные пункты decision-25 в силе.
+
+## Новые модули
+
+- `electron/services/tarReader.ts` — чистый разбор заголовков tar: ustar с полем `prefix`, длинные
+  имена GNU (`L`) и pax (`path=`), размеры в base-256, проверка контрольной суммы, отсев ссылок и
+  устройств. Плюс `sanitizeTarEntryName` — защита от записи мимо целевого каталога.
+- `electron/services/archiveExtract.ts` — потоковая распаковка bzip2 (`unbzip2-stream`, чистый JS,
+  в `dependencies` → vite делает external автоматически) в промежуточный `.tar` на диске и
+  последовательное чтение буфером 1 МБ. Промежуточный файл удаляется в `finally`.
+- `electron/services/ttsErrorCodes.ts` — списки кодов ошибок **значениями**, а не только типами;
+  `ttsVoiceStore`, `piperVoiceConfig`, `piperTtsService` теперь берут типы оттуда.
+- `electron/services/ttsDownloadProgress.ts` — `parseContentLength` / `resolveTotalBytes`.
+
+## По дефектам
+
+1. **`.staging`** — `stagingDir` вычисляется до `try`, чистится в `finally` вместе с `.download`,
+   то есть на ошибке, отмене и несовпадении sha256. Добавлен `cleanupStaleTempArtifacts`: перед
+   загрузкой сметаются хвосты прошлых попыток (активные загрузки других голосов не трогаются —
+   параллельная установка второго голоса не ломается). Это убирает и уже лежащий на машине
+   `.ru_RU-irina-medium.staging`.
+2. **`already_installed`** — при проверке оказалось, что перевод в `ru`/`en` **уже был** (строка 328
+   обоих словарей), то есть описание дефекта было неточным. Настоящая дыра — отсутствие защиты:
+   типы кодов TypeScript не сверяет со словарём. Поэтому добавлен тест покрытия (каждый код имеет
+   непустой перевод в ru и en; осиротевших ключей нет; наборы ключей ru и en совпадают). Заодно код
+   переименован в `download_in_progress` — он означал «загрузка уже идёт», а не «уже установлено».
+   Попутно закрыты `no_window` и `invalid_request`: `ttsIpc` отдавал их только в поле `error`, без
+   `errorCode`, и они уходили в интерфейс сырыми.
+3. **`ttsPlayer.enqueue`** — условие стало строгим: `activeJobId === null || jobId !== activeJobId`.
+   Присваивание `activeJobId = jobId` внутри `enqueue` убрано: активное задание назначает только
+   `begin()`.
+4. **Два `speak()` внахлёст** — выделен `finishActiveTtsJob()` (отменяет генерацию в main по `jobId`
+   и резолвит промис), который зовут и `stopSpeaking()`, и `speakWithPiper()` перед началом нового
+   задания.
+5. **webspeech** — в `recognition.onresult` добавлен гейт `if (this.isPaused || this.ttsMuted) return`.
+6. **Проценты** — знаменатель берётся только из `Content-Length`; при его отсутствии `totalBytes: 0`
+   («размер неизвестен»), и интерфейс показывает скачанные мегабайты вместо выдуманных процентов.
+   После скачивания объём известен точно, поэтому на `verify`/`extract`/`done` индикатор даёт 100 %.
+
+## Проверка
+
+- `npm run lint` — 0 ошибок, 503 предупреждения (ровно базовая линия).
+- `npm test` — 91 файл / 950 тестов, все зелёные (было 86 / 908; +5 файлов, +42 теста).
+- `npm run check-bundle` — ✅, `unbzip2-stream` в списке внешних зависимостей, в бандл не попал.
+- `npm run lint:docs` — 125 файлов, ✅; `npm run index-docs` — индекс пересобран (404 чанка / 42 файла).
+- `npm run pack:win` — EXIT=0, `release/win-unpacked/ProjectHub.exe` обновлён (19:18, приложение было закрыто).
+- **Проверка на настоящем архиве (AC#8).** Скачан релизный `vits-piper-ru_RU-dmitri-medium.tar.bz2`:
+  67 188 551 байт, sha256 `c86d0803…a3660` — совпадает с реестром. Распаковался целиком новым кодом
+  за ~12 с: модель, `tokens.txt`, `espeak-ng-data`; промежуточный `.tar` не остался. Ни `tar`, ни
+  `bzip2` при этом не вызывались — то есть отказ, из-за которого заведена задача, на этой самой
+  машине больше не воспроизводится.
+
+## Что осталось владельцу
+
+Живой прогон в приложении (кнопка → прогресс → установка → озвучка) не выполнялся: нужен GUI-сеанс.
+Проверять **на `ru_RU-dmitri-medium` или любом другом голосе, кроме `ru_RU-irina-medium`** — тот
+положен в `userData` вручную и показывается установленным независимо от того, работает ли скачивание.
+<!-- SECTION:NOTES:END -->
 
 ## Comments
 
@@ -106,3 +200,38 @@ created: 2026-09-16 10:53
 Это ещё один довод за вариант 1 из предыдущего комментария: распаковка внутри процесса убирает обе зависимости от поведения внешнего `tar` сразу. Если всё же выбирать вариант с внешней программой — обязательны и `--force-local`, и проверка, какой именно tar найден.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Локальный TTS: голоса снова устанавливаются — распаковка перенесена внутрь процесса
+
+Голоса Piper не устанавливались вообще: `extractArchive` звал системный `tar -xjf`, а на Windows
+это ломается двумя независимыми способами — bsdtar из System32 собран без bz2lib и требует внешний
+`bzip2`, которого нет в PATH приложения, а GNU tar из Git for Windows читает `-f C:\...` как
+«хост:путь» и падает до распаковки. Какой сработает, зависело от порядка путей в PATH.
+
+Внешний `tar` убран целиком: bzip2 распаковывается потоковым чисто-JS декомпрессором
+(`unbzip2-stream`), tar разбирается собственным модулем (`tarReader` + `archiveExtract`) с
+поддержкой ustar `prefix`, длинных имён GNU и pax, размеров base-256, проверкой контрольных сумм
+заголовков и защитой от записи за пределы каталога распаковки. Выбор зафиксирован в decision-32,
+отменяющем пункт 8 decision-25.
+
+Вместе с этим закрыты пять дефектов из описания: `.staging` теперь чистится на любом пути ошибки и
+отмены (плюс сметаются хвосты прошлых попыток); `ttsPlayer.enqueue` больше не принимает чанки без
+начатого `begin()` и не воскрешает звук после `stop()`; повторный `speak()` без `stopSpeaking()`
+корректно завершает предыдущее задание и отменяет его генерацию в main; движок `webspeech` не
+реагирует на собственную озвучку приложения; проценты скачивания при ответе без `Content-Length`
+заменены на честные мегабайты. По коду `already_installed` выяснилось, что перевод уже существовал —
+вместо правки словаря добавлен тест, который не даёт ни одному коду уйти в интерфейс без перевода;
+код переименован в `download_in_progress`, а `no_window` и `invalid_request` получили `errorCode`.
+
+Проверено: lint 0 ошибок (503 предупреждения — базовая линия), 950 тестов в 91 файле (+42 новых),
+check-bundle зелёный, pack:win обновил `release/win-unpacked/ProjectHub.exe`. Ключевая проверка —
+настоящий релизный архив `ru_RU-dmitri-medium` (67 188 551 байт, sha256 сходится с реестром)
+распаковался новым кодом за ~12 с без вызова `tar` и `bzip2`.
+
+Не выполнялось: живой прогон установки кнопкой в GUI и связанные с ним проверки TASK-69/TASK-83
+(`setSinkId`, barge-in, чтение задач вслух). Проверять следует на голосе, отличном от
+`ru_RU-irina-medium`, — он установлен вручную и всегда выглядит установленным.
+<!-- SECTION:FINAL_SUMMARY:END -->

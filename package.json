@@ -187,6 +187,7 @@
     "simple-git": "^3.36.0",
     "tailwind-merge": "^3.6.0",
     "tree-kill": "^1.2.2",
+    "unbzip2-stream": "^1.4.3",
     "ws": "^8.21.3",
     "zod": "^3.24.1",
     "zustand": "^5.0.15"
@@ -197,6 +198,7 @@
     "@types/node": "^26.4.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
+    "@types/unbzip2-stream": "^1.4.3",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.1.0",
     "electron": "^44.0.0",

@@ -18,15 +18,13 @@
  * Чистый модуль: без Electron и файловой системы — покрыт unit-тестами (правило 17).
  */
 
-/** Коды ошибок разбора: рендерер переводит их в сообщения i18n, main не хранит тексты интерфейса. */
-export type PiperVoiceConfigErrorCode =
-  | 'invalid_json'
-  | 'not_an_object'
-  | 'missing_phoneme_id_map'
-  | 'empty_phoneme_id_map'
-  | 'missing_espeak_voice'
-  | 'missing_sample_rate'
-  | 'unsupported_phoneme_type';
+import type { PiperVoiceConfigErrorCode } from './ttsErrorCodes';
+
+/**
+ * Коды ошибок разбора: рендерер переводит их в сообщения i18n, main не хранит тексты интерфейса.
+ * Сам список живёт в `ttsErrorCodes` — оттуда его берёт тест покрытия переводов.
+ */
+export type { PiperVoiceConfigErrorCode };
 
 export class PiperVoiceConfigError extends Error {
   readonly code: PiperVoiceConfigErrorCode;

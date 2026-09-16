@@ -1106,10 +1106,16 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                     {ttsVoices.map((voice) => {
                       const progress = ttsProgress[voice.id];
                       const isBusy = Boolean(progress && progress.phase !== 'done') || voice.downloading;
+                      // totalBytes = 0 означает «размер неизвестен» (ответ без Content-Length):
+                      // показываем скачанные мегабайты, а не выдуманные проценты (TASK-87, дефект 6)
+                      const hasPercent = Boolean(progress && progress.totalBytes > 0);
                       const percent =
-                        progress && progress.totalBytes > 0
+                        hasPercent && progress
                           ? Math.min(100, Math.round((progress.receivedBytes / progress.totalBytes) * 100))
                           : 0;
+                      const downloadedLabel = hasPercent
+                        ? `${percent}%`
+                        : `${Math.round((progress?.receivedBytes ?? 0) / 1048576)} MB`;
                       const isSelected = voiceConfig.ttsVoiceId === voice.id;
 
                       return (
@@ -1148,7 +1154,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                                     ? t.voice.settingsModal.ttsDownloadVerify
                                     : progress?.phase === 'extract'
                                     ? t.voice.settingsModal.ttsDownloadExtract
-                                    : `${t.voice.settingsModal.ttsDownloading} ${percent}%`
+                                    : `${t.voice.settingsModal.ttsDownloading} ${downloadedLabel}`
                                   : voice.installed
                                   ? `${t.voice.settingsModal.ttsVoiceInstalled}${
                                       voice.sizeBytes ? ` · ${Math.round(voice.sizeBytes / 1048576)} MB` : ''
