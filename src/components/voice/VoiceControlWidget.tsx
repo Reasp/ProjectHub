@@ -40,6 +40,8 @@ export const VoiceControlWidget: React.FC = () => {
   const { setTimer } = useTimers();
 
   const transcriptRef = useRef(transcript);
+  /** Оверлей показывает итог последней команды крупно; подписки живут вне рендера, отсюда ref. */
+  const feedbackRef = useRef<string | null>(lastFeedback);
   const audioLevelRef = useRef(audioLevel);
   const lastAudioSyncRef = useRef<number>(0);
   /** Окно ожидания команды после ключевого слова (TASK-83). */
@@ -48,6 +50,10 @@ export const VoiceControlWidget: React.FC = () => {
   useEffect(() => {
     transcriptRef.current = transcript;
   }, [transcript]);
+
+  useEffect(() => {
+    feedbackRef.current = lastFeedback;
+  }, [lastFeedback]);
 
   useEffect(() => {
     audioLevelRef.current = audioLevel;
@@ -628,7 +634,10 @@ export const VoiceControlWidget: React.FC = () => {
           isPaused: voiceService.isPausedActive,
           state: partial?.state ?? voiceService.currentState,
           transcript: partial?.transcript ?? transcriptRef.current,
-          audioLevel: partial?.audioLevel ?? audioLevelRef.current
+          audioLevel: partial?.audioLevel ?? audioLevelRef.current,
+          // Диктовку показываем крупно на весь экран, запись по клавише — широкой полосой.
+          mode: voiceService.isDictationActive ? 'full' : voiceService.isPushToTalkActive ? 'wide' : 'compact',
+          feedback: feedbackRef.current ?? undefined
         });
       }
     };
@@ -692,6 +701,9 @@ export const VoiceControlWidget: React.FC = () => {
       syncToOverlay();
     });
 
+    // Вход и выход из диктовки меняют размер оверлея — без пересинхронизации окно осталось бы полосой.
+    const unsubDictation = voiceService.onDictationChange(() => syncToOverlay());
+
     // Озвучка финального ответа агента (TASK-83 п. 3). Стор лишь сообщает, что ответ готов; что
     // именно читать и читать ли вообще — решается здесь, где живут настройки голоса.
     const handleAgentAnswer = (event: Event) => {
@@ -748,6 +760,7 @@ export const VoiceControlWidget: React.FC = () => {
       unsubExternal?.();
       unsubPushToTalk?.();
       unsubPushToTalkState();
+      unsubDictation();
       unsubHitl();
       unsubDeviceNotice();
       window.removeEventListener('projecthub:agent-answer', handleAgentAnswer);

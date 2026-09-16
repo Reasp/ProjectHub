@@ -138,6 +138,12 @@ class VoiceService {
   /** Микрофон был открыт ради удержания — после отпускания его надо закрыть обратно. */
   private pushToTalkOwnedCapture = false;
   private pushToTalkSamples = 0;
+  /**
+   * Поколение нажатия push-to-talk. Холодный старт микрофона занимает секунды, и отпускание
+   * клавиши легко приходит раньше, чем захват поднялся: счётчик позволяет отменить уже ненужный
+   * запуск, вместо того чтобы включить запись после отпускания и залипнуть в ней.
+   */
+  private pushToTalkSeq = 0;
   /** Состояние детектора перебивания: судит только громкость во время собственной речи. */
   private bargeInState = createBargeInState();
   /** Страховка от «залипшей» клавиши: дольше этого одна фраза не пишется. */
@@ -1318,26 +1324,47 @@ class VoiceService {
   async beginPushToTalk(): Promise<boolean> {
     if (this.pushToTalkActive) return true;
 
+    // Режим включается сразу, до подъёма микрофона: иначе отпускание, пришедшее во время
+    // холодного старта, не нашло бы активной записи, вышло бы вхолостую — и флаг остался бы
+    // поднятым навсегда.
+    const seq = ++this.pushToTalkSeq;
+    this.pushToTalkActive = true;
+    this.notifyPushToTalk();
+
     const wasListening = this.isListening;
     if (!wasListening) {
       const started = await this.startHandsFreeListening();
-      if (!started) return false;
+      if (!started) {
+        if (seq === this.pushToTalkSeq) {
+          this.pushToTalkActive = false;
+          this.notifyPushToTalk();
+        }
+        return false;
+      }
     }
+
+    if (seq !== this.pushToTalkSeq) {
+      // Клавишу отпустили, пока поднимался микрофон. Запись не начинаем, а захват, открытый
+      // ради этого нажатия, закрываем — иначе микрофон остался бы включённым без причины.
+      if (!wasListening) {
+        this.cleanupAudio();
+        this.setState('idle');
+      }
+      return false;
+    }
+
+    this.pushToTalkOwnedCapture = !wasListening;
 
     // Web Speech API сам решает, где границы фразы: удержанием им управлять нечем, поэтому
     // для него push-to-talk сводится к включению распознавания на время удержания.
     if (this.config.engine === 'webspeech') {
-      this.pushToTalkOwnedCapture = !wasListening;
-      this.pushToTalkActive = true;
       this.notifyPushToTalk();
       return true;
     }
 
     void this.stopSpeaking();
-    this.pushToTalkOwnedCapture = !wasListening;
     this.isPaused = false;
     this.resetVAD();
-    this.pushToTalkActive = true;
     this.setState('speech_detected');
     this.notifyPushToTalk();
     return true;
@@ -1371,6 +1398,8 @@ class VoiceService {
   /** Клавиша отпущена: накопленная фраза немедленно уходит в распознавание. */
   async endPushToTalk(): Promise<void> {
     if (!this.pushToTalkActive) return;
+    // Отменяем запуск, который может быть ещё в процессе: он увидит смену поколения и свернётся.
+    this.pushToTalkSeq++;
     this.pushToTalkActive = false;
     this.notifyPushToTalk();
 

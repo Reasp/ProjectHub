@@ -27,6 +27,7 @@ import type {
   VoiceClassifyRequest,
   VoiceComputerTaskRequest,
   VoiceDictateRequest,
+  VoiceOverlayPayload,
   TtsChunkPayload,
   TtsDonePayload,
   TtsDownloadProgress,
@@ -512,13 +513,7 @@ const api: IElectronAPI = {
   },
 
   // System Voice Overlay
-  syncVoiceOverlay: (state: {
-    isListening: boolean;
-    isPaused: boolean;
-    state: string;
-    transcript: string;
-    audioLevel: number;
-  }) => ipcRenderer.send('voice:overlay-sync', state),
+  syncVoiceOverlay: (state: VoiceOverlayPayload) => ipcRenderer.send('voice:overlay-sync', state),
   onVoiceOverlayUpdate: (callback: (state: any) => void) => {
     const handler = (_event: any, data: any) => callback(data);
     ipcRenderer.on('voice:overlay-update', handler);

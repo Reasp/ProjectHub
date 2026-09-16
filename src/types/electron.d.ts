@@ -409,6 +409,23 @@ export interface PushToTalkEvent {
   durationMs: number;
 }
 
+/**
+ * Размер системного оверлея голоса (TASK-83): полоса внизу экрана, широкая полоса на время записи
+ * по горячей клавише и крупное окно по центру в режиме диктовки. Геометрию применяет main.
+ */
+export type VoiceOverlayMode = 'compact' | 'wide' | 'full';
+
+export interface VoiceOverlayPayload {
+  isListening: boolean;
+  isPaused: boolean;
+  state: string;
+  transcript: string;
+  audioLevel: number;
+  mode?: VoiceOverlayMode;
+  /** Итог последней команды: «Открываю доску задач», «Напечатано: …». */
+  feedback?: string;
+}
+
 export type VoiceIntentType = 'navigation' | 'action' | 'ai_control' | 'computer' | 'dictation' | 'unknown';
 
 export interface VoiceClassification {
@@ -927,20 +944,8 @@ export interface IElectronAPI {
   onRemoteAction: (callback: (action: { type: string; payload: any }) => void) => () => void;
 
   // System Voice Overlay
-  syncVoiceOverlay: (state: {
-    isListening: boolean;
-    isPaused: boolean;
-    state: string;
-    transcript: string;
-    audioLevel: number;
-  }) => void;
-  onVoiceOverlayUpdate: (callback: (state: {
-    isListening: boolean;
-    isPaused: boolean;
-    state: string;
-    transcript: string;
-    audioLevel: number;
-  }) => void) => () => void;
+  syncVoiceOverlay: (state: VoiceOverlayPayload) => void;
+  onVoiceOverlayUpdate: (callback: (state: VoiceOverlayPayload) => void) => () => void;
   sendVoiceOverlayAction: (action: 'toggle-pause' | 'stop') => void;
   onVoiceExternalControl: (callback: (action: 'toggle-pause' | 'stop') => void) => () => void;
 

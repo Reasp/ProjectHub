@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, screen, type BrowserWindow } from 'electron';
 import { localWhisperService } from '../services/localWhisperService';
 import { voiceHotkeyService } from '../services/voiceHotkeyService';
 import { aiAgentService, type AIMessage } from '../services/aiAgentService';
@@ -21,6 +21,52 @@ const classifierCache = new VoiceClassifierCache();
 /** Классификатору хватает десятков токенов; ждать дольше бессмысленно — это голосовая команда. */
 const CLASSIFY_MAX_TOKENS = 200;
 const CLASSIFY_TIMEOUT_MS = 12_000;
+
+/**
+ * Режим голосового оверлея (TASK-83): обычная полоса внизу экрана, широкая полоса на время записи
+ * по горячей клавише и крупное окно по центру в режиме диктовки — распознанный текст должен быть
+ * читаем, не заглядывая в окно приложения.
+ */
+type VoiceOverlayMode = 'compact' | 'wide' | 'full';
+
+const OVERLAY_BOTTOM_MARGIN = 48;
+
+/** Последний применённый размер: синхронизация приходит десятки раз в секунду, дёргать setBounds на каждую — лишнее. */
+let lastOverlayMode: VoiceOverlayMode | null = null;
+
+function overlayBounds(mode: VoiceOverlayMode) {
+  const area = screen.getPrimaryDisplay().workArea;
+
+  if (mode === 'full') {
+    const width = Math.round(area.width * 0.86);
+    const height = Math.round(area.height * 0.6);
+    return {
+      width,
+      height,
+      x: Math.round(area.x + (area.width - width) / 2),
+      y: Math.round(area.y + (area.height - height) / 2)
+    };
+  }
+
+  const width = mode === 'wide' ? Math.min(1100, Math.round(area.width * 0.72)) : Math.min(760, Math.round(area.width * 0.6));
+  const height = mode === 'wide' ? 190 : 96;
+  return {
+    width,
+    height,
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: area.y + area.height - height - OVERLAY_BOTTOM_MARGIN
+  };
+}
+
+function applyOverlayGeometry(win: BrowserWindow, mode: VoiceOverlayMode): void {
+  if (mode === lastOverlayMode) return;
+  lastOverlayMode = mode;
+  try {
+    win.setBounds(overlayBounds(mode));
+  } catch {
+    // Окно могло быть уничтожено между проверкой и вызовом — не повод падать.
+  }
+}
 
 function toStringList(value: unknown, limit: number): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -67,6 +113,9 @@ export function registerVoiceIpc(ctx: IpcContext) {
 
     if (voiceOverlayWin && !voiceOverlayWin.isDestroyed()) {
       if (shouldBeVisible) {
+        const mode: VoiceOverlayMode =
+          state?.mode === 'full' || state?.mode === 'wide' || state?.mode === 'compact' ? state.mode : 'compact';
+        applyOverlayGeometry(voiceOverlayWin, mode);
         if (!voiceOverlayWin.isVisible()) {
           voiceOverlayWin.showInactive();
         }

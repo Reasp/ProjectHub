@@ -281,16 +281,22 @@ function createVoiceOverlayWindow(): BrowserWindow {
   const preloadJs = path.join(__dirname, 'preload.js');
   const preloadPath = existsSync(preloadCjs) ? preloadCjs : preloadJs;
 
+  // Полоса внизу экрана, как у Talon Voice: распознанный текст должен быть виден не глядя на
+  // окно приложения. Размер и положение дальше меняет `voice:overlay-sync` по режиму (TASK-83).
+  const voiceWorkArea = screen.getPrimaryDisplay().workArea;
+  const voiceOverlayWidth = Math.min(760, Math.round(voiceWorkArea.width * 0.6));
+  const voiceOverlayHeight = 96;
+
   voiceOverlayWin = new BrowserWindow({
-    width: 320,
-    height: 54,
-    x: 24,
-    y: 24,
+    width: voiceOverlayWidth,
+    height: voiceOverlayHeight,
+    x: Math.round(voiceWorkArea.x + (voiceWorkArea.width - voiceOverlayWidth) / 2),
+    y: voiceWorkArea.y + voiceWorkArea.height - voiceOverlayHeight - 48,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
-    resizable: false,
+    resizable: true,
     show: false,
     focusable: false,
     hasShadow: false,
