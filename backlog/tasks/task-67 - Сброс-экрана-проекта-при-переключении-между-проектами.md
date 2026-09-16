@@ -1,10 +1,10 @@
 ---
 id: TASK-67
 title: Сброс экрана проекта при переключении между проектами
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-12 03:41'
-updated_date: '2026-09-12 03:42'
+updated_date: '2026-09-16 01:39'
 labels: []
 dependencies: []
 modified_files:

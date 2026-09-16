@@ -748,8 +748,12 @@ class ClaudeBridgeService extends EventEmitter {
     return promise;
   }
 
-  /** Локальное решение из окна ProjectHub; адресуется строго по requestId. */
-  public sendApprovalResponse(requestId: string, response: ApprovalResponse, source: HitlDecisionSource = { kind: 'local' }): boolean {
+  /**
+   * Решение по карточке; адресуется строго по requestId. `source` обязателен: дефолт
+   * `{ kind: 'local' }` позволял неинтерактивному вызову попасть в аудит как решение человека
+   * в окне ProjectHub (TASK-86, decision-10 п. 4).
+   */
+  public sendApprovalResponse(requestId: string, response: ApprovalResponse, source: HitlDecisionSource): boolean {
     return hitlService.decide(requestId, response, source).ok;
   }
 

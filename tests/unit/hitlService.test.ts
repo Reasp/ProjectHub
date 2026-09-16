@@ -73,6 +73,19 @@ describe('HitlService: очередь и адресация по requestId (TASK
     expect(service.decide('nope', { approved: true }, { kind: 'local' })).toEqual({ ok: false, reason: 'not_found' });
   });
 
+  it('решение, принятое не человеком, попадает в аудит с источником auto, а не local (TASK-86)', async () => {
+    await service.init({ dir: path.join(baseDir, 'hitl'), auditDir: path.join(baseDir, 'audit') });
+    const waiting = service.request(req('auto-src'));
+    expect(service.decide('auto-src', { approved: true }, { kind: 'auto', rule: 'computer-allowlist' }).ok).toBe(true);
+    await waiting;
+    await service.flush();
+
+    const entry = (await service.listAudit({ kind: 'decision' })).find((e) => e.requestId === 'auto-src');
+    expect(entry?.decidedBy).toBe('auto');
+    expect(entry?.rule).toBe('computer-allowlist');
+    expect(await service.listAudit({ decidedBy: 'local' })).toEqual([]);
+  });
+
   it('дублирующийся requestId в очереди отклоняется', async () => {
     const p1 = service.request(req('dup'));
     await expect(service.request(req('dup'))).rejects.toThrow(/уже в очереди/);

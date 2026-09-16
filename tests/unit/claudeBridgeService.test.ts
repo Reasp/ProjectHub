@@ -44,10 +44,10 @@ describe('requestApproval / rejectPendingApprovals (аудит 1.3)', () => {
     expect(claudeBridgeService.getPendingApprovalIds('s1')).toEqual([req.id]);
     expect(claudeBridgeService.getProjectStatus(PROJECT).status).toBe('waiting_approval');
 
-    expect(claudeBridgeService.sendApprovalResponse(req.id, { approved: true, text: 'ok' })).toBe(true);
+    expect(claudeBridgeService.sendApprovalResponse(req.id, { approved: true, text: 'ok' }, { kind: 'local' })).toBe(true);
     await expect(p).resolves.toEqual({ approved: true, text: 'ok' });
     expect(claudeBridgeService.getPendingApprovalIds()).toEqual([]);
-    expect(claudeBridgeService.sendApprovalResponse(req.id, { approved: true })).toBe(false);
+    expect(claudeBridgeService.sendApprovalResponse(req.id, { approved: true }, { kind: 'local' })).toBe(false);
   });
 
   it('abortSession отклоняет одобрения только своей сессии и переводит статус проекта в idle', async () => {
@@ -66,7 +66,7 @@ describe('requestApproval / rejectPendingApprovals (аудит 1.3)', () => {
     // idle не хранится в реестре статусов
     expect(claudeBridgeService.getAllProjectStatuses()).toEqual([]);
 
-    claudeBridgeService.sendApprovalResponse(claudeBridgeService.getPendingApprovalIds('s2')[0], { approved: false });
+    claudeBridgeService.sendApprovalResponse(claudeBridgeService.getPendingApprovalIds('s2')[0], { approved: false }, { kind: 'local' });
     await expect(other).resolves.toEqual({ approved: false });
   });
 

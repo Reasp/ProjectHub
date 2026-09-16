@@ -2,7 +2,8 @@ import { ipcMain, dialog } from 'electron';
 import fs from 'node:fs/promises';
 import { hitlService } from '../services/hitlService';
 import { appEventBus } from '../services/eventBus';
-import type { ApprovalResponse, HitlAuditQuery, HitlDecisionSource } from '../services/hitlTypes';
+import { normalizeDecisionSource } from '../services/hitlPolicy';
+import type { ApprovalResponse, HitlAuditQuery } from '../services/hitlTypes';
 import type { IpcContext } from './types';
 
 /**
@@ -25,14 +26,17 @@ export function registerHitlIpc(ctx: IpcContext) {
     });
   });
 
-  ipcMain.handle('hitl:decide', async (_event, requestId: string, response: ApprovalResponse, source?: Partial<HitlDecisionSource>) => {
+  ipcMain.handle('hitl:decide', async (_event, requestId: string, response: ApprovalResponse, source?: unknown) => {
     if (typeof requestId !== 'string' || !requestId) return { ok: false, reason: 'not_found' };
     const safeResponse: ApprovalResponse = {
       approved: Boolean(response?.approved),
       text: typeof response?.text === 'string' ? response.text : undefined
     };
-    const kind = source?.kind === 'remote' || source?.kind === 'mcp' ? source.kind : 'local';
-    const result = hitlService.decide(requestId, safeResponse, { kind, deviceId: source?.deviceId, deviceName: source?.deviceName });
+    // Источник решения не подменяется на `local`: недопустимое значение — отказ, чтобы автоматика
+    // не попала в аудит как человек в окне (TASK-86).
+    const decisionSource = normalizeDecisionSource(source);
+    if (!decisionSource) return { ok: false, reason: 'invalid_source' };
+    const result = hitlService.decide(requestId, safeResponse, decisionSource);
     return result.ok ? { ok: true, sessionId: result.request.sessionId, projectPath: result.request.projectPath } : result;
   });
 

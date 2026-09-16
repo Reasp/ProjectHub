@@ -1,10 +1,10 @@
 ---
 id: TASK-68
 title: Динамические столбцы канбана из backlog/config.yml (per-project статусы задач)
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-13 12:34'
-updated_date: '2026-09-13 13:12'
+updated_date: '2026-09-16 01:40'
 labels:
   - ui
   - backlog

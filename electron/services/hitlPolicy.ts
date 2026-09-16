@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { isInsideProject } from './pathGuard.js';
 import type { AIProviderConfig, AutoApproveRules } from './aiAgentService.js';
-import type { RolePermissions } from './hitlTypes.js';
+import type { HitlDecisionSource, RolePermissions } from './hitlTypes.js';
 
 /**
  * Политики HITL (TASK-57, decision-10 п. 3): чистые функции без Electron и процессов.
@@ -209,4 +209,30 @@ export function evaluateToolRequest(
   }
 
   return auto ? { verdict: 'allow', rule: 'auto-other' } : { verdict: 'ask', rule: 'manual' };
+}
+
+/**
+ * Источники решения, которые допустимо принять извне `hitlService`: человек в окне ProjectHub,
+ * доверенное устройство Remote Control/Telegram, внешний MCP-клиент. Значения `auto`, `timeout`,
+ * `cancelled` и `shutdown` ставит только сам сервис.
+ */
+export const EXTERNAL_DECISION_SOURCE_KINDS = ['local', 'remote', 'mcp'] as const;
+
+/**
+ * Нормализует источник решения, пришедший из IPC или по сети (TASK-86). Отсутствие источника —
+ * это вызов из окна приложения, то есть `local`; недопустимое для внешнего вызова значение даёт
+ * `null` (решение не применяется). Раньше любое неизвестное значение молча становилось `local`, и
+ * решение, принятое не человеком, выглядело в аудите как решение человека (decision-10 п. 4).
+ */
+export function normalizeDecisionSource(raw: unknown): HitlDecisionSource | null {
+  if (raw === undefined || raw === null) return { kind: 'local' };
+  if (typeof raw !== 'object') return null;
+  const source = raw as Partial<HitlDecisionSource>;
+  if (source.kind === undefined) return { kind: 'local' };
+  const kind = EXTERNAL_DECISION_SOURCE_KINDS.find((allowed) => allowed === source.kind);
+  if (!kind) return null;
+  const text = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  // `rule` описывает сработавшее авто-правило и принадлежит источнику `auto` — извне не принимаем.
+  return { kind, deviceId: text(source.deviceId), deviceName: text(source.deviceName) };
 }

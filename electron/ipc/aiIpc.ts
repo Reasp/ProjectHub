@@ -196,7 +196,8 @@ export function registerAiIpc(ctx: IpcContext) {
   });
 
   ipcMain.handle('claudeBridge:sendApprovalResponse', async (_event, requestId: string, response: { approved: boolean; text?: string }) => {
-    return claudeBridgeService.sendApprovalResponse(requestId, response);
+    // Вызов идёт из окна ProjectHub через preload — источник указываем явно (TASK-86).
+    return claudeBridgeService.sendApprovalResponse(requestId, response, { kind: 'local' });
   });
 
   ipcMain.handle('claudeBridge:getSubagents', async (_event, projectPath: string) => {

@@ -54,7 +54,7 @@ async function waitFor(approvals: ApprovalRequest[], count: number) {
 async function answer(approvals: ApprovalRequest[], response: { approved: boolean; text?: string }) {
   await waitFor(approvals, 1);
   const req = approvals[approvals.length - 1];
-  expect(claudeBridgeService.sendApprovalResponse(req.id, response)).toBe(true);
+  expect(claudeBridgeService.sendApprovalResponse(req.id, response, { kind: 'local' })).toBe(true);
   return req;
 }
 
@@ -129,7 +129,7 @@ describe('handleCliPermissionRequest (TASK-42, аудит 5.3)', () => {
     await expect(p1).resolves.toMatchObject({ behavior: 'allow' });
     const p2 = claudeBridgeService.handleCliPermissionRequest('cli', { tool_name: 'Write', input: { file_path: 'a.txt', content: '' } });
     await waitFor(approvals, 2);
-    claudeBridgeService.sendApprovalResponse(approvals[1].id, { approved: false });
+    claudeBridgeService.sendApprovalResponse(approvals[1].id, { approved: false }, { kind: 'local' });
     await expect(p2).resolves.toMatchObject({ behavior: 'deny' });
     expect(approvals).toHaveLength(2);
   });
@@ -179,7 +179,7 @@ describe('handleCliPermissionRequest (TASK-42, аудит 5.3)', () => {
     // Вторая карточка: ответ «Other: …» уходит в CLI как свободный текст без префикса
     await waitFor(approvals, 2);
     expect(approvals[1].questionData?.isMultiSelect).toBe(true);
-    claudeBridgeService.sendApprovalResponse(approvals[1].id, { approved: true, text: 'Other: только выводы' });
+    claudeBridgeService.sendApprovalResponse(approvals[1].id, { approved: true, text: 'Other: только выводы' }, { kind: 'local' });
     await expect(p).resolves.toEqual({
       behavior: 'allow',
       updatedInput: { questions: input.questions, answers: { 'Какой формат?': 'Кратко', 'Какие разделы?': 'только выводы' } }

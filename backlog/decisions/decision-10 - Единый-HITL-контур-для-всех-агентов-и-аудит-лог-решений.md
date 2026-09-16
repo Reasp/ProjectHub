@@ -73,6 +73,14 @@ Human-in-the-loop реализован серьёзно, но только дл�
    с обязательным `requestId`; добавлен `projecthub_list_pending_approvals`), `auto` (правило
    политики: `auto-command`, `auto-write`, `outside-project`, `tool-not-allowed` …), `timeout`,
    `cancelled`, `shutdown`.
+   Источник, пришедший извне сервиса (IPC окна, RPC устройства, MCP-клиент), проверяется белым
+   списком `local|remote|mcp` чистой функцией `normalizeDecisionSource` (`hitlPolicy.ts`):
+   отсутствие источника означает вызов из окна (`local`), а `auto`, `timeout`, `cancelled`,
+   `shutdown` и любое неизвестное значение отклоняются с `reason: 'invalid_source'` — эти источники
+   ставит только сам сервис. Параметр `source` в `claudeBridgeService.sendApprovalResponse`
+   обязателен. До TASK-86 дефолт `{ kind: 'local' }` и сведение неизвестного `kind` к `local`
+   позволяли неинтерактивному вызову попасть в журнал как решение человека, что лишало аудит
+   доказательной силы (см. TASK-86).
 5. **Аудит**: одна строка `decision` на решение (включая авто-решения), отдельная строка `outcome`
    с результатом выполнения (для Claude CLI — по `tool_use_id` из событий `tool_result`
    stream-json, для API-движка — по коду выхода команды/успеху записи), строка `fallback` при

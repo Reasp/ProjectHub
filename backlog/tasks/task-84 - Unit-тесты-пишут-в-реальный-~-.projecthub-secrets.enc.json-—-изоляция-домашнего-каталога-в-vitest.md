@@ -3,10 +3,10 @@ id: TASK-84
 title: >-
   Unit-тесты пишут в реальный ~/.projecthub (secrets.enc.json) — изоляция
   домашнего каталога в vitest
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-15 13:08'
-updated_date: '2026-09-15 14:06'
+updated_date: '2026-09-16 01:40'
 labels:
   - tests
   - security

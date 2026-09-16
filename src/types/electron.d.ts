@@ -1042,7 +1042,7 @@ export interface HitlAuditQuery {
 
 export type HitlDecideResult =
   | { ok: true; sessionId: string; projectPath: string }
-  | { ok: false; reason: 'not_found' | 'already_decided' };
+  | { ok: false; reason: 'not_found' | 'already_decided' | 'invalid_source' };
 
 export interface AgentEventBase {
   sessionId: string;

@@ -105,7 +105,7 @@ export interface HitlDecisionSource {
 
 export type HitlDecideResult =
   | { ok: true; request: HitlRequest }
-  | { ok: false; reason: 'not_found' | 'already_decided' };
+  | { ok: false; reason: 'not_found' | 'already_decided' | 'invalid_source' };
 
 export type HitlOutcome = 'executed' | 'failed' | 'not_executed' | 'session_gone';
 
