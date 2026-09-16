@@ -27,6 +27,7 @@ import {
   parseOpenApplicationActivated,
   resolveComputerTarget,
   sanitizeComputerUseSettings,
+  shouldPinTargetWindow,
   summarizeComputerAction,
   type ComputerOrigin,
   type ComputerUseSettings,
@@ -206,6 +207,8 @@ class ComputerUseService extends EventEmitter {
   private startPromise: Promise<boolean> | null = null;
   private runtimeState: ComputerRuntimeState = 'stopped';
   private runtimeError: string | null = null;
+  /** Последние строки stderr рантайма — в них причина неудачного старта. */
+  private lastRuntimeStderr = '';
   private runtimeTools: RuntimeTool[] = [];
   private reconciliation: CatalogReconciliation | null = null;
 
@@ -345,6 +348,7 @@ class ComputerUseService extends EventEmitter {
   private async startRuntime(): Promise<boolean> {
     this.runtimeState = 'starting';
     this.runtimeError = null;
+    this.lastRuntimeStderr = '';
     this.broadcastStatus();
 
     const transport = new StdioClientTransport({
@@ -355,7 +359,11 @@ class ComputerUseService extends EventEmitter {
     });
     transport.stderr?.on('data', (chunk: Buffer) => {
       const text = chunk.toString('utf8').trim();
-      if (text) console.log(`[ComputerUse] runtime: ${text.slice(0, 500)}`);
+      if (!text) return;
+      // Причина неудачного старта обычно только в stderr: у самого исключения текст вроде
+      // «Connection closed», по которому пользователю и модели ничего не понять.
+      this.lastRuntimeStderr = `${this.lastRuntimeStderr}\n${text}`.trim().slice(-1000);
+      console.log(`[ComputerUse] runtime: ${text.slice(0, 500)}`);
     });
     const client = new Client({ name: 'projecthub-computer-proxy', version: '1.0.0' });
     transport.onclose = () => {
@@ -394,10 +402,11 @@ class ComputerUseService extends EventEmitter {
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      const details = [message, this.lastRuntimeStderr].filter(Boolean).join(' | ');
       this.runtimeState = 'error';
-      this.runtimeError = /ENOENT|not recognized|не является/i.test(message)
-        ? `Не найден npx (Node.js ≥ 20): ${message}`
-        : message;
+      this.runtimeError = /ENOENT|not recognized|не является|not found/i.test(details)
+        ? `Не найден npx (нужен Node.js ≥ 20 в PATH): ${details}`
+        : details;
       console.error('[ComputerUse] Не удалось запустить рантайм:', message);
       await this.killTransport(transport);
       if (this.transport === transport) this.transport = null;
@@ -564,6 +573,11 @@ class ComputerUseService extends EventEmitter {
     const hints = targetless ? {} : extractTargetHints(callArgs, firstPointFromArgs(callArgs, spec.coords));
     const resolved = resolveComputerTarget(windows, hints);
     const target = targetless ? null : resolved.target;
+    // Действие выполняется именно в том окне, которое проверила политика: иначе рантайм по
+    // `target_app` активирует главное окно приложения, и ввод уходит мимо открытого диалога.
+    if (shouldPinTargetWindow(callArgs, target) && this.toolAcceptsArg(runtimeName, 'target_window_id')) {
+      callArgs.target_window_id = target.windowId;
+    }
     const verdict = evaluateComputerAction({
       tool: runtimeName,
       spec,
@@ -684,6 +698,13 @@ class ComputerUseService extends EventEmitter {
       console.warn('[ComputerUse] list_windows failed:', err);
       return [];
     }
+  }
+
+  /** Есть ли у инструмента рантайма такой аргумент (схемы приходят из `tools/list`). */
+  private toolAcceptsArg(runtimeName: string, arg: string): boolean {
+    const schema = this.runtimeTools.find((t) => t.name === runtimeName)?.inputSchema;
+    const properties = isRecord(schema) && isRecord(schema.properties) ? schema.properties : null;
+    return Boolean(properties && arg in properties);
   }
 
   /** Запуск приложения по голому имени `*.exe` через `start` (PATH и App Paths), отдельно от дерева процессов рантайма. */

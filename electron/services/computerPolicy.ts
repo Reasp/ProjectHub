@@ -367,6 +367,18 @@ export function sanitizeComputerUseSettings(raw: unknown): ComputerUseSettings {
   };
 }
 
+/**
+ * Нужно ли закрепить действие за конкретным окном. Модель часто указывает только `target_app`, и
+ * рантайм активирует главное окно приложения — а действие должно попасть в то окно, которое прокси
+ * посчитал целью (например, в открывшийся диалог «Сохранить как» того же процесса). Если окно указано
+ * явно или цель не определена, аргументы не трогаем.
+ */
+export function shouldPinTargetWindow(args: Record<string, unknown>, target: ComputerTarget | null): target is ComputerTarget & { windowId: number } {
+  if (!target || typeof target.windowId !== 'number') return false;
+  if (args.target_window_id !== undefined || args.window_id !== undefined) return false;
+  return typeof args.target_app === 'string' && args.target_app.trim().length > 0;
+}
+
 /** Строка действия для карточки HITL и аудита: инструмент, значимые аргументы, цель. */
 export function summarizeComputerAction(tool: string, args: Record<string, unknown>, target: ComputerTarget | null, max = 300): string {
   const shown: Record<string, unknown> = {};
