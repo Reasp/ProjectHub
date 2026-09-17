@@ -17,6 +17,7 @@ import { useProjectStore } from '../../store/useProjectStore';
 import { useAIStudioStore } from '../../store/useAIStudioStore';
 import { useHitlStore } from '../../store/useHitlStore';
 import { getDictionary } from '../../i18n';
+import { toExecutableVoiceCommand } from '../../services/voiceClassifiedCommand';
 import { useDialog } from '../../hooks/useDialog';
 import { useTimers, useToast } from '../../hooks/useTimeoutState';
 
@@ -353,6 +354,14 @@ export const VoiceControlWidget: React.FC = () => {
     else if (cmd.type === 'navigation') {
       if (cmd.intent === 'toggle_terminal') {
         toggleTerminal();
+      } else if (cmd.intent === 'toggle_sidebar') {
+        // Фразы меню проектов из настроек приходят с типом navigation, регулярки — с action:
+        // обрабатываем в обеих ветках, иначе голосовые «меню проектов», «скрой меню» не работали
+        toggleSidebar();
+      } else if (cmd.intent === 'hide_sidebar') {
+        setSidebarOpen(false);
+      } else if (cmd.intent === 'show_sidebar') {
+        setSidebarOpen(true);
       } else if (cmd.payload) {
         setActiveTab(cmd.payload);
       }
@@ -578,6 +587,10 @@ export const VoiceControlWidget: React.FC = () => {
     const result = response.result;
     if (result.intent === 'unknown') {
       setLastFeedback(dict.voice.feedback.notUnderstood.replace('{text}', gate.command));
+      // Модели (и локальная, и облачная) двусмысленную фразу отдают как unknown, а не как интент с
+      // низкой уверенностью, поэтому голосовой переспрос нужен и здесь. Только для фраз, обращённых
+      // к приложению по ключевому слову: иначе фоновые разговоры вызывали бы озвучку.
+      if (config.wakeWordEnabled === true) void voiceService.speak(dict.voice.feedback.confirmIntent, speakLang);
       return;
     }
 
@@ -614,13 +627,9 @@ export const VoiceControlWidget: React.FC = () => {
     }
 
     const title = dict.voice.settingsModal.commandTitles[result.intent] || result.intent;
-    await executeCommand({
-      // Интенты диктовки исполняются в ветке действий, отдельного типа у них в рендерере нет.
-      type: result.type === 'unknown' || result.type === 'dictation' ? 'action' : result.type,
-      intent: result.intent,
-      payload: result.payload,
-      feedbackText: dict.voice.feedback.classified.replace('{command}', title)
-    });
+    // Ответ модели приводится к форме парсера регулярок: вкладка в payload, меню проектов и
+    // диктовка — в ветке действий (иначе распознанная команда ничего не делала).
+    await executeCommand(toExecutableVoiceCommand(result, dict.voice.feedback.classified.replace('{command}', title)));
   }, [executeCommand]);
 
   // Подписки на voiceService и внешние события создаются один раз при монтировании.

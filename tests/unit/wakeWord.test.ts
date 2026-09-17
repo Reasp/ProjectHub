@@ -53,6 +53,22 @@ describe('matchWakeWord: ключевое слово по транскрипту
     expect(matchWakeWord('хаб открой', DEFAULT_WAKE_WORD_PHRASES).matched).toBe(true);
   });
 
+  it('типичные ошибки Whisper на «хаб» принимаются без настройки (замер 2026-09-17)', () => {
+    expect(matchWakeWord('Хап, открой задачи.')).toMatchObject({ matched: true, command: 'открой задачи.' });
+    expect(matchWakeWord('Привет, хап, прочитай задачи.')).toMatchObject({ matched: true, command: 'прочитай задачи.' });
+    expect(matchWakeWord('Привет, Кап, хочу посмотреть, что сейчас в работе.')).toMatchObject({
+      matched: true,
+      phrase: 'привет хаб',
+      command: 'хочу посмотреть, что сейчас в работе.'
+    });
+    expect(matchWakeWord('Привет, хабп, почитай задачи.').matched).toBe(true);
+  });
+
+  it('одиночное «кап» — не обращение: слишком похоже на обычную речь', () => {
+    expect(matchWakeWord('Кап, открой задачи').matched).toBe(false);
+    expect(matchWakeWord('капитан открой задачи').matched).toBe(false);
+  });
+
   it('пользовательская фраза заменяет список по умолчанию', () => {
     expect(matchWakeWord('компьютер открой гит', ['компьютер'])).toMatchObject({
       matched: true,

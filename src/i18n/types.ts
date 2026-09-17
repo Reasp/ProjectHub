@@ -307,6 +307,7 @@ export interface TranslationDictionary {
       ttsStatusLoading: string;
       ttsStatusUnavailable: string;
       ttsStatusNotLoaded: string;
+      ttsStatusVoiceError: string;
       ttsEspeakMissing: string;
       ttsSourceImported: string;
       ttsNoVoices: string;

@@ -17,7 +17,15 @@ export type WhisperProvider = 'local' | 'groq' | 'openai';
 
 import { getDefaultCommandPhrases } from './voiceCommandPhrases';
 import { DEFAULT_WAKE_WORD_PHRASES } from './wakeWord';
-import { DEFAULT_BARGE_IN, createBargeInState, feedBargeIn, resetBargeIn } from './bargeInDetector';
+import {
+  DEFAULT_BARGE_IN,
+  bargeInThresholdFor,
+  createBargeInState,
+  feedBargeIn,
+  resetBargeIn,
+  phraseSpeechLevel,
+  updateSpeechLevel
+} from './bargeInDetector';
 import { ttsPlayer } from './ttsPlayer';
 import type { LocalWhisperStatusInfo } from '../types/electron';
 
@@ -146,6 +154,10 @@ class VoiceService {
   private pushToTalkSeq = 0;
   /** Состояние детектора перебивания: судит только громкость во время собственной речи. */
   private bargeInState = createBargeInState();
+  /** Типичная громкость речи пользователя по его фразам — от неё считается порог barge-in. */
+  private userSpeechLevel: number | null = null;
+  /** RMS звучащих чанков текущей фразы — по ним оценивается громкость пользователя. */
+  private currentPhraseRms: number[] = [];
   /** Страховка от «залипшей» клавиши: дольше этого одна фраза не пишется. */
   private static readonly PUSH_TO_TALK_MAX_SAMPLES = 16000 * 60;
   private onPushToTalkCallbacks: Set<(active: boolean) => void> = new Set();
@@ -979,8 +991,9 @@ class VoiceService {
           sumSquares += chunk[i] * chunk[i];
         }
         const rms = Math.sqrt(sumSquares / chunk.length);
-        if (feedBargeIn(this.bargeInState, rms, Date.now(), DEFAULT_BARGE_IN)) {
-          console.log('[VoiceService] Barge-in: речь пользователя во время озвучки, останавливаем TTS');
+        const threshold = bargeInThresholdFor(this.userSpeechLevel);
+        if (feedBargeIn(this.bargeInState, rms, Date.now(), { ...DEFAULT_BARGE_IN, threshold })) {
+          console.log(`[VoiceService] Barge-in: речь пользователя во время озвучки (порог ${threshold.toFixed(3)}), останавливаем TTS`);
           void this.stopSpeaking();
         }
       }
@@ -1031,6 +1044,7 @@ class VoiceService {
       // Prepend pre-roll buffer so we don't cut off leading consonants
       const preRoll = this.getPreRollSamples();
       this.currentPhraseChunks = [preRoll, new Float32Array(chunk)];
+      this.currentPhraseRms = [rms];
       return;
     }
 
@@ -1040,6 +1054,7 @@ class VoiceService {
 
       if (hasSound) {
         this.lastSoundTime = now;
+        this.currentPhraseRms.push(rms);
       }
 
       const silenceDuration = now - this.lastSoundTime;
@@ -1072,6 +1087,10 @@ class VoiceService {
   private finalizeAndDispatchPhrase(): Promise<void> {
     this.isSpeaking = false;
     this.setState('transcribing');
+
+    const phraseLevel = phraseSpeechLevel(this.currentPhraseRms);
+    if (phraseLevel !== null) this.userSpeechLevel = updateSpeechLevel(this.userSpeechLevel, phraseLevel);
+    this.currentPhraseRms = [];
 
     // Merge chunks
     let totalSamples = 0;

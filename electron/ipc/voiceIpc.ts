@@ -3,6 +3,7 @@ import { localWhisperService } from '../services/localWhisperService';
 import { voiceHotkeyService } from '../services/voiceHotkeyService';
 import { aiAgentService, type AIMessage } from '../services/aiAgentService';
 import { computerUseService } from '../services/computerUseService';
+import { claudeBridgeService } from '../services/claudeBridgeService';
 import type { ToolExecutionResult } from '../services/apiToolLoop';
 import {
   VoiceClassifierCache,
@@ -251,6 +252,27 @@ export function registerVoiceIpc(ctx: IpcContext) {
       };
       // streamChat при отмене не зовёт ни onComplete, ни onError — без своего таймера промис завис бы.
       const timer = setTimeout(() => finish({ ok: false, error: 'timeout' }), COMPUTER_TASK_TIMEOUT_MS);
+
+      // Anthropic без API-ключа — вход в Claude Code по подписке (decision-35): задача уходит в CLI-сессию.
+      // Встроенные инструменты CLI отключены, остаются только MCP-инструменты computer_* прокси
+      // ProjectHub — с тем же HITL, allowlist, аудитом и kill-switch, что и в API-пути.
+      if (config.provider === 'anthropic' && !config.apiKey?.trim()) {
+        void claudeBridgeService.runAgentTask(
+          {
+            sessionId,
+            projectPath,
+            messages,
+            config,
+            mode: 'agent',
+            builtinTools: [],
+            systemPromptAddon: COMPUTER_TASK_SYSTEM
+          },
+          () => {},
+          (msg) => finish({ ok: true, text: msg.content || '' }),
+          (err) => finish({ ok: false, error: err })
+        );
+        return;
+      }
 
       void aiAgentService.streamChat(
         {

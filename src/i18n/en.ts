@@ -307,6 +307,7 @@ export const en: TranslationDictionary = {
       ttsStatusLoading: 'Loading model…',
       ttsStatusUnavailable: 'Local engine unavailable, falling back to the system voice',
       ttsStatusNotLoaded: 'Model not loaded',
+      ttsStatusVoiceError: 'Voice failed to load, falling back to the system voice',
       ttsEspeakMissing: 'No espeak-ng data — download any built-in voice, it ships with them.',
       ttsSourceImported: 'Imported',
       ttsNoVoices: 'No voices downloaded yet',
@@ -335,7 +336,10 @@ export const en: TranslationDictionary = {
         empty_phoneme_id_map: 'The phoneme_id_map table is empty',
         missing_espeak_voice: 'Configuration does not specify an espeak voice (espeak.voice)',
         missing_sample_rate: 'Configuration does not specify a sample rate',
-        unsupported_phoneme_type: 'Only espeak phonemization is supported'
+        unsupported_phoneme_type: 'Only espeak phonemization is supported',
+        model_rejected: 'The model failed a trial load: the .onnx file is corrupted or is not a Piper voice',
+        probe_timeout: 'The trial load of the model timed out — the voice was not imported',
+        probe_unavailable: 'Could not start the trial model load in a separate process'
       },
       apiKeyLabel: 'API Key',
       apiKeyPlaceholder: 'Enter provider API key',

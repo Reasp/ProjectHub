@@ -24,11 +24,26 @@ export interface WakeWordMatch {
   phrase?: string;
 }
 
-/**
- * Список по умолчанию. «Хаб» короткое, и Whisper иногда слышит его как «хап»/«хабы» — варианты
- * пользователь добавляет сам в настройках, как и остальные фразы команд.
- */
+/** Список по умолчанию; пользователь меняет его в настройках, как и остальные фразы команд. */
 export const DEFAULT_WAKE_WORD_PHRASES = ['хаб', 'привет хаб', 'эй хаб', 'окей хаб', 'hub', 'hey hub', 'ok hub'];
+
+/**
+ * Типичные ошибки Whisper на коротком «хаб». На живой проверке 2026-09-17 (whisper-base, два
+ * голоса Piper) «хаб» примерно в половине фраз распознавался как «хап» или «кап» — и ключевое слово
+ * не срабатывало. Поэтому варианты принимаются без настройки. `anywhere` — вариант безопасен и в
+ * одиночной фразе; `afterGreeting` — только в составе обращения («привет кап»): одиночное «кап»
+ * слишком похоже на обычную речь.
+ */
+const WAKE_WORD_CONFUSIONS: Record<string, { anywhere: string[]; afterGreeting: string[] }> = {
+  хаб: { anywhere: ['хап', 'хабп'], afterGreeting: ['кап'] }
+};
+
+/** Варианты слова фразы: само слово и его известные искажения. */
+function wordVariants(word: string, inGreeting: boolean): string[] {
+  const confusion = WAKE_WORD_CONFUSIONS[word];
+  if (!confusion) return [word];
+  return [word, ...confusion.anywhere, ...(inGreeting ? confusion.afterGreeting : [])];
+}
 
 interface Token {
   text: string;
@@ -74,7 +89,8 @@ export function matchWakeWord(transcript: string, phrases: string[] = DEFAULT_WA
 
   for (const phrase of prepared) {
     if (normalized.length < phrase.words.length) continue;
-    const hit = phrase.words.every((word, index) => word === normalized[index]);
+    const inGreeting = phrase.words.length > 1;
+    const hit = phrase.words.every((word, index) => wordVariants(word, inGreeting).includes(normalized[index]));
     if (!hit) continue;
 
     const cut = tokens[phrase.words.length - 1].end;

@@ -52,6 +52,25 @@ export const PIPER_TTS_UNAVAILABLE_CODES = [
 
 export type PiperTtsUnavailableCode = (typeof PIPER_TTS_UNAVAILABLE_CODES)[number];
 
+/**
+ * Пробная загрузка импортированного голоса в отдельном процессе (decision-34): модель отвергнута
+ * (процесс упал или синтез не удался), проба не уложилась во время, пробу нечем запустить.
+ */
+export const PIPER_VOICE_PROBE_ERROR_CODES = ['model_rejected', 'probe_timeout', 'probe_unavailable'] as const;
+
+export type PiperVoiceProbeErrorCode = (typeof PIPER_VOICE_PROBE_ERROR_CODES)[number];
+
+/**
+ * Сообщение об ошибке означает, что нативный модуль sherpa-onnx не установлен для платформы.
+ *
+ * Формулировки разные: Node пишет «Cannot find module 'sherpa-onnx-node'» (`MODULE_NOT_FOUND`), а сам
+ * `sherpa-onnx-node`, если нет платформенного пакета, — «Could not find sherpa-onnx-node. Tried …»
+ * (проверено 2026-09-17 на сборке без `sherpa-onnx-win-x64`). Перезапуски воркера тут не помогают.
+ */
+export function isNativeModuleMissingError(message: string): boolean {
+  return /MODULE_NOT_FOUND|Cannot find module|Could not find sherpa-onnx/i.test(message);
+}
+
 /** Отказы на уровне IPC: до хранилища и движка дело не дошло. */
 export const TTS_IPC_ERROR_CODES = ['no_window', 'invalid_request'] as const;
 
@@ -62,5 +81,6 @@ export const ALL_TTS_ERROR_CODES: readonly string[] = [
   ...TTS_VOICE_STORE_ERROR_CODES,
   ...PIPER_VOICE_CONFIG_ERROR_CODES,
   ...PIPER_TTS_UNAVAILABLE_CODES,
+  ...PIPER_VOICE_PROBE_ERROR_CODES,
   ...TTS_IPC_ERROR_CODES
 ];

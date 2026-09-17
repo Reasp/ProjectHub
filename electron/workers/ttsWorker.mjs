@@ -1,24 +1,28 @@
 /**
- * Изолированный воркер локального синтеза речи (TASK-69, decision-21, decision-25).
+ * Процесс локального синтеза речи (TASK-69, decision-25, decision-34).
  *
- * Внутри — `sherpa-onnx-node` с голосом Piper/VITS. Воркер намеренно «глупый»: разбиение текста на
+ * Внутри — `sherpa-onnx-node` с голосом Piper/VITS. Процесс намеренно «глупый»: разбиение текста на
  * предложения, выбор голоса и очередь заданий живут в `piperTtsService`, сюда приходит уже готовый
  * фрагмент текста. Так реестр голосов не дублируется в двух местах (decision-21, п. 3).
  *
- * Важные особенности рантайма, проверенные спайком 2026-09-16:
+ * Запускается через Electron `utilityProcess`, а не `worker_threads` (decision-34). Причины, обе
+ * проверены на упакованном приложении 2026-09-17:
  *
- * - В Electron V8 запрещены external buffers, и `generate()` падает с «External buffers are not
- *   allowed». Поэтому в каждом запросе передаётся `enableExternalBuffer: false` — без него синтез
- *   в упакованном приложении не работает вовсе (в обычном node ошибки нет, отсюда риск не заметить).
- * - Модель без metadata (сырой файл с Hugging Face) не бросает исключение, а **аварийно завершает
- *   процесс**. Воркер для того и нужен: падение убивает поток, а не приложение, и сервис
- *   возвращает пользователю понятную ошибку вместо краша.
+ * - sherpa везёт свою `onnxruntime.dll` 1.28, а Whisper и RAG (`onnxruntime-node`) — 1.21. В одном
+ *   процессе Windows отдаёт второму загрузчику уже загруженную библиотеку того же имени, и первый
+ *   же синтез после распознавания речи ронял всё приложение.
+ * - На модели без metadata или на повреждённом `.onnx` sherpa не бросает исключение, а аварийно
+ *   завершает процесс. Поток делит процесс с main, отдельный процесс — нет.
+ *
+ * Особенность рантайма из спайка 2026-09-16: в Electron V8 запрещены external buffers, и `generate()`
+ * падает с «External buffers are not allowed». Поэтому в каждом запросе передаётся
+ * `enableExternalBuffer: false` (в обычном node ошибки нет, отсюда риск не заметить).
  */
-import { parentPort } from 'node:worker_threads';
 import { createRequire } from 'node:module';
 
+const parentPort = process.parentPort;
 if (!parentPort) {
-  throw new Error('ttsWorker.mjs must be run in a Worker thread');
+  throw new Error('ttsWorker.mjs must be run as an Electron utility process');
 }
 
 const require = createRequire(import.meta.url);
@@ -31,13 +35,15 @@ let loadedKey = null;
 /** jobId заданий, отменённых во время генерации. */
 const cancelledJobs = new Set();
 
-function post(message, transfer) {
+/**
+ * Сообщение в main. Канал utility process передаёт только MessagePort, буферы копируются
+ * структурным клонированием — для фрагментов звука длиной в предложение это дёшево.
+ */
+function post(message) {
   try {
-    parentPort.postMessage(message, transfer);
+    parentPort.postMessage(message);
   } catch (err) {
-    // Если буфер не получилось передать — отправляем без transferList
-    if (transfer && transfer.length > 0) parentPort.postMessage(message);
-    else console.error('[TtsWorker] postMessage failed:', err);
+    console.error('[TtsWorker] postMessage failed:', err);
   }
 }
 
@@ -77,8 +83,8 @@ function ensureVoice(voice) {
   return { reused: false, loadTimeMs: Date.now() - startedAt };
 }
 
-/** Копия сэмплов в собственный буфер — его можно отдать в main через transferList без копирования. */
-function toTransferable(samples) {
+/** Копия сэмплов в собственный буфер: исходный принадлежит sherpa и может переиспользоваться. */
+function copySamples(samples) {
   const copy = new Float32Array(samples.length);
   copy.set(samples);
   return copy;
@@ -108,12 +114,9 @@ async function synthesize(msg) {
       onProgress: (info) => {
         if (cancelledJobs.has(id)) return 0; // прерывает генерацию внутри sherpa
         if (info && info.samples && info.samples.length > 0) {
-          const samples = toTransferable(info.samples);
+          const samples = copySamples(info.samples);
           sampleRate = info.sampleRate || tts.sampleRate;
-          post(
-            { type: 'chunk', id, samples, sampleRate, index: chunkIndex++ },
-            [samples.buffer]
-          );
+          post({ type: 'chunk', id, samples, sampleRate, index: chunkIndex++ });
         }
         return 1;
       }
@@ -127,9 +130,9 @@ async function synthesize(msg) {
 
     // Колбэк не вызывался (сборка без потокового прогресса) — отдаём результат одним чанком
     if (chunkIndex === 0 && streamed && streamed.samples && streamed.samples.length > 0) {
-      const samples = toTransferable(streamed.samples);
+      const samples = copySamples(streamed.samples);
       sampleRate = streamed.sampleRate || tts.sampleRate;
-      post({ type: 'chunk', id, samples, sampleRate, index: chunkIndex++ }, [samples.buffer]);
+      post({ type: 'chunk', id, samples, sampleRate, index: chunkIndex++ });
     }
 
     const audioSec = streamed && streamed.samples ? streamed.samples.length / (streamed.sampleRate || tts.sampleRate) : 0;
@@ -151,9 +154,9 @@ async function synthesize(msg) {
     post({ type: 'cancelled', id });
     return;
   }
-  const samples = toTransferable(audio.samples);
+  const samples = copySamples(audio.samples);
   sampleRate = audio.sampleRate || tts.sampleRate;
-  post({ type: 'chunk', id, samples, sampleRate, index: 0 }, [samples.buffer]);
+  post({ type: 'chunk', id, samples, sampleRate, index: 0 });
   post({
     type: 'done',
     id,
@@ -164,7 +167,8 @@ async function synthesize(msg) {
   });
 }
 
-parentPort.on('message', async (msg) => {
+parentPort.on('message', async (event) => {
+  const msg = event?.data;
   if (!msg || typeof msg !== 'object') return;
   const { type, id } = msg;
 

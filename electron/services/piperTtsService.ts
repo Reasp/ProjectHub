@@ -1,9 +1,13 @@
 /**
  * Локальный нейросетевой синтез речи на голосах Piper (TASK-69, decision-25).
  *
- * Инференс выполняется в изолированном `worker_threads` (`electron/workers/ttsWorker.mjs`) по
- * образцу `localWhisperService` и `ragWorkerClient` (decision-21): ленивая загрузка модели,
- * очередь заданий с `jobId`, таймаут, ограниченное число перезапусков.
+ * Инференс выполняется в отдельном процессе Electron `utilityProcess` (`electron/workers/ttsWorker.mjs`),
+ * а не в `worker_threads`, как Whisper и RAG (decision-34): у sherpa своя `onnxruntime.dll` другой
+ * версии, и в общем процессе синтез после распознавания речи ронял приложение; к тому же нативное
+ * падение sherpa на битой модели теперь убивает только этот процесс. Остальное — по образцу
+ * decision-21: ленивая загрузка модели, очередь заданий с `jobId`, таймаут, ограниченное число
+ * перезапусков. Импортированные голоса дополнительно проходят пробу (`ttsVoiceProbe`), чтобы битая
+ * модель не выводила из строя рабочий процесс синтеза.
  *
  * Отличие от decision-21 п. 5: полноценного in-process fallback здесь нет намеренно. Синтез в
  * main-процессе заблокировал бы event loop на всё время фразы, а деградация уже предусмотрена
@@ -12,11 +16,11 @@
  * в настройках, и не пытается синтезировать в main.
  */
 import { existsSync } from 'node:fs';
-import { Worker } from 'node:worker_threads';
+import { utilityProcess, type UtilityProcess } from 'electron';
 import { getWorkerScriptCandidates } from './appPaths';
 import { splitTextForTts } from './ttsTextSplit';
 import { getInstalledVoice, type InstalledVoice } from './ttsVoiceStore';
-import type { PiperTtsUnavailableCode } from './ttsErrorCodes';
+import { isNativeModuleMissingError, type PiperTtsUnavailableCode } from './ttsErrorCodes';
 
 export type PiperTtsStatus = 'unloaded' | 'loading' | 'ready' | 'error' | 'unavailable';
 
@@ -83,8 +87,8 @@ interface ActiveJob {
 }
 
 class PiperTtsService {
-  private worker: Worker | null = null;
-  private starting: Promise<Worker | null> | null = null;
+  private worker: UtilityProcess | null = null;
+  private starting: Promise<UtilityProcess | null> | null = null;
   private status: PiperTtsStatus = 'unloaded';
   private loadedVoice: InstalledVoice | null = null;
   private sampleRate: number | null = null;
@@ -133,7 +137,7 @@ class PiperTtsService {
     return null;
   }
 
-  private async ensureWorker(): Promise<Worker | null> {
+  private async ensureWorker(): Promise<UtilityProcess | null> {
     if (this.unavailable || this.disposed) return null;
     if (this.worker) return this.worker;
     if (this.starting) return this.starting;
@@ -146,17 +150,17 @@ class PiperTtsService {
       }
 
       try {
-        const worker = new Worker(workerPath);
-        worker.on('message', (msg) => this.handleMessage(worker, msg));
-        worker.on('error', (err) => this.handleFailure(worker, err instanceof Error ? err : new Error(String(err))));
+        const worker = utilityProcess.fork(workerPath, [], { serviceName: 'ProjectHub Piper TTS', stdio: 'pipe' });
+        worker.on('message', (msg: unknown) => this.handleMessage(worker, msg));
         worker.on('exit', (code) => {
           if (this.worker !== worker) return;
-          this.handleFailure(worker, new Error(`TTS worker exited with code ${code}`));
+          this.handleFailure(worker, new Error(`TTS process exited with code ${code}`));
         });
-        // Воркер не должен удерживать процесс при выходе из приложения
-        worker.unref();
+        // Вывод процесса синтеза — в общий лог main (console.* дублируется в main.log)
+        worker.stdout?.on('data', (data: Buffer) => console.log(`[PiperTTS:process] ${data.toString().trim()}`));
+        worker.stderr?.on('data', (data: Buffer) => console.warn(`[PiperTTS:process] ${data.toString().trim()}`));
         this.worker = worker;
-        console.log('[PiperTTS] Worker thread started');
+        console.log('[PiperTTS] Utility process started');
         return worker;
       } catch (err) {
         this.markUnavailable('worker_crashed', err instanceof Error ? err.message : String(err));
@@ -171,7 +175,7 @@ class PiperTtsService {
     }
   }
 
-  private handleMessage(worker: Worker, raw: unknown) {
+  private handleMessage(worker: UtilityProcess, raw: unknown) {
     if (this.worker !== worker || !raw || typeof raw !== 'object') return;
     const msg = raw as Record<string, unknown>;
     const type = msg.type as string;
@@ -224,7 +228,7 @@ class PiperTtsService {
     else request.resolve(payload);
   }
 
-  private handleFailure(worker: Worker, err: Error) {
+  private handleFailure(worker: UtilityProcess, err: Error) {
     if (this.worker !== worker) return;
     this.worker = null;
     this.loadedVoice = null;
@@ -247,7 +251,7 @@ class PiperTtsService {
     this.errorMessage = err.message;
 
     // Нативный модуль не установлен — перезапуски не помогут
-    if (/Cannot find module|sherpa-onnx/i.test(err.message) && /not find|MODULE_NOT_FOUND/i.test(err.message)) {
+    if (isNativeModuleMissingError(err.message)) {
       this.markUnavailable('native_module_missing', err.message);
       return;
     }
@@ -259,7 +263,7 @@ class PiperTtsService {
     }
   }
 
-  private request<T>(payload: Record<string, unknown>, timeoutMs: number, worker: Worker): Promise<T> {
+  private request<T>(payload: Record<string, unknown>, timeoutMs: number, worker: UtilityProcess): Promise<T> {
     const id = (payload.id as string) || `tts-${++this.requestCounter}`;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -324,9 +328,15 @@ class PiperTtsService {
       this.status = 'ready';
       console.log(`[PiperTTS] Voice ${voiceId} loaded in ${res.loadTimeMs}ms (${res.sampleRate} Hz)`);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // Воркер жив, но модуль sherpa в нём не грузится: это недоступность движка, а не битая модель
+      if (isNativeModuleMissingError(message)) {
+        this.markUnavailable('native_module_missing', message);
+        return this.getState();
+      }
       this.status = 'error';
       this.errorCode = 'load_failed';
-      this.errorMessage = err instanceof Error ? err.message : String(err);
+      this.errorMessage = message;
     }
     return this.getState();
   }
@@ -411,7 +421,7 @@ class PiperTtsService {
     this.worker = null;
     this.loadedVoice = null;
     this.status = 'unloaded';
-    if (worker) await worker.terminate().catch(() => {});
+    if (worker) worker.kill();
     console.log('[PiperTTS] Service disposed');
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ALL_TTS_ERROR_CODES } from '../../electron/services/ttsErrorCodes';
+import { ALL_TTS_ERROR_CODES, isNativeModuleMissingError } from '../../electron/services/ttsErrorCodes';
 import { en } from '../../src/i18n/en';
 import { ru } from '../../src/i18n/ru';
 
@@ -38,5 +38,21 @@ describe('коды ошибок TTS переведены целиком (TASK-87
 
   it('список кодов не содержит дублей', () => {
     expect(new Set(ALL_TTS_ERROR_CODES).size).toBe(ALL_TTS_ERROR_CODES.length);
+  });
+});
+
+describe('isNativeModuleMissingError: отсутствие нативного модуля sherpa (TASK-69, AC#7)', () => {
+  it('узнаёт формулировки Node и самого sherpa-onnx-node', () => {
+    expect(isNativeModuleMissingError("Cannot find module 'sherpa-onnx-node'")).toBe(true);
+    expect(isNativeModuleMissingError('Error [MODULE_NOT_FOUND]')).toBe(true);
+    expect(
+      isNativeModuleMissingError('Could not find sherpa-onnx-node. Tried\n\n  ./node_modules/sherpa-onnx-win-x64/sherpa-onnx.node\n')
+    ).toBe(true);
+  });
+
+  it('не путает с ошибками модели и воркера', () => {
+    expect(isNativeModuleMissingError("'sample_rate' does not exist in the metadata")).toBe(false);
+    expect(isNativeModuleMissingError('TTS worker exited with code 3765269347')).toBe(false);
+    expect(isNativeModuleMissingError('sherpa-onnx failed to load model')).toBe(false);
   });
 });

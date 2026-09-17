@@ -17,6 +17,7 @@ import {
   TtsVoiceStoreError
 } from '../services/ttsVoiceStore';
 import { PiperVoiceConfigError } from '../services/piperVoiceConfig';
+import { probeVoiceInSeparateProcess } from '../services/ttsVoiceProbe';
 import type { IpcContext } from './types';
 
 /** Ошибки наружу уходят кодом, а не текстом: строки интерфейса живут в i18n рендерера. */
@@ -101,8 +102,14 @@ export function registerTtsIpc(ctx: IpcContext) {
 
     try {
       const installed = await importVoiceFromFiles(modelPath, configPath);
-      // Пробная загрузка в воркер: битая модель уронит поток, а не приложение,
-      // и пользователь увидит причину сразу, а не при первой попытке чтения вслух
+      // Чужая модель сначала проходит пробу в отдельном процессе (decision-34): на битом файле
+      // sherpa аварийно завершает процесс, и в воркере main-процесса это уронило бы всё приложение.
+      const probe = await probeVoiceInSeparateProcess(installed);
+      if (!probe.ok) {
+        await deleteVoice(installed.id).catch(() => {});
+        return { ok: false, error: probe.detail, errorCode: probe.errorCode };
+      }
+      // Модель доказала, что загружается, — теперь её можно отдать общему воркеру синтеза
       const state = await piperTtsService.loadVoice(installed.id);
       if (state.status !== 'ready') {
         await deleteVoice(installed.id).catch(() => {});

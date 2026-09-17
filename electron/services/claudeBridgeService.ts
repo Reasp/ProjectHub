@@ -1168,6 +1168,14 @@ class ClaudeBridgeService extends EventEmitter {
       /** Задача, привязанная к сессии AI Studio (TASK-64) — по ней contextBuilder собирает контекст. */
       taskId?: string;
       contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>;
+      /**
+       * Встроенные инструменты Claude CLI, доступные сессии (`--tools`); пустой список — ни одного,
+       * остаются только MCP-инструменты ProjectHub (`computer_*`). Без поля — набор CLI по умолчанию.
+       * Голосовая команда компьютеру ограничена так же, как в API-пути (TASK-83 п. 4, decision-35).
+       */
+      builtinTools?: string[];
+      /** Дополнение системного промпта CLI-сессии (например, правила голосовой команды). */
+      systemPromptAddon?: string;
     },
     onChunk: (chunk: ClaudeBridgeMessageChunk) => void,
     onComplete: (msg: AIMessage) => void,
@@ -1574,6 +1582,8 @@ class ClaudeBridgeService extends EventEmitter {
       workspaceRoot?: string;
       taskId?: string;
       contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>;
+      builtinTools?: string[];
+      systemPromptAddon?: string;
     },
     onChunk: (chunk: ClaudeBridgeMessageChunk) => void,
     onComplete: (msg: AIMessage) => void,
@@ -1615,6 +1625,10 @@ class ClaudeBridgeService extends EventEmitter {
     if (req.config.model && req.config.model !== 'default') {
       cliArgs.push('--model', req.config.model);
     }
+    if (req.builtinTools) {
+      // Пустое значение отключает все встроенные инструменты; MCP-инструменты из --mcp-config остаются
+      cliArgs.push(quoteShellArg(`--tools=${req.builtinTools.join(',')}`));
+    }
 
     // Контекст задачи (TASK-64) — задача/AC, RAG, GitNexus и git-статус в системный промпт
     // Claude CLI через тот же канал `--append-system-prompt`, что и роли в agentFleetService.
@@ -1635,6 +1649,7 @@ class ClaudeBridgeService extends EventEmitter {
     if (computerUseService.listProxyTools().length > 0) {
       systemAddon.push(buildComputerUseInstructions(`mcp__${CLI_HITL_MCP_SERVER_NAME}__${COMPUTER_TOOL_PREFIX}`));
     }
+    if (req.systemPromptAddon?.trim()) systemAddon.push(req.systemPromptAddon.trim());
     // Многострочный текст передаётся файлом: CLI запускается через оболочку (shell: true), и cmd.exe
     // обрезает командную строку на первом переводе строки — без файла терялись --mcp-config,
     // --permission-prompt-tool и --output-format, а CLI отвечал пустым сообщением (TASK-82).

@@ -409,6 +409,33 @@ export function parseVoiceCommand(text: string, customPhrases?: Record<string, s
     };
   }
 
+  // 4.9 READING ALOUD — строго до навигации по вкладкам: правила навигации ловят подстроки «задач»,
+  // «tasks» и «документ», и раньше «прочитай задачи» открывало доску, а озвучка голосом была
+  // недостижима (найдено при живой проверке TASK-69, 2026-09-17).
+  // Глагол — по основе: Whisper нередко слышит «прочитаю задачу», «прочитая документ».
+  if (
+    /^(прочитай задачи|прочитай таски|озвучь задачи|какие задачи|список задач|read tasks)$/i.test(normalized) ||
+    /(^|\s)(прочита|озвуч)\S*\s+(задач|таск)/i.test(normalized) ||
+    normalized.includes('какие задачи')
+  ) {
+    return {
+      type: 'action',
+      intent: 'read_tasks',
+      feedbackText: 'Читаю список задач'
+    };
+  }
+
+  if (
+    /^(прочитай документ|прочитай доку|озвучь документ|прочитай доки|read doc|read document)$/i.test(normalized) ||
+    /(^|\s)(прочита|озвуч)\S*\s+(документ|доку|доки)/i.test(normalized)
+  ) {
+    return {
+      type: 'action',
+      intent: 'read_doc',
+      feedbackText: 'Читаю документ'
+    };
+  }
+
   // ─────────────────────────────────────────────────────────────────
   // 5. MAIN TAB NAVIGATION
   // ─────────────────────────────────────────────────────────────────
@@ -649,32 +676,8 @@ export function parseVoiceCommand(text: string, customPhrases?: Record<string, s
     };
   }
 
-  // 5.1 READING & AUDIO ASSISTANT (TTS ONLY)
-  if (
-    /^(прочитай задачи|прочитай таски|озвучь задачи|какие задачи|список задач|read tasks)$/i.test(normalized) ||
-    normalized.includes('прочитай задачи') ||
-    normalized.includes('озвучь задачи') ||
-    normalized.includes('какие задачи')
-  ) {
-    return {
-      type: 'action',
-      intent: 'read_tasks',
-      feedbackText: 'Читаю список задач'
-    };
-  }
-
-  if (
-    /^(прочитай документ|прочитай доку|озвучь документ|прочитай доки|read doc|read document)$/i.test(normalized) ||
-    normalized.includes('прочитай документ') ||
-    normalized.includes('прочитай доку')
-  ) {
-    return {
-      type: 'action',
-      intent: 'read_doc',
-      feedbackText: 'Читаю документ'
-    };
-  }
-
+  // 5.1 READING & AUDIO ASSISTANT (TTS ONLY) — чтение задач и документов разбирается выше, до
+  // навигации по вкладкам (см. 4.9)
   if (
     /^(хватит|замолчи|останови чтение|стоп чтение|тишина|stop reading|mute)$/i.test(normalized) ||
     normalized === 'хватит' ||
@@ -733,11 +736,11 @@ export function parseVoiceCommand(text: string, customPhrases?: Record<string, s
     };
   }
 
+  // Деплой и тесты — только короткой командой, а не подстрокой в любой фразе: «может деплой, а может
+  // нет» не должно запускать деплой, а «открой Блокнот и напиши слово тест» — тесты (живая проверка
+  // TASK-83, 2026-09-17). Всё остальное уходит на разбор моделью.
   if (
-    normalized.includes('задеплой') ||
-    normalized.includes('деплой') ||
-    normalized.includes('опубликуй') ||
-    normalized.includes('deploy')
+    /^(?:задеплой|задеплоить|деплой|сделай деплой|запусти деплой|опубликуй|deploy|run deploy)(?: проект)?$/i.test(normalized)
   ) {
     return {
       type: 'action',
@@ -747,10 +750,9 @@ export function parseVoiceCommand(text: string, customPhrases?: Record<string, s
   }
 
   if (
-    normalized.includes('тест') ||
-    normalized.includes('запусти тесты') ||
-    normalized.includes('прогони тесты') ||
-    normalized.includes('run tests')
+    /^(?:запусти |прогони |запустить |прогнать )?(?:тесты|тест|юнит тесты)(?: проекта)?$/i.test(normalized) ||
+    /^(?:run )?tests$/i.test(normalized) ||
+    normalized === 'run tests'
   ) {
     return {
       type: 'action',

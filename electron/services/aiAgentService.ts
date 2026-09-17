@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import treeKill from 'tree-kill';
 import { searchProjectDocs } from './ragSearch.js';
 import { buildAgentContext, buildComputerUseInstructions } from './contextBuilder.js';
 import { secretStorageService } from './secretStorageService.js';
@@ -20,6 +21,7 @@ import {
   type AnthropicModelCapabilities
 } from './anthropicRequest.js';
 import { logger } from './logger.js';
+import { buildClaudeCliCompletionCommand, parseClaudeCliCompletionOutput } from './claudeCliCompletion.js';
 import {
   DEFAULT_MAX_TOOL_STEPS,
   OpenAIToolCallAccumulator,
@@ -184,6 +186,25 @@ interface ToolLoopState {
   fullThought: string;
   toolCalls: AIToolCall[];
   usage: AgentUsage | null;
+}
+
+/** Аргумент командной строки для spawn с `shell: true` (как в claudeBridgeService). */
+function quoteShellArg(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+/** При `shell: true` `child.kill()` убил бы только оболочку, а не сам claude. */
+function killTree(child: ChildProcess): void {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (child.pid) {
+    treeKill(child.pid, 'SIGKILL', (err) => {
+      if (err) {
+        try { child.kill('SIGKILL'); } catch { /* процесс уже завершён */ }
+      }
+    });
+  } else {
+    try { child.kill('SIGKILL'); } catch { /* процесс уже завершён */ }
+  }
 }
 
 function abortError(): Error {
@@ -352,10 +373,10 @@ class AIAgentService {
   /**
    * Одноразовый запрос к настроенной модели без стрима, инструментов и контекста проекта.
    *
-   * Сознательно не идёт через `claudeBridgeService`: тот при провайдере `anthropic` без ключа
-   * запускает процесс Claude CLI, что для служебного запроса недопустимо ни по задержке, ни по
-   * привязке к вендору ([[decision-26]] п. 0). Если у выбранного провайдера нет ключа, метод
-   * честно возвращает ошибку, а вызывающий код деградирует — молча подменять провайдера нельзя.
+   * Провайдер и модель — из настроек пользователя ([[decision-26]] п. 0). Для `anthropic` без
+   * API-ключа запрос идёт в Claude Code CLI по подписке — облегчённым запуском, а не через
+   * `claudeBridgeService` с его агентским циклом ([[decision-35]]; ответ около 3 с). Если провайдеру
+   * нужен ключ, а его нет, метод честно возвращает ошибку — молча подменять провайдера нельзя.
    */
   public async complete(req: LlmCompleteRequest): Promise<LlmCompleteResult> {
     const config = req.config ?? (await this.getConfig());
@@ -372,9 +393,11 @@ class AIAgentService {
 
     try {
       const text =
-        config.provider === 'anthropic'
-          ? await this.completeAnthropic(req, config, model, controller.signal)
-          : await this.completeOpenAICompatible(req, config, model, controller.signal);
+        config.provider !== 'anthropic'
+          ? await this.completeOpenAICompatible(req, config, model, controller.signal)
+          : config.apiKey?.trim()
+            ? await this.completeAnthropic(req, config, model, controller.signal)
+            : await this.completeClaudeCli(req, model, controller.signal);
       return { text, model, provider: config.provider };
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
@@ -429,6 +452,67 @@ class AIAgentService {
       .map((block) => block.text as string)
       .join('')
       .trim();
+  }
+
+  /**
+   * Claude Code CLI по подписке (decision-35): провайдер `anthropic` без API-ключа. Запуск облегчён
+   * (`buildClaudeCliCompletionCommand`), рабочий каталог — временный, чтобы CLI не подтягивал
+   * CLAUDE.md проекта. `maxTokens` и `temperature` CLI не принимает — для служебных запросов с
+   * короткими ответами это не мешает.
+   */
+  private completeClaudeCli(req: LlmCompleteRequest, model: string, signal: AbortSignal): Promise<string> {
+    const { args, stdin } = buildClaudeCliCompletionCommand({ model, system: req.system, prompt: req.prompt });
+
+    return new Promise<string>((resolve, reject) => {
+      if (signal.aborted) {
+        reject(abortError());
+        return;
+      }
+
+      let child: ChildProcessWithoutNullStreams;
+      try {
+        child = spawn('claude', args.map(quoteShellArg), {
+          cwd: os.tmpdir(),
+          shell: true,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env, FORCE_COLOR: '0', CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR }
+        });
+      } catch (err) {
+        reject(new Error(`Не удалось запустить Claude CLI: ${err instanceof Error ? err.message : String(err)}`, { cause: err }));
+        return;
+      }
+
+      let stdout = '';
+      let stderr = '';
+      let settled = false;
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener('abort', onAbort);
+        fn();
+      };
+      const onAbort = () => {
+        killTree(child);
+        finish(() => reject(abortError()));
+      };
+      signal.addEventListener('abort', onAbort);
+
+      child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+      child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+      child.on('error', (err) => finish(() => reject(new Error(`Claude CLI: ${err.message}`, { cause: err }))));
+      child.on('close', (code) => {
+        finish(() => {
+          try {
+            resolve(parseClaudeCliCompletionOutput(stdout));
+          } catch (err) {
+            const detail = stderr.trim() ? ` (${stderr.trim().slice(0, 300)})` : '';
+            reject(new Error(`${err instanceof Error ? err.message : String(err)}; код выхода ${code}${detail}`, { cause: err }));
+          }
+        });
+      });
+
+      child.stdin.end(stdin, 'utf8');
+    });
   }
 
   /** Chat Completions одним непотоковым запросом: OpenRouter, DeepSeek, Ollama, custom. */

@@ -96,6 +96,17 @@ describe('parseVoiceCommand: проекты, вкладки, действия и
     expect(parseVoiceCommand('запусти сервер')).toMatchObject({ type: 'action', intent: 'run_dev' });
     expect(parseVoiceCommand('останови сервер')).toMatchObject({ intent: 'stop_dev' });
     expect(parseVoiceCommand('прогони тесты')).toMatchObject({ intent: 'run_tests' });
+    expect(parseVoiceCommand('Тесты.')).toMatchObject({ intent: 'run_tests' });
+    expect(parseVoiceCommand('run tests')).toMatchObject({ intent: 'run_tests' });
+    expect(parseVoiceCommand('запусти деплой')).toMatchObject({ intent: 'run_deploy' });
+    expect(parseVoiceCommand('run deploy')).toMatchObject({ intent: 'run_deploy' });
+  });
+
+  it('деплой и тесты не перехватывают свободную речь, где эти слова просто встречаются', () => {
+    // Живая проверка 2026-09-17: команда компьютеру запускала тесты проекта
+    expect(parseVoiceCommand('Запусти блокнот и напиши в нем слово тест.').type).toBe('dictation');
+    expect(parseVoiceCommand('может деплой а может нет').type).toBe('dictation');
+    expect(parseVoiceCommand('расскажи про тестовое окружение').type).toBe('dictation');
   });
 
   it('нераспознанная фраза → диктовка с исходным текстом', () => {
@@ -105,5 +116,37 @@ describe('parseVoiceCommand: проекты, вкладки, действия и
       payload: '  Просто какая-то фраза  ',
       feedbackText: 'Распознано:   Просто какая-то фраза  '
     });
+  });
+});
+
+describe('parseVoiceCommand: чтение вслух не перехватывается навигацией (TASK-69, AC#5)', () => {
+  it('«прочитай задачи» и синонимы озвучивают задачи, а не открывают доску', () => {
+    for (const phrase of ['прочитай задачи', 'какие задачи', 'озвучь задачи', 'список задач', 'read tasks', 'Прочитай задачи.']) {
+      expect(parseVoiceCommand(phrase).intent, phrase).toBe('read_tasks');
+    }
+  });
+
+  it('«прочитай документ» озвучивает документ, а не открывает вкладку документации', () => {
+    for (const phrase of ['прочитай документ', 'прочитай доку', 'озвучь документ', 'read document']) {
+      expect(parseVoiceCommand(phrase).intent, phrase).toBe('read_doc');
+    }
+  });
+
+  it('формы глагола, которые слышит Whisper, тоже читают вслух', () => {
+    expect(parseVoiceCommand('Прочитаю задачу.').intent).toBe('read_tasks');
+    expect(parseVoiceCommand('прочитать задачи').intent).toBe('read_tasks');
+    expect(parseVoiceCommand('Прочитая документ.').intent).toBe('read_doc');
+    expect(parseVoiceCommand('озвучьте документацию').intent).toBe('read_doc');
+  });
+
+  it('навигация по задачам и документам осталась прежней', () => {
+    expect(parseVoiceCommand('открой задачи').intent).toBe('navigate_kanban');
+    expect(parseVoiceCommand('задачи').intent).toBe('navigate_kanban');
+    expect(parseVoiceCommand('открой документацию').intent).toBe('navigate_docs');
+  });
+
+  it('остановка чтения', () => {
+    expect(parseVoiceCommand('хватит').intent).toBe('stop_reading');
+    expect(parseVoiceCommand('стоп чтение').intent).toBe('stop_reading');
   });
 });

@@ -43,6 +43,7 @@ import type {
   TtsVoiceListItem
 } from '../../types/electron';
 import { CONFIGURABLE_COMMANDS, type CommandPhraseDefinition } from '../../services/voiceCommandPhrases';
+import { describeTtsStatus } from '../../services/ttsStatusView';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
 import { useTimeoutState, useToast, useTimers } from '../../hooks/useTimeoutState';
@@ -131,6 +132,8 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
   }, [isOpen, activeTab]);
 
   /** main возвращает код ошибки, а текст живёт здесь — иначе строки интерфейса утекли бы в main. */
+  const ttsStatusView = describeTtsStatus(ttsStatus);
+
   const translateTtsError = (code?: string, fallback?: string): string =>
     (code && t.voice.settingsModal.ttsErrors[code]) || fallback || '';
 
@@ -152,8 +155,13 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
       setTtsProgress((prev) => ({ ...prev, [progress.voiceId]: progress }));
       if (progress.phase === 'done') void refreshTtsState();
     });
+    // Ошибка синтеза (в том числе при чтении голосовой командой) меняет статус голоса — показываем причину
+    const unsubError = window.api?.onTtsError?.(() => {
+      void refreshTtsState();
+    });
     return () => {
       unsub?.();
+      unsubError?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, activeTab]);
@@ -211,6 +219,8 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
       await voiceService.speak(t.voice.settingsModal.ttsPreviewText, language === 'ru' ? 'ru' : 'en');
     } finally {
       setIsPreviewingVoice(false);
+      // Прослушивание могло загрузить голос или упасть в системный движок — статус должен это отразить
+      await refreshTtsState();
     }
   };
 
@@ -1042,25 +1052,27 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                       <span>{t.voice.settingsModal.ttsEngineHint}</span>
                     </div>
 
-                    {/* Статус движка: причина недоступности видна сразу (AC#7) */}
+                    {/* Статус движка: причина недоступности или ошибки голоса видна сразу (AC#7) */}
                     <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-2 text-[11px]">
-                      {ttsStatus?.status === 'ready' ? (
+                      {ttsStatusView.kind === 'ready' ? (
                         <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      ) : ttsStatus?.status === 'loading' ? (
+                      ) : ttsStatusView.kind === 'loading' ? (
                         <RefreshCw className="w-4 h-4 text-indigo-400 shrink-0 animate-spin" />
-                      ) : ttsStatus && !ttsStatus.available ? (
+                      ) : ttsStatusView.kind === 'unavailable' || ttsStatusView.kind === 'error' ? (
                         <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
                       ) : (
                         <Radio className="w-4 h-4 text-slate-500 shrink-0" />
                       )}
                       <span className="text-slate-300 min-w-0 truncate">
-                        {ttsStatus?.status === 'ready'
+                        {ttsStatusView.kind === 'ready'
                           ? t.voice.settingsModal.ttsStatusReady +
-                            (ttsStatus.loadTimeMs ? ` (${(ttsStatus.loadTimeMs / 1000).toFixed(1)} s)` : '')
-                          : ttsStatus?.status === 'loading'
+                            (ttsStatusView.loadTimeSec !== null ? ` (${ttsStatusView.loadTimeSec.toFixed(1)} s)` : '')
+                          : ttsStatusView.kind === 'loading'
                           ? t.voice.settingsModal.ttsStatusLoading
-                          : ttsStatus && !ttsStatus.available
-                          ? `${t.voice.settingsModal.ttsStatusUnavailable}: ${translateTtsError(ttsStatus.errorCode, ttsStatus.error)}`
+                          : ttsStatusView.kind === 'unavailable'
+                          ? `${t.voice.settingsModal.ttsStatusUnavailable}: ${translateTtsError(ttsStatusView.errorCode, ttsStatusView.error)}`
+                          : ttsStatusView.kind === 'error'
+                          ? `${t.voice.settingsModal.ttsStatusVoiceError}: ${translateTtsError(ttsStatusView.errorCode, ttsStatusView.error)}`
                           : t.voice.settingsModal.ttsStatusNotLoaded}
                       </span>
                     </div>

@@ -307,6 +307,7 @@ export const ru: TranslationDictionary = {
       ttsStatusLoading: 'Загрузка модели…',
       ttsStatusUnavailable: 'Локальный движок недоступен, используется системный голос',
       ttsStatusNotLoaded: 'Модель не загружена',
+      ttsStatusVoiceError: 'Голос не загрузился, используется системный голос',
       ttsEspeakMissing: 'Нет данных espeak-ng — скачайте любой встроенный голос, они поставляются вместе.',
       ttsSourceImported: 'Импортирован',
       ttsNoVoices: 'Ни один голос не скачан',
@@ -335,7 +336,10 @@ export const ru: TranslationDictionary = {
         empty_phoneme_id_map: 'Таблица phoneme_id_map пуста',
         missing_espeak_voice: 'В конфигурации не указан голос espeak (espeak.voice)',
         missing_sample_rate: 'В конфигурации не указана частота дискретизации',
-        unsupported_phoneme_type: 'Поддерживается только фонемизация espeak'
+        unsupported_phoneme_type: 'Поддерживается только фонемизация espeak',
+        model_rejected: 'Модель не прошла пробную загрузку: файл .onnx повреждён или не является голосом Piper',
+        probe_timeout: 'Пробная загрузка модели не уложилась во время — голос не импортирован',
+        probe_unavailable: 'Не удалось запустить пробную загрузку модели в отдельном процессе'
       },
       apiKeyLabel: 'API Ключ',
       apiKeyPlaceholder: 'Введите API-ключ провайдера',
