@@ -116,6 +116,42 @@ export function makeImportedVoiceId(fileName: string): string {
   return trimmed;
 }
 
+/** Префикс импортированного голоса, чьё имя файла совпало со встроенным (TASK-93). */
+export const IMPORTED_VOICE_PREFIX = 'custom-';
+
+/** Имена каталогов в корне кэша голосов, которые не могут быть голосом. */
+const RESERVED_VOICE_DIR_NAMES = ['espeak-ng-data'];
+
+/**
+ * Идентификатор импортированного голоса, не пересекающийся ни со встроенным реестром, ни с уже
+ * занятыми каталогами (TASK-93).
+ *
+ * Раньше `ru_RU-irina-medium.onnx` получал id встроенной Ирины, выдавал себя за неё и при неудачной
+ * пробе удалял её каталог. Теперь имя встроенного голоса получает префикс `custom-`, а занятое —
+ * числовой суффикс `-2`, `-3`… Сравнение без учёта регистра: на Windows и macOS `Voice` и `voice` —
+ * один каталог.
+ *
+ * @param takenIds идентификаторы уже существующих каталогов голосов (включая импорты в процессе).
+ */
+export function resolveImportedVoiceId(fileName: string, takenIds: Iterable<string> = []): string {
+  const base = makeImportedVoiceId(fileName);
+  const builtin = new Set(BUILTIN_TTS_VOICES.map((v) => v.id.toLowerCase()));
+  const taken = new Set([...takenIds].map((id) => id.toLowerCase()));
+  for (const id of builtin) taken.add(id);
+  for (const name of RESERVED_VOICE_DIR_NAMES) taken.add(name);
+
+  const clashesWithReserved = (id: string) =>
+    builtin.has(id.toLowerCase()) || RESERVED_VOICE_DIR_NAMES.includes(id.toLowerCase());
+  const stem = clashesWithReserved(base) ? `${IMPORTED_VOICE_PREFIX}${base}`.slice(0, 64).replace(/\.+$/, '') : base;
+  if (!taken.has(stem.toLowerCase())) return stem;
+
+  for (let n = 2; ; n++) {
+    const suffix = `-${n}`;
+    const candidate = `${stem.slice(0, 64 - suffix.length).replace(/\.+$/, '')}${suffix}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+}
+
 /** Слэш-независимое соединение путей: модуль чистый и не тянет `node:path`. */
 function joinPath(...parts: string[]): string {
   return parts

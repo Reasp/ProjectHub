@@ -11,7 +11,9 @@ import {
   getVoiceDir,
   getVoicePaths,
   isValidVoiceId,
+  IMPORTED_VOICE_PREFIX,
   makeImportedVoiceId,
+  resolveImportedVoiceId,
   VOICE_MANIFEST_FILE
 } from '../../electron/services/ttsVoiceRegistry';
 
@@ -195,6 +197,51 @@ describe('ttsVoiceRegistry — makeImportedVoiceId (TASK-69)', () => {
     const id = makeImportedVoiceId(`${'x'.repeat(200)}.onnx`);
     expect(id.length).toBe(64);
     expect(isValidVoiceId(id)).toBe(true);
+  });
+});
+
+describe('ttsVoiceRegistry — resolveImportedVoiceId (TASK-93)', () => {
+  const builtinIds = BUILTIN_TTS_VOICES.map((v) => v.id.toLowerCase());
+
+  it('имя встроенного голоса получает префикс и не совпадает с реестром', () => {
+    for (const voice of BUILTIN_TTS_VOICES) {
+      const id = resolveImportedVoiceId(`${voice.id}.onnx`);
+      expect(id).toBe(`${IMPORTED_VOICE_PREFIX}${voice.id}`);
+      expect(builtinIds).not.toContain(id.toLowerCase());
+    }
+  });
+
+  it('совпадение со встроенным голосом ищется без учёта регистра', () => {
+    const id = resolveImportedVoiceId('RU_ru-IRINA-Medium.onnx');
+    expect(id).toBe(`${IMPORTED_VOICE_PREFIX}RU_ru-IRINA-Medium`);
+  });
+
+  it('уникальное имя остаётся как есть', () => {
+    expect(resolveImportedVoiceId('ru_RU-my-voice.onnx')).toBe('ru_RU-my-voice');
+    expect(resolveImportedVoiceId('ru_RU-my-voice.onnx', ['other-voice'])).toBe('ru_RU-my-voice');
+  });
+
+  it('занятый id получает числовой суффикс, в том числе после префикса', () => {
+    expect(resolveImportedVoiceId('my-voice.onnx', ['my-voice'])).toBe('my-voice-2');
+    expect(resolveImportedVoiceId('my-voice.onnx', ['MY-VOICE', 'my-voice-2'])).toBe('my-voice-3');
+    expect(resolveImportedVoiceId('ru_RU-irina-medium.onnx', ['custom-ru_RU-irina-medium'])).toBe(
+      'custom-ru_RU-irina-medium-2'
+    );
+  });
+
+  it('служебный каталог espeak-ng-data не может стать голосом', () => {
+    expect(resolveImportedVoiceId('espeak-ng-data.onnx')).toBe(`${IMPORTED_VOICE_PREFIX}espeak-ng-data`);
+  });
+
+  it('результат проходит isValidVoiceId и не длиннее 64 символов даже с префиксом и суффиксом', () => {
+    const long = 'x'.repeat(200);
+    const taken = [long.slice(0, 64)];
+    const id = resolveImportedVoiceId(`${long}.onnx`, taken);
+    expect(id).toBe(`${'x'.repeat(62)}-2`);
+    expect(isValidVoiceId(id)).toBe(true);
+
+    const prefixed = resolveImportedVoiceId('ru_RU-irina-medium.onnx', ['custom-ru_RU-irina-medium']);
+    expect(isValidVoiceId(prefixed)).toBe(true);
   });
 });
 

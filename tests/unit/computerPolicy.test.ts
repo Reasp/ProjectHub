@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_COMPUTER_POLICY,
   evaluateComputerAction,
+  evaluateComputerHardLimits,
   extractTargetHints,
   isTargetAllowlisted,
   normalizeAppName,
@@ -65,6 +66,61 @@ describe('evaluateComputerAction: HITL по классам действий (dec
     expect(evaluate('type', chrome, only)).toMatchObject({ verdict: 'deny', rule: 'computer-only-window' });
     expect(evaluate('type', notepad, only, ctx(), chrome)).toMatchObject({ verdict: 'deny', rule: 'computer-only-window' });
     expect(evaluate('run_script', null, only)).toMatchObject({ verdict: 'ask', rule: 'computer-dangerous' });
+  });
+
+  describe('режим «только разрешённые окна»: запуск приложения (TASK-94)', () => {
+    const only = settings({ onlyAllowlistedWindows: true, allowlist: [{ app: 'notepad.exe' }], outsideAllowlist: 'deny' });
+    const projectHub: ComputerTarget = { app: 'ProjectHub.exe', title: 'ProjectHub', windowId: 7, source: 'focused' };
+    /** Цель так, как её строит прокси: resolveComputerTarget по аргументам и списку окон. */
+    const launchTarget = (bundleId: string, windows: RuntimeWindowInfo[] = []) =>
+      resolveComputerTarget(windows, extractTargetHints({ bundle_id: bundleId }, null));
+
+    it('приложение из allowlist запускается, хотя активно окно не из списка и окна приложения ещё нет', () => {
+      const { target } = launchTarget('notepad.exe');
+      expect(target).toEqual({ app: 'notepad.exe', source: 'app' });
+      expect(evaluate('open_application', target, only, ctx(), projectHub)).toMatchObject({ verdict: 'allow', rule: 'computer-allowlist' });
+      expect(evaluate('activate_app', target, only, ctx(), projectHub)).toMatchObject({ verdict: 'allow' });
+      // Роль без auto-approve по-прежнему спрашивает
+      expect(evaluate('open_application', target, only, ctx({ autoApprove: false }), projectHub)).toMatchObject({ verdict: 'ask', rule: 'computer-manual' });
+    });
+
+    it('уже запущенное приложение из allowlist: цель — его окно', () => {
+      const windows: RuntimeWindowInfo[] = [
+        { windowId: 7, bundleId: 'ProjectHub.exe', title: 'ProjectHub', isOnScreen: true, isFocused: true },
+        { windowId: 20, bundleId: 'Notepad.exe', title: 'Untitled - Notepad', isOnScreen: true }
+      ];
+      const { target, focused } = launchTarget('notepad.exe', windows);
+      expect(evaluate('open_application', target, only, ctx(), focused)).toMatchObject({ verdict: 'allow' });
+    });
+
+    it('приложение не из allowlist отклоняется', () => {
+      const { target } = launchTarget('mspaint.exe');
+      expect(evaluate('open_application', target, only, ctx(), projectHub)).toMatchObject({ verdict: 'deny', rule: 'computer-only-window' });
+      expect(evaluate('open_application', target, settings({ ...only, outsideAllowlist: 'ask' }), ctx(), projectHub)).toMatchObject({
+        verdict: 'deny',
+        rule: 'computer-only-window'
+      });
+      // Путь к исполняемому файлу не совпадает с голым именем из allowlist
+      expect(evaluate('open_application', launchTarget('C:\\Temp\\notepad.exe').target, only, ctx(), projectHub)).toMatchObject({ verdict: 'deny' });
+    });
+
+    it('ввод в окно по-прежнему требует, чтобы и активное окно было из allowlist', () => {
+      expect(evaluate('type', notepad, only, ctx(), projectHub)).toMatchObject({ verdict: 'deny', rule: 'computer-only-window' });
+    });
+  });
+
+  it('предварительная проверка прокси без цели не даёт ложного отказа в строгом режиме (TASK-94)', () => {
+    const only = settings({ onlyAllowlistedWindows: true });
+    const hard = (tool: string, c = ctx()) => evaluateComputerHardLimits({ tool, spec: getComputerToolSpec(tool), context: c });
+    expect(hard('open_application')).toBeNull();
+    expect(hard('type')).toBeNull();
+    expect(hard('type', ctx({ killSwitchEngaged: true }))).toMatchObject({ verdict: 'deny', rule: 'kill-switch' });
+    expect(hard('type', ctx({ enabled: false }))).toMatchObject({ verdict: 'deny', rule: 'computer-disabled' });
+    expect(hard('teleport')).toMatchObject({ verdict: 'deny', rule: 'computer-tool-unknown' });
+    expect(hard('type', ctx({ origin: 'automation' }))).toMatchObject({ verdict: 'deny', rule: 'computer-autonomous-forbidden' });
+    expect(hard('type', ctx({ doneLoop: true }))).toMatchObject({ verdict: 'deny', rule: 'computer-task-not-allowed' });
+    // Полная политика без цели в строгом режиме отказывает — поэтому до определения окна её не зовут
+    expect(evaluate('type', null, only, ctx(), null)).toMatchObject({ verdict: 'deny', rule: 'computer-only-window' });
   });
 
   it('жёсткие запреты: выключено, kill-switch, неизвестный инструмент, автономные запуски', () => {

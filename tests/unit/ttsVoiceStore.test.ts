@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 // Частичный мок electron с временным userData (decision-29): хранилище голосов пишет модели
@@ -63,8 +64,8 @@ describe('ttsVoiceStore — импорт пользовательского го
 
     const installed = await store.importVoiceFromFiles(modelSource, configSource);
 
-    // Идентификатор — из имени файла, без расширения и безопасный для файловой системы
-    expect(installed.id).toBe('ru_RU-irina-medium');
+    // Идентификатор — из имени файла, но не совпадает со встроенной Ириной (TASK-93)
+    expect(installed.id).toBe('custom-ru_RU-irina-medium');
     expect(registry.isValidVoiceId(installed.id)).toBe(true);
     expect(installed.source).toBe('imported');
     expect(installed.language).toBe('ru');
@@ -100,13 +101,13 @@ describe('ttsVoiceStore — импорт пользовательского го
 
   it('импортированный голос попадает в список рядом со встроенными', async () => {
     const voices = await store.listVoices();
-    const imported = voices.find((v) => v.id === 'ru_RU-irina-medium');
+    const imported = voices.find((v) => v.id === 'custom-ru_RU-irina-medium');
     expect(imported?.installed).toBe(true);
+    expect(imported?.source).toBe('imported');
 
     // Встроенные голоса перечислены как доступные к загрузке
     const builtinIds = registry.BUILTIN_TTS_VOICES.map((v) => v.id);
     for (const id of builtinIds) {
-      if (id === 'ru_RU-irina-medium') continue;
       const item = voices.find((v) => v.id === id);
       expect(item, `голос ${id} отсутствует в списке`).toBeDefined();
       expect(item?.installed).toBe(false);
@@ -129,13 +130,118 @@ describe('ttsVoiceStore — импорт пользовательского го
   });
 
   it('удаление голоса не трогает общий espeak-ng-data', async () => {
-    expect(await store.deleteVoice('ru_RU-irina-medium')).toBe(true);
-    expect(await store.getInstalledVoice('ru_RU-irina-medium')).toBeNull();
+    expect(await store.deleteVoice('custom-ru_RU-irina-medium')).toBe(true);
+    expect(await store.getInstalledVoice('custom-ru_RU-irina-medium')).toBeNull();
     // Общие данные фонемизатора нужны остальным голосам и остаются на месте
     expect(await store.hasEspeakData()).toBe(true);
   });
 
   it('недопустимый идентификатор отклоняется до обращения к файловой системе', async () => {
     await expect(store.deleteVoice('../../etc')).rejects.toMatchObject({ code: 'invalid_voice_id' });
+  });
+});
+
+describe('ttsVoiceStore — импорт не трогает установленные голоса (TASK-93)', () => {
+  const models = path.join(USER_DATA, 'models');
+  const builtinId = 'ru_RU-irina-medium';
+
+  /** Установленная встроенная Ирина: так её раскладывает downloadBuiltinVoice. */
+  async function installFakeBuiltin(): Promise<string> {
+    const paths = registry.getVoicePaths(models, builtinId, `${builtinId}.onnx`);
+    await fs.mkdir(paths.dir, { recursive: true });
+    await fs.writeFile(paths.modelPath, 'builtin-model', 'utf8');
+    await fs.writeFile(paths.tokensPath, 'a 1\n', 'utf8');
+    const manifest = { id: builtinId, label: 'Ирина', language: 'ru', source: 'builtin', modelPath: paths.modelPath, tokensPath: paths.tokensPath };
+    await fs.writeFile(paths.manifestPath, JSON.stringify(manifest), 'utf8');
+    return paths.modelPath;
+  }
+
+  async function ttsEntries(): Promise<string[]> {
+    return (await fs.readdir(registry.getTtsRootDir(models))).sort();
+  }
+
+  beforeAll(async () => {
+    await fs.rm(USER_DATA, { recursive: true, force: true });
+    await writeSourceFiles();
+    const espeakDir = registry.getSharedEspeakDataDir(models);
+    await fs.mkdir(espeakDir, { recursive: true });
+    await fs.writeFile(path.join(espeakDir, 'phontab'), 'stub', 'utf8');
+  });
+
+  it('неудачная проба: откат удаляет только файлы импорта, встроенный голос цел', async () => {
+    const builtinModel = await installFakeBuiltin();
+    const before = await ttsEntries();
+
+    const staged = await store.stageVoiceImport(modelSource, configSource);
+    // До переноса голос лежит во временном каталоге и в списке не виден
+    expect(staged.voice.id).toBe('custom-ru_RU-irina-medium');
+    expect(staged.voice.modelPath).toContain('.custom-ru_RU-irina-medium.import');
+    expect(existsSync(staged.voice.modelPath)).toBe(true);
+    expect(existsSync(staged.voice.tokensPath)).toBe(true);
+    expect((await store.listVoices()).some((v) => v.id === staged.voice.id)).toBe(false);
+
+    // Проба отвергла модель — откат
+    await staged.discard();
+
+    expect(await ttsEntries()).toEqual(before);
+    expect(await fs.readFile(builtinModel, 'utf8')).toBe('builtin-model');
+    expect((await store.getInstalledVoice(builtinId))?.source).toBe('builtin');
+  });
+
+  it('успешный импорт переносит голос на место под своим id, встроенный голос не меняется', async () => {
+    const builtinModel = await installFakeBuiltin();
+
+    const staged = await store.stageVoiceImport(modelSource, configSource);
+    const installed = await staged.commit();
+    await staged.discard(); // после commit — ничего не делает
+
+    expect(installed.id).toBe('custom-ru_RU-irina-medium');
+    expect(existsSync(installed.modelPath)).toBe(true);
+    expect(installed.modelPath).not.toContain('.import');
+    const found = await store.getInstalledVoice(installed.id);
+    expect(found?.modelPath).toBe(installed.modelPath);
+    expect(found?.source).toBe('imported');
+
+    expect(await fs.readFile(builtinModel, 'utf8')).toBe('builtin-model');
+    const voices = await store.listVoices();
+    expect(voices.find((v) => v.id === builtinId)?.source).toBe('builtin');
+    expect((await ttsEntries()).some((name) => name.endsWith('.import'))).toBe(false);
+  });
+
+  it('повторный импорт того же файла не перезаписывает прошлый импорт', async () => {
+    const first = await store.getInstalledVoice('custom-ru_RU-irina-medium');
+    expect(first).not.toBeNull();
+    const firstBytes = await fs.readFile(first!.modelPath);
+
+    const staged = await store.stageVoiceImport(modelSource, configSource);
+    expect(staged.voice.id).toBe('custom-ru_RU-irina-medium-2');
+    await staged.discard();
+
+    // Откат второго импорта не задел первый
+    expect((await fs.readFile(first!.modelPath)).equals(firstBytes)).toBe(true);
+    expect(await store.getInstalledVoice('custom-ru_RU-irina-medium-2')).toBeNull();
+  });
+
+  it('параллельные импорты одного файла получают разные id', async () => {
+    const [a, b] = await Promise.all([
+      store.stageVoiceImport(modelSource, configSource),
+      store.stageVoiceImport(modelSource, configSource)
+    ]);
+    try {
+      expect(a.voice.id).not.toBe(b.voice.id);
+      // Staging одного импорта переживает запуск другого: он не считается мусором
+      expect(existsSync(a.voice.modelPath)).toBe(true);
+      expect(existsSync(b.voice.modelPath)).toBe(true);
+    } finally {
+      await a.discard();
+      await b.discard();
+    }
+  });
+
+  it('ошибка разбора конфига не оставляет временных каталогов', async () => {
+    const brokenConfig = path.join(sourceDir, 'broken2.onnx.json');
+    await fs.writeFile(brokenConfig, '{ not json', 'utf8');
+    await expect(store.stageVoiceImport(modelSource, brokenConfig)).rejects.toMatchObject({ code: 'invalid_json' });
+    expect((await ttsEntries()).some((name) => name.startsWith('.'))).toBe(false);
   });
 });

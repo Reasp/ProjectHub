@@ -21,6 +21,7 @@ import {
 import {
   describeTarget,
   evaluateComputerAction,
+  evaluateComputerHardLimits,
   extractTargetHints,
   isLaunchableAppName,
   normalizeAppName,
@@ -525,9 +526,10 @@ class ComputerUseService extends EventEmitter {
       tool: toProxyToolName(runtimeName)
     };
 
-    // Жёсткие запреты проверяются до запуска рантайма и без определения цели.
-    const pre = evaluateComputerAction({ tool: runtimeName, spec, target: null, focused: null, settings: this.settings.policy, context: policyContext() });
-    if (pre.verdict === 'deny') {
+    // Жёсткие запреты проверяются до запуска рантайма и без определения цели. Только они: правила,
+    // зависящие от окна, без цели дали бы ложный отказ (TASK-94).
+    const pre = evaluateComputerHardLimits({ tool: runtimeName, spec, context: policyContext() });
+    if (pre) {
       hitlService.recordAutoDecision(
         { ...meta, type: 'computer_action', title: `${meta.tool}: ${pre.rule}`, command: summarizeComputerAction(runtimeName, args, null) },
         'deny',

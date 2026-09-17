@@ -26,6 +26,14 @@ import {
   phraseSpeechLevel,
   updateSpeechLevel
 } from './bargeInDetector';
+import {
+  captureMutedChunk,
+  createBargeInPreRoll,
+  markBargeIn,
+  resetBargeInPreRoll,
+  takeBargeInSeed,
+  type BargeInSeed
+} from './bargeInPreRoll';
 import { ttsPlayer } from './ttsPlayer';
 import type { LocalWhisperStatusInfo } from '../types/electron';
 
@@ -154,6 +162,8 @@ class VoiceService {
   private pushToTalkSeq = 0;
   /** Состояние детектора перебивания: судит только громкость во время собственной речи. */
   private bargeInState = createBargeInState();
+  /** Звук во время озвучки: из него начинается фраза, прервавшая чтение (TASK-95). */
+  private bargeInPreRoll = createBargeInPreRoll();
   /** Типичная громкость речи пользователя по его фразам — от неё считается порог barge-in. */
   private userSpeechLevel: number | null = null;
   /** RMS звучащих чанков текущей фразы — по ним оценивается громкость пользователя. */
@@ -992,7 +1002,12 @@ class VoiceService {
         }
         const rms = Math.sqrt(sumSquares / chunk.length);
         const threshold = bargeInThresholdFor(this.userSpeechLevel);
-        if (feedBargeIn(this.bargeInState, rms, Date.now(), { ...DEFAULT_BARGE_IN, threshold })) {
+        const now = Date.now();
+        // Звук копится и после срабатывания, пока озвучка останавливается: начало фразы уйдёт
+        // в распознавание вместе с продолжением (TASK-95)
+        captureMutedChunk(this.bargeInPreRoll, chunk, now, rms);
+        if (feedBargeIn(this.bargeInState, rms, now, { ...DEFAULT_BARGE_IN, threshold })) {
+          markBargeIn(this.bargeInPreRoll, this.bargeInState.since);
           console.log(`[VoiceService] Barge-in: речь пользователя во время озвучки (порог ${threshold.toFixed(3)}), останавливаем TTS`);
           void this.stopSpeaking();
         }
@@ -1471,7 +1486,28 @@ class VoiceService {
     // Каждая реплика судится заново: и старт озвучки, и её конец сбрасывают детектор перебивания.
     resetBargeIn(this.bargeInState);
     // Сбрасываем накопленную фразу, чтобы хвост собственной речи не ушёл в распознавание
-    if (muted) this.resetVAD();
+    if (muted) {
+      this.resetVAD();
+      resetBargeInPreRoll(this.bargeInPreRoll);
+      return;
+    }
+    const seed = takeBargeInSeed(this.bargeInPreRoll);
+    if (seed && !this.isPaused && !this.pushToTalkActive) this.startPhraseFromBargeIn(seed);
+  }
+
+  /**
+   * Фраза, прервавшая озвучку, начинается со звука, по которому сработал barge-in (TASK-95).
+   * Дальше её ведёт обычный VAD: продолжение дописывается, конец — по тишине.
+   */
+  private startPhraseFromBargeIn(seed: BargeInSeed) {
+    const speechThreshold = Math.max(0.012, this.noiseFloor * 2.8);
+    this.isSpeaking = true;
+    this.speechStartTime = seed.startedAt;
+    this.lastSoundTime = Date.now();
+    this.currentPhraseChunks = [...seed.chunks];
+    this.currentPhraseRms = seed.rms.filter((rms) => rms > speechThreshold);
+    this.setState('speech_detected');
+    console.log(`[VoiceService] Barge-in: фраза начата со звука перебивания (${(seed.samples / 16000).toFixed(2)} с)`);
   }
 
   /** Голос по умолчанию для языка, если пользователь не выбрал свой (см. ttsVoiceRegistry). */

@@ -25,7 +25,7 @@ import {
   getVoiceDir,
   getVoicePaths,
   isValidVoiceId,
-  makeImportedVoiceId,
+  resolveImportedVoiceId,
   VOICE_MANIFEST_FILE,
   type TtsVoiceLanguage,
   type TtsVoiceSource
@@ -100,6 +100,9 @@ export class TtsVoiceStoreError extends Error {
 
 /** Активные загрузки: нужны и для отмены, и чтобы не запускать вторую загрузку того же голоса. */
 const activeDownloads = new Map<string, AbortController>();
+
+/** Импорты, ещё не перенесённые на место: их id заняты, а staging-каталоги — не мусор (TASK-93). */
+const activeImports = new Set<string>();
 
 async function ttsRoot(): Promise<string> {
   const models = await ensureModelsCacheDir();
@@ -249,8 +252,8 @@ async function extractArchive(archivePath: string, targetDir: string): Promise<v
 async function cleanupStaleTempArtifacts(root: string): Promise<void> {
   const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
-    const match = /^\.(.+)\.(download|staging)$/.exec(entry.name);
-    if (!match || activeDownloads.has(match[1])) continue;
+    const match = /^\.(.+)\.(download|staging|import)$/.exec(entry.name);
+    if (!match || activeDownloads.has(match[1]) || activeImports.has(match[1])) continue;
     await fs.rm(path.join(root, entry.name), { recursive: true, force: true }).catch(() => {});
   }
 }
@@ -401,17 +404,36 @@ export async function downloadBuiltinVoice(
   }
 }
 
+/** Голос, подготовленный к импорту во временном каталоге и ещё не видимый в списке голосов. */
+export interface StagedVoiceImport {
+  /** Описание с путями во временном каталоге — для пробы в отдельном процессе (decision-34). */
+  readonly voice: InstalledVoice;
+  /** Переносит голос на место и возвращает описание с окончательными путями. */
+  commit(): Promise<InstalledVoice>;
+  /** Удаляет временный каталог; после `commit` ничего не делает. Удаляет только файлы этого импорта. */
+  discard(): Promise<void>;
+}
+
+/** Каталоги голосов, уже лежащие в кэше: с ними id импорта пересекаться не должен. */
+async function listTakenVoiceIds(root: string): Promise<string[]> {
+  const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
+  return entries.filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name);
+}
+
 /**
- * Импортирует пользовательский голос из пары `.onnx` + `.onnx.json`.
+ * Готовит пользовательский голос из пары `.onnx` + `.onnx.json` во временном каталоге (TASK-93).
  *
  * Модель с Hugging Face не содержит metadata, которую требует sherpa, поэтому при импорте
  * metadata дописывается в копию файла, а `tokens.txt` строится из `phoneme_id_map`.
+ *
+ * Ни встроенный, ни ранее импортированный голос импорт не трогает: id выбирает
+ * `resolveImportedVoiceId`, файлы пишутся в `.<id>.import`, и до `commit` голоса в списке нет.
  */
-export async function importVoiceFromFiles(
+export async function stageVoiceImport(
   modelSourcePath: string,
   configSourcePath: string,
   label?: string
-): Promise<InstalledVoice> {
+): Promise<StagedVoiceImport> {
   if (!existsSync(modelSourcePath)) throw new TtsVoiceStoreError('model_not_found', modelSourcePath);
   if (!existsSync(configSourcePath)) throw new TtsVoiceStoreError('config_not_found', configSourcePath);
   if (!(await hasEspeakData())) throw new TtsVoiceStoreError('espeak_data_missing');
@@ -421,46 +443,104 @@ export async function importVoiceFromFiles(
   const config = parsePiperVoiceConfig(configRaw);
 
   const models = await ttsRoot();
-  const voiceId = makeImportedVoiceId(path.basename(modelSourcePath));
-  const voiceDir = getVoiceDir(models, voiceId);
-  const paths = getVoicePaths(models, voiceId, `${voiceId}.onnx`);
+  const root = getTtsRootDir(models);
+  const taken = await listTakenVoiceIds(root);
+  // Выбор id и резервирование — синхронно, без await между ними: параллельный импорт того же
+  // файла увидит резерв и получит другой id
+  const voiceId = resolveImportedVoiceId(path.basename(modelSourcePath), [...taken, ...activeImports]);
+  activeImports.add(voiceId);
 
-  await fs.rm(voiceDir, { recursive: true, force: true });
-  await fs.mkdir(voiceDir, { recursive: true });
-
-  // 1. Копия модели; если metadata нет — дописываем её в конец файла
-  const modelBytes = await fs.readFile(modelSourcePath);
-  const tail = modelBytes.subarray(Math.max(0, modelBytes.length - METADATA_TAIL_BYTES));
-  if (onnxHasPiperMetadata(tail)) {
-    await fs.writeFile(paths.modelPath, modelBytes);
-  } else {
-    const metadata = encodeOnnxMetadataProps(buildPiperOnnxMetadata(config));
-    await fs.writeFile(paths.modelPath, Buffer.concat([modelBytes, Buffer.from(metadata)]));
-  }
-
-  // 2. tokens.txt из phoneme_id_map и копия исходного конфига (для справки и переустановки)
-  await fs.writeFile(paths.tokensPath, buildTokensTxt(config), 'utf8');
-  await fs.writeFile(paths.configPath, configRaw, 'utf8');
-
-  const installed: InstalledVoice = {
-    id: voiceId,
-    label: label?.trim() || voiceId,
-    language: config.espeakVoice.startsWith('ru') ? 'ru' : 'en',
-    source: 'imported',
-    modelPath: paths.modelPath,
-    tokensPath: paths.tokensPath,
-    dataDir: getSharedEspeakDataDir(models),
-    sampleRate: config.sampleRate,
-    numSpeakers: config.numSpeakers,
-    noiseScale: config.noiseScale,
-    noiseScaleW: config.noiseScaleW,
-    lengthScale: config.lengthScale,
-    installedAt: new Date().toISOString(),
-    sizeBytes: await dirSize(voiceDir)
+  const stagingDir = path.join(root, `.${voiceId}.import`);
+  const finalPaths = getVoicePaths(models, voiceId, `${voiceId}.onnx`);
+  const staged = {
+    modelPath: path.join(stagingDir, `${voiceId}.onnx`),
+    tokensPath: path.join(stagingDir, 'tokens.txt'),
+    configPath: path.join(stagingDir, `${voiceId}.onnx.json`)
   };
-  await fs.writeFile(path.join(voiceDir, VOICE_MANIFEST_FILE), JSON.stringify(installed, null, 2), 'utf8');
-  console.log(`[TtsVoiceStore] Imported voice ${voiceId} (${config.espeakVoice}, ${config.sampleRate} Hz)`);
-  return installed;
+
+  let settled = false;
+  const discard = async () => {
+    if (settled) return;
+    settled = true;
+    activeImports.delete(voiceId);
+    await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+  };
+
+  try {
+    await cleanupStaleTempArtifacts(root);
+    await fs.rm(stagingDir, { recursive: true, force: true });
+    await fs.mkdir(stagingDir, { recursive: true });
+
+    // 1. Копия модели; если metadata нет — дописываем её в конец файла
+    const modelBytes = await fs.readFile(modelSourcePath);
+    const tail = modelBytes.subarray(Math.max(0, modelBytes.length - METADATA_TAIL_BYTES));
+    if (onnxHasPiperMetadata(tail)) {
+      await fs.writeFile(staged.modelPath, modelBytes);
+    } else {
+      const metadata = encodeOnnxMetadataProps(buildPiperOnnxMetadata(config));
+      await fs.writeFile(staged.modelPath, Buffer.concat([modelBytes, Buffer.from(metadata)]));
+    }
+
+    // 2. tokens.txt из phoneme_id_map и копия исходного конфига (для справки и переустановки)
+    await fs.writeFile(staged.tokensPath, buildTokensTxt(config), 'utf8');
+    await fs.writeFile(staged.configPath, configRaw, 'utf8');
+
+    const stagedVoice: InstalledVoice = {
+      id: voiceId,
+      label: label?.trim() || voiceId,
+      language: config.espeakVoice.startsWith('ru') ? 'ru' : 'en',
+      source: 'imported',
+      modelPath: staged.modelPath,
+      tokensPath: staged.tokensPath,
+      dataDir: getSharedEspeakDataDir(models),
+      sampleRate: config.sampleRate,
+      numSpeakers: config.numSpeakers,
+      noiseScale: config.noiseScale,
+      noiseScaleW: config.noiseScaleW,
+      lengthScale: config.lengthScale,
+      installedAt: new Date().toISOString(),
+      sizeBytes: await dirSize(stagingDir)
+    };
+
+    const commit = async (): Promise<InstalledVoice> => {
+      if (settled) throw new Error(`Voice import ${voiceId} is already finished`);
+      const voiceDir = getVoiceDir(models, voiceId);
+      const installed: InstalledVoice = {
+        ...stagedVoice,
+        modelPath: finalPaths.modelPath,
+        tokensPath: finalPaths.tokensPath,
+        installedAt: new Date().toISOString()
+      };
+      // Манифест пишется до переноса: каталог голоса появляется на месте уже целиком
+      await fs.writeFile(path.join(stagingDir, VOICE_MANIFEST_FILE), JSON.stringify(installed, null, 2), 'utf8');
+      // Каталог, появившийся за время пробы (например, созданный вручную), не перезаписывается
+      if (existsSync(voiceDir)) throw new TtsVoiceStoreError('invalid_voice_id', `${voiceId} already exists`);
+      await fs.rename(stagingDir, voiceDir);
+      settled = true;
+      activeImports.delete(voiceId);
+      console.log(`[TtsVoiceStore] Imported voice ${voiceId} (${config.espeakVoice}, ${config.sampleRate} Hz)`);
+      return installed;
+    };
+
+    return { voice: stagedVoice, commit, discard };
+  } catch (err) {
+    await discard();
+    throw err;
+  }
+}
+
+/** Импорт без пробы: подготовка и сразу перенос на место. */
+export async function importVoiceFromFiles(
+  modelSourcePath: string,
+  configSourcePath: string,
+  label?: string
+): Promise<InstalledVoice> {
+  const staged = await stageVoiceImport(modelSourcePath, configSourcePath, label);
+  try {
+    return await staged.commit();
+  } finally {
+    await staged.discard();
+  }
 }
 
 /** Удаляет установленный голос. Общий `espeak-ng-data` остаётся — он нужен остальным. */

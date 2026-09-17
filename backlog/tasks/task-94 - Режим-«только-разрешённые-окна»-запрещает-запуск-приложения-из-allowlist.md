@@ -1,9 +1,10 @@
 ---
 id: TASK-94
 title: Режим «только разрешённые окна» запрещает запуск приложения из allowlist
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-09-17 12:35'
+updated_date: '2026-09-17 13:21'
 labels:
   - computer-use
   - voice
@@ -11,6 +12,17 @@ milestone: m-0
 dependencies: []
 references:
   - electron/services/computerPolicy.ts
+  - >-
+    backlog/decisions/decision-27 -
+    Управление-компьютером-через-MCP-прокси-ProjectHub-с-HITL-по-классам-действий.md
+modified_files:
+  - electron/services/computerPolicy.ts
+  - electron/services/computerToolCatalog.ts
+  - electron/services/computerUseService.ts
+  - tests/unit/computerPolicy.test.ts
+  - >-
+    backlog/decisions/decision-36 -
+    Режим-только-разрешённые-окна-запуск-приложения-по-имени-и-предпроверка-только-жёстких-запретов.md
   - >-
     backlog/decisions/decision-27 -
     Управление-компьютером-через-MCP-прокси-ProjectHub-с-HITL-по-классам-действий.md
@@ -39,3 +51,32 @@ type: bug
 - [ ] #2 Запуск приложения не из allowlist в строгом режиме отклоняется
 - [ ] #3 Оба случая покрыты unit-тестами computerPolicy
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Причина оказалась шире описания
+
+В аудите `audit/hitl-2026-09.jsonl` у отказов `computer-only-window` заголовок без «→ цель». Значит, отказ пришёл **до** определения окна — из предварительной проверки в `computerUseService.callTool`. Она вызывала полную `evaluateComputerAction` с `target: null, focused: null`, чтобы отсечь жёсткие запреты. В строгом режиме полная политика проверяет окно, и `isTargetAllowlisted(null)` даёт отказ. Поэтому в строгом режиме отклонялось **любое** `act`-действие: и `open_application`, и `computer_type` в диктовке (там в аудите тот же отказ). Unit-тесты этого не ловили, потому что всегда передавали цель.
+
+Вторая причина — та, что описана в задаче. Даже при определённой цели `{ app: 'notepad.exe' }` правило требовало, чтобы активное окно (ProjectHub или терминал) тоже было из allowlist.
+
+## Что сделано ([[decision-36]])
+1. `evaluateComputerHardLimits` — жёсткие запреты отдельно: функция выключена, инструмент не классифицирован, kill-switch, Automations и назначенные задачи, Done-loop без label. Предпроверка прокси вызывает только её. `evaluateComputerAction` зовёт её первой, порядок правил прежний.
+2. Признак `launchesApp` в `computerToolCatalog` у `open_application` и `activate_app`. В строгом режиме для них с allowlist сверяется цель: приложение из `bundle_id` или его уже открытое окно. Активное окно для них не проверяется.
+3. Приложение не из allowlist по-прежнему получает deny, в том числе при `outsideAllowlist: ask`. Путь к exe вместо голого имени не совпадает с записью allowlist. Ввод и клики требуют разрешённых и цели, и активного окна. Роль без auto-approve спрашивает.
+
+ADR [[decision-36]], в decision-27 добавлена ссылка.
+
+## Проверки
+- Unit (`computerPolicy.test.ts`):
+  - запуск разрешённого приложения при активном ProjectHub — allow (`open_application`, `activate_app`); роль без auto-approve — ask;
+  - уже запущенный Блокнот — allow;
+  - `mspaint.exe` — deny при `outsideAllowlist` и `deny`, и `ask`; `C:\Temp\notepad.exe` — deny;
+  - ввод при неразрешённом активном окне — по-прежнему deny;
+  - `evaluateComputerHardLimits` без цели — `null` для `open_application`/`type` и deny для каждого жёсткого запрета.
+- 6 файлов computer-тестов, 55 тестов; tsc чисто; eslint 0 ошибок; `pack:win` 21:14.
+
+## Живая проверка
+Ожидает разрешения владельца («готов»). План: computerUse включается только на время прогона, `onlyAllowlistedWindows: true`, allowlist `notepad.exe`, `outsideAllowlist: deny`. Сценарий `s12.wav`: «Запусти блокнот и напиши в нём слово тест», затем диктовка. Отдельно — задача «открой Paint», ожидается отказ. После прогона Блокнот закрывается без сохранения, computerUse выключается, голосовой конфиг и язык EN восстанавливаются с проверкой перезапуском.
+<!-- SECTION:NOTES:END -->

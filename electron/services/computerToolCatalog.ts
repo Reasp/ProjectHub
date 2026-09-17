@@ -28,6 +28,11 @@ export interface ComputerToolSpec {
   coords?: Record<string, CoordinateArgShape>;
   /** Инструмент без целевого окна/приложения (уведомление, скрипт, реестр): allowlist к нему неприменим. */
   targetless?: boolean;
+  /**
+   * Запускает или активирует приложение по имени из аргументов (TASK-94). Цель — само приложение, а
+   * активное окно в этот момент неважно: действие его не трогает, а сменит фокус на цель.
+   */
+  launchesApp?: boolean;
   /** Двигает физический курсор — детектор перехвата мыши даёт агенту grace-окно. */
   movesCursor?: boolean;
   /** Почему инструмент не экспортируется или отнесён к своему классу. */
@@ -80,8 +85,8 @@ export const COMPUTER_TOOL_CATALOG: Readonly<Record<string, ComputerToolSpec>> =
   key: { class: 'act', exported: true },
   read_clipboard: { class: 'act', exported: true, note: 'Буфер может содержать секреты — чтение приравнено к действию' },
   write_clipboard: { class: 'act', exported: true },
-  open_application: { class: 'act', exported: true },
-  activate_app: { class: 'act', exported: true },
+  open_application: { class: 'act', exported: true, launchesApp: true },
+  activate_app: { class: 'act', exported: true, launchesApp: true },
   activate_window: { class: 'act', exported: true },
   resize_window: { class: 'act', exported: true },
   hide_app: { class: 'act', exported: true },

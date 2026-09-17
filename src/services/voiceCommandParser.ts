@@ -304,9 +304,15 @@ export function parseVoiceCommand(text: string, customPhrases?: Record<string, s
   // 3. PROMPT DICTATION & SENDING TO AGENT
   // ─────────────────────────────────────────────────────────────────
   // A. Direct Prompt Injection: «промпт [текст]», «напиши [текст]», «скажи агенту [текст]», «отправь агенту [текст]»
-  const promptMatch = raw.match(/^(?:промпт|напиши агенту|напиши|скажи агенту|отправь агенту|отправь|спроси|prompt|ask agent)\s+(.+)$/i);
-  if (promptMatch && promptMatch[1]) {
-    const promptContent = promptMatch[1].trim();
+  // Whisper ставит знак после обращения: «Напиши агенту, проверь тесты.». Разделителем служит
+  // пробел или знак препинания, иначе совпадение уходило в короткое «напиши», и агенту
+  // отправлялось «агенту, проверь тесты.» (TASK-96). Триггер ищется отдельно и только до границы
+  // слова: длинная альтернатива «напиши агенту» выигрывает, даже если текста после неё нет.
+  const promptTrigger = raw.match(
+    /^(?:промпт|напиши агенту|напиши|скажи агенту|отправь агенту|отправь|спроси|prompt|ask agent)(?=$|[\s,:;.!—–-])/i
+  );
+  const promptContent = promptTrigger ? raw.slice(promptTrigger[0].length).replace(/^[\s,:;.!?—–-]+/, '').trim() : '';
+  if (promptContent) {
     return {
       type: 'ai_control',
       intent: 'send_prompt',

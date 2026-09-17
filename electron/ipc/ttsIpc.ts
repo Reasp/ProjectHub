@@ -12,8 +12,8 @@ import {
   deleteVoice,
   downloadBuiltinVoice,
   hasEspeakData,
-  importVoiceFromFiles,
   listVoices,
+  stageVoiceImport,
   TtsVoiceStoreError
 } from '../services/ttsVoiceStore';
 import { PiperVoiceConfigError } from '../services/piperVoiceConfig';
@@ -101,15 +101,19 @@ export function registerTtsIpc(ctx: IpcContext) {
     }
 
     try {
-      const installed = await importVoiceFromFiles(modelPath, configPath);
+      // Файлы лежат во временном каталоге под id, не пересекающимся с установленными голосами
+      // (TASK-93): неудачная проба не может задеть ни встроенный, ни ранее импортированный голос
+      const staged = await stageVoiceImport(modelPath, configPath);
       // Чужая модель сначала проходит пробу в отдельном процессе (decision-34): на битом файле
       // sherpa аварийно завершает процесс, и в воркере main-процесса это уронило бы всё приложение.
-      const probe = await probeVoiceInSeparateProcess(installed);
+      const probe = await probeVoiceInSeparateProcess(staged.voice);
       if (!probe.ok) {
-        await deleteVoice(installed.id).catch(() => {});
+        await staged.discard();
         return { ok: false, error: probe.detail, errorCode: probe.errorCode };
       }
-      // Модель доказала, что загружается, — теперь её можно отдать общему воркеру синтеза
+      const installed = await staged.commit().finally(() => staged.discard());
+      // Модель доказала, что загружается, — теперь её можно отдать общему процессу синтеза.
+      // id только что создан этим импортом, поэтому откат удаляет только его файлы
       const state = await piperTtsService.loadVoice(installed.id);
       if (state.status !== 'ready') {
         await deleteVoice(installed.id).catch(() => {});

@@ -145,11 +145,17 @@ export interface EvaluateComputerActionInput {
 }
 
 /**
- * Вердикт для одного вызова. Порядок правил важен: сначала жёсткие запреты (функция выключена,
- * инструмент не классифицирован, kill-switch, автономный запуск), затем класс действия.
+ * Жёсткие запреты, не зависящие от цели: функция выключена, инструмент не классифицирован,
+ * kill-switch, автономный запуск, Done-loop без разрешения задачи. `null` — запретов нет.
+ *
+ * Прокси проверяет их до запуска рантайма и определения окна. Полную политику там звать нельзя:
+ * без цели режим «только разрешённые окна» отклонял любое `act`-действие как «цель не определена»
+ * (TASK-94).
  */
-export function evaluateComputerAction(input: EvaluateComputerActionInput): ComputerVerdict {
-  const { tool, spec, target, focused, settings, context } = input;
+export function evaluateComputerHardLimits(
+  input: Pick<EvaluateComputerActionInput, 'tool' | 'spec' | 'context'>
+): (ComputerVerdict & { verdict: 'deny' }) | null {
+  const { tool, spec, context } = input;
 
   if (!context.enabled) {
     return { verdict: 'deny', rule: 'computer-disabled', reason: 'Управление компьютером выключено в настройках ProjectHub.' };
@@ -181,6 +187,19 @@ export function evaluateComputerAction(input: EvaluateComputerActionInput): Comp
       reason: `В цикле «до готовности» управление компьютером разрешено только задачам с label «${COMPUTER_USE_TASK_LABEL}».`
     };
   }
+  return null;
+}
+
+/**
+ * Вердикт для одного вызова. Порядок правил важен: сначала жёсткие запреты (функция выключена,
+ * инструмент не классифицирован, kill-switch, автономный запуск), затем класс действия.
+ */
+export function evaluateComputerAction(input: EvaluateComputerActionInput): ComputerVerdict {
+  const { spec, target, focused, settings, context } = input;
+
+  const hard = evaluateComputerHardLimits(input);
+  if (hard) return hard;
+  if (!spec) return { verdict: 'deny', rule: 'computer-tool-unknown' };
 
   if (spec.class === 'observe') {
     return { verdict: 'allow', rule: 'computer-observe', actionClass: 'observe' };
@@ -189,7 +208,9 @@ export function evaluateComputerAction(input: EvaluateComputerActionInput): Comp
   const allowlist = settings.allowlist ?? [];
   if (settings.onlyAllowlistedWindows && !spec.targetless) {
     const targetOk = isTargetAllowlisted(target, allowlist);
-    const focusedOk = !focused || isTargetAllowlisted(focused, allowlist);
+    // Запуск приложения сверяется по самому приложению из аргументов: окна у него до запуска нет,
+    // а активное окно действие не трогает (TASK-94)
+    const focusedOk = spec.launchesApp === true || !focused || isTargetAllowlisted(focused, allowlist);
     if (!targetOk || !focusedOk) {
       const offender = !targetOk ? target : focused;
       return {
