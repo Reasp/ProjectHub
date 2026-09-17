@@ -1059,6 +1059,10 @@ export interface TranslationDictionary {
       baseUrl: string;
       temperature: string;
       thinkingBudget: string;
+      thinkingBudgetHint: string;
+      temperatureHint: string;
+      modelDefault: string;
+      resetToModelDefault: string;
       autoApproveLabel: string;
       autoApproveSub: string;
       autoApproveCommands: string;

@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "0b71ad197d5baa4dea6f5b504f58fd159e774f0c43de9b9bbe4a783343aada3c",
+  "docsHash": "fd6e4809cdfb6cc4d7f9ff0eae2f49ccbf18f61eb071d72592d994917ce40e13",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -31,6 +31,7 @@
     "backlog/decisions/decision-30 - Push-to-talk-на-автоповторе-globalShortcut-и-wake-word-по-транскрипту.md",
     "backlog/decisions/decision-31 - Схема-ответа-LLM-классификатора-голосовых-команд.md",
     "backlog/decisions/decision-32 - Распаковка-архивов-голосов-внутри-процесса-вместо-системного-tar.md",
+    "backlog/decisions/decision-33 - Anthropic-API-путь-возможности-модели-из-Models-API-потолок-max_tokens-и-условная-отправка-temperature.md",
     "backlog/decisions/decision-4 - Claude-Code-CLI-как-основной-агентный-движок-API-провайдеры-как-дополнение.md",
     "backlog/decisions/decision-5 - Модель-безопасности-десктопа-изоляция-рендерера-реестр-проектов-локальный-MCP-и-секреты.md",
     "backlog/decisions/decision-6 - Git-worktree-как-единица-изоляции-задачи-и-агента.md",
@@ -48,6 +49,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 404,
-  "builtAt": "2026-09-16T11:17:04.994Z"
+  "chunks": 415,
+  "builtAt": "2026-09-17T09:46:46.099Z"
 }

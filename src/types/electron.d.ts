@@ -1442,6 +1442,8 @@ export interface AIStreamRequest {
   messages: AIMessage[];
   config: AIProviderConfig;
   mode: 'chat' | 'agent' | 'architect';
+  /** Потолок ответа модели на один шаг API-пути (TASK-88); без значения — потолок по умолчанию. */
+  maxTokens?: number;
   claudeCliSessionId?: string;
   taskId?: string;
   contextParts?: Partial<Record<ContextPartKey, boolean>>;

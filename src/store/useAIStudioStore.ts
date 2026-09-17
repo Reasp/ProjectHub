@@ -96,8 +96,7 @@ export const DEFAULT_AUTO_APPROVE_RULES: AutoApproveRules = {
 const DEFAULT_CONFIG: AIProviderConfig = {
   provider: 'anthropic',
   model: 'default',
-  temperature: 0.7,
-  thinkingBudget: 2048,
+  // temperature и thinkingBudget не заданы — действуют значения модели (TASK-88).
   autoApprove: false,
   autoApproveRules: DEFAULT_AUTO_APPROVE_RULES
 };

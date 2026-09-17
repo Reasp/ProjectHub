@@ -1342,11 +1342,8 @@ export class AgentFleetService extends EventEmitter {
     role?: RoleDefinition,
     continueSession = false
   ): Promise<void> {
-    const config: AIProviderConfig = agentState.config.providerConfig || {
-      provider: 'anthropic',
-      model: 'claude-3-7-sonnet-latest',
-      temperature: 0.2
-    };
+    // Без настроек слота — настройки AI Studio пользователя, а не модель вендора (decision-26 п. 0).
+    const config: AIProviderConfig = agentState.config.providerConfig || (await aiAgentService.getConfig());
 
     // Системный промпт роли идёт отдельным полем (buildSystemPrompt), а не в тело сообщения —
     // так он одинаково применяется независимо от того, есть ли у роли `tools` (decision-9).

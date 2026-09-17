@@ -12,6 +12,15 @@ import { addUsage, usageFromAnthropic, usageFromOpenAI, type AgentUsage } from '
 import { isToolAllowed } from './hitlPolicy.js';
 import { resolveOpenAICompatibleEndpoint } from './llmEndpoint.js';
 import {
+  UNKNOWN_MODEL_CAPABILITIES,
+  buildAnthropicMessagesBody,
+  isUnsetModelId,
+  parseAnthropicModelCapabilities,
+  resolveAnthropicModelId,
+  type AnthropicModelCapabilities
+} from './anthropicRequest.js';
+import { logger } from './logger.js';
+import {
   DEFAULT_MAX_TOOL_STEPS,
   OpenAIToolCallAccumulator,
   buildAnthropicToolTurn,
@@ -90,6 +99,8 @@ export interface AIStreamRequest {
   messages: AIMessage[];
   config: AIProviderConfig;
   mode: 'chat' | 'agent' | 'architect';
+  /** Потолок ответа модели на один шаг (TASK-88); по умолчанию — `DEFAULT_STREAM_MAX_TOKENS` в пределах потолка модели. */
+  maxTokens?: number;
   /** Системный промпт роли (decision-9, TASK-60) — дописывается к базовому промпту движка. */
   roleSystemPrompt?: string;
   /** Allow-список нативных имён инструментов API-движка (read_file/write_file/…); без поля — все. */
@@ -154,6 +165,8 @@ export interface LlmCompleteResult {
 
 const DEFAULT_COMPLETE_TIMEOUT_MS = 20_000;
 const DEFAULT_COMPLETE_MAX_TOKENS = 512;
+/** Сколько не повторять неудавшийся запрос возможностей модели, мс. */
+const MODEL_CAPABILITIES_RETRY_MS = 60_000;
 
 /** Итог одного запроса к модели. */
 interface ModelTurn {
@@ -192,6 +205,8 @@ const CONFIG_FILE = path.join(os.homedir(), '.projecthub', 'ai-config.json');
 
 class AIAgentService {
   private activeControllers = new Map<string, AbortController>();
+  /** Возможности моделей из Models API: успешный ответ — на время жизни процесса, ошибка — на минуту. */
+  private modelCapabilities = new Map<string, { caps: AnthropicModelCapabilities; expiresAt: number }>();
 
   constructor() {
     this.ensureConfigDir();
@@ -309,11 +324,11 @@ class AIAgentService {
       console.warn('Failed to load AI config, using defaults:', err);
     }
 
+    // Модель выбирает пользователь (decision-26 п. 0): «default» — сентинел «не выбрана»,
+    // Claude CLI возьмёт свою модель, API-путь вернёт понятную ошибку.
     return {
       provider: 'anthropic',
-      model: 'claude-3-7-sonnet-20250219',
-      temperature: 0.7,
-      thinkingBudget: 2048
+      model: 'default'
     };
   }
 
@@ -345,7 +360,7 @@ class AIAgentService {
   public async complete(req: LlmCompleteRequest): Promise<LlmCompleteResult> {
     const config = req.config ?? (await this.getConfig());
     const model = config.model?.trim();
-    if (!model) {
+    if (!model || isUnsetModelId(model)) {
       throw new Error('Модель не выбрана в настройках AI Studio.');
     }
 
@@ -623,16 +638,18 @@ class AIAgentService {
     maxSteps: number,
     executeTool?: StreamChatOptions['executeTool']
   ): Promise<void> {
+    const model = resolveAnthropicModelId(req.config.model);
     const apiKey = req.config.apiKey?.trim();
     if (!apiKey) {
       throw new Error('API ключ Anthropic не указан. Пожалуйста, откройте настройки AI Studio и укажите ключ.');
     }
+    const capabilities = await this.getAnthropicModelCapabilities(model, apiKey, signal);
     const messages: unknown[] = req.messages
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .map((m) => ({ role: m.role, content: m.content }));
 
     for (let step = 0; ; step++) {
-      const turn = await this.requestAnthropic(req, apiKey, systemPrompt, messages, tools, signal, onChunk);
+      const turn = await this.requestAnthropic(req, apiKey, capabilities, systemPrompt, messages, tools, step, signal, onChunk);
       this.accumulateTurn(loop, turn);
       const results = await this.executeToolStep(turn.toolCalls, step, maxSteps, loop, onChunk, signal, executeTool);
       if (!results) break;
@@ -641,37 +658,68 @@ class AIAgentService {
     }
   }
 
+  /**
+   * Возможности модели из Models API (`GET /v1/models/{id}`) — по ним выбирается режим рассуждений
+   * и потолок `max_tokens` (TASK-88, decision-33). При ошибке запрос к модели всё равно выполняется,
+   * но без `thinking`: неверная конфигурация рассуждений дала бы 400.
+   */
+  private async getAnthropicModelCapabilities(
+    model: string,
+    apiKey: string,
+    signal: AbortSignal
+  ): Promise<AnthropicModelCapabilities> {
+    const cached = this.modelCapabilities.get(model);
+    if (cached && cached.expiresAt > Date.now()) return cached.caps;
+
+    try {
+      const response = await fetch(`https://api.anthropic.com/v1/models/${encodeURIComponent(model)}`, {
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        signal
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const caps = parseAnthropicModelCapabilities(await response.json());
+      this.modelCapabilities.set(model, { caps, expiresAt: Number.POSITIVE_INFINITY });
+      return caps;
+    } catch (err) {
+      if (signal.aborted) throw abortError();
+      logger.warn(`[aiAgentService] Возможности модели «${model}» не получены из Models API: ${err instanceof Error ? err.message : String(err)}`);
+      this.modelCapabilities.set(model, { caps: UNKNOWN_MODEL_CAPABILITIES, expiresAt: Date.now() + MODEL_CAPABILITIES_RETRY_MS });
+      return UNKNOWN_MODEL_CAPABILITIES;
+    }
+  }
+
   /** Один потоковый запрос к Anthropic Messages API. */
   private async requestAnthropic(
     req: AIStreamRequest,
     apiKey: string,
+    capabilities: AnthropicModelCapabilities,
     systemPrompt: string,
     messages: unknown[],
     tools: AnthropicToolDefinition[],
+    step: number,
     signal: AbortSignal,
     onChunk: (payload: AIStreamChunkPayload) => void
   ): Promise<ModelTurn> {
     const endpoint = 'https://api.anthropic.com/v1/messages';
-    const body: Record<string, any> = {
-      model: req.config.model || 'claude-3-7-sonnet-20250219',
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages,
-      stream: true
-    };
-
-    if (tools.length > 0) {
-      body.tools = tools;
+    const { body, notes } = buildAnthropicMessagesBody(
+      {
+        model: req.config.model,
+        system: systemPrompt,
+        messages,
+        tools,
+        maxTokens: req.maxTokens,
+        temperature: req.config.temperature,
+        thinkingBudget: req.config.thinkingBudget
+      },
+      capabilities
+    );
+    // Настройки одинаковы для всех шагов хода — пояснение пишем один раз.
+    if (step === 0) {
+      for (const note of notes) logger.info(`[aiAgentService] ${note}`);
     }
-
-    if (req.config.thinkingBudget && req.config.thinkingBudget > 0 && req.config.model.includes('3-7')) {
-      body.thinking = {
-        type: 'enabled',
-        budget_tokens: req.config.thinkingBudget
-      };
-    } else {
-      body.temperature = req.config.temperature ?? 0.7;
-    }
+    const model = body.model as string;
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -721,10 +769,10 @@ class AIAgentService {
           const index = typeof parsed.index === 'number' ? parsed.index : blocks.size;
           if (parsed.type === 'message_start' && parsed.message?.usage) {
             // Входные токены и кэш известны сразу; output_tokens придут в message_delta.
-            usage = usageFromAnthropic(parsed.message.usage, parsed.message.model || body.model) ?? usage;
+            usage = usageFromAnthropic(parsed.message.usage, parsed.message.model || model) ?? usage;
           } else if (parsed.type === 'message_delta' && parsed.usage) {
             const delta = parsed.usage as Record<string, unknown>;
-            const base = usage ?? usageFromAnthropic({ input_tokens: 0 }, body.model) ?? null;
+            const base = usage ?? usageFromAnthropic({ input_tokens: 0 }, model) ?? null;
             const merged = usageFromAnthropic(
               {
                 input_tokens: typeof delta.input_tokens === 'number' ? delta.input_tokens : base?.inputTokens ?? 0,
@@ -734,7 +782,7 @@ class AIAgentService {
                 cache_creation_input_tokens:
                   typeof delta.cache_creation_input_tokens === 'number' ? delta.cache_creation_input_tokens : base?.cacheCreationTokens ?? 0
               },
-              base?.model || body.model
+              base?.model || model
             );
             if (merged) usage = merged;
           }

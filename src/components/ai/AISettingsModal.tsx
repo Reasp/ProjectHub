@@ -33,19 +33,20 @@ interface AISettingsModalProps {
   onClose: () => void;
 }
 
+// Справочные подсказки поля «Модель», а не рекомендация: модель выбирает пользователь (decision-26 п. 0).
+// `default`/`sonnet`/`opus`/`haiku` — алиасы Claude CLI; для API-пути нужен полный идентификатор модели.
 const MODEL_PRESETS: Record<string, string[]> = {
   anthropic: [
     'default',
     'sonnet',
     'opus',
     'haiku',
-    'claude-3-7-sonnet-latest',
-    'claude-3-5-sonnet-latest',
-    'claude-3-5-haiku-latest'
+    'claude-fable-5-1',
+    'claude-opus-5',
+    'claude-sonnet-5',
+    'claude-haiku-4-5'
   ],
   openrouter: [
-    'anthropic/claude-3.7-sonnet',
-    'anthropic/claude-3.5-sonnet',
     'deepseek/deepseek-r1',
     'deepseek/deepseek-chat',
     'openai/gpt-4o',
@@ -332,7 +333,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                     }`}
                   >
                     <span className="font-semibold text-xs text-amber-300">Anthropic Claude</span>
-                    <span className="text-[10px] text-slate-400">Claude 3.7 Sonnet</span>
+                    <span className="text-[10px] text-slate-400">Claude CLI / Messages API</span>
                   </button>
 
                   <button
@@ -472,20 +473,36 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                       <Sliders className="w-3.5 h-3.5 text-indigo-400" />
                       {t.aiStudio.settingsModal.temperature}
                     </span>
-                    <span className="font-mono text-indigo-400 font-semibold">{form.temperature ?? 0.7}</span>
+                    <span className="flex items-center gap-2">
+                      {form.temperature !== undefined && (
+                        <button
+                          type="button"
+                          onClick={() => setForm({ ...form, temperature: undefined })}
+                          className="text-[10px] text-slate-400 hover:text-slate-200 underline"
+                        >
+                          {t.aiStudio.settingsModal.resetToModelDefault}
+                        </button>
+                      )}
+                      <span className="font-mono text-indigo-400 font-semibold">
+                        {form.temperature ?? t.aiStudio.settingsModal.modelDefault}
+                      </span>
+                    </span>
                   </div>
                   <input
                     type="range"
                     min="0"
                     max="1"
                     step="0.05"
-                    value={form.temperature ?? 0.7}
+                    value={form.temperature ?? 1}
                     onChange={(e) => setForm({ ...form, temperature: parseFloat(e.target.value) })}
                     className="w-full accent-indigo-500"
                   />
+                  {form.provider === 'anthropic' && (
+                    <p className="mt-1 text-[10px] text-slate-400 leading-relaxed">{t.aiStudio.settingsModal.temperatureHint}</p>
+                  )}
                 </div>
 
-                {form.provider === 'anthropic' && form.model.includes('3-7') && (
+                {form.provider === 'anthropic' && (
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-medium text-slate-300 flex items-center gap-1.5">
@@ -499,10 +516,11 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                       min="0"
                       max="8192"
                       step="512"
-                      value={form.thinkingBudget ?? 2048}
+                      value={form.thinkingBudget ?? 0}
                       onChange={(e) => setForm({ ...form, thinkingBudget: parseInt(e.target.value) })}
                       className="w-full accent-amber-500"
                     />
+                    <p className="mt-1 text-[10px] text-slate-400 leading-relaxed">{t.aiStudio.settingsModal.thinkingBudgetHint}</p>
                   </div>
                 )}
               </div>

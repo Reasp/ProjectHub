@@ -46,12 +46,12 @@ const getPresets = (t: any): PresetOption[] => [
     agents: [
       {
         id: 'agent-claude',
-        name: 'Claude 3.7 Sonnet',
+        name: 'Claude',
         engine: 'api',
         role: t.swarm.roleContenderA,
         providerConfig: {
           provider: 'anthropic',
-          model: 'claude-3-7-sonnet-latest',
+          model: 'default',
           temperature: 0.2
         }
       },
@@ -112,12 +112,12 @@ const getPresets = (t: any): PresetOption[] => [
     agents: [
       {
         id: 'agent-architect',
-        name: 'Claude 3.7 Architect',
+        name: 'Claude Architect',
         engine: 'api',
         role: t.swarm.roleArchitect,
         providerConfig: {
           provider: 'anthropic',
-          model: 'claude-3-7-sonnet-latest',
+          model: 'default',
           temperature: 0.2
         }
       },
@@ -139,7 +139,7 @@ const getPresets = (t: any): PresetOption[] => [
         role: t.swarm.roleTester,
         providerConfig: {
           provider: 'anthropic',
-          model: 'claude-3-7-sonnet-latest',
+          model: 'default',
           temperature: 0.2
         }
       }
@@ -286,7 +286,7 @@ export const NewSwarmModal: React.FC = () => {
         : t.swarm.executorDefaultRole,
       providerConfig: {
         provider: 'anthropic',
-        model: 'claude-3-7-sonnet-latest',
+        model: 'default',
         temperature: 0.2
       }
     };
@@ -639,7 +639,7 @@ export const NewSwarmModal: React.FC = () => {
                               provider: e.target.value as any,
                               model:
                                 e.target.value === 'anthropic'
-                                  ? 'claude-3-7-sonnet-latest'
+                                  ? 'default'
                                   : e.target.value === 'deepseek'
                                   ? 'deepseek-chat'
                                   : 'openai/gpt-4o'
