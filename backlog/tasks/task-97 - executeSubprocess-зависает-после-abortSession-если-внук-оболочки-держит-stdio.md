@@ -1,10 +1,10 @@
 ---
 id: TASK-97
 title: 'executeSubprocess зависает после abortSession, если внук оболочки держит stdio'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-18 05:41'
-updated_date: '2026-09-18 06:15'
+updated_date: '2026-09-18 11:29'
 labels:
   - tests
   - agent
