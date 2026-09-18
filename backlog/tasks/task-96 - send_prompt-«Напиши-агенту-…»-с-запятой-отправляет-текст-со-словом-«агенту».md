@@ -1,10 +1,10 @@
 ---
 id: TASK-96
 title: 'send_prompt: «Напиши агенту, …» с запятой отправляет текст со словом «агенту»'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-17 12:35'
-updated_date: '2026-09-17 13:09'
+updated_date: '2026-09-18 05:06'
 labels:
   - voice
   - parser

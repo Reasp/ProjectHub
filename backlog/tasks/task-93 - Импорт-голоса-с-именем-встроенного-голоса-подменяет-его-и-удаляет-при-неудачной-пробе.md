@@ -3,10 +3,10 @@ id: TASK-93
 title: >-
   Импорт голоса с именем встроенного голоса подменяет его и удаляет при
   неудачной пробе
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-17 12:35'
-updated_date: '2026-09-17 13:06'
+updated_date: '2026-09-18 05:06'
 labels:
   - voice
   - tts

@@ -1,10 +1,10 @@
 ---
 id: TASK-94
 title: Режим «только разрешённые окна» запрещает запуск приложения из allowlist
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-17 12:35'
-updated_date: '2026-09-18 05:01'
+updated_date: '2026-09-18 05:06'
 labels:
   - computer-use
   - voice
