@@ -2204,5 +2204,25 @@ export const en: TranslationDictionary = {
     modelsNever: 'not loaded yet',
     refreshModels: 'Refresh model list',
     modelPlaceholder: 'Model ID — from the catalog or typed in'
+  },
+  reasoningEffort: {
+    label: 'Reasoning effort',
+    shortLabel: 'Effort',
+    modelDefault: 'Model default',
+    modelDefaultShort: 'default',
+    none: 'No reasoning',
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    max: 'Max',
+    slotTitle: 'Agent reasoning effort; "model default" sends nothing',
+    hintClaudeCli: 'Claude Code CLI: passed as --effort. The CLI cannot turn reasoning off, so "No reasoning" keeps the model default.',
+    hintAnthropicApi:
+      'Anthropic API: output_config.effort and thinking based on the model capabilities from the Models API; models with budget_tokens only get a budget per level. "No reasoning" is not sent.',
+    hintOpenAICompatible: 'Sent in the profile format (reasoning_effort or reasoning.effort). If the model rejects the level, the server error comes with a hint.',
+    hintNotSent: 'This provider or profile has no effort format, so nothing is sent. Set the format in the profile editor.',
+    hintCliIgnored: 'Effort is not passed to this CLI.',
+    hintStudio: 'Slot uses AI Studio settings: without its own value it takes the AI Studio effort.',
+    budgetOverridden: 'Reasoning effort is set, so the budget is not used.'
   }
 };

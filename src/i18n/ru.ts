@@ -2204,5 +2204,25 @@ export const ru: TranslationDictionary = {
     modelsNever: 'список ещё не загружался',
     refreshModels: 'Обновить список моделей',
     modelPlaceholder: 'ID модели — из каталога или вручную'
+  },
+  reasoningEffort: {
+    label: 'Усилие рассуждений',
+    shortLabel: 'Усилие',
+    modelDefault: 'По умолчанию модели',
+    modelDefaultShort: 'по умолчанию',
+    none: 'Без рассуждений',
+    low: 'Низкое',
+    medium: 'Среднее',
+    high: 'Высокое',
+    max: 'Максимальное',
+    slotTitle: 'Усилие рассуждений агента; «по умолчанию» — ничего не отправлять',
+    hintClaudeCli: 'Claude Code CLI: передаётся флагом --effort. «Без рассуждений» CLI не поддерживает — действует режим модели.',
+    hintAnthropicApi:
+      'Anthropic API: output_config.effort и рассуждения по возможностям модели из Models API; на моделях только с budget_tokens — бюджет по уровню. «Без рассуждений» не отправляется.',
+    hintOpenAICompatible: 'Отправляется в формате профиля (reasoning_effort или reasoning.effort). Если модель уровень не принимает, сервер вернёт ошибку с подсказкой.',
+    hintNotSent: 'У этого провайдера или профиля не выбран формат усилия — параметр не отправляется. Формат задаётся в редакторе профиля.',
+    hintCliIgnored: 'Этому CLI усилие не передаётся.',
+    hintStudio: 'Слот «как в AI Studio»: без своего значения берётся усилие из настроек AI Studio.',
+    budgetOverridden: 'Задано усилие рассуждений — бюджет не используется.'
   }
 };

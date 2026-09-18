@@ -23,6 +23,7 @@ import {
 import { buildOpenAICompatibleChatBody } from './openAICompatibleRequest.js';
 import { legacyProviderCompat, type LlmCompatFlags } from './llmProfiles.js';
 import { llmProfileService } from './llmProfileService.js';
+import { extractReasoningDelta, normalizeReasoningEffort, reasoningErrorHint, type ReasoningEffort } from './reasoningEffort.js';
 
 /** Адрес, заголовки и флаги запроса к OpenAI-совместимому серверу; `label` — для сообщений. */
 interface OpenAICompatibleTarget {
@@ -71,6 +72,8 @@ export interface AIProviderConfig {
   baseUrl?: string;
   temperature?: number;
   thinkingBudget?: number;
+  /** Усилие рассуждений (TASK-70.3, decision-41); без значения — режим модели по умолчанию. */
+  reasoningEffort?: ReasoningEffort;
   autoApprove?: boolean;
   autoApproveRules?: AutoApproveRules;
 }
@@ -808,7 +811,8 @@ class AIAgentService {
         tools,
         maxTokens: req.maxTokens,
         temperature: req.config.temperature,
-        thinkingBudget: req.config.thinkingBudget
+        thinkingBudget: req.config.thinkingBudget,
+        reasoningEffort: normalizeReasoningEffort(req.config.reasoningEffort)
       },
       capabilities
     );
@@ -1029,6 +1033,8 @@ class AIAgentService {
     onChunk: (payload: AIStreamChunkPayload) => void
   ): Promise<ModelTurn> {
     const { endpoint, headers } = target;
+    const reasoningEffort = normalizeReasoningEffort(req.config.reasoningEffort);
+    const notes: string[] = [];
     const body = buildOpenAICompatibleChatBody({
       provider: target.label,
       compat: target.compat,
@@ -1036,8 +1042,14 @@ class AIAgentService {
       messages,
       tools,
       temperature: req.config.temperature,
-      maxTokens: req.maxTokens
+      maxTokens: req.maxTokens,
+      reasoningEffort,
+      notes
     });
+    // Настройки одинаковы для всех шагов хода — пояснение пишем один раз.
+    if (step === 0) {
+      for (const note of notes) logger.info(`[aiAgentService] ${note}`);
+    }
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -1054,7 +1066,9 @@ class AIAgentService {
           + `Для режима агента выберите модель с tool calling. Ответ API (${response.status}): ${errText}`
         );
       }
-      throw new Error(`API Error (${response.status}): ${errText}`);
+      const hint = notes.length === 0 ? reasoningErrorHint(errText, reasoningEffort) : undefined;
+      throw new Error(`API Error (${response.status}): ${errText}${hint ? `
+${hint}` : ''}`);
     }
 
     let fullText = '';
@@ -1062,7 +1076,7 @@ class AIAgentService {
     let usage: AgentUsage | null = null;
     const accumulator = new OpenAIToolCallAccumulator();
 
-    type OpenAIDelta = { content?: string; reasoning_content?: string; tool_calls?: unknown };
+    type OpenAIDelta = { content?: string; tool_calls?: unknown };
     type OpenAIStreamPayload = { usage?: unknown; model?: string; choices?: Array<{ delta?: OpenAIDelta; message?: OpenAIDelta }> };
     const handlePayload = (parsed: OpenAIStreamPayload) => {
       if (parsed.usage) {
@@ -1072,9 +1086,11 @@ class AIAgentService {
       // Потоковый ответ несёт delta, непотоковый (некоторые серверы при tools) — message.
       const delta = choice?.delta ?? choice?.message;
       if (delta) {
-        if (delta.reasoning_content) {
-          fullThought += delta.reasoning_content;
-          onChunk({ thought: delta.reasoning_content });
+        // reasoning_content (DeepSeek), reasoning (Ollama, OpenRouter) — decision-41 п. 6.
+        const thought = extractReasoningDelta(delta);
+        if (thought) {
+          fullThought += thought;
+          onChunk({ thought });
         }
         if (delta.content) {
           fullText += delta.content;

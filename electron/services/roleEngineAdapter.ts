@@ -15,6 +15,7 @@
  * рекомендуется ручной smoke-test на машине с этими CLI.
  */
 import type { RoleDefinition, RoleEngine, ToolCategory } from './roleTypes.js';
+import { claudeCliEffortArgs, type ReasoningEffort } from './reasoningEffort.js';
 
 export type RoleFeature = 'systemPrompt' | 'model' | 'tools' | 'maxTurns';
 
@@ -65,6 +66,8 @@ export interface EngineInvocationInput {
   /** Доп. инструкции слота поверх системного промпта роли (`systemPromptAddon`). */
   extraSystemPrompt?: string;
   model?: string;
+  /** Усилие рассуждений слота (decision-41 п. 5): `--effort` у claude-cli, у остальных CLI не передаётся. */
+  reasoningEffort?: ReasoningEffort;
   budgetUsd?: number;
   /** Эффективные (уже суженные глобальными настройками) права — влияют на sandbox/approval. */
   autoApprove?: boolean;
@@ -78,6 +81,8 @@ export interface EngineInvocation {
   promptPrefix?: string;
   /** Какие поля роли были заданы, но данный движок не может выразить их нативно. */
   unsupportedFeatures: RoleFeature[];
+  /** Почему усилие рассуждений не передано движку — для лога агента. */
+  effortNote?: string;
 }
 
 function combinedSystemPrompt(role: RoleDefinition | undefined, extra: string | undefined): string {
@@ -96,6 +101,11 @@ export function extractAppendSystemPrompt(args: string[]): { args: string[]; sys
   return { args: [...args.slice(0, index), ...args.slice(index + 2)], systemPrompt: args[index + 1] };
 }
 
+/** Codex/Gemini CLI: флаг усилия не проверялся — не передаём и пишем, почему (decision-41 п. 5). */
+function cliEffortIgnored(engine: RoleEngine, effort: ReasoningEffort | undefined): { effortNote?: string } {
+  return effort ? { effortNote: `усилие рассуждений «${effort}» движку ${engine} не передаётся` } : {};
+}
+
 export function buildEngineInvocation(input: EngineInvocationInput): EngineInvocation {
   const { engine, role, extraSystemPrompt, model, budgetUsd, autoApprove } = input;
   const capabilities = ENGINE_CAPABILITIES[engine];
@@ -111,11 +121,13 @@ export function buildEngineInvocation(input: EngineInvocationInput): EngineInvoc
   if (engine === 'claude-cli') {
     if (systemPrompt) args.push('--append-system-prompt', systemPrompt);
     if (model && model !== 'default') args.push('--model', model);
+    const effort = claudeCliEffortArgs(input.reasoningEffort);
+    args.push(...effort.args);
     if (hasTools) args.push('--allowedTools', claudeToolNamesForCategories(role!.tools!).join(','));
     if (typeof budgetUsd === 'number' && budgetUsd > 0) args.push('--max-budget-usd', String(budgetUsd));
     // maxTurns у claude-cli нет нативного флага — считается и обеспечивается в agentFleetService
     // по потоку stream-json (счётчик `assistant`-событий), поэтому capabilities.maxTurns = true.
-    return { args, unsupportedFeatures };
+    return { args, unsupportedFeatures, ...(effort.note ? { effortNote: effort.note } : {}) };
   }
 
   if (engine === 'codex-cli') {
@@ -123,14 +135,14 @@ export function buildEngineInvocation(input: EngineInvocationInput): EngineInvoc
     const approval = autoApprove ? 'never' : 'on-failure';
     args.push('exec', '--json', '--sandbox', sandbox, '--ask-for-approval', approval);
     if (model && model !== 'default') args.push('-m', model);
-    return { args, promptPrefix: systemPrompt || undefined, unsupportedFeatures };
+    return { args, promptPrefix: systemPrompt || undefined, unsupportedFeatures, ...cliEffortIgnored(engine, input.reasoningEffort) };
   }
 
   if (engine === 'gemini-cli') {
     const approvalMode = autoApprove ? 'yolo' : 'default';
     args.push('--approval-mode', approvalMode, '--output-format', 'json');
     if (model && model !== 'default') args.push('-m', model);
-    return { args, promptPrefix: systemPrompt || undefined, unsupportedFeatures };
+    return { args, promptPrefix: systemPrompt || undefined, unsupportedFeatures, ...cliEffortIgnored(engine, input.reasoningEffort) };
   }
 
   // api — системный промпт и allow-список инструментов применяются напрямую в aiAgentService,

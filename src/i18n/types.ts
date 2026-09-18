@@ -2098,4 +2098,25 @@ export interface TranslationDictionary {
     refreshModels: string;
     modelPlaceholder: string;
   };
+  /** Усилие рассуждений сессии и слота (TASK-70.3, decision-41). */
+  reasoningEffort: {
+    label: string;
+    /** Короткая подпись для компактного выбора в слоте Swarm. */
+    shortLabel: string;
+    modelDefault: string;
+    modelDefaultShort: string;
+    none: string;
+    low: string;
+    medium: string;
+    high: string;
+    max: string;
+    slotTitle: string;
+    hintClaudeCli: string;
+    hintAnthropicApi: string;
+    hintOpenAICompatible: string;
+    hintNotSent: string;
+    hintCliIgnored: string;
+    hintStudio: string;
+    budgetOverridden: string;
+  };
 }

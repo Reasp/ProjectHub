@@ -1435,6 +1435,8 @@ export interface AIProviderConfig {
   baseUrl?: string;
   temperature?: number;
   thinkingBudget?: number;
+  /** Усилие рассуждений (TASK-70.3, decision-41); без значения — режим модели по умолчанию. */
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'max';
   autoApprove?: boolean;
   autoApproveRules?: AutoApproveRules;
 }

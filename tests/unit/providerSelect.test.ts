@@ -97,3 +97,15 @@ describe('filterModelGroups / sortProfilesForMenu', () => {
     expect(sortProfilesForMenu(PROFILES).map((p) => p.id)).toEqual(['p-ollama', 'p-a', 'p-b', 'p-or']);
   });
 });
+
+describe('slotProviderFromChoice: усилие рассуждений сохраняется при смене провайдера (TASK-70.3)', () => {
+  it('смена провайдера сбрасывает модель, но не усилие', () => {
+    expect(slotProviderFromChoice({ profile: 'p2' }, { provider: 'openai-compatible', profileId: 'p1', model: 'm', reasoningEffort: 'low' })).toEqual({
+      provider: 'openai-compatible',
+      profileId: 'p2',
+      reasoningEffort: 'low'
+    });
+    expect(slotProviderFromChoice({}, { provider: 'ollama', reasoningEffort: 'max' })).toEqual({ reasoningEffort: 'max' });
+    expect(slotProviderFromChoice({}, { provider: 'ollama' })).toBeUndefined();
+  });
+});

@@ -12,6 +12,7 @@
  * Чистый модуль без Electron — импортируется unit-тестами напрямую.
  */
 import type { AIProviderConfig } from './aiAgentService.js';
+import { normalizeReasoningEffort } from './reasoningEffort.js';
 
 export type ProviderId = AIProviderConfig['provider'];
 
@@ -142,8 +143,21 @@ function sameLegacyTarget(slot: Partial<AIProviderConfig>, global: AIProviderCon
  *
  * Пустая модель слота (или `default`) заменяется моделью AI Studio только для того же провайдера или
  * профиля: модель другого провайдера была бы чужой.
+ *
+ * Усилие рассуждений слота важнее унаследованного. Слот «как в AI Studio» или только с моделью
+ * наследует усилие AI Studio, слот с профилем или Ollama — только своё ([[decision-41]] п. 7).
  */
 export function resolveSlotProviderConfig(
+  slot: Partial<AIProviderConfig> | undefined,
+  global: AIProviderConfig,
+  profiles: readonly ProfileRefEntry[]
+): { config: AIProviderConfig; info: ResolvedProviderInfo } {
+  const resolved = resolveSlotTarget(slot, global, profiles);
+  const effort = normalizeReasoningEffort(slot?.reasoningEffort);
+  return effort ? { ...resolved, config: { ...resolved.config, reasoningEffort: effort } } : resolved;
+}
+
+function resolveSlotTarget(
   slot: Partial<AIProviderConfig> | undefined,
   global: AIProviderConfig,
   profiles: readonly ProfileRefEntry[]

@@ -23,8 +23,10 @@ import { useRolesStore } from '../../../store/useRolesStore';
 import { useTranslation } from '../../../i18n';
 import { useDialog } from '../../../hooks/useDialog';
 import { unsupportedRoleFeatures } from '../../../lib/engineCapabilities';
-import { slotProviderFromChoice, slotProviderFromRole } from '../../../lib/providerSelect';
 import { ProviderProfileSelect, useLlmProfiles, useProfileModels } from '../ProviderProfileSelect';
+import { ReasoningEffortSelect } from '../ReasoningEffortSelect';
+import { effortTargetKind, withReasoningEffort } from '../../../lib/reasoningEffort';
+import { findProfileByRef, slotProviderFromChoice, slotProviderFromRole } from '../../../lib/providerSelect';
 import type { AgentSlotConfig, DoneLoopSettings, LlmProfileView, SwarmMode } from '../../../types/electron';
 
 /** Слот исполнителя цикла «до готовности» по умолчанию — роль `implementer`, если она есть. */
@@ -310,7 +312,10 @@ export const NewSwarmModal: React.FC = () => {
       role: role.name,
       engine: role.engine || agents[idx].engine,
       budgetUsd: role.budgetUsd ?? agents[idx].budgetUsd,
-      ...(slotProviderFromRole(role, llmProfiles) ? { providerConfig: slotProviderFromRole(role, llmProfiles) } : {})
+      // Провайдер роли заменяет провайдера слота, а выбранное усилие рассуждений слота сохраняется.
+      ...(slotProviderFromRole(role, llmProfiles)
+        ? { providerConfig: withReasoningEffort(slotProviderFromRole(role, llmProfiles), agents[idx].providerConfig?.reasoningEffort) }
+        : {})
     });
   };
 
@@ -648,6 +653,20 @@ export const NewSwarmModal: React.FC = () => {
                           providerConfig: { ...agent.providerConfig, model: model || undefined }
                         })
                       }
+                    />
+
+                    <ReasoningEffortSelect
+                      compact
+                      value={agent.providerConfig?.reasoningEffort}
+                      onChange={(effort) =>
+                        handleUpdateAgent(idx, { providerConfig: withReasoningEffort(agent.providerConfig, effort) })
+                      }
+                      target={effortTargetKind({
+                        engine: agent.engine,
+                        provider: agent.providerConfig?.provider,
+                        profileReasoning: findProfileByRef(agent.providerConfig?.profileId, llmProfiles)?.compat.reasoning
+                      })}
+                      className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs max-w-44"
                     />
 
                     <input

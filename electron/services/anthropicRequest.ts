@@ -9,10 +9,18 @@
  * - режим рассуждений выбирается по возможностям модели из Models API
  *   (`capabilities.thinking.types`), а не по имени;
  * - `temperature` отправляется, только если её явно задали, модель её принимает и thinking в
- *   запросе не включён — остальные случаи API отклоняет с 400.
+ *   запросе не включён — остальные случаи API отклоняет с 400;
+ * - усилие рассуждений (TASK-70.3, [[decision-41]]) заменяет `thinkingBudget`: `output_config.effort` по
+ *   уровням из `capabilities.effort`, на моделях только с `enabled` — бюджет по уровню.
  *
  * Чистый модуль без Electron и сети — покрыт unit-тестами.
  */
+import {
+  ANTHROPIC_EFFORT_BUDGET_TOKENS,
+  pickSupportedEffort,
+  type AnthropicEffortLevel,
+  type ReasoningEffort
+} from './reasoningEffort.js';
 
 /** Потолок ответа по умолчанию для потокового пути: стрим не упирается в HTTP-таймауты. */
 export const DEFAULT_STREAM_MAX_TOKENS = 64_000;
@@ -30,9 +38,14 @@ const UNSET_MODEL_IDS = new Set(['', 'default']);
 export interface AnthropicModelCapabilities {
   thinking: { adaptive: boolean; enabled: boolean } | null;
   maxOutputTokens: number | null;
+  /**
+   * Уровни `output_config.effort`, которые принимает модель; `null` — неизвестно или модель параметр
+   * не поддерживает (Haiku 4.5, Sonnet 4.5).
+   */
+  effort?: Partial<Record<AnthropicEffortLevel, boolean>> | null;
 }
 
-export const UNKNOWN_MODEL_CAPABILITIES: AnthropicModelCapabilities = { thinking: null, maxOutputTokens: null };
+export const UNKNOWN_MODEL_CAPABILITIES: AnthropicModelCapabilities = { thinking: null, maxOutputTokens: null, effort: null };
 
 export function isUnsetModelId(model: string | undefined | null): boolean {
   return UNSET_MODEL_IDS.has((model ?? '').trim());
@@ -63,7 +76,10 @@ export function parseAnthropicModelCapabilities(payload: unknown): AnthropicMode
   const info = payload as { capabilities?: unknown; max_tokens?: unknown };
 
   let thinking: AnthropicModelCapabilities['thinking'] = null;
-  const caps = info.capabilities as { thinking?: { supported?: unknown; types?: Record<string, unknown> } } | null | undefined;
+  const caps = info.capabilities as
+    | { thinking?: { supported?: unknown; types?: Record<string, unknown> }; effort?: Record<string, unknown> & { supported?: unknown } }
+    | null
+    | undefined;
   if (caps && typeof caps === 'object' && caps.thinking && typeof caps.thinking === 'object') {
     const supported = caps.thinking.supported === true;
     const types = caps.thinking.types ?? {};
@@ -79,7 +95,18 @@ export function parseAnthropicModelCapabilities(payload: unknown): AnthropicMode
       ? Math.floor(info.max_tokens)
       : null;
 
-  return { thinking, maxOutputTokens };
+  let effort: AnthropicModelCapabilities['effort'] = null;
+  if (caps && typeof caps === 'object' && caps.effort && typeof caps.effort === 'object' && caps.effort.supported === true) {
+    const levels = caps.effort;
+    effort = {
+      low: supportedLeaf(levels.low),
+      medium: supportedLeaf(levels.medium),
+      high: supportedLeaf(levels.high),
+      max: supportedLeaf(levels.max)
+    };
+  }
+
+  return { thinking, maxOutputTokens, effort };
 }
 
 /**
@@ -106,6 +133,8 @@ export interface AnthropicBodyInput {
   temperature?: number;
   /** > 0 — включить рассуждения; 0 или нет значения — режим модели по умолчанию. */
   thinkingBudget?: number;
+  /** Усилие рассуждений; если задано, заменяет `thinkingBudget` ([[decision-41]] п. 4). */
+  reasoningEffort?: ReasoningEffort;
 }
 
 export interface AnthropicBodyResult {
@@ -143,7 +172,12 @@ export function buildAnthropicMessagesBody(
 
   const budget = positiveInt(input.thinkingBudget);
   let thinkingSent = false;
-  if (budget !== undefined) {
+  if (input.reasoningEffort !== undefined) {
+    if (budget !== undefined) {
+      notes.push('thinkingBudget не использован: задано усилие рассуждений, оно важнее бюджета');
+    }
+    thinkingSent = applyAnthropicEffort(body, input.reasoningEffort, model, maxTokens, capabilities, notes);
+  } else if (budget !== undefined) {
     if (capabilities.thinking === null) {
       notes.push(`thinking не отправлен: возможности модели «${model}» неизвестны (Models API недоступен)`);
     } else if (capabilities.thinking.adaptive) {
@@ -176,4 +210,54 @@ export function buildAnthropicMessagesBody(
   }
 
   return { body, notes };
+}
+
+/**
+ * Усилие рассуждений в теле Messages API; возвращает, отправлен ли `thinking`.
+ *
+ * `none` не переводится в `thinking: {type: "disabled"}`: Models API не публикует, можно ли выключить
+ * рассуждения, а на Fable это 400 и на Opus 5 — поломка tool use (decision-41, отвергнутый вариант 3).
+ */
+function applyAnthropicEffort(
+  body: Record<string, unknown>,
+  effort: ReasoningEffort,
+  model: string,
+  maxTokens: number,
+  capabilities: AnthropicModelCapabilities,
+  notes: string[]
+): boolean {
+  if (effort === 'none') {
+    notes.push('усилие «none» для Anthropic не отправлено: выключение рассуждений поддерживают не все модели, действует режим модели по умолчанию');
+    return false;
+  }
+  if (capabilities.thinking === null) {
+    notes.push(`усилие рассуждений не отправлено: возможности модели «${model}» неизвестны (Models API недоступен)`);
+    return false;
+  }
+
+  if (capabilities.thinking.adaptive) {
+    body.thinking = { type: 'adaptive', display: 'summarized' };
+    const supported = capabilities.effort ?? null;
+    const level = supported ? pickSupportedEffort(effort, supported) : undefined;
+    if (level) {
+      body.output_config = { effort: level };
+      if (level !== effort) notes.push(`усилие «${effort}» модель «${model}» не поддерживает — отправлено «${level}»`);
+    } else {
+      notes.push(`output_config.effort не отправлен: модель «${model}» не поддерживает уровень «${effort}», включены только рассуждения`);
+    }
+    return true;
+  }
+
+  if (capabilities.thinking.enabled) {
+    const budgetTokens = Math.min(ANTHROPIC_EFFORT_BUDGET_TOKENS[effort], maxTokens - 1);
+    if (budgetTokens >= MIN_THINKING_BUDGET_TOKENS) {
+      body.thinking = { type: 'enabled', budget_tokens: budgetTokens };
+      return true;
+    }
+    notes.push(`thinking не отправлен: max_tokens ${maxTokens} не оставляет места для бюджета рассуждений`);
+    return false;
+  }
+
+  notes.push(`усилие рассуждений не отправлено: модель «${model}» не поддерживает рассуждения`);
+  return false;
 }

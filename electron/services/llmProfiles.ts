@@ -13,7 +13,10 @@
  * Чистый модуль без Electron и сети — покрыт unit-тестами.
  */
 
-/** Как сервер принимает усилие рассуждений (используется в TASK-70.3). */
+/**
+ * Как сервер принимает усилие рассуждений (TASK-70.3, [[decision-41]]): `reasoning_effort` (OpenAI, xAI),
+ * `reasoning: { effort }` (OpenRouter), `ollama_think` — Ollama `/v1`, который читает `reasoning_effort`.
+ */
 export type LlmReasoningStyle = 'none' | 'reasoning_effort' | 'reasoning_object' | 'ollama_think';
 
 export interface LlmCompatFlags {
@@ -162,7 +165,7 @@ export const LLM_PROVIDER_PRESETS: readonly LlmProviderPreset[] = [
     baseUrl: 'http://127.0.0.1:11434/v1',
     requiresApiKey: false,
     local: true,
-    compat: compat({})
+    compat: compat({ reasoning: 'ollama_think' })
   },
   {
     id: 'lmstudio',
@@ -346,7 +349,9 @@ export function legacyProviderCompat(provider: string): LlmCompatFlags {
   return {
     ...BASE_COMPAT,
     streamUsage: provider !== 'ollama',
-    openRouterUsage: provider === 'openrouter'
+    openRouterUsage: provider === 'openrouter',
+    // Формат усилия — как у пресетов; без выбранного усилия запрос не меняется (decision-41 п. 3).
+    reasoning: provider === 'ollama' ? 'ollama_think' : provider === 'openrouter' ? 'reasoning_object' : 'none'
   };
 }
 

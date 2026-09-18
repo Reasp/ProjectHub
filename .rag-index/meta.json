@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "f94b049cd099c7576e92595170332ceb0b2036c911576f46db62fbb566ad7bf9",
+  "docsHash": "8bcab3137169c0d8202b81c15c18adee3db0fddae1c43a23044fe38055cfc879",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -40,6 +40,7 @@
     "backlog/decisions/decision-39 - Профили-OpenAI-совместимых-провайдеров-пресеты-флаги-совместимости-хранение-ключа-и-каталог-моделей.md",
     "backlog/decisions/decision-4 - Claude-Code-CLI-как-основной-агентный-движок-API-провайдеры-как-дополнение.md",
     "backlog/decisions/decision-40 - Провайдер-слота-Swarm-роли-и-ревьюера-Arena-профиль-без-вендорских-fallback.md",
+    "backlog/decisions/decision-41 - Усилие-рассуждений-единая-шкала-и-трансляция-в-формат-провайдера.md",
     "backlog/decisions/decision-5 - Модель-безопасности-десктопа-изоляция-рендерера-реестр-проектов-локальный-MCP-и-секреты.md",
     "backlog/decisions/decision-6 - Git-worktree-как-единица-изоляции-задачи-и-агента.md",
     "backlog/decisions/decision-7 - Local-first-хранение-состояния-и-отсутствие-телеметрии.md",
@@ -56,6 +57,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 464,
-  "builtAt": "2026-09-18T13:41:26.000Z"
+  "chunks": 476,
+  "builtAt": "2026-09-18T14:30:03.720Z"
 }

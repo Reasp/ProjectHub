@@ -48,7 +48,7 @@ describe('parseAnthropicModelCapabilities: ответ Models API', () => {
         thinking: { supported: true, types: { adaptive: { supported: true }, enabled: { supported: false } } }
       }
     });
-    expect(caps).toEqual({ thinking: { adaptive: true, enabled: false }, maxOutputTokens: 128000 });
+    expect(caps).toEqual({ thinking: { adaptive: true, enabled: false }, maxOutputTokens: 128000, effort: null });
   });
 
   it('thinking.supported=false обнуляет оба режима', () => {
@@ -216,5 +216,86 @@ describe('buildAnthropicMessagesBody: temperature развязана с thinking
     );
     expect(body).not.toHaveProperty('thinking');
     expect(body.temperature).toBe(0.2);
+  });
+});
+
+describe('усилие рассуждений в Anthropic-пути (TASK-70.3, decision-41 п. 4)', () => {
+  const ALL_EFFORT = { low: true, medium: true, high: true, max: true };
+  const OPUS: AnthropicModelCapabilities = { ...ADAPTIVE, effort: ALL_EFFORT };
+
+  it('Models API: capabilities.effort разбирается по уровням', () => {
+    const caps = parseAnthropicModelCapabilities({
+      capabilities: {
+        thinking: { supported: true, types: { adaptive: { supported: true }, enabled: { supported: false } } },
+        effort: { supported: true, low: { supported: true }, medium: { supported: true }, high: { supported: true }, xhigh: { supported: true }, max: { supported: false } }
+      }
+    });
+    expect(caps.effort).toEqual({ low: true, medium: true, high: true, max: false });
+    const noEffort = parseAnthropicModelCapabilities({ capabilities: { effort: { supported: false, low: { supported: true } } } });
+    expect(noEffort.effort).toBeNull();
+  });
+
+  it('adaptive-модель: thinking adaptive + output_config.effort', () => {
+    const { body, notes } = buildAnthropicMessagesBody(input({ reasoningEffort: 'max' }), OPUS);
+    expect(body.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+    expect(body.output_config).toEqual({ effort: 'max' });
+    expect(notes).toEqual([]);
+  });
+
+  it('неподдерживаемый уровень — ближайший ниже с пояснением', () => {
+    const caps: AnthropicModelCapabilities = { ...ADAPTIVE, effort: { low: true, medium: true, high: true, max: false } };
+    const { body, notes } = buildAnthropicMessagesBody(input({ reasoningEffort: 'max' }), caps);
+    expect(body.output_config).toEqual({ effort: 'high' });
+    expect(notes.join('\n')).toMatch(/отправлено «high»/);
+  });
+
+  it('модель без параметра effort — только рассуждения, effort не отправлен', () => {
+    const { body, notes } = buildAnthropicMessagesBody(input({ reasoningEffort: 'low' }), ADAPTIVE);
+    expect(body.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+    expect(body).not.toHaveProperty('output_config');
+    expect(notes.join('\n')).toMatch(/output_config.effort не отправлен/);
+  });
+
+  it('модель только с enabled — бюджет по уровню, ограниченный max_tokens', () => {
+    expect(buildAnthropicMessagesBody(input({ reasoningEffort: 'medium' }), ENABLED_ONLY).body.thinking).toEqual({ type: 'enabled', budget_tokens: 8192 });
+    const capped = buildAnthropicMessagesBody(input({ reasoningEffort: 'max', maxTokens: 4000 }), ENABLED_ONLY).body;
+    expect(capped.thinking).toEqual({ type: 'enabled', budget_tokens: 3999 });
+    const noRoom = buildAnthropicMessagesBody(input({ reasoningEffort: 'low', maxTokens: 1024 }), ENABLED_ONLY);
+    expect(noRoom.body).not.toHaveProperty('thinking');
+    expect(noRoom.notes.join('\n')).toMatch(/не оставляет места/);
+  });
+
+  it('none — ни thinking, ни effort (не disabled), с пояснением', () => {
+    const { body, notes } = buildAnthropicMessagesBody(input({ reasoningEffort: 'none', thinkingBudget: 4096 }), OPUS);
+    expect(body).not.toHaveProperty('thinking');
+    expect(body).not.toHaveProperty('output_config');
+    expect(notes.join('\n')).toMatch(/«none» для Anthropic не отправлено/);
+    expect(notes.join('\n')).toMatch(/thinkingBudget не использован/);
+  });
+
+  it('усилие заменяет thinkingBudget; без усилия бюджет работает как раньше', () => {
+    expect(buildAnthropicMessagesBody(input({ reasoningEffort: 'low', thinkingBudget: 20_000 }), ENABLED_ONLY).body.thinking).toEqual({ type: 'enabled', budget_tokens: 2048 });
+    expect(buildAnthropicMessagesBody(input({ thinkingBudget: 20_000 }), ENABLED_ONLY).body.thinking).toEqual({ type: 'enabled', budget_tokens: 20_000 });
+  });
+
+  it('возможности неизвестны или рассуждений нет — ничего не отправляется', () => {
+    const unknown = buildAnthropicMessagesBody(input({ reasoningEffort: 'high' }), UNKNOWN_MODEL_CAPABILITIES);
+    expect(unknown.body).not.toHaveProperty('thinking');
+    expect(unknown.body).not.toHaveProperty('output_config');
+    expect(unknown.notes.join('\n')).toMatch(/возможности модели .* неизвестны/);
+    const none = buildAnthropicMessagesBody(input({ reasoningEffort: 'high' }), NO_THINKING);
+    expect(none.body).not.toHaveProperty('thinking');
+    expect(none.notes.join('\n')).toMatch(/не поддерживает рассуждения/);
+  });
+
+  it('с усилием temperature не отправляется вместе с thinking', () => {
+    const { body } = buildAnthropicMessagesBody(input({ model: 'claude-sonnet-4-5', reasoningEffort: 'low', temperature: 0.2 }), ENABLED_ONLY);
+    expect(body).not.toHaveProperty('temperature');
+  });
+
+  it('без усилия тело не меняется (дефолт — ничего не отправлять)', () => {
+    const { body } = buildAnthropicMessagesBody(input(), OPUS);
+    expect(body).not.toHaveProperty('thinking');
+    expect(body).not.toHaveProperty('output_config');
   });
 });

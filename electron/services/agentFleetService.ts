@@ -16,6 +16,7 @@ import type { HitlOrigin } from './hitlTypes.js';
 import { getUserDataDir, getHandoffReportsDir } from './appPaths.js';
 import { loadRoles } from './roleService.js';
 import { llmProfileService } from './llmProfileService.js';
+import { normalizeReasoningEffort } from './reasoningEffort.js';
 import { apiConfigProblem, describeProviderInfo, providerConfigFromSpec, resolveSlotProviderConfig } from './slotProvider.js';
 import { buildEngineInvocation, apiToolNamesForCategories, extractAppendSystemPrompt } from './roleEngineAdapter.js';
 import { buildAgentContext } from './contextBuilder.js';
@@ -1503,8 +1504,10 @@ export class AgentFleetService extends EventEmitter {
       role,
       extraSystemPrompt: await this.buildExtraSystemPrompt(session, agentState, targetPath),
       model: agentState.config.providerConfig?.model,
+      reasoningEffort: normalizeReasoningEffort(agentState.config.providerConfig?.reasoningEffort),
       budgetUsd: agentState.config.budgetUsd
     });
+    if (invocation.effortNote) this.log(session, agentState, `[Swarm] ℹ️ ${invocation.effortNote}`);
     const maxTurns = role?.maxTurns && role.maxTurns > 0 ? role.maxTurns : undefined;
 
     // Системный промпт роли и инструкция цикла многострочные: через оболочку (shell: true) cmd.exe
@@ -1800,9 +1803,11 @@ export class AgentFleetService extends EventEmitter {
       role,
       extraSystemPrompt: await this.buildExtraSystemPrompt(session, agentState, targetPath),
       model: agentState.config.providerConfig?.model,
+      reasoningEffort: normalizeReasoningEffort(agentState.config.providerConfig?.reasoningEffort),
       autoApprove: effective.autoApprove,
       allowFileWrite: effective.autoApproveRules?.allowFileWrite
     });
+    if (invocation.effortNote) this.log(session, agentState, `[Swarm] ℹ️ ${invocation.effortNote}`);
     const fullPrompt = invocation.promptPrefix ? `${invocation.promptPrefix}\n\n${prompt}` : prompt;
 
     return new Promise((resolve, reject) => {
@@ -1939,8 +1944,10 @@ export class AgentFleetService extends EventEmitter {
       role,
       extraSystemPrompt: await this.buildExtraSystemPrompt(session, agentState, targetPath),
       model: agentState.config.providerConfig?.model,
+      reasoningEffort: normalizeReasoningEffort(agentState.config.providerConfig?.reasoningEffort),
       autoApprove: effective.autoApprove
     });
+    if (invocation.effortNote) this.log(session, agentState, `[Swarm] ℹ️ ${invocation.effortNote}`);
     const fullPrompt = invocation.promptPrefix ? `${invocation.promptPrefix}\n\n${prompt}` : prompt;
 
     return new Promise((resolve, reject) => {

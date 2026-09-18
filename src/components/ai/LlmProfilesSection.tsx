@@ -299,7 +299,7 @@ export const LlmProfilesSection: React.FC<LlmProfilesSectionProps> = ({ profileI
                   <option value="none">{l.reasoningNone}</option>
                   <option value="reasoning_effort">reasoning_effort</option>
                   <option value="reasoning_object">reasoning: {'{ effort }'}</option>
-                  <option value="ollama_think">think (Ollama)</option>
+                  <option value="ollama_think">Ollama /v1 (reasoning_effort, none…max)</option>
                 </select>
               </div>
             </div>

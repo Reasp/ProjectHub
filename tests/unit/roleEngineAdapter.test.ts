@@ -106,3 +106,24 @@ describe('ENGINE_CAPABILITIES — матрица поддержки для UI', 
     expect(ENGINE_CAPABILITIES['gemini-cli'].tools).toBe(false);
   });
 });
+
+describe('buildEngineInvocation — усилие рассуждений (TASK-70.3, decision-41 п. 5)', () => {
+  it('claude-cli: --effort, «none» не передаётся с пояснением', () => {
+    const high = buildEngineInvocation({ engine: 'claude-cli', model: 'opus', reasoningEffort: 'high' });
+    expect(high.args).toEqual(['--model', 'opus', '--effort', 'high']);
+    expect(high.effortNote).toBeUndefined();
+    const none = buildEngineInvocation({ engine: 'claude-cli', reasoningEffort: 'none' });
+    expect(none.args).not.toContain('--effort');
+    expect(none.effortNote).toMatch(/не умеет выключать/);
+    expect(buildEngineInvocation({ engine: 'claude-cli' }).args).not.toContain('--effort');
+  });
+
+  it('codex-cli и gemini-cli: усилие не передаётся, есть пояснение', () => {
+    for (const engine of ['codex-cli', 'gemini-cli'] as const) {
+      const inv = buildEngineInvocation({ engine, reasoningEffort: 'high' });
+      expect(inv.args.join(' ')).not.toMatch(/effort/);
+      expect(inv.effortNote).toMatch(new RegExp(`${engine} не передаётся`));
+      expect(buildEngineInvocation({ engine }).effortNote).toBeUndefined();
+    }
+  });
+});

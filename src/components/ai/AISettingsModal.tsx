@@ -28,6 +28,9 @@ import type { AIProviderConfig, AutoApproveRules } from '../../types/electron';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useTimers } from '../../hooks/useTimeoutState';
 import { LlmProfilesSection } from './LlmProfilesSection';
+import { useLlmProfiles } from './ProviderProfileSelect';
+import { ReasoningEffortSelect } from './ReasoningEffortSelect';
+import { effortTargetKind } from '../../lib/reasoningEffort';
 
 interface AISettingsModalProps {
   isOpen: boolean;
@@ -89,6 +92,8 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
   const [newCommandPattern, setNewCommandPattern] = useState('');
   // Модели каталога выбранного профиля openai-compatible — подсказки поля «Модель» (TASK-70.2)
   const [catalogModels, setCatalogModels] = useState<string[]>([]);
+  // Формат усилия профиля — для подсказки под выбором усилия рассуждений.
+  const llmProfiles = useLlmProfiles(isOpen);
   const handleCatalogChange = useCallback((models: string[]) => setCatalogModels(models), []);
 
   // Ручной перенос прежнего провайдера в профиль (decision-40): профиль создаётся в main из сохранённых
@@ -526,6 +531,24 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
 
               {/* Sliders: Temperature & Thinking */}
               <div className="p-4 rounded-xl bg-[#161928]/60 border border-slate-800 space-y-4">
+                {/* Усилие рассуждений (TASK-70.3, decision-41): без значения ничего не отправляется */}
+                <div>
+                  <span className="font-medium text-slate-300 flex items-center gap-1.5 mb-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    {t.reasoningEffort.label}
+                  </span>
+                  <ReasoningEffortSelect
+                    value={form.reasoningEffort}
+                    onChange={(reasoningEffort) => setForm({ ...form, reasoningEffort })}
+                    target={effortTargetKind({
+                      provider: form.provider,
+                      hasApiKey: Boolean(form.apiKey?.trim()),
+                      profileReasoning: llmProfiles.find((p) => p.id === form.profileId)?.compat.reasoning
+                    })}
+                    className="w-full bg-[#161928] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="font-medium text-slate-300 flex items-center gap-1.5">
@@ -561,7 +584,11 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                   )}
                 </div>
 
-                {form.provider === 'anthropic' && (
+                {form.provider === 'anthropic' && form.reasoningEffort && (
+                  <p className="text-[10px] text-slate-400 leading-relaxed">{t.reasoningEffort.budgetOverridden}</p>
+                )}
+
+                {form.provider === 'anthropic' && !form.reasoningEffort && (
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-medium text-slate-300 flex items-center gap-1.5">

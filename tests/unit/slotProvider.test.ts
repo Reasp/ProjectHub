@@ -165,3 +165,34 @@ describe('describeProviderInfo', () => {
     expect(describeProviderInfo({ provider: 'deepseek' })).toBe('deepseek');
   });
 });
+
+describe('resolveSlotProviderConfig: усилие рассуждений слота (TASK-70.3, decision-41 п. 7)', () => {
+  const GLOBAL_WITH_EFFORT: AIProviderConfig = { ...ANTHROPIC_GLOBAL, reasoningEffort: 'high' };
+
+  it('слот «как в AI Studio» и слот только с моделью наследуют усилие AI Studio', () => {
+    expect(resolveSlotProviderConfig(undefined, GLOBAL_WITH_EFFORT, PROFILES).config.reasoningEffort).toBe('high');
+    expect(resolveSlotProviderConfig({ model: 'claude-y' }, GLOBAL_WITH_EFFORT, PROFILES).config.reasoningEffort).toBe('high');
+  });
+
+  it('своё усилие слота важнее, в том числе слот только с усилием', () => {
+    expect(resolveSlotProviderConfig({ reasoningEffort: 'low' }, GLOBAL_WITH_EFFORT, PROFILES).config).toMatchObject({
+      provider: 'anthropic',
+      model: 'claude-x',
+      reasoningEffort: 'low'
+    });
+    expect(resolveSlotProviderConfig({ model: 'claude-y', reasoningEffort: 'none' }, GLOBAL_WITH_EFFORT, PROFILES).config.reasoningEffort).toBe('none');
+  });
+
+  it('слот с профилем и Ollama берёт только своё усилие, без него — дефолт модели', () => {
+    const profile = resolveSlotProviderConfig({ provider: 'openai-compatible', profileId: 'Ollama', model: 'qwen3' }, GLOBAL_WITH_EFFORT, PROFILES);
+    expect(profile.config).not.toHaveProperty('reasoningEffort');
+    const withOwn = resolveSlotProviderConfig({ provider: 'openai-compatible', profileId: 'Ollama', model: 'qwen3', reasoningEffort: 'max' }, GLOBAL_WITH_EFFORT, PROFILES);
+    expect(withOwn.config.reasoningEffort).toBe('max');
+    expect(resolveSlotProviderConfig({ provider: 'ollama', model: 'qwen3' }, GLOBAL_WITH_EFFORT, PROFILES).config).not.toHaveProperty('reasoningEffort');
+  });
+
+  it('значение вне шкалы игнорируется', () => {
+    const cfg = resolveSlotProviderConfig({ provider: 'ollama', model: 'q', reasoningEffort: 'xhigh' as never }, ANTHROPIC_GLOBAL, PROFILES).config;
+    expect(cfg).not.toHaveProperty('reasoningEffort');
+  });
+});

@@ -21,7 +21,7 @@ export interface ProviderChoice {
 
 export const LEGACY_PROVIDER_IDS = ['openrouter', 'deepseek', 'ollama', 'custom'] as const;
 
-export function findProfileByRef(ref: string | undefined, profiles: readonly ProfileLike[]): ProfileLike | undefined {
+export function findProfileByRef<T extends ProfileLike>(ref: string | undefined, profiles: readonly T[]): T | undefined {
   const needle = ref?.trim();
   if (!needle) return undefined;
   const byId = profiles.find((p) => p.id === needle);
@@ -69,6 +69,8 @@ export interface SlotProvider {
   provider?: 'anthropic' | 'openrouter' | 'deepseek' | 'ollama' | 'custom' | 'openai-compatible';
   profileId?: string;
   model?: string;
+  /** Усилие рассуждений слота (TASK-70.3); не зависит от провайдера и при его смене сохраняется. */
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'max';
 }
 
 const PROVIDER_IDS = ['anthropic', ...LEGACY_PROVIDER_IDS, 'openai-compatible'] as const;
@@ -94,16 +96,21 @@ export function slotProviderFromRole(
   return model ? { model } : undefined;
 }
 
-/** Выбор в селекторе → провайдер слота; модель сохраняется, только если провайдер не менялся. */
+/**
+ * Выбор в селекторе → провайдер слота; модель сохраняется, только если провайдер не менялся, усилие
+ * рассуждений — всегда.
+ */
 export function slotProviderFromChoice(choice: ProviderChoice, current: SlotProvider | undefined): SlotProvider | undefined {
   const sameTarget =
     (choice.provider ?? undefined) === (current?.provider ?? undefined) && (choice.profile ?? undefined) === (current?.profileId ?? undefined);
   const model = sameTarget ? current?.model : undefined;
-  if (!choice.provider && !choice.profile) return model ? { model } : undefined;
+  const effort = current?.reasoningEffort ? { reasoningEffort: current.reasoningEffort } : {};
+  if (!choice.provider && !choice.profile) return model || current?.reasoningEffort ? { ...(model ? { model } : {}), ...effort } : undefined;
   return {
     provider: (choice.profile ? 'openai-compatible' : choice.provider) as SlotProvider['provider'],
     ...(choice.profile ? { profileId: choice.profile } : {}),
-    ...(model ? { model } : {})
+    ...(model ? { model } : {}),
+    ...effort
   };
 }
 

@@ -25,6 +25,7 @@ import { computerUseService, type ComputerCallContext } from './computerUseServi
 import { COMPUTER_TOOL_PREFIX } from './computerToolCatalog.js';
 import type { ToolExecutionResult } from './apiToolLoop.js';
 import { searchProjectDocs } from './ragSearch.js';
+import { claudeCliEffortArgs, normalizeReasoningEffort } from './reasoningEffort.js';
 import {
   applyRolePermissions,
   evaluateToolRequest,
@@ -1637,6 +1638,10 @@ class ClaudeBridgeService extends EventEmitter {
     if (req.config.model && req.config.model !== 'default') {
       cliArgs.push('--model', req.config.model);
     }
+    // Усилие рассуждений сессии (TASK-70.3, decision-41 п. 5): `--effort`, «none» CLI не поддерживает.
+    const effort = claudeCliEffortArgs(normalizeReasoningEffort(req.config.reasoningEffort));
+    cliArgs.push(...effort.args);
+    if (effort.note) console.info(`[claudeBridge] ${effort.note}`);
     if (req.builtinTools) {
       // Пустое значение отключает все встроенные инструменты; MCP-инструменты из --mcp-config остаются
       cliArgs.push(quoteShellArg(`--tools=${req.builtinTools.join(',')}`));
