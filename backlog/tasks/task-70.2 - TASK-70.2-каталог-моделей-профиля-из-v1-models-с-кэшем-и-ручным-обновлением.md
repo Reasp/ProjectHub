@@ -1,10 +1,10 @@
 ---
 id: TASK-70.2
 title: Каталог моделей профиля из /v1/models с кэшем и ручным обновлением
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-18 12:40'
-updated_date: '2026-09-18 13:00'
+updated_date: '2026-09-18 13:05'
 labels:
   - ai
   - model-agnostic

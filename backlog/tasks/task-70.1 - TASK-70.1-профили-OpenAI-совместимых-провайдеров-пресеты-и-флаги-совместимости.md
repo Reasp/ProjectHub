@@ -1,10 +1,10 @@
 ---
 id: TASK-70.1
 title: 'Профили OpenAI-совместимых провайдеров, пресеты и флаги совместимости'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-18 12:40'
-updated_date: '2026-09-18 13:00'
+updated_date: '2026-09-18 13:05'
 labels:
   - ai
   - model-agnostic

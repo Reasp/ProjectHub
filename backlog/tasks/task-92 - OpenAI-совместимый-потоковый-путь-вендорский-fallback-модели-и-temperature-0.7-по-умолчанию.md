@@ -3,10 +3,10 @@ id: TASK-92
 title: >-
   OpenAI-совместимый потоковый путь: вендорский fallback модели и temperature
   0.7 по умолчанию
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-17 09:44'
-updated_date: '2026-09-18 12:09'
+updated_date: '2026-09-18 13:05'
 labels:
   - bug
   - ai

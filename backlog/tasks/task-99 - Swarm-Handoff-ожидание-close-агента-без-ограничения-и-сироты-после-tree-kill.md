@@ -1,10 +1,10 @@
 ---
 id: TASK-99
 title: 'Swarm/Handoff: ожидание close агента без ограничения и сироты после tree-kill'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-18 06:05'
-updated_date: '2026-09-18 12:02'
+updated_date: '2026-09-18 13:05'
 labels:
   - agent
   - swarm
