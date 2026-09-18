@@ -14,7 +14,7 @@ import {
   type AutoApproveRules
 } from './aiAgentService.js';
 import { isInsideProject } from './pathGuard.js';
-import { sweepOrphanedDescendants } from './processSweep.js';
+import { CHILD_CLOSE_GRACE_MS, superviseChildExit } from './processSweep.js';
 import { processManager } from './processManager.js';
 import { claudeUsageService } from './claudeUsageService.js';
 import { parseClaudeResultEvent, priceUsage, type AgentUsage } from './agentCost.js';
@@ -186,7 +186,7 @@ export const SUBPROCESS_MAX_OUTPUT_BYTES = 1024 * 1024;
  * Сколько ждать 'close' после выхода оболочки (TASK-97, decision-37): stdio может держать
  * пережившийся потомок, тогда потоки уничтожаются и промис завершается без 'close'.
  */
-export const SUBPROCESS_CLOSE_GRACE_MS = 1500;
+export const SUBPROCESS_CLOSE_GRACE_MS = CHILD_CLOSE_GRACE_MS;
 
 export interface SubprocessOptions {
   /** Сессия-владелец: процесс убивается вместе с ней в abortSession/killAll. */
@@ -1989,35 +1989,26 @@ class ClaudeBridgeService extends EventEmitter {
       let timedOut = false;
       let truncated = false;
       let output = '';
-      let killRequested = false;
-      let swept = false;
-      let exitCode: number | null = null;
-      let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
       // Потомок, порождённый оболочкой после снимка дерева tree-kill, переживает kill и держит
-      // stdio — без добивания 'close' не придёт никогда (TASK-97).
-      const sweep = (): Promise<unknown> => {
-        if (swept || !child.pid) return Promise.resolve();
-        swept = true;
-        return sweepOrphanedDescendants(child.pid, startedAt).catch(() => []);
-      };
-      const kill = () => {
-        killRequested = true;
-        if (child.exitCode !== null || child.signalCode !== null) void sweep();
-        else killProcessTree(child);
-      };
-      this.subprocessKillers.set(child, kill);
+      // stdio — без ограниченного ожидания и добивания 'close' не придёт никогда (TASK-97).
+      const supervisor = superviseChildExit(child, {
+        startedAt,
+        killTree: killProcessTree,
+        onDone: (code) => settle(() => resolve({ output, exitCode: code, timedOut, truncated }))
+      });
+      this.subprocessKillers.set(child, supervisor.kill);
 
       const timer = timeoutMs > 0
         ? setTimeout(() => {
           timedOut = true;
-          kill();
+          supervisor.kill();
         }, timeoutMs)
         : undefined;
 
       const untrack = () => {
         if (timer) clearTimeout(timer);
-        if (closeTimer) clearTimeout(closeTimer);
+        supervisor.dispose();
         this.subprocessKillers.delete(child);
         if (sessionId) {
           const set = this.sessionSubprocesses.get(sessionId);
@@ -2048,28 +2039,6 @@ class ClaudeBridgeService extends EventEmitter {
       child.stdin.on('error', (err) => settle(() => reject(err)));
       child.stdout.on('error', (err) => settle(() => reject(err)));
       child.stderr.on('error', (err) => settle(() => reject(err)));
-
-      const finish = (code: number | null) => {
-        settle(() => resolve({ output, exitCode: code, timedOut, truncated }));
-      };
-
-      // 'close' ждём ограниченное время после 'exit' оболочки (после abort/таймаута — после
-      // добивания потомков), затем уничтожаем потоки: их может держать переживший потомок.
-      child.on('exit', (code) => {
-        exitCode = code;
-        const afterSweep = killRequested ? sweep() : Promise.resolve();
-        void afterSweep.then(() => {
-          if (settled) return;
-          closeTimer = setTimeout(() => {
-            child.stdin.destroy();
-            child.stdout.destroy();
-            child.stderr.destroy();
-            finish(exitCode);
-          }, SUBPROCESS_CLOSE_GRACE_MS);
-        });
-      });
-
-      child.on('close', (code) => finish(code ?? exitCode));
 
       child.on('error', (err) => settle(() => reject(err)));
     });

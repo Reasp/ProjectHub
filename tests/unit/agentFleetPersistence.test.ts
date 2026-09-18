@@ -61,6 +61,9 @@ beforeEach(async () => {
   baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'ph-fleet-'));
   store = new SwarmSessionStore(baseDir, 10);
   vi.restoreAllMocks();
+  // Автосудья после fan-out прогоняет проверки проекта в projectPath — здесь это настоящий
+  // `npm run test` в репозитории: рекурсивный vitest, оборванный по таймауту, оставлял сирот (TASK-99).
+  vi.spyOn(AgentFleetService.prototype, 'runJudge').mockResolvedValue(null);
 });
 
 afterEach(async () => {

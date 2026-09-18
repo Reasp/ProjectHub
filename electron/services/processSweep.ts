@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, type ChildProcess } from 'node:child_process';
 import treeKill from 'tree-kill';
 
 /**
@@ -93,4 +93,81 @@ export async function sweepOrphanedDescendants(rootPid: number, rootStartedAt: n
     pids.map((pid) => new Promise<void>((resolve) => treeKill(pid, 'SIGKILL', () => resolve())))
   );
   return pids;
+}
+
+/** Сколько ждать 'close' после 'exit' (после остановки — после добивания потомков). */
+export const CHILD_CLOSE_GRACE_MS = 1500;
+
+export interface ChildExitSupervisor {
+  /** Остановка: tree-kill живого процесса; уже вышедшего — добивание переживших его потомков. */
+  kill(): void;
+  /** Снять таймер ожидания: результат уже выдан по другому пути (например, 'error'). */
+  dispose(): void;
+}
+
+export interface SuperviseChildExitOptions {
+  /** Отметка `Date.now()` перед spawn — защита обхода потомков от переиспользования PID. */
+  startedAt: number;
+  /** Остановка живого процесса (tree-kill). */
+  killTree: (child: ChildProcess) => void;
+  /** Вызывается один раз: по 'close' или по истечении ожидания после 'exit'. */
+  onDone: (code: number | null) => void;
+  graceMs?: number;
+}
+
+/**
+ * Ограниченное ожидание завершения дочернего процесса (decision-37, TASK-97, TASK-99).
+ *
+ * 'close' приходит, только когда закрыты все копии stdio, включая унаследованные потомками;
+ * потомок, переживший tree-kill или намеренно оставленный в фоне, держал бы его бесконечно.
+ * Поэтому результат выдаётся не позже `graceMs` после 'exit', затем потоки уничтожаются.
+ * После `kill()` пережившие tree-kill потомки добиваются, и ожидание начинается после этого.
+ * Без `kill()` потомков не трогаем: фоновый процесс мог быть намеренным.
+ */
+export function superviseChildExit(child: ChildProcess, options: SuperviseChildExitOptions): ChildExitSupervisor {
+  const graceMs = options.graceMs ?? CHILD_CLOSE_GRACE_MS;
+  let done = false;
+  let killRequested = false;
+  let swept = false;
+  let exitCode: number | null = null;
+  let closeTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const sweep = (): Promise<unknown> => {
+    if (swept || !child.pid) return Promise.resolve();
+    swept = true;
+    return sweepOrphanedDescendants(child.pid, options.startedAt).catch(() => []);
+  };
+  const dispose = () => {
+    done = true;
+    if (closeTimer) clearTimeout(closeTimer);
+  };
+  const finish = (code: number | null) => {
+    if (done) return;
+    dispose();
+    options.onDone(code);
+  };
+
+  child.on('exit', (code) => {
+    exitCode = code;
+    const afterSweep = killRequested ? sweep() : Promise.resolve();
+    void afterSweep.then(() => {
+      if (done) return;
+      closeTimer = setTimeout(() => {
+        child.stdin?.destroy();
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        finish(exitCode);
+      }, graceMs);
+    });
+  });
+  child.on('close', (code) => finish(code ?? exitCode));
+
+  return {
+    kill: () => {
+      killRequested = true;
+      if (child.exitCode !== null || child.signalCode !== null) void sweep();
+      else options.killTree(child);
+    },
+    dispose
+  };
 }

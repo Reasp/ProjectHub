@@ -38,6 +38,7 @@ import { exportSwarmSessionJson, exportSwarmSessionMarkdown, summarizeSwarmSessi
 import { arenaJudgeService, judgeableAgents, type RunJudgeOptions } from './arenaJudgeService.js';
 import { doneLoopService, loadDoneLoopSettings, type DoneLoopRunResult } from './doneLoopService.js';
 import { findTaskFile } from './taskFileLookup.js';
+import { superviseChildExit, type ChildExitSupervisor } from './processSweep.js';
 import type { ComposeResult, ComposeSelection, JudgeState } from './arenaTypes.js';
 import type {
   AgentSlotConfig,
@@ -143,6 +144,30 @@ function killProcessTree(proc: ChildProcess): void {
   });
 }
 
+/** Kill-обработчики CLI-агентов под `superviseChildExit`: tree-kill плюс добивание потомков. */
+const supervisedKillers = new WeakMap<ChildProcess, () => void>();
+
+/** Остановка процесса агента; для CLI-агентов — с добиванием переживших tree-kill потомков (TASK-99). */
+function stopAgentChild(proc: ChildProcess): void {
+  const kill = supervisedKillers.get(proc);
+  if (kill) kill();
+  else killProcessTree(proc);
+}
+
+/**
+ * Надзор за процессом CLI-агента (decision-37): `onDone` вызывается не позже grace после 'exit',
+ * даже если stdio держит потомок; `stopAgentChild` для этого процесса добивает потомков.
+ */
+function superviseAgentChild(
+  child: ChildProcess,
+  startedAt: number,
+  onDone: (code: number | null) => void
+): ChildExitSupervisor {
+  const supervisor = superviseChildExit(child, { startedAt, killTree: killProcessTree, onDone });
+  supervisedKillers.set(child, supervisor.kill);
+  return supervisor;
+}
+
 function timeStamp(): string {
   return new Date().toISOString().slice(11, 19);
 }
@@ -212,7 +237,7 @@ export class AgentFleetService extends EventEmitter {
   private killAgentProcess(agentId: string): void {
     const procs = this.agentProcesses.get(agentId);
     if (procs) {
-      for (const p of procs) killProcessTree(p);
+      for (const p of procs) stopAgentChild(p);
       procs.clear();
       this.agentProcesses.delete(agentId);
     }
@@ -1495,6 +1520,7 @@ export class AgentFleetService extends EventEmitter {
       const args = ['-p', '--output-format', 'stream-json', '--verbose', ...resumeArgs, ...hitl.args, ...invocationArgs];
 
       let child: ChildProcess;
+      const startedAt = Date.now();
       try {
         child = spawn('claude', args, {
           cwd: targetPath,
@@ -1568,7 +1594,7 @@ export class AgentFleetService extends EventEmitter {
           if (maxTurns && assistantTurns >= maxTurns && !stoppedByTurnLimit) {
             stoppedByTurnLimit = true;
             this.log(session, agentState, `[Swarm] Достигнут лимит ходов роли (${maxTurns}) — агент останавливается.`);
-            killProcessTree(child);
+            stopAgentChild(child);
           }
           return;
         }
@@ -1633,7 +1659,8 @@ export class AgentFleetService extends EventEmitter {
         });
       });
 
-      child.on('close', (code) => {
+      // Не 'close': его не будет, пока stdio держит потомок, переживший tree-kill (TASK-99).
+      superviseAgentChild(child, startedAt, (code) => {
         finish(() => {
           if (stdoutBuffer.trim()) {
             const rest = stdoutBuffer;
@@ -1677,7 +1704,7 @@ export class AgentFleetService extends EventEmitter {
         child.stdin?.end();
       } catch (err: any) {
         this.log(session, agentState, `[Swarm] Не удалось передать промпт в Claude CLI: ${err?.message || String(err)}`);
-        killProcessTree(child);
+        stopAgentChild(child);
       }
     });
   }
@@ -1746,6 +1773,7 @@ export class AgentFleetService extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       let child: ChildProcess;
+      const startedAt = Date.now();
       try {
         child = spawn(cmd, invocation.args, {
           cwd: targetPath,
@@ -1817,7 +1845,8 @@ export class AgentFleetService extends EventEmitter {
         });
       });
 
-      child.on('close', (code) => {
+      // Не 'close': его не будет, пока stdio держит потомок, переживший tree-kill (TASK-99).
+      superviseAgentChild(child, startedAt, (code) => {
         finish(() => {
           if (agentState.status !== 'running') {
             agentState.finalOutput = agentState.liveOutput;
@@ -1848,7 +1877,7 @@ export class AgentFleetService extends EventEmitter {
         child.stdin?.end();
       } catch (err: any) {
         this.log(session, agentState, `[Swarm] Не удалось передать промпт в Codex CLI: ${err?.message || String(err)}`);
-        killProcessTree(child);
+        stopAgentChild(child);
       }
     });
   }
@@ -1886,6 +1915,7 @@ export class AgentFleetService extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       let child: ChildProcess;
+      const startedAt = Date.now();
       try {
         child = spawn(cmd, invocation.args, {
           cwd: targetPath,
@@ -1933,7 +1963,8 @@ export class AgentFleetService extends EventEmitter {
         });
       });
 
-      child.on('close', (code) => {
+      // Не 'close': его не будет, пока stdio держит потомок, переживший tree-kill (TASK-99).
+      superviseAgentChild(child, startedAt, (code) => {
         finish(() => {
           if (agentState.status !== 'running') {
             agentState.finalOutput = agentState.liveOutput;
@@ -1975,7 +2006,7 @@ export class AgentFleetService extends EventEmitter {
         child.stdin?.end();
       } catch (err: any) {
         this.log(session, agentState, `[Swarm] Не удалось передать промпт в Gemini CLI: ${err?.message || String(err)}`);
-        killProcessTree(child);
+        stopAgentChild(child);
       }
     });
   }
@@ -2303,7 +2334,7 @@ export class AgentFleetService extends EventEmitter {
 
     const procs = this.activeProcesses.get(swarmId);
     if (procs) {
-      for (const p of procs) killProcessTree(p);
+      for (const p of procs) stopAgentChild(p);
       procs.clear();
     }
 
@@ -2411,13 +2442,13 @@ export class AgentFleetService extends EventEmitter {
   /** Немедленное завершение всех процессов (без записи состояния). */
   public killAll(): void {
     for (const [, procs] of this.activeProcesses.entries()) {
-      for (const p of procs) killProcessTree(p);
+      for (const p of procs) stopAgentChild(p);
     }
     for (const [, controllers] of this.abortControllers.entries()) {
       for (const c of controllers) c.abort();
     }
     for (const [, procs] of this.agentProcesses.entries()) {
-      for (const p of procs) killProcessTree(p);
+      for (const p of procs) stopAgentChild(p);
     }
     this.activeProcesses.clear();
     this.abortControllers.clear();
