@@ -11,6 +11,7 @@ import {
   type VoiceState
 } from '../../services/voiceService';
 import { parseVoiceCommand, type ParsedVoiceCommand } from '../../services/voiceCommandParser';
+import { isFuzzyDictationStop } from '../../services/dictationStopMatch';
 import { applyWakeGate, createWakeWindow } from '../../services/wakeWord';
 import { summarizeForSpeech } from '../../services/ttsSummary';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -510,8 +511,11 @@ export const VoiceControlWidget: React.FC = () => {
     // Ключевое слово здесь намеренно не применяется — диктуют прозу, а не команды, и требовать
     // обращения перед каждой фразой было бы бессмысленно.
     if (voiceService.isDictationActive) {
-      const spoken = parseVoiceCommand(rawText, voiceService.getCommandPhrases());
-      if (spoken.intent === 'dictation_stop') {
+      const phrases = voiceService.getCommandPhrases();
+      const spoken = parseVoiceCommand(rawText, phrases);
+      // Стоп-фраза — единственный выход из диктовки, поэтому узнаём её и с ошибкой распознавания
+      // («Коронец диктовки.»), иначе режим не выключится, а фраза напечатается (TASK-98).
+      if (spoken.intent === 'dictation_stop' || isFuzzyDictationStop(rawText, phrases)) {
         voiceService.setDictationActive(false);
         setLastFeedback(dict.voice.feedback.dictationOff);
         return;

@@ -133,6 +133,8 @@ describe('executeSubprocess (аудит 1.4)', () => {
       undefined,
       { timeoutMs: 60_000, sessionId: 'sub-abort' }
     );
+    // Abort во время старта PowerShell намеренно попадает в гонку с tree-kill: node может
+    // появиться после снимка дерева (TASK-97). Детерминированный сценарий — executeSubprocessOrphans.test.ts.
     await new Promise((r) => setTimeout(r, 300));
     expect(claudeBridgeService.getActiveProcessCount()).toBe(1);
     claudeBridgeService.abortSession('sub-abort');

@@ -16,6 +16,7 @@ export default tseslint.config(
       'release/**',
       'release_tmp*/**',
       '.rag-index/**',
+      '.gitnexus/**',
       '.rag-cache/**',
       '.lightrag-index/**',
       '.env-state/**',
