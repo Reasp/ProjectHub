@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "deb73f0e2d99c655c182282bf7079fe35aba1bcae02524062c104ef4c50c87eb",
+  "docsHash": "4b3d2abeeaeb1621b0e930eab52aab279e9e86cff91a9a20dfe8b4f76df2e7dd",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -36,6 +36,7 @@
     "backlog/decisions/decision-35 - Служебные-запросы-к-модели-и-голос-компьютер-через-Claude-Code-по-подписке.md",
     "backlog/decisions/decision-36 - Режим-только-разрешённые-окна-запуск-приложения-по-имени-и-предпроверка-только-жёстких-запретов.md",
     "backlog/decisions/decision-37 - Команды-агента-завершаются-по-exit-оболочки-пережившие-tree-kill-потомки-добиваются-по-цепочке-ParentProcessId.md",
+    "backlog/decisions/decision-38 - OpenAI-совместимый-путь-тело-запроса-без-вендорских-дефолтов-temperature-и-max_tokens-только-явно.md",
     "backlog/decisions/decision-4 - Claude-Code-CLI-как-основной-агентный-движок-API-провайдеры-как-дополнение.md",
     "backlog/decisions/decision-5 - Модель-безопасности-десктопа-изоляция-рендерера-реестр-проектов-локальный-MCP-и-секреты.md",
     "backlog/decisions/decision-6 - Git-worktree-как-единица-изоляции-задачи-и-агента.md",
@@ -53,6 +54,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 443,
-  "builtAt": "2026-09-18T06:11:23.764Z"
+  "chunks": 450,
+  "builtAt": "2026-09-18T12:07:52.841Z"
 }

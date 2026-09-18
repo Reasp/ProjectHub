@@ -20,6 +20,7 @@ import {
   resolveAnthropicModelId,
   type AnthropicModelCapabilities
 } from './anthropicRequest.js';
+import { buildOpenAICompatibleChatBody } from './openAICompatibleRequest.js';
 import { logger } from './logger.js';
 import { buildClaudeCliCompletionCommand, parseClaudeCliCompletionOutput } from './claudeCliCompletion.js';
 import {
@@ -1010,22 +1011,14 @@ class AIAgentService {
     signal: AbortSignal,
     onChunk: (payload: AIStreamChunkPayload) => void
   ): Promise<ModelTurn> {
-    const body: Record<string, any> = {
-      model: req.config.model || 'deepseek/deepseek-chat',
+    const body = buildOpenAICompatibleChatBody({
+      provider: req.config.provider,
+      model: req.config.model,
       messages,
-      temperature: req.config.temperature ?? 0.7,
-      stream: true
-    };
-    if (tools && tools.length > 0) {
-      body.tools = tools;
-    }
-    // Usage в последнем чанке стрима — для учёта стоимости (TASK-56). Ollama поле не понимает.
-    if (req.config.provider !== 'ollama') {
-      body.stream_options = { include_usage: true };
-    }
-    if (req.config.provider === 'openrouter') {
-      body.usage = { include: true };
-    }
+      tools,
+      temperature: req.config.temperature,
+      maxTokens: req.maxTokens
+    });
 
     const response = await fetch(endpoint, {
       method: 'POST',

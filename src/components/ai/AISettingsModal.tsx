@@ -158,15 +158,16 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
   };
 
   const handleProviderChange = (provider: AIProviderConfig['provider']) => {
-    const defaultModel = MODEL_PRESETS[provider]?.[0] || 'custom';
     let defaultBaseUrl = form.baseUrl;
     if (provider === 'ollama') defaultBaseUrl = 'http://127.0.0.1:11434';
     if (provider === 'deepseek') defaultBaseUrl = 'https://api.deepseek.com';
 
+    // Модель прежнего провайдера новому не подходит, а MODEL_PRESETS — подсказки поля, не выбор
+    // (decision-26 п. 0): модель выбирает пользователь, пустая даёт понятную ошибку при запросе (TASK-92).
     setForm((prev) => ({
       ...prev,
       provider,
-      model: defaultModel,
+      model: provider === prev.provider ? prev.model : '',
       baseUrl: defaultBaseUrl
     }));
   };
