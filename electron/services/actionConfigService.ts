@@ -35,7 +35,7 @@ export interface WorktreeInitPolicy {
 export interface ArenaSettings {
   weights?: Partial<Record<'checks' | 'acceptance' | 'review' | 'diffSize' | 'locality' | 'cost' | 'time', number>>;
   autoMerge?: { enabled?: boolean; minScore?: number };
-  reviewer?: { enabled?: boolean; roleSlug?: string; provider?: string; model?: string };
+  reviewer?: { enabled?: boolean; roleSlug?: string; provider?: string; profile?: string; model?: string };
   maxConcurrentChecks?: number;
 }
 

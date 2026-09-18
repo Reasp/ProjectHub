@@ -650,6 +650,16 @@ export const SwarmArenaView: React.FC = () => {
                             <span className="text-[10px] px-1.5 py-0.2 rounded-sm bg-secondary font-mono text-muted-foreground">
                               {agent.config.engine}
                             </span>
+                            {agent.providerInfo && (
+                              <span
+                                className="text-[10px] px-1.5 py-0.2 rounded-sm bg-secondary font-mono text-muted-foreground max-w-[220px] truncate"
+                                title={`${agent.providerInfo.profileName ?? agent.providerInfo.provider}${agent.providerInfo.model ? ` · ${agent.providerInfo.model}` : ''}`}
+                              >
+                                {agent.providerInfo.profileName ?? agent.providerInfo.provider}
+                                {agent.providerInfo.model ? ` · ${agent.providerInfo.model}` : ''}
+                                {agent.providerInfo.local ? ` · ${t.providerSelect.local}` : ''}
+                              </span>
+                            )}
                             {agent.config.role && (
                               <span className="text-[11px] text-muted-foreground font-medium">
                                 {agent.config.role}

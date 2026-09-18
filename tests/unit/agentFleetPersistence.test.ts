@@ -7,6 +7,15 @@ import { SwarmSessionStore } from '../../electron/services/swarmSessionStore';
 import type { SwarmSession } from '../../electron/services/swarmTypes';
 import { worktreeService } from '../../electron/services/worktreeService';
 import { aiAgentService } from '../../electron/services/aiAgentService';
+import { llmProfileService } from '../../electron/services/llmProfileService';
+import { profileFromPreset } from '../../electron/services/llmProfiles';
+
+/** Слот с чужим облачным провайдером работает только через профиль (decision-40). */
+function mockProfiles(...ids: string[]) {
+  vi.spyOn(llmProfileService, 'listProfiles').mockResolvedValue(
+    ids.map((id) => ({ ...profileFromPreset('custom', id, id), baseUrl: 'http://localhost:9/v1', hasApiKey: false }))
+  );
+}
 
 let baseDir: string;
 let store: SwarmSessionStore;
@@ -220,6 +229,7 @@ describe('AgentFleetService: стоимость и бюджет (TASK-56, AC #3,
       });
       onComplete({ id: 'm', role: 'assistant', content: 'answer', timestamp: new Date().toISOString() });
     });
+    mockProfiles('p-deepseek');
 
     const fleet = new AgentFleetService(null);
     const session = await fleet.startFanOut({
@@ -227,7 +237,7 @@ describe('AgentFleetService: стоимость и бюджет (TASK-56, AC #3,
       prompt: 'p',
       useWorktrees: false,
       agents: [
-        { id: 'cheap', name: 'Cheap', engine: 'api', providerConfig: { provider: 'deepseek', model: 'deepseek-chat' }, budgetUsd: 1 },
+        { id: 'cheap', name: 'Cheap', engine: 'api', providerConfig: { provider: 'openai-compatible', profileId: 'p-deepseek', model: 'deepseek-chat' }, budgetUsd: 1 },
         { id: 'pricey', name: 'Pricey', engine: 'api', providerConfig: { provider: 'anthropic', model: 'claude-opus-5' }, budgetUsd: 1 }
       ]
     });
@@ -278,13 +288,14 @@ describe('AgentFleetService: стоимость и бюджет (TASK-56, AC #3,
       onChunk({ usage: { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 1_000_000, costSource: 'unknown' } });
       onComplete({ id: 'm', role: 'assistant', content: 'x', timestamp: new Date().toISOString() });
     });
+    mockProfiles('p-local');
     const fleet = new AgentFleetService(null);
     fleet.setPriceTable({ updatedAt: '2026-01-01', models: { 'my-local': { input: 0.5, output: 0.5 } } });
     const session = await fleet.startFanOut({
       projectPath: 'F:/ProjectHub',
       prompt: 'p',
       useWorktrees: false,
-      agents: [{ id: 'a', name: 'A', engine: 'api', providerConfig: { provider: 'custom', model: 'my-local' } }]
+      agents: [{ id: 'a', name: 'A', engine: 'api', providerConfig: { provider: 'openai-compatible', profileId: 'p-local', model: 'my-local' } }]
     });
     await wait(30);
     expect(session.agents[0].metrics.usage!.costUsd).toBeCloseTo(0.5, 6);

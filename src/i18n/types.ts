@@ -2041,6 +2041,27 @@ export interface TranslationDictionary {
     federationDisabled: string;
   };
   /** Профили OpenAI-совместимых провайдеров (TASK-70.1, TASK-70.2). */
+  providerSelect: {
+    label: string;
+    aiStudioDefault: string;
+    anthropic: string;
+    profilesGroup: string;
+    legacyGroup: string;
+    local: string;
+    missingProfile: string;
+    hint: string;
+    importLegacy: string;
+    importLegacyHint: string;
+    importLegacyDone: string;
+    modelSearch: string;
+    claudeCliGroup: string;
+    noModels: string;
+    catalogError: string;
+    loadingModels: string;
+    noModelSelected: string;
+    selectModelTitle: string;
+    menuTitle: string;
+  };
   llmProfiles: {
     providerButton: string;
     providerButtonHint: string;

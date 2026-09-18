@@ -63,6 +63,7 @@ export function resolveArenaConfig(input: ResolveArenaConfigInput): ArenaConfig 
       enabled: arena.reviewer?.enabled !== false,
       roleSlug: arena.reviewer?.roleSlug?.trim() || DEFAULT_REVIEWER_ROLE_SLUG,
       ...(arena.reviewer?.provider ? { provider: arena.reviewer.provider } : {}),
+      ...(arena.reviewer?.profile ? { profile: arena.reviewer.profile } : {}),
       ...(arena.reviewer?.model ? { model: arena.reviewer.model } : {})
     },
     maxConcurrentChecks:

@@ -5,6 +5,7 @@ import { useRolesStore } from '../../../store/useRolesStore';
 import { useProjectStore } from '../../../store/useProjectStore';
 import { useTranslation } from '../../../i18n';
 import { unsupportedRoleFeatures } from '../../../lib/engineCapabilities';
+import { ProviderProfileSelect, useLlmProfiles, useProfileModels } from '../ProviderProfileSelect';
 import type { RoleDefinition, RoleEngine, ToolCategory } from '../../../types/electron';
 
 interface RolesSettingsModalProps {
@@ -71,6 +72,8 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
 
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [draft, setDraft] = useState<RoleDefinition>(emptyRole());
+  const llmProfiles = useLlmProfiles(isOpen);
+  const roleModels = useProfileModels(draft.profile, llmProfiles);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -193,7 +196,7 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1">{t.roles.engine}</label>
                 <select
@@ -207,13 +210,34 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
                 </select>
               </div>
               <div>
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1">{t.providerSelect.label}</label>
+                <ProviderProfileSelect
+                  value={{ provider: draft.provider, profile: draft.profile }}
+                  onChange={(choice) => {
+                    const changed = choice.provider !== draft.provider || choice.profile !== draft.profile;
+                    setDraft({ ...draft, provider: choice.provider, profile: choice.profile, ...(changed ? { model: undefined } : {}) });
+                  }}
+                  profiles={llmProfiles}
+                  storeProfileAs="name"
+                  className="w-full text-xs rounded-sm border border-border bg-background px-2 py-1.5 text-foreground"
+                />
+              </div>
+              <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1">{t.roles.model}</label>
                 <input
                   type="text"
                   value={draft.model || ''}
                   onChange={(e) => setDraft({ ...draft, model: e.target.value || undefined })}
+                  list={roleModels.length > 0 ? 'role-model-catalog' : undefined}
                   className="w-full text-xs rounded-sm border border-border bg-background px-2 py-1.5 text-foreground font-mono"
                 />
+                {roleModels.length > 0 && (
+                  <datalist id="role-model-catalog">
+                    {roleModels.map((m) => (
+                      <option key={m} value={m} />
+                    ))}
+                  </datalist>
+                )}
               </div>
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1">{t.roles.budgetUsd}</label>

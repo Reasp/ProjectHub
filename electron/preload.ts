@@ -266,6 +266,7 @@ const api: IElectronAPI = {
   saveLlmProfile: (profile: unknown, apiKey?: string | null) => ipcRenderer.invoke('llmProfiles:save', { profile, apiKey }),
   deleteLlmProfile: (id: string) => ipcRenderer.invoke('llmProfiles:delete', id),
   listLlmProfileModels: (id: string, refresh?: boolean) => ipcRenderer.invoke('llmProfiles:listModels', id, refresh),
+  importLegacyLlmProfile: (provider: string) => ipcRenderer.invoke('llmProfiles:importLegacy', provider),
   getClaudeAuthStatus: () => ipcRenderer.invoke('ai:getClaudeAuthStatus'),
   startClaudeLogin: () => ipcRenderer.invoke('ai:startClaudeLogin'),
   claudeLogout: () => ipcRenderer.invoke('ai:claudeLogout'),

@@ -23,7 +23,9 @@ import { useRolesStore } from '../../../store/useRolesStore';
 import { useTranslation } from '../../../i18n';
 import { useDialog } from '../../../hooks/useDialog';
 import { unsupportedRoleFeatures } from '../../../lib/engineCapabilities';
-import type { AgentSlotConfig, DoneLoopSettings, SwarmMode } from '../../../types/electron';
+import { slotProviderFromChoice, slotProviderFromRole } from '../../../lib/providerSelect';
+import { ProviderProfileSelect, useLlmProfiles, useProfileModels } from '../ProviderProfileSelect';
+import type { AgentSlotConfig, DoneLoopSettings, LlmProfileView, SwarmMode } from '../../../types/electron';
 
 /** Слот исполнителя цикла «до готовности» по умолчанию — роль `implementer`, если она есть. */
 const DONE_LOOP_DEFAULT_NAME = 'Implementer';
@@ -39,32 +41,22 @@ interface PresetOption {
 
 const getPresets = (t: any): PresetOption[] => [
   {
-    id: 'claude-vs-deepseek',
+    id: 'api-duel',
     name: t.swarm.presetDuelTitle,
     mode: 'fan_out',
     description: t.swarm.presetDuelDesc,
     agents: [
       {
-        id: 'agent-claude',
-        name: 'Claude',
+        id: 'agent-a',
+        name: 'Agent A',
         engine: 'api',
-        role: t.swarm.roleContenderA,
-        providerConfig: {
-          provider: 'anthropic',
-          model: 'default',
-          temperature: 0.2
-        }
+        role: t.swarm.roleContenderA
       },
       {
-        id: 'agent-deepseek',
-        name: 'DeepSeek V3 / R1',
+        id: 'agent-b',
+        name: 'Agent B',
         engine: 'api',
-        role: t.swarm.roleContenderB,
-        providerConfig: {
-          provider: 'deepseek',
-          model: 'deepseek-chat',
-          temperature: 0.2
-        }
+        role: t.swarm.roleContenderB
       }
     ]
   },
@@ -81,26 +73,16 @@ const getPresets = (t: any): PresetOption[] => [
         role: t.swarm.roleCliAgent
       },
       {
-        id: 'agent-codex',
-        name: 'OpenAI GPT-4o',
+        id: 'agent-api-1',
+        name: 'API Agent 1',
         engine: 'api',
-        role: t.swarm.roleOpenAiAgent,
-        providerConfig: {
-          provider: 'openrouter',
-          model: 'openai/gpt-4o',
-          temperature: 0.2
-        }
+        role: t.swarm.roleOpenAiAgent
       },
       {
-        id: 'agent-deepseek',
-        name: 'DeepSeek V3',
+        id: 'agent-api-2',
+        name: 'API Agent 2',
         engine: 'api',
-        role: t.swarm.roleDeepSeekAgent,
-        providerConfig: {
-          provider: 'deepseek',
-          model: 'deepseek-chat',
-          temperature: 0.2
-        }
+        role: t.swarm.roleDeepSeekAgent
       }
     ]
   },
@@ -112,36 +94,21 @@ const getPresets = (t: any): PresetOption[] => [
     agents: [
       {
         id: 'agent-architect',
-        name: 'Claude Architect',
+        name: 'Architect',
         engine: 'api',
-        role: t.swarm.roleArchitect,
-        providerConfig: {
-          provider: 'anthropic',
-          model: 'default',
-          temperature: 0.2
-        }
+        role: t.swarm.roleArchitect
       },
       {
         id: 'agent-coder',
-        name: 'DeepSeek Coder',
+        name: 'Coder',
         engine: 'api',
-        role: t.swarm.roleLeadCoder,
-        providerConfig: {
-          provider: 'deepseek',
-          model: 'deepseek-chat',
-          temperature: 0.1
-        }
+        role: t.swarm.roleLeadCoder
       },
       {
         id: 'agent-qa',
         name: 'QA & Test Reviewer',
         engine: 'api',
-        role: t.swarm.roleTester,
-        providerConfig: {
-          provider: 'anthropic',
-          model: 'default',
-          temperature: 0.2
-        }
+        role: t.swarm.roleTester
       }
     ],
     stages: [
@@ -161,6 +128,41 @@ const getPresets = (t: any): PresetOption[] => [
   }
 ];
 
+/** Модель слота с подсказками из каталога выбранного профиля (TASK-70.5); ручной ввод id сохраняется. */
+function SlotModelInput({
+  agent,
+  profiles,
+  placeholder,
+  onChange
+}: {
+  agent: AgentSlotConfig;
+  profiles: readonly LlmProfileView[];
+  placeholder: string;
+  onChange: (model: string) => void;
+}) {
+  const models = useProfileModels(agent.engine === 'api' ? agent.providerConfig?.profileId : undefined, profiles);
+  const listId = `slot-models-${agent.id}`;
+  return (
+    <>
+      <input
+        type="text"
+        value={agent.providerConfig?.model || ''}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        list={models.length > 0 ? listId : undefined}
+        className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs w-36 font-mono"
+      />
+      {models.length > 0 && (
+        <datalist id={listId}>
+          {models.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+      )}
+    </>
+  );
+}
+
 export const NewSwarmModal: React.FC = () => {
   const { t } = useTranslation();
   const presets = useMemo(() => getPresets(t), [t]);
@@ -179,6 +181,7 @@ export const NewSwarmModal: React.FC = () => {
   const { selectedProject, tasks } = useProjectStore();
   const { rolesByProject, loadRolesAction } = useRolesStore();
   const roles = useMemo(() => rolesByProject[selectedProject?.path || ''] || [], [rolesByProject, selectedProject?.path]);
+  const llmProfiles = useLlmProfiles(isNewSwarmModalOpen);
 
   useEffect(() => {
     if (isNewSwarmModalOpen) void loadRolesAction(selectedProject?.path);
@@ -190,7 +193,7 @@ export const NewSwarmModal: React.FC = () => {
   const [useWorktrees, setUseWorktrees] = useState<boolean>(true);
   const [budgetUsd, setBudgetUsd] = useState<string>('');
   const [agents, setAgents] = useState<AgentSlotConfig[]>([]);
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('claude-vs-deepseek');
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('api-duel');
 
   useEffect(() => {
     if (agents.length === 0 && presets.length > 0) {
@@ -229,18 +232,13 @@ export const NewSwarmModal: React.FC = () => {
           ...(implementer
             ? { roleSlug: implementer.slug, budgetUsd: implementer.budgetUsd, permissions: implementer.permissions }
             : {}),
-          ...(implementer && (implementer.model || implementer.provider)
-            ? {
-                providerConfig: {
-                  provider: (implementer.provider as NonNullable<AgentSlotConfig['providerConfig']>['provider']) || 'anthropic',
-                  model: implementer.model || 'default'
-                }
-              }
+          ...(implementer && slotProviderFromRole(implementer, llmProfiles)
+            ? { providerConfig: slotProviderFromRole(implementer, llmProfiles) }
             : {})
         }
       ];
     });
-  }, [isNewSwarmModalOpen, mode, roles, t.doneLoop.agentLabel]);
+  }, [isNewSwarmModalOpen, mode, roles, t.doneLoop.agentLabel, llmProfiles]);
 
   useEffect(() => {
     if (!isNewSwarmModalOpen || mode !== 'done_loop' || !selectedProject?.path) return;
@@ -283,12 +281,7 @@ export const NewSwarmModal: React.FC = () => {
       engine: 'api',
       role: mode === 'fan_out'
         ? t.swarm.contenderDefaultRole.replace('{n}', String(agents.length + 1))
-        : t.swarm.executorDefaultRole,
-      providerConfig: {
-        provider: 'anthropic',
-        model: 'default',
-        temperature: 0.2
-      }
+        : t.swarm.executorDefaultRole
     };
     setAgents([...agents, newAgent]);
   };
@@ -317,9 +310,7 @@ export const NewSwarmModal: React.FC = () => {
       role: role.name,
       engine: role.engine || agents[idx].engine,
       budgetUsd: role.budgetUsd ?? agents[idx].budgetUsd,
-      ...(role.model || role.provider
-        ? { providerConfig: { provider: (role.provider as any) || agents[idx].providerConfig?.provider || 'anthropic', model: role.model || agents[idx].providerConfig?.model || 'default' } }
-        : {})
+      ...(slotProviderFromRole(role, llmProfiles) ? { providerConfig: slotProviderFromRole(role, llmProfiles) } : {})
     });
   };
 
@@ -590,7 +581,7 @@ export const NewSwarmModal: React.FC = () => {
                     />
                   </div>
 
-                  <div className="flex items-center gap-2 flex-1 w-full md:w-auto">
+                  <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0 w-full md:w-auto">
                     <select
                       value={agent.engine}
                       onChange={(e) =>
@@ -630,29 +621,14 @@ export const NewSwarmModal: React.FC = () => {
                     })()}
 
                     {agent.engine === 'api' && (
-                      <select
-                        value={agent.providerConfig?.provider || 'anthropic'}
-                        onChange={(e) =>
-                          handleUpdateAgent(idx, {
-                            providerConfig: {
-                              ...agent.providerConfig,
-                              provider: e.target.value as any,
-                              model:
-                                e.target.value === 'anthropic'
-                                  ? 'default'
-                                  : e.target.value === 'deepseek'
-                                  ? 'deepseek-chat'
-                                  : 'openai/gpt-4o'
-                            }
-                          })
+                      <ProviderProfileSelect
+                        value={{ provider: agent.providerConfig?.provider, profile: agent.providerConfig?.profileId }}
+                        onChange={(choice) =>
+                          handleUpdateAgent(idx, { providerConfig: slotProviderFromChoice(choice, agent.providerConfig) })
                         }
-                        className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs"
-                      >
-                        <option value="anthropic">Anthropic (Claude)</option>
-                        <option value="deepseek">DeepSeek V3/R1</option>
-                        <option value="openrouter">OpenRouter</option>
-                        <option value="ollama">{t.swarm.providerOllamaLocal}</option>
-                      </select>
+                        profiles={llmProfiles}
+                        storeProfileAs="id"
+                      />
                     )}
 
                     <input
@@ -663,20 +639,15 @@ export const NewSwarmModal: React.FC = () => {
                       className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs w-32"
                     />
 
-                    <input
-                      type="text"
-                      value={agent.providerConfig?.model || ''}
-                      onChange={(e) =>
+                    <SlotModelInput
+                      agent={agent}
+                      profiles={llmProfiles}
+                      placeholder={t.swarm.modelPlaceholder}
+                      onChange={(model) =>
                         handleUpdateAgent(idx, {
-                          providerConfig: {
-                            provider: agent.providerConfig?.provider || 'anthropic',
-                            ...agent.providerConfig,
-                            model: e.target.value
-                          }
+                          providerConfig: { ...agent.providerConfig, model: model || undefined }
                         })
                       }
-                      placeholder={t.swarm.modelPlaceholder}
-                      className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs w-36 font-mono"
                     />
 
                     <input

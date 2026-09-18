@@ -15,6 +15,8 @@ import { existsSync } from 'node:fs';
 import { executeCheck } from './checkRunner.js';
 import { aiAgentService, type AIMessage, type AIProviderConfig } from './aiAgentService.js';
 import { loadRoles } from './roleService.js';
+import { llmProfileService } from './llmProfileService.js';
+import { providerConfigFromSpec, resolveSlotProviderConfig, reviewerProviderSpec } from './slotProvider.js';
 import { apiToolNamesForCategories } from './roleEngineAdapter.js';
 import { findTaskFile } from './taskFileLookup.js';
 import { parseTaskBody, stripCriterionPrefix } from './backlogTaskFormat.js';
@@ -28,9 +30,6 @@ import type { AgentSlotState, SwarmSession } from './swarmTypes.js';
 
 /** Сколько ждать ответа ревьюера, прежде чем признать отзыв несостоявшимся. */
 export const REVIEWER_TIMEOUT_MS = 5 * 60 * 1000;
-
-/** Модель ревьюера по умолчанию, если её не задали ни роль, ни настройки проекта. */
-export const DEFAULT_REVIEWER_MODEL = 'claude-sonnet-5';
 
 export interface JudgeHooks {
   /** Состояние сессии изменилось — отдать его в UI и на диск. */
@@ -352,11 +351,21 @@ export class ArenaJudgeService {
     signal: AbortSignal
   ): Promise<void> {
     const role = await this.resolveReviewerRole(session.projectPath, config.reviewer.roleSlug);
-    const providerConfig: AIProviderConfig = {
-      provider: (config.reviewer.provider || role?.provider || 'anthropic') as AIProviderConfig['provider'],
-      model: config.reviewer.model || role?.model || DEFAULT_REVIEWER_MODEL,
-      temperature: 0
-    };
+    // Провайдер и модель: настройки ревьюера, затем роль, затем AI Studio — без модели вендора (decision-40).
+    let providerConfig: AIProviderConfig;
+    try {
+      const spec = providerConfigFromSpec({ ...reviewerProviderSpec(config.reviewer, role), temperature: 0 });
+      const resolved = resolveSlotProviderConfig(spec, await aiAgentService.getConfig(), await llmProfileService.listProfiles());
+      providerConfig = { ...resolved.config, temperature: 0 };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      for (const agent of candidates) {
+        agent.review = { agentId: agent.id, status: 'failed', model: config.reviewer.model ?? role?.model ?? '', error: message };
+        hooks.log(agent, `[Судья] Ревьюер недоступен: ${message}`);
+        hooks.onUpdate(agent.id);
+      }
+      return;
+    }
 
     for (const agent of candidates) {
       if (signal.aborted) return;

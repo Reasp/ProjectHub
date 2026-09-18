@@ -30,7 +30,7 @@ import type { CheckDefinition, ComposeSelection } from '../services/arenaTypes';
 import { buildAgentContext } from '../services/contextBuilder';
 import { llmProfileService } from '../services/llmProfileService';
 import { llmModelCatalogService } from '../services/llmModelCatalogService';
-import { LLM_PROVIDER_PRESETS } from '../services/llmProfiles';
+import { LLM_PROVIDER_PRESETS, profileFromLegacyConfig } from '../services/llmProfiles';
 import type { IpcContext } from './types';
 
 export function registerAiIpc(ctx: IpcContext) {
@@ -75,6 +75,17 @@ export function registerAiIpc(ctx: IpcContext) {
     const removed = await llmProfileService.deleteProfile(String(id));
     if (removed) await llmModelCatalogService.forget(String(id)).catch(() => undefined);
     return removed;
+  });
+  // Ручной перенос прежнего провайдера AI Studio в профиль (decision-40): ключ берётся из сохранённых
+  // настроек в main-процессе, сам ai-config.json не меняется — провайдера переключает пользователь.
+  ipcMain.handle('llmProfiles:importLegacy', async (_event, expectedProvider: string) => {
+    const config = await aiAgentService.getConfig();
+    if (config.provider !== expectedProvider) {
+      throw new Error('Сначала сохраните настройки AI Studio с этим провайдером, затем перенесите его в профиль.');
+    }
+    const id = `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    const profile = profileFromLegacyConfig(config, id);
+    return llmProfileService.saveProfile({ profile, apiKey: config.apiKey?.trim() || undefined });
   });
   ipcMain.handle('llmProfiles:listModels', (_event, id: string, refresh?: boolean) =>
     llmModelCatalogService.listModels(String(id), { refresh: refresh === true })

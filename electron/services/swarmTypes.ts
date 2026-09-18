@@ -8,6 +8,7 @@ import type { AgentUsage } from './agentCost.js';
 import type { RolePermissions } from './hitlTypes.js';
 import type { CandidateScore, CheckRunResult, JudgeState, ReviewerVerdict } from './arenaTypes.js';
 import type { DoneLoopState } from './doneLoopTypes.js';
+import type { ResolvedProviderInfo } from './slotProvider.js';
 
 /** `done_loop` — одиночный слот «до готовности» (TASK-75, decision-28). */
 export type SwarmMode = 'fan_out' | 'handoff' | 'done_loop';
@@ -40,7 +41,11 @@ export interface AgentSlotConfig {
   /** slug роли из реестра (decision-9, TASK-60) — если задан, применяется системный промпт,
    * модель, инструменты и лимиты роли через `roleEngineAdapter`. */
   roleSlug?: string;
-  providerConfig?: AIProviderConfig;
+  /**
+   * Провайдер слота (decision-40): профиль (`provider: 'openai-compatible'` + `profileId`), прежний
+   * провайдер или только модель. Без поля — настройки AI Studio. Разрешается в `slotProvider.ts`.
+   */
+  providerConfig?: Partial<AIProviderConfig>;
   /** Доп. инструкции слота поверх системного промпта роли. */
   systemPromptAddon?: string;
   /** Бюджет роли/слота в USD; при превышении агент останавливается (decision-9, TASK-56). */
@@ -114,6 +119,8 @@ export interface AgentSlotState {
   score?: CandidateScore;
   /** Структурированный отзыв роли `reviewer`. */
   review?: ReviewerVerdict;
+  /** Провайдер, с которым агент реально работал (API-движок, decision-40) — для экспорта и UI. */
+  providerInfo?: ResolvedProviderInfo;
 }
 
 export interface HandoffStageState {

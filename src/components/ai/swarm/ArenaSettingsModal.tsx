@@ -5,6 +5,7 @@ import { useTranslation } from '../../../i18n/useTranslation';
 import { useSwarmStore } from '../../../store/useSwarmStore';
 import type { ArenaConfig, CheckDefinition, ScoreComponentKey, ScoreWeights } from '../../../types/electron';
 import { componentLabel } from '../../../utils/arenaFormat';
+import { ProviderProfileSelect, useLlmProfiles } from '../ProviderProfileSelect';
 
 /**
  * Настройки автосудьи проекта (TASK-61): проверки, веса компонентов балла, авто-мердж и
@@ -39,6 +40,7 @@ export const ArenaSettingsModal: React.FC<ArenaSettingsModalProps> = ({ projectP
   const { getArenaConfigAction, saveArenaConfigAction } = useSwarmStore();
 
   const [config, setConfig] = useState<ArenaConfig | null>(null);
+  const llmProfiles = useLlmProfiles();
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -281,7 +283,7 @@ export const ArenaSettingsModal: React.FC<ArenaSettingsModalProps> = ({ projectP
                   />
                   {j.settingsReviewerEnabled}
                 </label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                   <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
                     {j.settingsReviewerRole}
                     <input
@@ -293,10 +295,24 @@ export const ArenaSettingsModal: React.FC<ArenaSettingsModalProps> = ({ projectP
                     />
                   </label>
                   <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                    {t.providerSelect.label}
+                    <ProviderProfileSelect
+                      value={{ provider: config.reviewer.provider, profile: config.reviewer.profile }}
+                      onChange={(choice) =>
+                        setConfig({
+                          ...config,
+                          reviewer: { ...config.reviewer, provider: choice.provider, profile: choice.profile }
+                        })
+                      }
+                      profiles={llmProfiles}
+                      storeProfileAs="name"
+                      className="rounded-lg border border-border bg-background px-2 py-1 text-foreground focus:outline-hidden"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
                     {j.settingsReviewerModel}
                     <input
                       value={config.reviewer.model ?? ''}
-                      placeholder="claude-sonnet-5"
                       onChange={(e) =>
                         setConfig({ ...config, reviewer: { ...config.reviewer, model: e.target.value || undefined } })
                       }

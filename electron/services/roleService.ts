@@ -87,6 +87,7 @@ export function parseRoleFile(raw: string, filePath: string, source: RoleSource)
   const dod = fmStringArray(data.dod);
   const handoffTo = fmStringArray(data.handoffTo ?? data.handoff_to);
   const provider = fmString(data.provider);
+  const profile = fmString(data.profile);
   const model = fmString(data.model);
 
   let permissions: RoleDefinition['permissions'];
@@ -115,6 +116,7 @@ export function parseRoleFile(raw: string, filePath: string, source: RoleSource)
     name,
     engine,
     provider,
+    profile,
     model,
     tools,
     permissions,
@@ -180,6 +182,7 @@ function roleFrontmatter(role: RoleDefinition): Record<string, unknown> {
   const fm: Record<string, unknown> = { slug: role.slug, name: role.name };
   if (role.engine) fm.engine = role.engine;
   if (role.provider) fm.provider = role.provider;
+  if (role.profile) fm.profile = role.profile;
   if (role.model) fm.model = role.model;
   if (role.tools && role.tools.length > 0) fm.tools = role.tools;
   if (role.permissions) fm.permissions = role.permissions;

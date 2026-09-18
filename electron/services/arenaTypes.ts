@@ -146,8 +146,12 @@ export interface ArenaReviewerConfig {
   enabled: boolean;
   /** slug роли из реестра (decision-9); по умолчанию `reviewer`. */
   roleSlug: string;
-  /** Переопределение провайдера/модели ревьюера; без них берётся модель роли или глобальная. */
+  /**
+   * Переопределение провайдера/профиля/модели ревьюера; без них — провайдер и модель роли, затем
+   * настройки AI Studio (decision-40). `profile` — имя или id профиля, важнее `provider`.
+   */
   provider?: string;
+  profile?: string;
   model?: string;
 }
 

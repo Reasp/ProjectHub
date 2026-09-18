@@ -91,6 +91,21 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
   const [catalogModels, setCatalogModels] = useState<string[]>([]);
   const handleCatalogChange = useCallback((models: string[]) => setCatalogModels(models), []);
 
+  // Ручной перенос прежнего провайдера в профиль (decision-40): профиль создаётся в main из сохранённых
+  // настроек, форма переключается на него, а ai-config.json меняется только по «Сохранить».
+  const [legacyImport, setLegacyImport] = useState<{ busy: boolean; message?: string; error?: boolean }>({ busy: false });
+  const handleImportLegacy = async () => {
+    setLegacyImport({ busy: true });
+    try {
+      const profile = await window.api.importLegacyLlmProfile(form.provider);
+      setForm((prev) => ({ ...prev, provider: 'openai-compatible', profileId: profile.id }));
+      setLegacyImport({ busy: false, message: t.providerSelect.importLegacyDone.replace('{name}', profile.name) });
+    } catch (err) {
+      const message = err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(err);
+      setLegacyImport({ busy: false, message, error: true });
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
       setForm({
@@ -414,6 +429,24 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                   onSelectProfile={(profileId) => setForm((prev) => ({ ...prev, profileId }))}
                   onCatalogChange={handleCatalogChange}
                 />
+              )}
+
+              {['openrouter', 'deepseek', 'ollama', 'custom'].includes(form.provider) && (
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={handleImportLegacy}
+                    disabled={legacyImport.busy}
+                    title={t.providerSelect.importLegacyHint}
+                    className="px-2.5 py-1 rounded-lg border border-cyan-600/50 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/40 disabled:opacity-50"
+                  >
+                    {t.providerSelect.importLegacy}
+                  </button>
+                  <span className="text-slate-400">{t.providerSelect.importLegacyHint}</span>
+                </div>
+              )}
+              {legacyImport.message && (
+                <p className={`text-[11px] ${legacyImport.error ? 'text-rose-400' : 'text-emerald-400'}`}>{legacyImport.message}</p>
               )}
 
               {/* API Key */}

@@ -15,6 +15,8 @@ import { appEventBus } from './eventBus.js';
 import type { HitlOrigin } from './hitlTypes.js';
 import { getUserDataDir, getHandoffReportsDir } from './appPaths.js';
 import { loadRoles } from './roleService.js';
+import { llmProfileService } from './llmProfileService.js';
+import { apiConfigProblem, describeProviderInfo, providerConfigFromSpec, resolveSlotProviderConfig } from './slotProvider.js';
 import { buildEngineInvocation, apiToolNamesForCategories, extractAppendSystemPrompt } from './roleEngineAdapter.js';
 import { buildAgentContext } from './contextBuilder.js';
 import { taskAllowsComputerUse } from './computerPolicy.js';
@@ -703,6 +705,12 @@ export class AgentFleetService extends EventEmitter {
       return { error: `Роль "${options.roleSlug}" не найдена в реестре ролей.` };
     }
 
+    let roleProvider: Partial<AIProviderConfig> | undefined;
+    try {
+      roleProvider = providerConfigFromSpec(role);
+    } catch (err) {
+      return { error: `Роль "${role.slug}": ${err instanceof Error ? err.message : String(err)}` };
+    }
     const slot: AgentSlotConfig = {
       id: `assigned-${options.taskId}-${Date.now().toString(36)}`,
       name: role.name,
@@ -711,9 +719,8 @@ export class AgentFleetService extends EventEmitter {
       roleSlug: role.slug,
       budgetUsd: role.budgetUsd,
       permissions: role.permissions,
-      ...(role.model || role.provider
-        ? { providerConfig: { provider: (role.provider as AIProviderConfig['provider']) || 'anthropic', model: role.model || 'default' } }
-        : {})
+      // Без провайдера и профиля роль наследует настройки AI Studio, а не `anthropic` (decision-40).
+      ...(roleProvider ? { providerConfig: roleProvider } : {})
     };
 
     return this.startFanOut({
@@ -1365,10 +1372,20 @@ export class AgentFleetService extends EventEmitter {
     targetPath: string,
     prompt: string,
     role?: RoleDefinition,
-    continueSession = false
+    continueSession = false,
+    providerOverride?: AIProviderConfig
   ): Promise<void> {
     // Без настроек слота — настройки AI Studio пользователя, а не модель вендора (decision-26 п. 0).
-    const config: AIProviderConfig = agentState.config.providerConfig || (await aiAgentService.getConfig());
+    // Профиль слота разрешается по id или имени, ключ прежнего провайдера — только из AI Studio (decision-40).
+    const globalConfig = providerOverride ?? (await aiAgentService.getConfig());
+    const profiles = await llmProfileService.listProfiles();
+    const { config, info } = resolveSlotProviderConfig(
+      providerOverride ? undefined : agentState.config.providerConfig,
+      globalConfig,
+      profiles
+    );
+    agentState.providerInfo = info;
+    this.log(session, agentState, `[Swarm] Провайдер: ${describeProviderInfo(info)}, модель: ${info.model || '—'}`);
 
     // Системный промпт роли идёт отдельным полем (buildSystemPrompt), а не в тело сообщения —
     // так он одинаково применяется независимо от того, есть ли у роли `tools` (decision-9).
@@ -1709,6 +1726,28 @@ export class AgentFleetService extends EventEmitter {
     });
   }
 
+  /**
+   * Запасной API-путь для CLI-движков (codex/gemini): настройки AI Studio пользователя, а не модель
+   * вендора (decision-26 п. 0, decision-40). Модель слота здесь не используется — это id модели CLI.
+   * Если AI Studio не настроен для API-запросов, агент падает с понятной причиной.
+   */
+  private async runCliApiFallback(
+    session: SwarmSession,
+    agentState: AgentSlotState,
+    targetPath: string,
+    prompt: string,
+    role: RoleDefinition | undefined,
+    reason: string
+  ): Promise<void> {
+    const globalConfig = await aiAgentService.getConfig();
+    const problem = apiConfigProblem(globalConfig);
+    if (problem) {
+      throw new Error(`${reason}. Запасной API-путь недоступен: ${problem}. Установите CLI или настройте провайдера в AI Studio.`);
+    }
+    this.log(session, agentState, `[Swarm] ⚠️ ${reason} — используется API fallback с настройками AI Studio.`);
+    return this.runApiAgent(session, agentState, targetPath, prompt, role, false, globalConfig);
+  }
+
   /** Эффективные (суженные ролью) права для движков без собственного HITL-контура (codex/gemini). */
   private async resolveEffectivePermissions(agentState: AgentSlotState): Promise<AIProviderConfig> {
     let globalConfig: AIProviderConfig;
@@ -1755,11 +1794,6 @@ export class AgentFleetService extends EventEmitter {
   ): Promise<void> {
     const isWin = process.platform === 'win32';
     const cmd = isWin ? 'codex.cmd' : 'codex';
-    const fallbackConfig: AIProviderConfig = {
-      provider: 'openrouter',
-      model: 'openai/gpt-4o',
-      temperature: 0.2
-    };
     const effective = await this.resolveEffectivePermissions(agentState);
     const invocation = buildEngineInvocation({
       engine: 'codex-cli',
@@ -1782,9 +1816,9 @@ export class AgentFleetService extends EventEmitter {
           env: { ...process.env, FORCE_COLOR: '0' }
         });
       } catch {
-        this.log(session, agentState, '[Swarm] ⚠️ Codex CLI не запустился (бинарник не найден) — используется API fallback (OpenRouter).');
-        agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
-        return this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
+        return this.runCliApiFallback(session, agentState, targetPath, prompt, role, 'Codex CLI не запустился (бинарник не найден)')
+          .then(resolve)
+          .catch(reject);
       }
 
       const procSet = this.activeProcesses.get(session.id);
@@ -1839,9 +1873,9 @@ export class AgentFleetService extends EventEmitter {
 
       child.on('error', (err) => {
         finish(() => {
-          this.log(session, agentState, `[Swarm] ⚠️ Ошибка запуска Codex CLI (${err.message}) — используется API fallback (OpenRouter).`);
-          agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
-          this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
+          this.runCliApiFallback(session, agentState, targetPath, prompt, role, `Ошибка запуска Codex CLI (${err.message})`)
+            .then(resolve)
+            .catch(reject);
         });
       });
 
@@ -1864,10 +1898,11 @@ export class AgentFleetService extends EventEmitter {
             this.log(
               session,
               agentState,
-              `[Swarm] ⚠️ Codex CLI завершился с кодом ${code}${stderrTail ? `: ${stderrTail.trim().slice(-500)}` : ''} без вывода — используется API fallback (OpenRouter).`
+              `[Swarm] ⚠️ Codex CLI завершился с кодом ${code}${stderrTail ? `: ${stderrTail.trim().slice(-500)}` : ''} без вывода.`
             );
-            agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
-            this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
+            this.runCliApiFallback(session, agentState, targetPath, prompt, role, `Codex CLI завершился с кодом ${code} без вывода`)
+              .then(resolve)
+              .catch(reject);
           }
         });
       });
@@ -1898,11 +1933,6 @@ export class AgentFleetService extends EventEmitter {
   ): Promise<void> {
     const isWin = process.platform === 'win32';
     const cmd = isWin ? 'gemini.cmd' : 'gemini';
-    const fallbackConfig: AIProviderConfig = {
-      provider: 'openrouter',
-      model: 'google/gemini-2.0-flash-001',
-      temperature: 0.2
-    };
     const effective = await this.resolveEffectivePermissions(agentState);
     const invocation = buildEngineInvocation({
       engine: 'gemini-cli',
@@ -1924,9 +1954,9 @@ export class AgentFleetService extends EventEmitter {
           env: { ...process.env, FORCE_COLOR: '0' }
         });
       } catch {
-        this.log(session, agentState, '[Swarm] ⚠️ Gemini CLI не запустился (бинарник не найден) — используется API fallback (OpenRouter).');
-        agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
-        return this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
+        return this.runCliApiFallback(session, agentState, targetPath, prompt, role, 'Gemini CLI не запустился (бинарник не найден)')
+          .then(resolve)
+          .catch(reject);
       }
 
       const procSet = this.activeProcesses.get(session.id);
@@ -1957,9 +1987,9 @@ export class AgentFleetService extends EventEmitter {
 
       child.on('error', (err) => {
         finish(() => {
-          this.log(session, agentState, `[Swarm] ⚠️ Ошибка запуска Gemini CLI (${err.message}) — используется API fallback (OpenRouter).`);
-          agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
-          this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
+          this.runCliApiFallback(session, agentState, targetPath, prompt, role, `Ошибка запуска Gemini CLI (${err.message})`)
+            .then(resolve)
+            .catch(reject);
         });
       });
 
@@ -1993,10 +2023,11 @@ export class AgentFleetService extends EventEmitter {
             this.log(
               session,
               agentState,
-              `[Swarm] ⚠️ Gemini CLI завершился с кодом ${code}${stderrTail ? `: ${stderrTail.trim().slice(-500)}` : ''} без вывода — используется API fallback (OpenRouter).`
+              `[Swarm] ⚠️ Gemini CLI завершился с кодом ${code}${stderrTail ? `: ${stderrTail.trim().slice(-500)}` : ''} без вывода.`
             );
-            agentState.config.providerConfig = agentState.config.providerConfig || fallbackConfig;
-            this.runApiAgent(session, agentState, targetPath, prompt, role).then(resolve).catch(reject);
+            this.runCliApiFallback(session, agentState, targetPath, prompt, role, `Gemini CLI завершился с кодом ${code} без вывода`)
+              .then(resolve)
+              .catch(reject);
           }
         });
       });

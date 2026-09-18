@@ -388,7 +388,7 @@ export const AIStudioView: React.FC = () => {
           {/* Quick Model Selector Dropdown matching official Claude Code UI */}
           <ModelSelectorDropdown
             config={config}
-            onSelectModel={(model) => saveConfig({ ...config, model })}
+            onSelect={(selection) => saveConfig({ ...config, ...selection })}
           />
 
           {/* Claude Code Usage & Limits Inspection Button */}

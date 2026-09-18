@@ -790,6 +790,8 @@ export interface IElectronAPI {
   saveLlmProfile: (profile: LlmProfile, apiKey?: string | null) => Promise<LlmProfileView>;
   deleteLlmProfile: (id: string) => Promise<boolean>;
   listLlmProfileModels: (id: string, refresh?: boolean) => Promise<ModelCatalogResult>;
+  /** Перенос сохранённого прежнего провайдера AI Studio в профиль (decision-40); конфиг не меняет. */
+  importLegacyLlmProfile: (provider: string) => Promise<LlmProfileView>;
   getClaudeAuthStatus: () => Promise<ClaudeAuthStatus>;
   startClaudeLogin: () => Promise<boolean>;
   claudeLogout: () => Promise<boolean>;
@@ -1185,6 +1187,8 @@ export interface RoleDefinition {
   name: string;
   engine?: RoleEngine;
   provider?: string;
+  /** Профиль OpenAI-совместимого провайдера: имя или id (decision-40). */
+  profile?: string;
   model?: string;
   tools?: ToolCategory[];
   permissions?: RolePermissions;
@@ -1662,7 +1666,8 @@ export interface AgentSlotConfig {
   role?: string;
   /** slug роли из реестра (decision-9, TASK-60) — предзаполняет engine/model/permissions в UI. */
   roleSlug?: string;
-  providerConfig?: AIProviderConfig;
+  /** Профиль, прежний провайдер или только модель; без поля — настройки AI Studio (decision-40). */
+  providerConfig?: Partial<AIProviderConfig>;
   /** Доп. инструкции слота поверх системного промпта роли. */
   systemPromptAddon?: string;
   /** Бюджет слота/роли в USD; при превышении агент останавливается. */
@@ -1799,7 +1804,7 @@ export interface JudgeState {
 export interface ArenaSettings {
   weights?: Partial<ScoreWeights>;
   autoMerge?: { enabled?: boolean; minScore?: number };
-  reviewer?: { enabled?: boolean; roleSlug?: string; provider?: string; model?: string };
+  reviewer?: { enabled?: boolean; roleSlug?: string; provider?: string; profile?: string; model?: string };
   maxConcurrentChecks?: number;
 }
 
@@ -1807,7 +1812,7 @@ export interface ArenaConfig {
   checks: CheckDefinition[];
   weights: ScoreWeights;
   autoMerge: { enabled: boolean; minScore: number };
-  reviewer: { enabled: boolean; roleSlug: string; provider?: string; model?: string };
+  reviewer: { enabled: boolean; roleSlug: string; provider?: string; profile?: string; model?: string };
   maxConcurrentChecks: number;
 }
 
@@ -1831,6 +1836,15 @@ export interface AgentSlotMetrics {
   speedCharsPerSec?: number;
   usage?: AgentUsage;
   costUsd?: number;
+}
+
+/** Зеркало `electron/services/slotProvider.ts::ResolvedProviderInfo`. */
+export interface ResolvedProviderInfo {
+  provider: AIProviderConfig['provider'];
+  model?: string;
+  profileId?: string;
+  profileName?: string;
+  local?: boolean;
 }
 
 export interface AgentSlotState {
@@ -1861,6 +1875,8 @@ export interface AgentSlotState {
   checks?: CheckRunResult[];
   score?: CandidateScore;
   review?: ReviewerVerdict;
+  /** Провайдер, с которым агент реально работал (API-движок, decision-40) — для экспорта и UI. */
+  providerInfo?: ResolvedProviderInfo;
 }
 
 export interface HandoffStageState {

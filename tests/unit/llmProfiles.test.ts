@@ -9,8 +9,10 @@ import {
   modelsUrl,
   normalizeBaseUrl,
   normalizeProfile,
+  profileFromLegacyConfig,
   profileFromPreset
 } from '../../electron/services/llmProfiles';
+import { resolveOpenAICompatibleEndpoint } from '../../electron/services/llmEndpoint';
 import { isCatalogFresh, parseModelList } from '../../electron/services/llmModelCatalog';
 
 describe('пресеты провайдеров (TASK-70.1)', () => {
@@ -149,5 +151,42 @@ describe('каталог моделей (TASK-70.2)', () => {
     expect(isCatalogFresh(entry, 'http://b/v1', 1500, 1000)).toBe(false);
     expect(isCatalogFresh(entry, 'http://a/v1', 500, 1000)).toBe(false);
     expect(isCatalogFresh(undefined, 'http://a/v1', 1500)).toBe(false);
+  });
+});
+
+describe('перенос прежнего провайдера в профиль (TASK-70.5, decision-40)', () => {
+  const cases: Array<{ provider: string; baseUrl?: string }> = [
+    { provider: 'openrouter' },
+    { provider: 'deepseek' },
+    { provider: 'ollama', baseUrl: 'http://127.0.0.1:11434/' },
+    { provider: 'custom', baseUrl: 'http://localhost:1234/v1/chat/completions' }
+  ];
+
+  it.each(cases)('$provider: тот же адрес и флаги, что у прежнего провайдера', (legacy) => {
+    const profile = profileFromLegacyConfig(legacy, 'p-legacy');
+    const before = resolveOpenAICompatibleEndpoint({ ...legacy, apiKey: 'k' });
+    expect(chatCompletionsUrl(profile.baseUrl)).toBe(before.endpoint);
+    expect(profile.compat).toEqual(legacyProviderCompat(legacy.provider));
+    expect(profile.id).toBe('p-legacy');
+    expect(profile.name).toMatch(/\(AI Studio\)$/);
+    // Нормализация хранилища не меняет перенесённый профиль.
+    expect(normalizeProfile(profile)).toEqual(profile);
+  });
+
+  it('OpenRouter сохраняет прежние заголовки, Ollama и локальный custom — локальные', () => {
+    expect(profileFromLegacyConfig({ provider: 'openrouter' }, 'a').headers).toEqual({
+      'HTTP-Referer': 'https://projecthub.local',
+      'X-Title': 'ProjectHub AI Studio'
+    });
+    expect(profileFromLegacyConfig({ provider: 'ollama' }, 'a').local).toBe(true);
+    expect(profileFromLegacyConfig({ provider: 'custom', baseUrl: 'http://localhost:8000/v1/chat/completions' }, 'a').local).toBe(true);
+    expect(profileFromLegacyConfig({ provider: 'deepseek' }, 'a').local).toBe(false);
+  });
+
+  it('anthropic и custom-адрес без /chat/completions не переносятся', () => {
+    expect(() => profileFromLegacyConfig({ provider: 'anthropic' }, 'a')).toThrow(/не переносится/);
+    expect(() => profileFromLegacyConfig({ provider: 'custom', baseUrl: 'http://host/api/generate' }, 'a')).toThrow(
+      /не оканчивается на \/chat\/completions/
+    );
   });
 });

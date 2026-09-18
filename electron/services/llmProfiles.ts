@@ -349,3 +349,41 @@ export function legacyProviderCompat(provider: string): LlmCompatFlags {
     openRouterUsage: provider === 'openrouter'
   };
 }
+
+/**
+ * Профиль из настроек прежнего провайдера AI Studio (`openrouter`/`deepseek`/`ollama`/`custom`) —
+ * ручной перенос по кнопке ([[decision-40]]). Адрес, заголовки и флаги повторяют прежнее поведение
+ * (`llmEndpoint.ts`, `legacyProviderCompat`), чтобы запросы после переноса не изменились.
+ *
+ * @throws для провайдеров без аналога и для адреса `custom`, который не оканчивается на `/chat/completions`.
+ */
+export function profileFromLegacyConfig(config: { provider: string; baseUrl?: string }, id: string): LlmProfile {
+  const legacyBase: Record<string, () => string> = {
+    openrouter: () => 'https://openrouter.ai/api/v1',
+    deepseek: () => 'https://api.deepseek.com',
+    ollama: () => `${(config.baseUrl?.trim() || 'http://127.0.0.1:11434').replace(/\/+$/, '')}/v1`,
+    custom: () => {
+      const endpoint = (config.baseUrl?.trim() || 'http://localhost:8000/v1/chat/completions').replace(/\/+$/, '');
+      if (!/\/chat\/completions$/i.test(endpoint)) {
+        throw new Error(
+          `Адрес custom-провайдера «${endpoint}» не оканчивается на /chat/completions: профиль добавил бы этот путь сам ` +
+            'и запросы ушли бы по другому адресу. Создайте профиль вручную.'
+        );
+      }
+      return endpoint;
+    }
+  };
+  const base = legacyBase[config.provider];
+  if (!base) {
+    throw new Error(`Провайдер «${config.provider}» не переносится в профиль OpenAI-совместимого провайдера.`);
+  }
+  const profile = profileFromPreset(config.provider, id);
+  const baseUrl = normalizeBaseUrl(base());
+  return {
+    ...profile,
+    name: `${profile.name} (AI Studio)`,
+    baseUrl,
+    local: config.provider === 'ollama' || (config.provider === 'custom' && isLocalBaseUrl(baseUrl)),
+    compat: legacyProviderCompat(config.provider)
+  };
+}

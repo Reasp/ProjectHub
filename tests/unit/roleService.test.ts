@@ -133,4 +133,22 @@ describe('loadRoles — слияние по slug (project > global > builtin)', 
     expect(custom?.name).toBe('Своя роль');
     expect(custom?.systemPrompt).toBe('Промпт своей роли');
   });
+
+  it('профиль провайдера роли сохраняется и читается обратно (TASK-70.5)', async () => {
+    await saveRole('global', {
+      slug: 'profile-role',
+      name: 'Роль с профилем',
+      engine: 'api',
+      provider: 'openai-compatible',
+      profile: 'Ollama',
+      model: 'qwen2.5:7b-instruct',
+      systemPrompt: 'Промпт',
+      source: 'global'
+    });
+    const { roles } = await loadRoles();
+    const role = roles.find((r) => r.slug === 'profile-role');
+    expect(role?.profile).toBe('Ollama');
+    expect(role?.provider).toBe('openai-compatible');
+    expect(role?.model).toBe('qwen2.5:7b-instruct');
+  });
 });

@@ -1,5 +1,6 @@
 import type { AgentSlotState, SwarmSession } from './swarmTypes.js';
 import { addUsage, emptyUsage, formatTokens, formatUsd, type AgentUsage } from './agentCost.js';
+import { describeProviderInfo } from './slotProvider.js';
 
 /**
  * Экспорт swarm-сессии в Markdown-отчёт и JSON (TASK-56, AC #5) — для вложения в задачу
@@ -47,6 +48,24 @@ export function summarizeSwarmSession(session: SwarmSession): SwarmSessionTotals
     agentsCompleted: completed,
     agentsFailed: failed
   };
+}
+
+/**
+ * Провайдер и модель агента для отчёта (TASK-70.5): снимок API-движка (профиль, id, «локальная»),
+ * а для CLI-движков — движок и модель слота.
+ */
+export function agentProviderLabel(agent: AgentSlotState): string {
+  const info = agent.providerInfo;
+  if (info) {
+    const model = info.model || agent.metrics?.usage?.model;
+    return `${describeProviderInfo(info)}${model ? ` · \`${model}\`` : ''}`;
+  }
+  const model = agent.metrics?.usage?.model || agent.config.providerConfig?.model;
+  return `${agent.config.engine}${model && model !== 'default' ? ` · \`${model}\`` : ''}`;
+}
+
+function cell(text: string): string {
+  return text.replace(/\|/g, '\\|');
 }
 
 function fmtDuration(ms: number | undefined): string {
@@ -132,8 +151,8 @@ export function exportSwarmSessionMarkdown(session: SwarmSession, options: Markd
 
   lines.push('## Агенты');
   lines.push('');
-  lines.push('| Агент | Движок | Роль | Статус | Длительность | Токены (вход/выход) | Стоимость | Дифф | Коммит |');
-  lines.push('|---|---|---|---|---|---|---|---|---|');
+  lines.push('| Агент | Движок | Провайдер · модель | Роль | Статус | Длительность | Токены (вход/выход) | Стоимость | Дифф | Коммит |');
+  lines.push('|---|---|---|---|---|---|---|---|---|---|');
   for (const agent of session.agents) {
     const u = agentUsage(agent);
     const tokens = u ? `${formatTokens(u.inputTokens + u.cacheReadTokens + u.cacheCreationTokens)} / ${formatTokens(u.outputTokens)}` : agent.metrics.tokensEstimated ? `~${formatTokens(agent.metrics.tokensEstimated)}` : '—';
@@ -142,7 +161,7 @@ export function exportSwarmSessionMarkdown(session: SwarmSession, options: Markd
     const commit = agent.commitHash ? `\`${agent.commitHash.slice(0, 7)}\`` : agent.stashHash ? `stash \`${agent.stashHash.slice(0, 7)}\`` : '—';
     const name = `${agent.winner || session.winnerAgentId === agent.id ? '🏆 ' : ''}${agent.config.name}`;
     lines.push(
-      `| ${name} | ${agent.config.engine} | ${agent.config.role ?? '—'} | ${statusLabel(agent.status)} | ${fmtDuration(agent.metrics.durationMs)} | ${tokens} | ${cost} | ${diff} | ${commit} |`
+      `| ${name} | ${agent.config.engine} | ${cell(agentProviderLabel(agent))} | ${agent.config.role ?? '—'} | ${statusLabel(agent.status)} | ${fmtDuration(agent.metrics.durationMs)} | ${tokens} | ${cost} | ${diff} | ${commit} |`
     );
   }
   lines.push('');
@@ -175,6 +194,8 @@ export function exportSwarmSessionMarkdown(session: SwarmSession, options: Markd
   for (const agent of session.agents) {
     lines.push(`## ${agent.config.name}`);
     lines.push('');
+    lines.push(`- Провайдер: ${agentProviderLabel(agent)}`);
+    if (agent.providerInfo?.profileId) lines.push(`- Профиль: id \`${agent.providerInfo.profileId}\`${agent.providerInfo.local ? ', локальная модель' : ''}`);
     if (agent.worktreeBranch) lines.push(`- Ветка: \`${agent.worktreeBranch}\``);
     if (agent.worktreePath) lines.push(`- Worktree: \`${agent.worktreePath}\``);
     if (agent.error) lines.push(`- Ошибка: ${agent.error}`);
