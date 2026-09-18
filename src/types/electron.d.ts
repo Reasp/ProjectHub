@@ -784,6 +784,12 @@ export interface IElectronAPI {
   // AI Studio & Claude Bridge Engine
   getAIConfig: () => Promise<AIProviderConfig>;
   saveAIConfig: (config: AIProviderConfig) => Promise<void>;
+  getLlmProviderPresets: () => Promise<LlmProviderPreset[]>;
+  listLlmProfiles: () => Promise<LlmProfileView[]>;
+  /** `apiKey`: `undefined` — оставить прежний, пустая строка или `null` — удалить. */
+  saveLlmProfile: (profile: LlmProfile, apiKey?: string | null) => Promise<LlmProfileView>;
+  deleteLlmProfile: (id: string) => Promise<boolean>;
+  listLlmProfileModels: (id: string, refresh?: boolean) => Promise<ModelCatalogResult>;
   getClaudeAuthStatus: () => Promise<ClaudeAuthStatus>;
   startClaudeLogin: () => Promise<boolean>;
   claudeLogout: () => Promise<boolean>;
@@ -1374,8 +1380,52 @@ export interface NotificationSettingsState {
   bot: { running: boolean; processId: string | null; configured: boolean };
 }
 
+/** Флаги совместимости OpenAI-совместимого сервера (electron/services/llmProfiles.ts, decision-39). */
+export interface LlmCompatFlags {
+  tools: boolean;
+  vision: boolean;
+  streamUsage: boolean;
+  openRouterUsage: boolean;
+  maxTokensField: 'max_tokens' | 'max_completion_tokens';
+  reasoning: 'none' | 'reasoning_effort' | 'reasoning_object' | 'ollama_think';
+  responseFormat: boolean;
+}
+
+export interface LlmProviderPreset {
+  id: string;
+  name: string;
+  baseUrl: string;
+  requiresApiKey: boolean;
+  local: boolean;
+  compat: LlmCompatFlags;
+  headers?: Record<string, string>;
+}
+
+export interface LlmProfile {
+  id: string;
+  name: string;
+  presetId: string;
+  baseUrl: string;
+  local: boolean;
+  compat: LlmCompatFlags;
+  headers?: Record<string, string>;
+}
+
+export interface LlmProfileView extends LlmProfile {
+  hasApiKey: boolean;
+}
+
+export interface ModelCatalogResult {
+  models: string[];
+  fetchedAt: number | null;
+  cached: boolean;
+  error?: string;
+}
+
 export interface AIProviderConfig {
-  provider: 'anthropic' | 'openrouter' | 'deepseek' | 'ollama' | 'custom';
+  provider: 'anthropic' | 'openrouter' | 'deepseek' | 'ollama' | 'custom' | 'openai-compatible';
+  /** Профиль для `openai-compatible` (TASK-70.1). */
+  profileId?: string;
   apiKey?: string;
   model: string;
   baseUrl?: string;

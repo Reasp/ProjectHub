@@ -21,6 +21,16 @@ import {
   type AnthropicModelCapabilities
 } from './anthropicRequest.js';
 import { buildOpenAICompatibleChatBody } from './openAICompatibleRequest.js';
+import { legacyProviderCompat, type LlmCompatFlags } from './llmProfiles.js';
+import { llmProfileService } from './llmProfileService.js';
+
+/** Адрес, заголовки и флаги запроса к OpenAI-совместимому серверу; `label` — для сообщений. */
+interface OpenAICompatibleTarget {
+  endpoint: string;
+  headers: Record<string, string>;
+  compat: LlmCompatFlags;
+  label: string;
+}
 import { logger } from './logger.js';
 import { buildClaudeCliCompletionCommand, parseClaudeCliCompletionOutput } from './claudeCliCompletion.js';
 import {
@@ -53,7 +63,9 @@ export interface AutoApproveRules {
 }
 
 export interface AIProviderConfig {
-  provider: 'anthropic' | 'openrouter' | 'deepseek' | 'ollama' | 'custom';
+  provider: 'anthropic' | 'openrouter' | 'deepseek' | 'ollama' | 'custom' | 'openai-compatible';
+  /** Профиль для `openai-compatible` (TASK-70.1, decision-39): адрес, ключ и флаги — в профиле. */
+  profileId?: string;
   apiKey?: string;
   model: string;
   baseUrl?: string;
@@ -523,7 +535,7 @@ class AIAgentService {
     model: string,
     signal: AbortSignal
   ): Promise<string> {
-    const { endpoint, headers } = resolveOpenAICompatibleEndpoint(config);
+    const { endpoint, headers, compat } = await this.resolveOpenAICompatibleTarget(config);
     const messages: Array<{ role: string; content: string }> = [];
     if (req.system) messages.push({ role: 'system', content: req.system });
     messages.push({ role: 'user', content: req.prompt });
@@ -535,7 +547,7 @@ class AIAgentService {
         model,
         messages,
         temperature: req.temperature ?? 0,
-        max_tokens: req.maxTokens ?? DEFAULT_COMPLETE_MAX_TOKENS,
+        [compat.maxTokensField]: req.maxTokens ?? DEFAULT_COMPLETE_MAX_TOKENS,
         stream: false
       }),
       signal
@@ -956,17 +968,22 @@ class AIAgentService {
   }
 
   /**
-   * Эндпоинт и заголовки OpenAI-совместимого провайдера (OpenRouter, DeepSeek, Ollama, custom).
-   * Логика живёт в чистом модуле `llmEndpoint` — её переиспользует и одноразовый вызов `complete`.
+   * Куда и с какими флагами идёт запрос Chat Completions: профиль `openai-compatible` ([[decision-39]])
+   * или прежний провайдер `openrouter`/`deepseek`/`ollama`/`custom` с его прежним поведением.
+   * Общий для потокового диалога и одноразового `complete`.
    */
-  private openAICompatibleEndpoint(req: AIStreamRequest): { endpoint: string; headers: Record<string, string> } {
-    return resolveOpenAICompatibleEndpoint(req.config);
+  private async resolveOpenAICompatibleTarget(config: AIProviderConfig): Promise<OpenAICompatibleTarget> {
+    if (config.provider === 'openai-compatible') {
+      const target = await llmProfileService.resolveRequestTarget(config.profileId);
+      return { endpoint: target.endpoint, headers: target.headers, compat: target.compat, label: target.profile.name };
+    }
+    const { endpoint, headers } = resolveOpenAICompatibleEndpoint(config);
+    return { endpoint, headers, compat: legacyProviderCompat(config.provider), label: config.provider };
   }
 
   /**
-   * OpenAI Compatible API (OpenRouter, DeepSeek, Ollama, etc.): tool-loop поверх Chat Completions.
-   * Изображения из результатов инструментов не передаются (модели без vision) — у OpenAI-совместимых
-   * провайдеров нет флага возможностей модели до TASK-70.
+   * OpenAI-совместимый API (профили, OpenRouter, DeepSeek, Ollama, custom): tool-loop поверх Chat
+   * Completions. Инструменты и изображения из их результатов — по флагам совместимости профиля.
    */
   private async runOpenAICompatibleLoop(
     req: AIStreamRequest,
@@ -978,7 +995,7 @@ class AIAgentService {
     maxSteps: number,
     executeTool?: StreamChatOptions['executeTool']
   ): Promise<void> {
-    const { endpoint, headers } = this.openAICompatibleEndpoint(req);
+    const target = await this.resolveOpenAICompatibleTarget(req.config);
     const messages: unknown[] = [
       { role: 'system', content: systemPrompt },
       ...req.messages
@@ -988,14 +1005,15 @@ class AIAgentService {
           content: m.content
         }))
     ];
-    const openAITools = tools.length > 0 ? toOpenAITools(tools) : undefined;
+    // Профиль без поддержки tools: запрос без инструментов, иначе сервер ответил бы 400.
+    const openAITools = tools.length > 0 && target.compat.tools ? toOpenAITools(tools) : undefined;
 
     for (let step = 0; ; step++) {
-      const turn = await this.requestOpenAICompatible(req, endpoint, headers, messages, openAITools, step, signal, onChunk);
+      const turn = await this.requestOpenAICompatible(req, target, messages, openAITools, step, signal, onChunk);
       this.accumulateTurn(loop, turn);
       const results = await this.executeToolStep(turn.toolCalls, step, maxSteps, loop, onChunk, signal, executeTool);
       if (!results) break;
-      messages.push(...buildOpenAIToolTurn(turn.text, results, { vision: false }));
+      messages.push(...buildOpenAIToolTurn(turn.text, results, { vision: target.compat.vision }));
       this.separateSteps(loop, turn, onChunk);
     }
   }
@@ -1003,16 +1021,17 @@ class AIAgentService {
   /** Один потоковый запрос Chat Completions; `delta.tool_calls` собираются в вызовы инструментов. */
   private async requestOpenAICompatible(
     req: AIStreamRequest,
-    endpoint: string,
-    headers: Record<string, string>,
+    target: OpenAICompatibleTarget,
     messages: unknown[],
     tools: ReturnType<typeof toOpenAITools> | undefined,
     step: number,
     signal: AbortSignal,
     onChunk: (payload: AIStreamChunkPayload) => void
   ): Promise<ModelTurn> {
+    const { endpoint, headers } = target;
     const body = buildOpenAICompatibleChatBody({
-      provider: req.config.provider,
+      provider: target.label,
+      compat: target.compat,
       model: req.config.model,
       messages,
       tools,
@@ -1031,7 +1050,7 @@ class AIAgentService {
       const errText = await response.text();
       if (tools && /does not support tools|tool(s)? (is|are) not supported|tool_choice/i.test(errText)) {
         throw new Error(
-          `Модель «${body.model}» у провайдера ${req.config.provider} не поддерживает вызов инструментов (tools). `
+          `Модель «${body.model}» у провайдера ${target.label} не поддерживает вызов инструментов (tools). `
           + `Для режима агента выберите модель с tool calling. Ответ API (${response.status}): ${errText}`
         );
       }

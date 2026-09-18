@@ -28,6 +28,9 @@ import { loadArenaConfig, saveArenaConfig } from '../services/arenaConfig';
 import type { ArenaSettings } from '../services/actionConfigService';
 import type { CheckDefinition, ComposeSelection } from '../services/arenaTypes';
 import { buildAgentContext } from '../services/contextBuilder';
+import { llmProfileService } from '../services/llmProfileService';
+import { llmModelCatalogService } from '../services/llmModelCatalogService';
+import { LLM_PROVIDER_PRESETS } from '../services/llmProfiles';
 import type { IpcContext } from './types';
 
 export function registerAiIpc(ctx: IpcContext) {
@@ -60,6 +63,22 @@ export function registerAiIpc(ctx: IpcContext) {
   ipcMain.handle('ai:saveConfig', async (_event, config: AIProviderConfig) => {
     return await aiAgentService.saveConfig(config);
   });
+
+  // Профили OpenAI-совместимых провайдеров и их каталог моделей (TASK-70.1, TASK-70.2, decision-39).
+  // Ключ профиля в renderer не возвращается: только признак hasApiKey.
+  ipcMain.handle('llmProfiles:presets', () => LLM_PROVIDER_PRESETS);
+  ipcMain.handle('llmProfiles:list', () => llmProfileService.listProfiles());
+  ipcMain.handle('llmProfiles:save', (_event, input: { profile: unknown; apiKey?: string | null }) =>
+    llmProfileService.saveProfile({ profile: input?.profile, apiKey: input?.apiKey })
+  );
+  ipcMain.handle('llmProfiles:delete', async (_event, id: string) => {
+    const removed = await llmProfileService.deleteProfile(String(id));
+    if (removed) await llmModelCatalogService.forget(String(id)).catch(() => undefined);
+    return removed;
+  });
+  ipcMain.handle('llmProfiles:listModels', (_event, id: string, refresh?: boolean) =>
+    llmModelCatalogService.listModels(String(id), { refresh: refresh === true })
+  );
 
   ipcMain.handle('ai:getClaudeAuthStatus', async () => {
     return await aiAgentService.getClaudeAuthStatus();

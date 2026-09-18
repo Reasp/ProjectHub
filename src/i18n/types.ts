@@ -2040,5 +2040,41 @@ export interface TranslationDictionary {
     federationSecretDesc: string;
     federationDisabled: string;
   };
+  /** Профили OpenAI-совместимых провайдеров (TASK-70.1, TASK-70.2). */
+  llmProfiles: {
+    providerButton: string;
+    providerButtonHint: string;
+    profile: string;
+    noProfiles: string;
+    selectProfile: string;
+    newProfile: string;
+    editProfile: string;
+    deleteProfile: string;
+    deleteConfirm: string;
+    preset: string;
+    name: string;
+    baseUrl: string;
+    apiKey: string;
+    apiKeyStored: string;
+    apiKeyOptional: string;
+    removeKey: string;
+    local: string;
+    compat: string;
+    compatTools: string;
+    compatVision: string;
+    compatStreamUsage: string;
+    compatOpenRouterUsage: string;
+    compatResponseFormat: string;
+    compatMaxTokensField: string;
+    compatReasoning: string;
+    reasoningNone: string;
+    saveProfile: string;
+    models: string;
+    modelsCount: string;
+    modelsUpdated: string;
+    modelsFromCache: string;
+    modelsNever: string;
+    refreshModels: string;
+    modelPlaceholder: string;
+  };
 }
-

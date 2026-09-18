@@ -8,15 +8,19 @@
  *
  * - модель обязательна — вендорского дефолта нет ([[decision-26]] п. 0);
  * - `temperature` и `max_tokens` отправляются, только если их явно задали: иначе действуют
- *   значения модели и провайдера (потолок ответа разных моделей не известен до TASK-70).
+ *   значения модели и провайдера (потолок ответа разных моделей не известен до TASK-70);
+ * - поля usage и имя поля потолка ответа — из флагов совместимости профиля ([[decision-39]]).
  *
  * Чистый модуль без Electron и сети — покрыт unit-тестами.
  */
 import { isUnsetModelId } from './anthropicRequest.js';
+import type { LlmCompatFlags } from './llmProfiles.js';
 
 export interface OpenAICompatibleBodyInput {
-  /** Провайдер из настроек: от него зависят поля учёта usage. */
+  /** Имя провайдера или профиля — для сообщения об ошибке. */
   provider: string;
+  /** Флаги совместимости сервера (профиль или прежний провайдер, см. `legacyProviderCompat`). */
+  compat: LlmCompatFlags;
   model: string | undefined | null;
   messages: unknown[];
   tools?: unknown[];
@@ -53,16 +57,16 @@ export function buildOpenAICompatibleChatBody(input: OpenAICompatibleBodyInput):
     body.temperature = input.temperature;
   }
   if (typeof input.maxTokens === 'number' && Number.isFinite(input.maxTokens) && input.maxTokens > 0) {
-    body.max_tokens = Math.floor(input.maxTokens);
+    body[input.compat.maxTokensField] = Math.floor(input.maxTokens);
   }
   if (input.tools && input.tools.length > 0) {
     body.tools = input.tools;
   }
-  // Usage в последнем чанке стрима — для учёта стоимости (TASK-56). Ollama поле не понимает.
-  if (input.provider !== 'ollama') {
+  // Usage в последнем чанке стрима — для учёта стоимости (TASK-56); не все серверы понимают поле.
+  if (input.compat.streamUsage) {
     body.stream_options = { include_usage: true };
   }
-  if (input.provider === 'openrouter') {
+  if (input.compat.openRouterUsage) {
     body.usage = { include: true };
   }
   return body;

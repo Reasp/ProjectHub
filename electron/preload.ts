@@ -260,6 +260,12 @@ const api: IElectronAPI = {
   // AI Studio & Claude Bridge Engine
   getAIConfig: () => ipcRenderer.invoke('ai:getConfig'),
   saveAIConfig: (config: any) => ipcRenderer.invoke('ai:saveConfig', config),
+  // Профили OpenAI-совместимых провайдеров (TASK-70.1, TASK-70.2)
+  getLlmProviderPresets: () => ipcRenderer.invoke('llmProfiles:presets'),
+  listLlmProfiles: () => ipcRenderer.invoke('llmProfiles:list'),
+  saveLlmProfile: (profile: unknown, apiKey?: string | null) => ipcRenderer.invoke('llmProfiles:save', { profile, apiKey }),
+  deleteLlmProfile: (id: string) => ipcRenderer.invoke('llmProfiles:delete', id),
+  listLlmProfileModels: (id: string, refresh?: boolean) => ipcRenderer.invoke('llmProfiles:listModels', id, refresh),
   getClaudeAuthStatus: () => ipcRenderer.invoke('ai:getClaudeAuthStatus'),
   startClaudeLogin: () => ipcRenderer.invoke('ai:startClaudeLogin'),
   claudeLogout: () => ipcRenderer.invoke('ai:claudeLogout'),

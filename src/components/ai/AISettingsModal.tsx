@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   X,
   Key,
@@ -27,6 +27,7 @@ import { useHitlStore } from '../../store/useHitlStore';
 import type { AIProviderConfig, AutoApproveRules } from '../../types/electron';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useTimers } from '../../hooks/useTimeoutState';
+import { LlmProfilesSection } from './LlmProfilesSection';
 
 interface AISettingsModalProps {
   isOpen: boolean;
@@ -86,6 +87,9 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
   const [newWritePattern, setNewWritePattern] = useState('');
   const [newReadPattern, setNewReadPattern] = useState('');
   const [newCommandPattern, setNewCommandPattern] = useState('');
+  // Модели каталога выбранного профиля openai-compatible — подсказки поля «Модель» (TASK-70.2)
+  const [catalogModels, setCatalogModels] = useState<string[]>([]);
+  const handleCatalogChange = useCallback((models: string[]) => setCatalogModels(models), []);
 
   useEffect(() => {
     if (isOpen) {
@@ -379,7 +383,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                   <button
                     type="button"
                     onClick={() => handleProviderChange('custom')}
-                    className={`p-3 rounded-xl border text-left transition flex flex-col gap-1 col-span-2 ${
+                    className={`p-3 rounded-xl border text-left transition flex flex-col gap-1 ${
                       form.provider === 'custom'
                         ? 'bg-purple-600/15 border-purple-500/50 text-white shadow-sm ring-1 ring-purple-500/30'
                         : 'bg-[#161928] border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
@@ -388,11 +392,32 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                     <span className="font-semibold text-xs text-purple-300">Custom OpenAI Endpoint</span>
                     <span className="text-[10px] text-slate-400">vLLM, LM Studio, LiteLLM</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleProviderChange('openai-compatible')}
+                    className={`p-3 rounded-xl border text-left transition flex flex-col gap-1 ${
+                      form.provider === 'openai-compatible'
+                        ? 'bg-cyan-600/15 border-cyan-500/50 text-white shadow-sm ring-1 ring-cyan-500/30'
+                        : 'bg-[#161928] border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    }`}
+                  >
+                    <span className="font-semibold text-xs text-cyan-300">{t.llmProfiles.providerButton}</span>
+                    <span className="text-[10px] text-slate-400">{t.llmProfiles.providerButtonHint}</span>
+                  </button>
                 </div>
               </div>
 
+              {form.provider === 'openai-compatible' && (
+                <LlmProfilesSection
+                  profileId={form.profileId}
+                  onSelectProfile={(profileId) => setForm((prev) => ({ ...prev, profileId }))}
+                  onCatalogChange={handleCatalogChange}
+                />
+              )}
+
               {/* API Key */}
-              {form.provider !== 'ollama' && (
+              {form.provider !== 'ollama' && form.provider !== 'openai-compatible' && (
                 <div>
                   <label className="font-semibold text-slate-200 uppercase tracking-wider text-[11px] block mb-1.5 flex items-center gap-1.5">
                     <Key className="w-3.5 h-3.5 text-indigo-400" />
@@ -440,10 +465,10 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
                     value={form.model}
                     onChange={(e) => setForm({ ...form, model: e.target.value })}
                     className="w-full bg-[#161928] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
-                    placeholder="Model name..."
+                    placeholder={form.provider === 'openai-compatible' ? t.llmProfiles.modelPlaceholder : 'Model name...'}
                   />
                   <datalist id="model-options">
-                    {(MODEL_PRESETS[form.provider] || []).map((m) => (
+                    {(form.provider === 'openai-compatible' ? catalogModels : MODEL_PRESETS[form.provider] || []).map((m) => (
                       <option key={m} value={m} />
                     ))}
                   </datalist>
