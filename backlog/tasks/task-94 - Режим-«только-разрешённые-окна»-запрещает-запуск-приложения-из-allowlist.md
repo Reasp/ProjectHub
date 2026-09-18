@@ -1,10 +1,10 @@
 ---
 id: TASK-94
 title: Режим «только разрешённые окна» запрещает запуск приложения из allowlist
-status: In Progress
+status: Review
 assignee: []
 created_date: '2026-09-17 12:35'
-updated_date: '2026-09-17 13:21'
+updated_date: '2026-09-18 05:01'
 labels:
   - computer-use
   - voice
@@ -47,9 +47,9 @@ type: bug
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 При onlyAllowlistedWindows: true запуск приложения из allowlist разрешается политикой (или уходит в ask по классу действия), а не отклоняется с «цель не определена»
-- [ ] #2 Запуск приложения не из allowlist в строгом режиме отклоняется
-- [ ] #3 Оба случая покрыты unit-тестами computerPolicy
+- [x] #1 При onlyAllowlistedWindows: true запуск приложения из allowlist разрешается политикой (или уходит в ask по классу действия), а не отклоняется с «цель не определена»
+- [x] #2 Запуск приложения не из allowlist в строгом режиме отклоняется
+- [x] #3 Оба случая покрыты unit-тестами computerPolicy
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -79,4 +79,21 @@ ADR [[decision-36]], в decision-27 добавлена ссылка.
 
 ## Живая проверка
 Ожидает разрешения владельца («готов»). План: computerUse включается только на время прогона, `onlyAllowlistedWindows: true`, allowlist `notepad.exe`, `outsideAllowlist: deny`. Сценарий `s12.wav`: «Запусти блокнот и напиши в нём слово тест», затем диктовка. Отдельно — задача «открой Paint», ожидается отказ. После прогона Блокнот закрывается без сохранения, computerUse выключается, голосовой конфиг и язык EN восстанавливаются с проверкой перезапуском.
+
+## Живая проверка (2026-09-18, сборка pack:win 2026-09-17 21:14)
+
+Конфиг на время прогона: `enabled: true`, `onlyAllowlistedWindows: true`, allowlist `notepad.exe`, `outsideAllowlist: deny`. Exe с фейковым микрофоном `s12.wav`, язык интерфейса `ru`, TTS Piper `ru_RU-dmitri-medium`.
+
+**Положительный случай (AC#1).** Whisper: «Запусти блокнот и напиши в нем слово тест.» → «Готово.» на 38,5 с. Затем «включи диктовку» → «Привет из голосовой диктовки!» → «Напечатано: …» на 91,4 с. Новые записи в `audit/hitl-2026-09.jsonl`:
+- `computer_open_application` `{bundle_id: notepad.exe}` → `allow`/`auto`, rule `computer-allowlist`, outcome `executed`;
+- `computer_type` «тест» (claude-cli) → `allow`, `computer-allowlist`, `executed`;
+- два `computer_type` диктовки (engine `api`) → `allow`, `computer-allowlist`, `executed`.
+
+Отказов `computer-only-window` в прогоне нет (0). Текст Блокнота через WM_GETTEXT: `тестПривет из голосовой диктовки!Коронец диктовки.`
+
+**Отрицательный случай (AC#2).** `window.api.runVoiceComputerTask({ task: 'Открой Paint' })` → `computer_open_application` `{bundle_id: mspaint.exe}` → `deny`, rule `computer-only-window`, «Режим «только разрешённые окна»: mspaint.exe не входит в allowlist.» Paint не запускался. Ответ агента: «Не могу — Paint не входит в разрешённый список приложений…»
+
+**Побочное, к TASK-94 не относится.** Whisper-base распознал «Конец диктовки» как «Коронец диктовки.» (как и в прогоне s12c 2026-09-17). Команда выхода из диктовки не сработала, и фраза напечаталась текстом. Это дефект распознавания или сопоставления стоп-фразы, а не политики.
+
+**Уборка.** Блокнот закрыт без сохранения, `computerUse` выключен (`enabled=False`), процессы `computer-use-mcp` остановлены. После `restore.mjs`, паузы 20 с и перезапуска exe без фейкового микрофона `verify-restore.mjs` вернул `{"lang":"en","same":true}`.
 <!-- SECTION:NOTES:END -->
