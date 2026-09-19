@@ -24,6 +24,7 @@ import { useTranslation } from '../../../i18n';
 import { useDialog } from '../../../hooks/useDialog';
 import { unsupportedRoleFeatures } from '../../../lib/engineCapabilities';
 import { ProviderProfileSelect, useLlmProfiles, useProfileModels } from '../ProviderProfileSelect';
+import { ModelTierSelect } from '../ModelTierSelect';
 import { ReasoningEffortSelect } from '../ReasoningEffortSelect';
 import { effortTargetKind, withReasoningEffort } from '../../../lib/reasoningEffort';
 import { findProfileByRef, slotProviderFromChoice, slotProviderFromRole } from '../../../lib/providerSelect';
@@ -234,6 +235,7 @@ export const NewSwarmModal: React.FC = () => {
           ...(implementer
             ? { roleSlug: implementer.slug, budgetUsd: implementer.budgetUsd, permissions: implementer.permissions }
             : {}),
+          ...(implementer?.modelTier ? { modelTier: implementer.modelTier } : {}),
           ...(implementer && slotProviderFromRole(implementer, llmProfiles)
             ? { providerConfig: slotProviderFromRole(implementer, llmProfiles) }
             : {})
@@ -312,6 +314,8 @@ export const NewSwarmModal: React.FC = () => {
       role: role.name,
       engine: role.engine || agents[idx].engine,
       budgetUsd: role.budgetUsd ?? agents[idx].budgetUsd,
+      // Тир роли (decision-44) заменяет тир слота; роль без тира его снимает.
+      modelTier: role.modelTier,
       // Провайдер роли заменяет провайдера слота, а выбранное усилие рассуждений слота сохраняется.
       ...(slotProviderFromRole(role, llmProfiles)
         ? { providerConfig: withReasoningEffort(slotProviderFromRole(role, llmProfiles), agents[idx].providerConfig?.reasoningEffort) }
@@ -653,6 +657,12 @@ export const NewSwarmModal: React.FC = () => {
                           providerConfig: { ...agent.providerConfig, model: model || undefined }
                         })
                       }
+                    />
+
+                    <ModelTierSelect
+                      value={agent.modelTier}
+                      onChange={(modelTier) => handleUpdateAgent(idx, { modelTier })}
+                      className="px-2 py-1 rounded-sm border border-border bg-background text-foreground text-xs max-w-40"
                     />
 
                     <ReasoningEffortSelect

@@ -29,7 +29,8 @@ import {
   AlertTriangle,
   DollarSign,
   Gavel,
-  ClipboardCheck
+  ClipboardCheck,
+  Shuffle
 } from 'lucide-react';
 import { useSwarmStore } from '../../../store/useSwarmStore';
 import { useProjectStore } from '../../../store/useProjectStore';
@@ -57,6 +58,7 @@ import {
   verdictLabel
 } from '../../../utils/arenaFormat';
 import { providerErrorAdvice, providerErrorTitle } from '../../../lib/providerErrorView';
+import { chainLinkLabel } from '../../../lib/modelTierEditor';
 import { AdviceText } from '../ProviderErrorCard';
 
 /** Вкладки карточки кандидата: к выводу/логам/диффу добавлены проверки и ревью судьи (TASK-61). */
@@ -663,6 +665,17 @@ export const SwarmArenaView: React.FC = () => {
                                 {agent.providerInfo.local ? ` · ${t.providerSelect.local}` : ''}
                               </span>
                             )}
+                            {/* Тир и фактическая модель (TASK-79, decision-44); у CLI-движков модели в providerInfo нет. */}
+                            {agent.modelRouting && (
+                              <span
+                                className="text-[10px] px-1.5 py-0.2 rounded-sm bg-violet-500/10 border border-violet-500/30 font-mono text-violet-300 max-w-[260px] truncate"
+                                title={`${t.modelTiers.cardTier.replace('{tier}', agent.modelRouting.requestedTier ?? '—')} · ${t.modelTiers.source[agent.modelRouting.source]}${agent.modelRouting.current ? ` · ${chainLinkLabel(agent.modelRouting.current)}` : ''}`}
+                                data-testid="agent-model-tier"
+                              >
+                                {t.modelTiers.cardTier.replace('{tier}', agent.modelRouting.requestedTier ?? '—')}
+                                {agent.modelRouting.current && !agent.providerInfo ? ` · ${agent.modelRouting.current.model}` : ''}
+                              </span>
+                            )}
                             {agent.config.role && (
                               <span className="text-[11px] text-muted-foreground font-medium">
                                 {agent.config.role}
@@ -707,6 +720,38 @@ export const SwarmArenaView: React.FC = () => {
                           </div>
                         </div>
                       )}
+
+                      {/* Переключения модели по fallback-цепочке: откуда, куда и почему (TASK-79, decision-44). */}
+                      {agent.modelRouting &&
+                        (agent.modelRouting.switches.length > 0 ||
+                          (agent.modelRouting.stopped && agent.modelRouting.stopped !== 'not_switchable') ||
+                          agent.modelRouting.source === 'default') && (
+                          <div
+                            className="px-4 py-2 border-b border-violet-500/20 bg-violet-500/5 text-[11px] text-violet-200 space-y-0.5"
+                            data-testid="agent-model-switches"
+                          >
+                            {agent.modelRouting.switches.length > 0 && (
+                              <div className="font-semibold flex items-center gap-1.5">
+                                <Shuffle className="w-3.5 h-3.5 text-violet-400" />
+                                {t.modelTiers.cardSwitches}
+                              </div>
+                            )}
+                            {agent.modelRouting.switches.map((sw, i) => (
+                              <div key={`${sw.at}-${i}`} className="font-mono text-[10px] text-violet-200/90 truncate" title={sw.message}>
+                                {i + 1}. {chainLinkLabel(sw.from)} → {chainLinkLabel(sw.to)}:{' '}
+                                {providerErrorTitle({ kind: sw.kind, reason: sw.reason, retryable: false, message: sw.message }, t.providerErrors)}
+                                {sw.status !== undefined ? ` (HTTP ${sw.status})` : ''}
+                                {sw.waitedMs ? `, ${t.modelTiers.cardWaited.replace('{seconds}', String(Math.round(sw.waitedMs / 100) / 10))}` : ''}
+                              </div>
+                            ))}
+                            {agent.modelRouting.stopped && agent.modelRouting.stopped !== 'not_switchable' && (
+                              <div className="text-amber-300">{t.modelTiers.stopped[agent.modelRouting.stopped]}</div>
+                            )}
+                            {agent.modelRouting.source === 'default' && (
+                              <div className="text-muted-foreground">{t.modelTiers.source.default}</div>
+                            )}
+                          </div>
+                        )}
 
                       {/* Worktree & Metrics Bar */}
                       <div className="px-4 py-2 bg-secondary/20 border-b border-border/60 flex flex-wrap items-center justify-between gap-2 text-[11px]">

@@ -2,6 +2,7 @@ import type { AgentSlotState, SwarmSession } from './swarmTypes.js';
 import { addUsage, emptyUsage, formatTokens, formatUsd, type AgentUsage } from './agentCost.js';
 import { describeProviderInfo } from './slotProvider.js';
 import { describeProviderErrorBrief } from './providerErrors.js';
+import { describeChainLink, describeFallbackStop, MAX_MODEL_SWITCHES } from './modelTiers.js';
 
 /**
  * Экспорт swarm-сессии в Markdown-отчёт и JSON (TASK-56, AC #5) — для вложения в задачу
@@ -75,8 +76,38 @@ export function agentProviderLabel(agent: AgentSlotState): string {
     const model = info.model || agent.metrics?.usage?.model;
     return `${describeProviderInfo(info)}${model ? ` · \`${model}\`` : ''}`;
   }
-  const model = agent.metrics?.usage?.model || agent.config.providerConfig?.model;
+  const model = agent.metrics?.usage?.model || agent.modelRouting?.current?.model || agent.config.providerConfig?.model;
   return `${agent.config.engine}${model && model !== 'default' ? ` · \`${model}\`` : ''}`;
+}
+
+const ROUTING_SOURCE_LABELS: Record<NonNullable<AgentSlotState['modelRouting']>['source'], string> = {
+  explicit: 'явная модель слота или роли',
+  tier: 'модель из таблицы тиров',
+  default: 'модель по умолчанию движка'
+};
+
+/**
+ * Тир и переключения модели агента для отчёта (decision-44 п. 8): запрошенный тир, фактическая модель и
+ * причина каждого переключения. Без тира — пусто.
+ */
+export function modelRoutingLines(agent: AgentSlotState): string[] {
+  const routing = agent.modelRouting;
+  if (!routing) return [];
+  const lines: string[] = [];
+  const current = routing.current ? `, фактическая модель: \`${describeChainLink(routing.current)}\`` : '';
+  lines.push(`- Тир модели: \`${routing.requestedTier ?? '—'}\` (${ROUTING_SOURCE_LABELS[routing.source]})${current}`);
+  if (routing.note) lines.push(`- Тиры: ${routing.note}`);
+  if (routing.switches.length > 0) {
+    lines.push('- Переключения модели:');
+    routing.switches.forEach((sw, i) => {
+      const waited = sw.waitedMs ? `, ожидание ${Math.round(sw.waitedMs / 100) / 10} с` : '';
+      lines.push(`  ${i + 1}. \`${describeChainLink(sw.from)}\` → \`${describeChainLink(sw.to)}\`: \`${sw.message}\`${waited}`);
+    });
+  }
+  if (routing.stopped && routing.stopped !== 'not_switchable') {
+    lines.push(`- Цепочка остановлена: ${describeFallbackStop(routing.stopped, routing.maxSwitches ?? MAX_MODEL_SWITCHES)}`);
+  }
+  return lines;
 }
 
 function cell(text: string): string {
@@ -216,6 +247,7 @@ export function exportSwarmSessionMarkdown(session: SwarmSession, options: Markd
     lines.push('');
     lines.push(`- Провайдер: ${agentProviderLabel(agent)}`);
     if (agent.providerInfo?.profileId) lines.push(`- Профиль: id \`${agent.providerInfo.profileId}\`${agent.providerInfo.local ? ', локальная модель' : ''}`);
+    lines.push(...modelRoutingLines(agent));
     if (agent.worktreeBranch) lines.push(`- Ветка: \`${agent.worktreeBranch}\``);
     if (agent.worktreePath) lines.push(`- Worktree: \`${agent.worktreePath}\``);
     if (agent.error) lines.push(`- Ошибка: ${agent.error}`);

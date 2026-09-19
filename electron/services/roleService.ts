@@ -13,6 +13,7 @@ import matter from 'gray-matter';
 import { getRolesDir, getProjectRolesDir } from './appPaths.js';
 import { BUILTIN_ROLES } from './builtinRoles.js';
 import { ALL_TOOL_CATEGORIES, isRoleParseError } from './roleTypes.js';
+import { MODEL_TIERS, isModelTier, type ModelTier } from './modelTiers.js';
 import type { RoleDefinition, RoleEngine, RoleParseError, RoleSource, ToolCategory } from './roleTypes.js';
 
 const ROLE_ENGINES: RoleEngine[] = ['claude-cli', 'codex-cli', 'gemini-cli', 'api'];
@@ -90,6 +91,15 @@ export function parseRoleFile(raw: string, filePath: string, source: RoleSource)
   const profile = fmString(data.profile);
   const model = fmString(data.model);
 
+  let modelTier: ModelTier | undefined;
+  const rawTier = fmString(data.modelTier ?? data.model_tier);
+  if (rawTier !== undefined) {
+    if (!isModelTier(rawTier)) {
+      return { error: `Поле "modelTier" должно быть одним из: ${MODEL_TIERS.join(', ')}`, filePath };
+    }
+    modelTier = rawTier;
+  }
+
   let permissions: RoleDefinition['permissions'];
   if (data.permissions !== undefined && data.permissions !== null) {
     if (typeof data.permissions !== 'object' || Array.isArray(data.permissions)) {
@@ -118,6 +128,7 @@ export function parseRoleFile(raw: string, filePath: string, source: RoleSource)
     provider,
     profile,
     model,
+    modelTier,
     tools,
     permissions,
     dod,
@@ -184,6 +195,7 @@ function roleFrontmatter(role: RoleDefinition): Record<string, unknown> {
   if (role.provider) fm.provider = role.provider;
   if (role.profile) fm.profile = role.profile;
   if (role.model) fm.model = role.model;
+  if (isModelTier(role.modelTier)) fm.modelTier = role.modelTier;
   if (role.tools && role.tools.length > 0) fm.tools = role.tools;
   if (role.permissions) fm.permissions = role.permissions;
   if (role.dod && role.dod.length > 0) fm.dod = role.dod;

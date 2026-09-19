@@ -404,6 +404,80 @@ export function classifyStreamError(payload: unknown, ctx: ProviderErrorContext 
   return classifyHttpError({ status, body: JSON.stringify(payload) }, ctx);
 }
 
+/**
+ * Вид ошибки из поля `error` события `assistant` Claude CLI (stream-json) → тип ошибки Anthropic API, который
+ * понимает `classifyByServerType`. `model_not_found` проверен вживую (CLI 2.1.275), остальные — по типу
+ * `SDKAssistantMessageError` из документации Agent SDK (decision-44 п. 7).
+ */
+const CLAUDE_CLI_ERROR_TYPES: Record<string, string> = {
+  model_not_found: 'model_not_found',
+  authentication_failed: 'authentication_error',
+  billing_error: 'billing_error',
+  rate_limit: 'rate_limit_error',
+  overloaded: 'overloaded_error',
+  server_error: 'api_error',
+  invalid_request: 'invalid_request_error'
+};
+
+export interface ClaudeCliErrorInput {
+  /** Поле `error` события `assistant` (`model_not_found`, `rate_limit`…). */
+  errorType?: string;
+  /** `api_error_status` события `result`. */
+  status?: number;
+  /** Текст ошибки: текст события `assistant` или `result.result`. */
+  message?: string;
+  /** Через сколько снимется лимит (`rate_limit_event.resetsAt` со статусом `rejected`). */
+  retryAfterMs?: number;
+}
+
+/**
+ * API-ошибка хода Claude CLI (событие `assistant` с `error`/`is_api_error_message`, `result` с `is_error` и
+ * `api_error_status`). Вид — тем же классификатором, что и HTTP-ответы, по типу и статусу.
+ */
+export function classifyClaudeCliError(input: ClaudeCliErrorInput, ctx: ProviderErrorContext = {}): ProviderErrorInfo {
+  const type = input.errorType ? CLAUDE_CLI_ERROR_TYPES[input.errorType] ?? input.errorType : undefined;
+  const body = JSON.stringify({ error: { ...(type ? { type } : {}), ...(input.message ? { message: input.message } : {}) } });
+  const info = classifyHttpError({ status: input.status, body }, ctx);
+  if (input.retryAfterMs === undefined || info.retryAfterMs !== undefined || (info.kind !== 'rate_limit' && info.kind !== 'unavailable')) {
+    return info;
+  }
+  const withWait: ProviderErrorInfo = { ...info, retryAfterMs: input.retryAfterMs };
+  withWait.message = formatProviderErrorMessage(withWait);
+  return withWait;
+}
+
+/**
+ * Признаки API-ошибки в одном событии stream-json Claude CLI (decision-44 п. 7), `undefined` — событие не
+ * об ошибке: `assistant` с `error`/`is_api_error_message`, `result` с `is_error` и `api_error_status` (или
+ * `terminal_reason: "api_error"`), `rate_limit_event` со статусом `rejected` — время до снятия лимита.
+ */
+export function parseClaudeCliErrorEvent(event: unknown, now = Date.now()): ClaudeCliErrorInput | undefined {
+  if (!event || typeof event !== 'object') return undefined;
+  const e = event as Record<string, unknown>;
+  if (e.type === 'assistant' && (typeof e.error === 'string' || e.is_api_error_message === true)) {
+    const content = (e.message as { content?: unknown } | undefined)?.content;
+    const text = Array.isArray(content)
+      ? content
+          .map((c) => (c && typeof c === 'object' && (c as { type?: unknown }).type === 'text' ? String((c as { text?: unknown }).text ?? '') : ''))
+          .join('')
+          .trim()
+      : '';
+    return { ...(typeof e.error === 'string' ? { errorType: e.error } : {}), ...(text ? { message: text } : {}) };
+  }
+  if (e.type === 'result' && e.is_error === true && (typeof e.api_error_status === 'number' || e.terminal_reason === 'api_error')) {
+    return {
+      ...(typeof e.api_error_status === 'number' ? { status: e.api_error_status } : {}),
+      ...(typeof e.result === 'string' && e.result.trim() ? { message: e.result.trim() } : {})
+    };
+  }
+  const limit = (e.type === 'rate_limit_event' ? e.rate_limit_info : undefined) as { status?: unknown; resetsAt?: unknown } | undefined;
+  if (limit && limit.status === 'rejected' && typeof limit.resetsAt === 'number') {
+    const ms = limit.resetsAt * 1000 - now;
+    return ms > 0 ? { retryAfterMs: ms } : undefined;
+  }
+  return undefined;
+}
+
 const NETWORK_CODES: Array<[RegExp, ProviderErrorReason]> = [
   [/^ECONNREFUSED$/, 'refused'],
   [/^(ENOTFOUND|EAI_AGAIN|EAI_NONAME)$/, 'dns'],

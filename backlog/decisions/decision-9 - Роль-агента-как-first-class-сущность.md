@@ -71,3 +71,5 @@ status: accepted
 - Handoff по цепочке `handoffTo` проверяется мягко (предупреждение в UI, не блокировка запуска).
 - Поле `cliCommand` в `AgentSlotConfig` удалено как мёртвый код (было не задействовано нигде);
   для кастомных CLI-движков сверх `claude-cli`/`codex-cli`/`gemini-cli` инфраструктуры не вводилось.
+- Дополнено позже: поле `profile` (профиль провайдера) — [[decision-40]]; поле `modelTier`
+  (`cheap | balanced | frontier`, тир модели вместо id, встроенные роли получили тиры) — [[decision-44]].

@@ -31,7 +31,9 @@ export type NotificationKind =
   | 'processCrashed'
   | 'prCreated'
   | 'prChecksFailed'
-  | 'deviceConnected';
+  | 'deviceConnected'
+  /** Слот переключил модель по fallback-цепочке тира (decision-44). */
+  | 'modelFallback';
 
 export const NOTIFICATION_KINDS: NotificationKind[] = [
   'hitl',
@@ -41,7 +43,8 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
   'processCrashed',
   'prCreated',
   'prChecksFailed',
-  'deviceConnected'
+  'deviceConnected',
+  'modelFallback'
 ];
 
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'critical';

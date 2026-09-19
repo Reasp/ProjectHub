@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "b32b84111f5dcc0c3fb8354f0003eb8115a7dc7b594e59c604636b50bc648b0b",
+  "docsHash": "e2765422479b953813e11c71d92512fcae94a2a1001c9dea091b74dfde33b9fc",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -43,6 +43,7 @@
     "backlog/decisions/decision-41 - Усилие-рассуждений-единая-шкала-и-трансляция-в-формат-провайдера.md",
     "backlog/decisions/decision-42 - Цены-агентов-редактор-нулевая-цена-локальных-провайдеров-импорт-OpenRouter-и-usage-Ollama.md",
     "backlog/decisions/decision-43 - Ошибки-провайдера-LLM-классификатор-сообщение-с-советом-и-снимок-для-fallback.md",
+    "backlog/decisions/decision-44 - Тиры-моделей-и-fallback-цепочка-слота-таблица-model-tiers-правила-переключения-и-отчёт.md",
     "backlog/decisions/decision-5 - Модель-безопасности-десктопа-изоляция-рендерера-реестр-проектов-локальный-MCP-и-секреты.md",
     "backlog/decisions/decision-6 - Git-worktree-как-единица-изоляции-задачи-и-агента.md",
     "backlog/decisions/decision-7 - Local-first-хранение-состояния-и-отсутствие-телеметрии.md",
@@ -59,6 +60,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 504,
-  "builtAt": "2026-09-19T01:47:37.030Z"
+  "chunks": 519,
+  "builtAt": "2026-09-19T06:52:14.500Z"
 }

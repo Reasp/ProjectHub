@@ -6,6 +6,7 @@
  * Без зависимостей от Electron — импортируется unit-тестами напрямую.
  */
 import type { RolePermissions } from './hitlTypes.js';
+import type { ModelTier } from './modelTiers.js';
 
 export type RoleEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
 export type RoleSource = 'builtin' | 'global' | 'project';
@@ -31,6 +32,11 @@ export interface RoleDefinition {
    */
   profile?: string;
   model?: string;
+  /**
+   * Тир модели (decision-44): модель берётся из таблицы тиров пользователя для движка слота. Явный
+   * `model` важнее тира и становится первым звеном fallback-цепочки.
+   */
+  modelTier?: ModelTier;
   /** Allow-список категорий инструментов; пусто/отсутствует — без ограничений. */
   tools?: ToolCategory[];
   permissions?: RolePermissions;

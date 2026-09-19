@@ -797,6 +797,11 @@ export interface IElectronAPI {
   saveAgentPricing: (overrides: PriceOverrides) => Promise<AgentPricingState>;
   /** Цены OpenRouter (`GET /api/v1/models`, без ключа); ничего не сохраняет. */
   fetchOpenRouterPrices: () => Promise<OpenRouterImportResult>;
+  /** Тиры моделей `<userData>/model-tiers.json` (TASK-79, decision-44); при первом чтении — заполнение из настроенного. */
+  getModelTiers: () => Promise<ModelTierState>;
+  saveModelTiers: (settings: ModelTierSettings) => Promise<ModelTierState>;
+  /** «Заполнить из настроенного» поверх черновика; ничего не сохраняет. */
+  seedModelTiers: (draft?: ModelTierSettings) => Promise<ModelTierSeedResult>;
   getClaudeAuthStatus: () => Promise<ClaudeAuthStatus>;
   startClaudeLogin: () => Promise<boolean>;
   claudeLogout: () => Promise<boolean>;
@@ -1195,6 +1200,8 @@ export interface RoleDefinition {
   /** Профиль OpenAI-совместимого провайдера: имя или id (decision-40). */
   profile?: string;
   model?: string;
+  /** Тир модели (decision-44): явный `model` важнее. */
+  modelTier?: ModelTier;
   tools?: ToolCategory[];
   permissions?: RolePermissions;
   dod?: string[];
@@ -1285,6 +1292,15 @@ export type AppBusEvent =
   | ({ type: 'agent:started' } & AgentEventBase)
   | ({ type: 'agent:finished'; outcome: 'done' | 'aborted'; durationMs?: number } & AgentEventBase)
   | ({ type: 'agent:failed'; error: string; durationMs?: number } & AgentEventBase)
+  /** Слот переключился на следующую модель fallback-цепочки (TASK-79, decision-44). */
+  | ({
+      type: 'agent:modelFallback';
+      fromModel: string;
+      toModel: string;
+      errorKind: string;
+      errorReason?: string;
+      waitedMs?: number;
+    } & AgentEventBase)
   // События уведомлений (TASK-63, decision-13 п.1)
   | {
       type: 'swarm:finished';
@@ -1325,7 +1341,8 @@ export type NotificationKind =
   | 'processCrashed'
   | 'prCreated'
   | 'prChecksFailed'
-  | 'deviceConnected';
+  | 'deviceConnected'
+  | 'modelFallback';
 
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'critical';
 
@@ -1767,6 +1784,8 @@ export interface AgentSlotConfig {
   roleSlug?: string;
   /** Профиль, прежний провайдер или только модель; без поля — настройки AI Studio (decision-40). */
   providerConfig?: Partial<AIProviderConfig>;
+  /** Тир модели (decision-44): цепочка из таблицы тиров; явная модель слота — первое звено. */
+  modelTier?: ModelTier;
   /** Доп. инструкции слота поверх системного промпта роли. */
   systemPromptAddon?: string;
   /** Бюджет слота/роли в USD; при превышении агент останавливается. */
@@ -1979,6 +1998,71 @@ export interface AgentSlotState {
   providerInfo?: ResolvedProviderInfo;
   /** Снимок ошибки провайдера (decision-43), если агент упал на запросе к модели. */
   providerError?: ProviderErrorInfo;
+  /** Тир, фактическая модель и переключения модели (decision-44). */
+  modelRouting?: ModelRoutingInfo;
+}
+
+// ─── Тиры моделей (TASK-79, decision-44); зеркало electron/services/modelTiers.ts ───
+
+export type ModelTier = 'cheap' | 'balanced' | 'frontier';
+export type TierEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
+
+export interface TierModelEntry {
+  engine: TierEngine;
+  model: string;
+  /** Профиль (имя или id) для движка `api`. */
+  profile?: string;
+  /** Прежний провайдер для движка `api`; без `profile` и `provider` — провайдер AI Studio. */
+  provider?: string;
+  source?: 'auto' | 'manual';
+}
+
+export interface ModelTierSettings {
+  version: 1;
+  updatedAt?: string;
+  fallbackToLowerTier: boolean;
+  maxSwitches: number;
+  maxWaitMs: number;
+  tiers: Record<ModelTier, TierModelEntry[]>;
+}
+
+export interface ModelTierState {
+  settings: ModelTierSettings;
+  filePath: string;
+  loadError?: string;
+  problems: string[];
+}
+
+export interface ModelTierSeedResult extends ModelTierState {
+  added: number;
+}
+
+export type ChainLinkRef = Pick<TierModelEntry, 'engine' | 'model' | 'profile' | 'provider'> & { tier?: ModelTier };
+
+export type FallbackStopReason = 'not_switchable' | 'exhausted' | 'limit' | 'disabled' | 'side_effects';
+
+export interface ModelSwitchRecord {
+  at: number;
+  from: ChainLinkRef;
+  to: ChainLinkRef;
+  kind: ProviderErrorKind;
+  reason?: ProviderErrorReason;
+  status?: number;
+  code?: string;
+  waitedMs?: number;
+  message: string;
+}
+
+export interface ModelRoutingInfo {
+  requestedTier?: ModelTier;
+  source: 'explicit' | 'tier' | 'default';
+  engine: TierEngine;
+  current?: ChainLinkRef;
+  chainLength: number;
+  maxSwitches?: number;
+  switches: ModelSwitchRecord[];
+  stopped?: FallbackStopReason;
+  note?: string;
 }
 
 export interface HandoffStageState {

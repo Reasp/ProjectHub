@@ -2051,7 +2051,8 @@ export const en: TranslationDictionary = {
       processCrashed: 'Process crashed',
       prCreated: 'Pull Request created',
       prChecksFailed: 'Pull Request checks failed',
-      deviceConnected: 'Device connected'
+      deviceConnected: 'Device connected',
+      modelFallback: 'Agent switched model'
     },
     osActionsUnsupported: 'Decision buttons inside the system notification are macOS-only. On Windows and Linux clicking the notification opens the decision center.',
     unsupportedOs: 'System notifications are unavailable on this OS',
@@ -2338,5 +2339,62 @@ export const en: TranslationDictionary = {
     notRetryable: 'Retrying without changing settings will not help',
     agentFailed: 'Agent stopped: {kind}',
     reviewerFailed: 'Reviewer: {kind}'
+  },
+  modelTiers: {
+    tabLabel: 'Tiers',
+    title: 'Model tiers',
+    subtitle:
+      'Roles and slots reference a tier, not a model id. Tier entries form a chain: when a model fails (not found, rate limit, server unavailable) the slot switches to the next entry, then to the lower tier. Key and configuration errors do not switch.',
+    tier: { cheap: 'Cheap', balanced: 'Balanced', frontier: 'Frontier' },
+    tierHint: {
+      cheap: 'Routine: docs, simple edits',
+      balanced: 'Implementation and tests',
+      frontier: 'Architecture and review'
+    },
+    engine: 'Engine',
+    target: 'Provider',
+    model: 'Model',
+    addEntry: 'Add entry',
+    emptyTier: 'No entries — a slot with this tier uses the AI Studio or CLI default model.',
+    moveUp: 'Move up',
+    moveDown: 'Move down',
+    remove: 'Remove entry',
+    seed: 'Fill from configured',
+    seedDone: 'Entries added: {count}. Review and save.',
+    seedNothing: 'Nothing new found: everything configured is already in the table.',
+    save: 'Save tiers',
+    saving: 'Saving…',
+    saved: 'Tiers saved; they apply to new agent turns.',
+    close: 'Close',
+    unsaved: 'Unsaved changes',
+    refreshCatalogs: 'Refresh catalogs',
+    fallbackToLowerTier: 'Fall back to lower tier',
+    fallbackToLowerTierDesc: 'When the tier runs out of entries, try the entries of the tier below.',
+    maxSwitches: 'Switches per turn',
+    maxSwitchesOff: 'off',
+    maxWait: 'Wait for Retry-After at most, s',
+    auto: 'auto',
+    missing: 'not in profile catalog',
+    noProfile: 'profile not found',
+    emptyModel: 'Enter a model',
+    duplicate: 'Duplicate entry — will be skipped',
+    loadError: 'Tier file could not be read ({error}): tiers are empty, saving will overwrite the file.',
+    problems: 'Skipped entries: {list}',
+    filePath: 'File',
+    selectLabel: 'Model tier',
+    selectNone: 'No tier',
+    selectHint: 'The model comes from the tier table; an explicit model wins and becomes the first chain entry.',
+    cardTier: 'Tier {tier}',
+    cardModel: 'Model',
+    cardSwitches: 'Model switches',
+    cardWaited: 'waited {seconds} s',
+    source: { explicit: 'explicit model', tier: 'from tier table', default: 'tier not configured for engine' },
+    stopped: {
+      not_switchable: 'switching would not help with this error',
+      exhausted: 'no suitable models left in the chain',
+      limit: 'switch limit reached',
+      disabled: 'switching is disabled',
+      side_effects: 'the agent already called tools — no retry'
+    }
   }
 };

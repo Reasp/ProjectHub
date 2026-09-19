@@ -3,7 +3,8 @@
  *
  * Определены как TS-объекты, а не файлы на диске: всегда доступны в упакованной сборке без
  * upakовки через extraResources. Имеют наименьший приоритет при слиянии с global/project ролями
- * того же `slug` (см. `roleService.loadRoles`).
+ * того же `slug` (см. `roleService.loadRoles`). Тиры моделей — по decision-44 п. 4: модель конкретного
+ * вендора роль не выбирает, тир разрешается по таблице тиров пользователя.
  */
 import type { RoleDefinition } from './roleTypes.js';
 
@@ -15,6 +16,7 @@ export const BUILTIN_ROLES: RoleDefinition[] = [
   builtin({
     slug: 'architect',
     name: 'Архитектор',
+    modelTier: 'frontier',
     tools: ['read', 'search', 'question'],
     permissions: { allowFileWrite: false, allowCommands: false },
     dod: ['Спецификация покрывает все критерии приёмки задачи', 'Указаны затронутые файлы и модули', 'Отмечены риски и альтернативы'],
@@ -27,6 +29,7 @@ export const BUILTIN_ROLES: RoleDefinition[] = [
   builtin({
     slug: 'implementer',
     name: 'Реализатор',
+    modelTier: 'balanced',
     tools: ['read', 'write', 'command', 'search'],
     permissions: { allowFileWrite: true, allowCommands: true },
     dod: ['Код реализует спецификацию/задачу', 'Проект собирается', 'Изменения ограничены рамками задачи'],
@@ -39,6 +42,7 @@ export const BUILTIN_ROLES: RoleDefinition[] = [
   builtin({
     slug: 'reviewer',
     name: 'Ревьюер',
+    modelTier: 'frontier',
     tools: ['read', 'search', 'question'],
     permissions: { allowFileWrite: false, allowCommands: false },
     dod: ['Проверены корректность и соответствие задаче', 'Даны конкретные замечания с указанием файла/строки'],
@@ -51,6 +55,7 @@ export const BUILTIN_ROLES: RoleDefinition[] = [
   builtin({
     slug: 'tester',
     name: 'Тестировщик',
+    modelTier: 'balanced',
     tools: ['read', 'write', 'command'],
     permissions: { allowFileWrite: true, writeExcludePatterns: ['!tests/**', '!**/*.test.*', '!**/*.spec.*'], allowCommands: true },
     dod: ['Добавлены/обновлены тесты на изменённую логику', 'Тесты и сборка проходят'],
@@ -62,6 +67,7 @@ export const BUILTIN_ROLES: RoleDefinition[] = [
   builtin({
     slug: 'doc-writer',
     name: 'Технический писатель',
+    modelTier: 'cheap',
     tools: ['read', 'write'],
     permissions: { allowFileWrite: true, writeExcludePatterns: ['!backlog/docs/**', '!backlog/decisions/**'], allowCommands: false },
     dod: ['Документация отражает фактическое поведение', 'Соблюдён формат backlog/docs (frontmatter, id/title)'],

@@ -10,6 +10,7 @@ import type { CandidateScore, CheckRunResult, JudgeState, ReviewerVerdict } from
 import type { DoneLoopState } from './doneLoopTypes.js';
 import type { ResolvedProviderInfo } from './slotProvider.js';
 import type { ProviderErrorInfo } from './providerErrors.js';
+import type { ModelRoutingInfo, ModelTier } from './modelTiers.js';
 
 /** `done_loop` — одиночный слот «до готовности» (TASK-75, decision-28). */
 export type SwarmMode = 'fan_out' | 'handoff' | 'done_loop';
@@ -47,6 +48,11 @@ export interface AgentSlotConfig {
    * провайдер или только модель. Без поля — настройки AI Studio. Разрешается в `slotProvider.ts`.
    */
   providerConfig?: Partial<AIProviderConfig>;
+  /**
+   * Тир модели (decision-44): цепочка моделей из таблицы тиров для движка слота. Явная модель
+   * `providerConfig.model` важнее и становится первым звеном.
+   */
+  modelTier?: ModelTier;
   /** Доп. инструкции слота поверх системного промпта роли. */
   systemPromptAddon?: string;
   /** Бюджет роли/слота в USD; при превышении агент останавливается (decision-9, TASK-56). */
@@ -127,6 +133,8 @@ export interface AgentSlotState {
    * (decision-43): вид, статус, код, retry-after, retryable. По нему TASK-79 решает о fallback.
    */
   providerError?: ProviderErrorInfo;
+  /** Тир, фактическая модель и переключения модели по fallback-цепочке (decision-44 п. 8). */
+  modelRouting?: ModelRoutingInfo;
 }
 
 export interface HandoffStageState {

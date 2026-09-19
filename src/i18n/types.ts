@@ -1951,7 +1951,8 @@ export interface TranslationDictionary {
       | 'processCrashed'
       | 'prCreated'
       | 'prChecksFailed'
-      | 'deviceConnected',
+      | 'deviceConnected'
+      | 'modelFallback',
       string
     >;
     osActionsUnsupported: string;
@@ -2234,5 +2235,52 @@ export interface TranslationDictionary {
     notRetryable: string;
     agentFailed: string;
     reviewerFailed: string;
+  };
+  /** Тиры моделей и fallback-цепочка (TASK-79, decision-44). */
+  modelTiers: {
+    tabLabel: string;
+    title: string;
+    subtitle: string;
+    tier: Record<'cheap' | 'balanced' | 'frontier', string>;
+    tierHint: Record<'cheap' | 'balanced' | 'frontier', string>;
+    engine: string;
+    target: string;
+    model: string;
+    addEntry: string;
+    emptyTier: string;
+    moveUp: string;
+    moveDown: string;
+    remove: string;
+    seed: string;
+    seedDone: string;
+    seedNothing: string;
+    save: string;
+    saving: string;
+    saved: string;
+    close: string;
+    unsaved: string;
+    refreshCatalogs: string;
+    fallbackToLowerTier: string;
+    fallbackToLowerTierDesc: string;
+    maxSwitches: string;
+    maxSwitchesOff: string;
+    maxWait: string;
+    auto: string;
+    missing: string;
+    noProfile: string;
+    emptyModel: string;
+    duplicate: string;
+    loadError: string;
+    problems: string;
+    filePath: string;
+    selectLabel: string;
+    selectNone: string;
+    selectHint: string;
+    cardTier: string;
+    cardModel: string;
+    cardSwitches: string;
+    cardWaited: string;
+    source: Record<'explicit' | 'tier' | 'default', string>;
+    stopped: Record<'not_switchable' | 'exhausted' | 'limit' | 'disabled' | 'side_effects', string>;
   };
 }

@@ -151,4 +151,24 @@ describe('loadRoles — слияние по slug (project > global > builtin)', 
     expect(role?.provider).toBe('openai-compatible');
     expect(role?.model).toBe('qwen2.5:7b-instruct');
   });
+
+  it('тир модели роли: парсинг, ошибка, запись и чтение; старая роль с model без тира (TASK-79)', async () => {
+    const parsed = parseRoleFile(`---\nslug: tiered\nname: Т\nmodelTier: frontier\n---\n\np\n`, '/tmp/t.md', 'global');
+    expect(isRoleParseError(parsed) ? null : parsed.modelTier).toBe('frontier');
+    expect(isRoleParseError(parseRoleFile(`---\nslug: bad-tier\nname: Т\nmodelTier: ultra\n---\n\np\n`, '/tmp/b.md', 'global'))).toBe(true);
+    const legacy = parseRoleFile(`---\nslug: legacy\nname: Л\nmodel: claude-x\n---\n\np\n`, '/tmp/l.md', 'global');
+    expect(isRoleParseError(legacy) ? null : [legacy.model, legacy.modelTier]).toEqual(['claude-x', undefined]);
+
+    await saveRole('global', { slug: 'tier-role', name: 'Роль с тиром', modelTier: 'cheap', systemPrompt: 'p', source: 'global' });
+    const { roles } = await loadRoles();
+    expect(roles.find((r) => r.slug === 'tier-role')?.modelTier).toBe('cheap');
+    // Встроенные роли — тир, а не модель вендора (decision-44 п. 4).
+    const builtin = Object.fromEntries(roles.filter((r) => r.source === 'builtin').map((r) => [r.slug, [r.modelTier, r.model]]));
+    expect(builtin).toMatchObject({
+      implementer: ['balanced', undefined],
+      reviewer: ['frontier', undefined],
+      tester: ['balanced', undefined],
+      'doc-writer': ['cheap', undefined]
+    });
+  });
 });

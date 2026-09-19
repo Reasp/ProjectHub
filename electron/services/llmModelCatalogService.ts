@@ -105,6 +105,19 @@ export class LlmModelCatalogService {
     }
   }
 
+  /**
+   * Модели из кэша каталогов без обращения к серверам (первичное заполнение тиров, decision-44 п. 3):
+   * id профиля → список моделей. Устаревший кэш тоже годится — это подсказка, а не проверка.
+   */
+  public async cachedModels(): Promise<Record<string, string[]>> {
+    const cache = await this.loadCache();
+    const out: Record<string, string[]> = {};
+    for (const [profileId, entry] of Object.entries(cache)) {
+      if (entry && Array.isArray(entry.models)) out[profileId] = entry.models.filter((m): m is string => typeof m === 'string');
+    }
+    return out;
+  }
+
   /** Кэш удалённого профиля больше не нужен. */
   public async forget(profileId: string): Promise<void> {
     const cache = await this.loadCache();

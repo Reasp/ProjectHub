@@ -214,6 +214,15 @@ export type AppBusEvent =
   | ({ type: 'agent:started' } & AgentEventBase)
   | ({ type: 'agent:finished'; outcome: 'done' | 'aborted'; durationMs?: number } & AgentEventBase)
   | ({ type: 'agent:failed'; error: string; durationMs?: number } & AgentEventBase)
+  /** Слот переключился на следующую модель fallback-цепочки (TASK-79, decision-44). */
+  | ({
+      type: 'agent:modelFallback';
+      fromModel: string;
+      toModel: string;
+      errorKind: string;
+      errorReason?: string;
+      waitedMs?: number;
+    } & AgentEventBase)
   // ── События уведомлений (TASK-63, decision-13 п.1) ──
   | {
       type: 'swarm:finished';

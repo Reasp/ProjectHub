@@ -18,7 +18,29 @@ import { loadRoles } from './roleService.js';
 import { llmProfileService } from './llmProfileService.js';
 import { normalizeReasoningEffort } from './reasoningEffort.js';
 import { apiConfigProblem, describeProviderInfo, providerConfigFromSpec, resolveSlotProviderConfig } from './slotProvider.js';
-import { ProviderError, describeProviderErrorBrief, providerConfigError, providerErrorInfoOf } from './providerErrors.js';
+import {
+  ProviderError,
+  classifyClaudeCliError,
+  describeProviderErrorBrief,
+  formatProviderErrorMessage,
+  parseClaudeCliErrorEvent,
+  providerConfigError,
+  providerErrorInfoOf,
+  type ClaudeCliErrorInput,
+  type ProviderErrorInfo
+} from './providerErrors.js';
+import {
+  buildModelChain,
+  chainLinkRef,
+  decideFallback,
+  describeChainLink,
+  describeFallbackStop,
+  emptyModelTierSettings,
+  isModelTier,
+  type ChainLink,
+  type ModelTierSettings
+} from './modelTiers.js';
+import { modelTierService } from './modelTierService.js';
 import { buildEngineInvocation, apiToolNamesForCategories, extractAppendSystemPrompt } from './roleEngineAdapter.js';
 import { buildAgentContext } from './contextBuilder.js';
 import { taskAllowsComputerUse } from './computerPolicy.js';
@@ -188,6 +210,14 @@ export class AgentFleetService extends EventEmitter {
   private usageBaselines = new Map<string, AgentUsage>();
   /** Таблица цен, подменённая через `setPriceTable` (тесты); иначе общая таблица `pricingService`. */
   private priceTableOverride: PriceTable | null = null;
+  /** Таблица тиров, подменённая через `setModelTierSettings` (тесты); иначе `modelTierService`. */
+  private tierSettingsOverride: ModelTierSettings | null = null;
+  /** Звено fallback-цепочки, которым агент работает сейчас (decision-44): модель и цель для движка. */
+  private activeLinks = new Map<string, ChainLink>();
+  /** Номер звена, с которого начнётся следующий ход агента: переключение не откатывается между ходами. */
+  private routingIndexes = new Map<string, number>();
+  /** В текущей попытке хода агент вызывал инструменты — переключать модель уже нельзя (decision-44 п. 6). */
+  private toolActivity = new Set<string>();
   private readyPromise: Promise<void> = Promise.resolve();
 
   /**
@@ -324,6 +354,173 @@ export class AgentFleetService extends EventEmitter {
     return this.priceTableOverride ?? pricingService.getTable();
   }
 
+  /** Подменить таблицу тиров (unit-тесты); `null` — снова `modelTierService`. */
+  public setModelTierSettings(settings: ModelTierSettings | null): void {
+    this.tierSettingsOverride = settings;
+  }
+
+  private async tierSettings(): Promise<ModelTierSettings> {
+    if (this.tierSettingsOverride) return this.tierSettingsOverride;
+    try {
+      return await modelTierService.getSettings();
+    } catch (err) {
+      console.warn('[AgentFleetService] Таблица тиров недоступна, слот работает без тира:', err);
+      return emptyModelTierSettings();
+    }
+  }
+
+  /** Модель, с которой работает агент: звено цепочки тира или модель слота. */
+  private effectiveModel(agentState: AgentSlotState): string | undefined {
+    return this.activeLinks.get(agentState.id)?.model ?? agentState.config.providerConfig?.model;
+  }
+
+  /**
+   * Провайдер API-агента для текущего звена (decision-44 п. 5): звено тира задаёт модель и цель (профиль или
+   * провайдер), усилие и температура слота переносятся. Явная модель слота — конфиг слота как есть.
+   */
+  private effectiveProviderConfig(agentState: AgentSlotState): Partial<AIProviderConfig> | undefined {
+    const slot = agentState.config.providerConfig;
+    const link = this.activeLinks.get(agentState.id);
+    if (!link || link.origin === 'explicit' || link.engine !== 'api') return slot;
+    const target = providerConfigFromSpec({ profile: link.profile, provider: link.provider, model: link.model }) ?? { model: link.model };
+    return {
+      ...target,
+      ...(slot?.reasoningEffort ? { reasoningEffort: slot.reasoningEffort } : {}),
+      ...(typeof slot?.temperature === 'number' ? { temperature: slot.temperature } : {})
+    };
+  }
+
+  /**
+   * Цепочка моделей слота с тиром (decision-44 п. 4–5). Без тира — `null`: слот работает как раньше, без
+   * fallback. Тир без звеньев для движка — пустая цепочка и пояснение в логе.
+   */
+  private async prepareModelRouting(
+    session: SwarmSession,
+    agentState: AgentSlotState
+  ): Promise<{ chain: ChainLink[]; settings: ModelTierSettings } | null> {
+    const tier = agentState.config.modelTier;
+    if (!isModelTier(tier)) return null;
+    const engine = agentState.config.engine;
+    const settings = await this.tierSettings();
+    const slot = agentState.config.providerConfig;
+    // Слот хранит id профиля, таблица тиров — имя: для отчёта и поиска повторов берётся имя, если оно есть.
+    const slotProfile = slot?.profileId
+      ? (await llmProfileService.listProfiles().catch(() => [])).find((p) => p.id === slot.profileId)?.name ?? slot.profileId
+      : undefined;
+    const chain = buildModelChain(settings, {
+      engine,
+      tier,
+      explicit: {
+        model: slot?.model,
+        profile: slotProfile,
+        provider: slot?.provider && slot.provider !== 'openai-compatible' ? slot.provider : undefined
+      }
+    });
+    const previous = agentState.modelRouting;
+    if (chain.length === 0) {
+      const note = `тир «${tier}» для движка ${engine} не настроен — используется ${engine === 'api' ? 'модель AI Studio' : 'модель CLI по умолчанию'}`;
+      agentState.modelRouting = { requestedTier: tier, source: 'default', engine, chainLength: 0, maxSwitches: settings.maxSwitches, switches: previous?.switches ?? [], note };
+      this.log(session, agentState, `[Swarm] ℹ️ Тиры моделей: ${note}.`);
+      return { chain, settings };
+    }
+    agentState.modelRouting = {
+      requestedTier: tier,
+      source: chain[0].origin === 'explicit' ? 'explicit' : 'tier',
+      engine,
+      chainLength: chain.length,
+      maxSwitches: settings.maxSwitches,
+      // Переключения прошлых ходов (цикл «до готовности») остаются в отчёте.
+      switches: previous?.switches ?? []
+    };
+    return { chain, settings };
+  }
+
+  /**
+   * Решение о переключении модели после ошибки хода (decision-44 п. 6). Возвращает номер следующего звена
+   * или ошибку, с которой агент должен упасть (с причиной остановки цепочки).
+   */
+  private async tryModelFallback(
+    session: SwarmSession,
+    agentState: AgentSlotState,
+    err: unknown,
+    routing: { chain: ChainLink[]; settings: ModelTierSettings },
+    index: number,
+    switchesDone: number
+  ): Promise<{ nextIndex: number } | { error: unknown }> {
+    const info = providerErrorInfoOf(err);
+    // Остановка пользователем или по бюджету — не ошибка модели.
+    if (!info || agentState.status !== 'running' || routing.chain.length === 0) return { error: err };
+    const decision = decideFallback({
+      chain: routing.chain,
+      currentIndex: index,
+      error: info,
+      switchesDone,
+      maxSwitches: routing.settings.maxSwitches,
+      maxWaitMs: routing.settings.maxWaitMs,
+      sideEffects: this.toolActivity.has(agentState.id)
+    });
+    if (decision.action === 'stop') {
+      const why = describeFallbackStop(decision.reason, routing.settings.maxSwitches);
+      if (agentState.modelRouting) agentState.modelRouting.stopped = decision.reason;
+      this.log(session, agentState, `[Swarm] Модель не переключена: ${why}.`);
+      // Цепочка была, но не помогла — причина остановки входит в текст ошибки слота.
+      if (decision.reason === 'not_switchable') return { error: err };
+      const wrapped: ProviderErrorInfo = { ...info, message: `${formatProviderErrorMessage(info)} Цепочка моделей: ${why}.` };
+      return { error: new ProviderError(wrapped) };
+    }
+
+    const from = routing.chain[index];
+    const to = routing.chain[decision.nextIndex];
+    const brief = describeProviderErrorBrief(info);
+    if (decision.waitMs > 0) {
+      this.log(session, agentState, `[Swarm] ⏳ ${describeChainLink(from)}: ${brief}. Ожидание ${Math.round(decision.waitMs / 100) / 10} с перед переключением модели.`);
+      await this.waitWhileRunning(agentState, decision.waitMs);
+      if (agentState.status !== 'running') return { error: err };
+    }
+    const record = {
+      at: Date.now(),
+      from: chainLinkRef(from),
+      to: chainLinkRef(to),
+      kind: info.kind,
+      ...(info.reason ? { reason: info.reason } : {}),
+      ...(info.status !== undefined ? { status: info.status } : {}),
+      ...(info.code ? { code: info.code } : {}),
+      ...(decision.waitMs > 0 ? { waitedMs: decision.waitMs } : {}),
+      message: brief
+    };
+    agentState.modelRouting?.switches.push(record);
+    this.log(
+      session,
+      agentState,
+      `[Swarm] 🔀 Переключение модели ${switchesDone + 1}/${routing.settings.maxSwitches}: ${describeChainLink(from)} → ${describeChainLink(to)} (${brief}).`
+    );
+    // Вывод упавшего звена не относится к ответу следующего — он остаётся только в транскрипте.
+    resetLiveOutput(agentState);
+    agentState.metrics.charsGenerated = 0;
+    agentState.providerError = undefined;
+    agentState.error = undefined;
+    appEventBus.publish({
+      type: 'agent:modelFallback',
+      ...this.agentBusBase(session, agentState),
+      at: record.at,
+      fromModel: describeChainLink(from),
+      toModel: describeChainLink(to),
+      errorKind: info.kind,
+      ...(info.reason ? { errorReason: info.reason } : {}),
+      ...(decision.waitMs > 0 ? { waitedMs: decision.waitMs } : {})
+    });
+    this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
+    return { nextIndex: decision.nextIndex };
+  }
+
+  /** Ожидание перед переключением; прерывается остановкой агента или сессии. */
+  private async waitWhileRunning(agentState: AgentSlotState, ms: number): Promise<void> {
+    const until = Date.now() + ms;
+    while (agentState.status === 'running' && Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(250, until - Date.now())));
+    }
+  }
+
   private recomputeSessionCost(session: SwarmSession): void {
     const totals = summarizeSwarmSession(session);
     session.totalCostUsd = totals.costKnown ? totals.costUsd : undefined;
@@ -349,7 +546,7 @@ export class AgentFleetService extends EventEmitter {
           : usage
         : addUsage(agent.metrics.usage ?? emptyUsage(), usage);
     // Локальный провайдер (снимок providerInfo, decision-40) — нулевая цена по провайдеру, а не по имени модели.
-    const priced = priceUsage(merged, model ?? merged.model ?? agent.config.providerConfig?.model, this.currentPriceTable(), {
+    const priced = priceUsage(merged, model ?? merged.model ?? this.effectiveModel(agent), this.currentPriceTable(), {
       local: agent.providerInfo?.local === true
     });
     agent.metrics.usage = priced;
@@ -720,7 +917,9 @@ export class AgentFleetService extends EventEmitter {
       budgetUsd: role.budgetUsd,
       permissions: role.permissions,
       // Без провайдера и профиля роль наследует настройки AI Studio, а не `anthropic` (decision-40).
-      ...(roleProvider ? { providerConfig: roleProvider } : {})
+      ...(roleProvider ? { providerConfig: roleProvider } : {}),
+      // Тир роли (decision-44): модель из таблицы тиров для движка слота; явный `model` роли важнее.
+      ...(role.modelTier ? { modelTier: role.modelTier } : {})
     };
 
     return this.startFanOut({
@@ -1178,14 +1377,33 @@ export class AgentFleetService extends EventEmitter {
     // Новый usage за этот ход: recordUsage всегда записывает новый объект.
     const usageBeforeRun = agentState.metrics.usage;
     try {
-      if (agentState.config.engine === 'claude-cli') {
-        await this.runClaudeCliAgent(session, agentState, targetPath, promptToRun, role, turn.continueSession === true);
-      } else if (agentState.config.engine === 'codex-cli') {
-        await this.runCodexCliAgent(session, agentState, targetPath, promptToRun, role);
-      } else if (agentState.config.engine === 'gemini-cli') {
-        await this.runGeminiCliAgent(session, agentState, targetPath, promptToRun, role);
-      } else {
-        await this.runApiAgent(session, agentState, targetPath, promptToRun, role, turn.continueSession === true);
+      // Тир модели и fallback-цепочка (decision-44): без тира — один проход, как раньше.
+      const routing = await this.prepareModelRouting(session, agentState);
+      let index = routing ? Math.min(this.routingIndexes.get(agentState.id) ?? 0, Math.max(0, routing.chain.length - 1)) : 0;
+      let switchesDone = 0;
+      for (;;) {
+        const link = routing?.chain[index];
+        if (link) {
+          this.activeLinks.set(agentState.id, link);
+          this.routingIndexes.set(agentState.id, index);
+          if (agentState.modelRouting) agentState.modelRouting.current = chainLinkRef(link);
+          if (index > 0 || link.origin === 'tier') {
+            this.log(session, agentState, `[Swarm] Модель: ${describeChainLink(link)}${link.tier ? ` (тир ${link.tier})` : ''}.`);
+          }
+        } else {
+          this.activeLinks.delete(agentState.id);
+        }
+        this.toolActivity.delete(agentState.id);
+        try {
+          await this.runEngineTurn(session, agentState, targetPath, promptToRun, role, turn.continueSession === true);
+          break;
+        } catch (attemptErr) {
+          if (!routing) throw attemptErr;
+          const next = await this.tryModelFallback(session, agentState, attemptErr, routing, index, switchesDone);
+          if ('error' in next) throw next.error;
+          index = next.nextIndex;
+          switchesDone += 1;
+        }
       }
 
       agentState.metrics.endTime = Date.now();
@@ -1198,7 +1416,7 @@ export class AgentFleetService extends EventEmitter {
         this.recordUsage(
           session,
           agentState,
-          estimateUsage({ inputChars: promptToRun.length, outputChars: chars, model: agentState.providerInfo?.model || agentState.config.providerConfig?.model }),
+          estimateUsage({ inputChars: promptToRun.length, outputChars: chars, model: agentState.providerInfo?.model || this.effectiveModel(agentState) }),
           'replace'
         );
       }
@@ -1270,6 +1488,26 @@ export class AgentFleetService extends EventEmitter {
         });
       }
       this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
+    }
+  }
+
+  /** Один проход хода агента выбранным движком (звено цепочки — в `activeLinks`). */
+  private async runEngineTurn(
+    session: SwarmSession,
+    agentState: AgentSlotState,
+    targetPath: string,
+    prompt: string,
+    role: RoleDefinition | undefined,
+    continueSession: boolean
+  ): Promise<void> {
+    if (agentState.config.engine === 'claude-cli') {
+      await this.runClaudeCliAgent(session, agentState, targetPath, prompt, role, continueSession);
+    } else if (agentState.config.engine === 'codex-cli') {
+      await this.runCodexCliAgent(session, agentState, targetPath, prompt, role);
+    } else if (agentState.config.engine === 'gemini-cli') {
+      await this.runGeminiCliAgent(session, agentState, targetPath, prompt, role);
+    } else {
+      await this.runApiAgent(session, agentState, targetPath, prompt, role, continueSession);
     }
   }
 
@@ -1400,7 +1638,7 @@ export class AgentFleetService extends EventEmitter {
     const globalConfig = providerOverride ?? (await aiAgentService.getConfig());
     const profiles = await llmProfileService.listProfiles();
     const { config, info } = resolveSlotProviderConfig(
-      providerOverride ? undefined : agentState.config.providerConfig,
+      providerOverride ? undefined : this.effectiveProviderConfig(agentState),
       globalConfig,
       profiles
     );
@@ -1457,6 +1695,7 @@ export class AgentFleetService extends EventEmitter {
             this.log(session, agentState, `[Thought] ${chunk.thought.slice(0, 200)}...`);
           }
           if (chunk.toolCall) {
+            this.toolActivity.add(agentState.id);
             this.log(session, agentState, `[Tool] ${chunk.toolCall.name}`);
           }
           if (chunk.usage) {
@@ -1523,7 +1762,7 @@ export class AgentFleetService extends EventEmitter {
       engine: 'claude-cli',
       role,
       extraSystemPrompt: await this.buildExtraSystemPrompt(session, agentState, targetPath),
-      model: agentState.config.providerConfig?.model,
+      model: this.effectiveModel(agentState),
       reasoningEffort: normalizeReasoningEffort(agentState.config.providerConfig?.reasoningEffort),
       budgetUsd: agentState.config.budgetUsd
     });
@@ -1590,6 +1829,9 @@ export class AgentFleetService extends EventEmitter {
       let turnUsage = emptyUsage();
       let assistantTurns = 0;
       let stoppedByTurnLimit = false;
+      // API-ошибка хода (decision-44 п. 7): CLI выходит с кодом 0, но ход не выполнен.
+      let cliApiError: ClaudeCliErrorInput | null = null;
+      let cliRetryAfterMs: number | undefined;
       const finish = (fn: () => void) => {
         if (finished) return;
         finished = true;
@@ -1602,6 +1844,17 @@ export class AgentFleetService extends EventEmitter {
       const handleEvent = (event: any) => {
         if (typeof event.session_id === 'string' && event.session_id) {
           agentState.cliSessionId = event.session_id;
+        }
+        const apiError = parseClaudeCliErrorEvent(event);
+        if (apiError && event.type === 'rate_limit_event') {
+          cliRetryAfterMs = apiError.retryAfterMs;
+        } else if (apiError) {
+          cliApiError = { ...cliApiError, ...apiError, message: cliApiError?.message ?? apiError.message };
+          if (event.type === 'assistant') {
+            // Текст ошибки — не ответ модели: в лог, а не в вывод агента.
+            this.log(session, agentState, `[Swarm] Claude CLI: ошибка API${apiError.errorType ? ` (${apiError.errorType})` : ''}: ${apiError.message ?? ''}`.trimEnd());
+            return;
+          }
         }
         if (event.type === 'rate_limit_event' || event.rate_limit_info) {
           try {
@@ -1619,6 +1872,7 @@ export class AgentFleetService extends EventEmitter {
             if (item.type === 'text' && typeof item.text === 'string') {
               this.appendOutput(session, agentState, item.text);
             } else if (item.type === 'tool_use') {
+              this.toolActivity.add(agentState.id);
               const input = item.input && typeof item.input === 'object' ? JSON.stringify(item.input) : '';
               this.log(session, agentState, `[Tool] ${item.name} ${input.slice(0, 300)}`);
             }
@@ -1642,7 +1896,7 @@ export class AgentFleetService extends EventEmitter {
           const summary = parseClaudeResultEvent(event);
           if (!summary) return;
           sawResult = true;
-          if (summary.result && !agentState.liveOutput.trim()) {
+          if (summary.result && !agentState.liveOutput.trim() && !cliApiError) {
             this.appendOutput(session, agentState, summary.result);
           }
           const finalUsage =
@@ -1724,6 +1978,19 @@ export class AgentFleetService extends EventEmitter {
           if (agentState.status !== 'running') {
             agentState.finalOutput = agentState.liveOutput;
             resolve();
+            return;
+          }
+          // Ход упал на API (модель не найдена, лимит, ключ): ошибка провайдера, а не успешный ответ.
+          if (cliApiError) {
+            const model = this.effectiveModel(agentState);
+            reject(
+              new ProviderError(
+                classifyClaudeCliError(
+                  { ...cliApiError, ...(cliRetryAfterMs !== undefined ? { retryAfterMs: cliRetryAfterMs } : {}) },
+                  { provider: 'Claude CLI', ...(model && model !== 'default' ? { model } : {}) }
+                )
+              )
+            );
             return;
           }
           if (code === 0 || sawResult || (sawJson && agentState.liveOutput.length > 0)) {
@@ -1822,7 +2089,7 @@ export class AgentFleetService extends EventEmitter {
       engine: 'codex-cli',
       role,
       extraSystemPrompt: await this.buildExtraSystemPrompt(session, agentState, targetPath),
-      model: agentState.config.providerConfig?.model,
+      model: this.effectiveModel(agentState),
       reasoningEffort: normalizeReasoningEffort(agentState.config.providerConfig?.reasoningEffort),
       autoApprove: effective.autoApprove,
       allowFileWrite: effective.autoApproveRules?.allowFileWrite
@@ -1916,7 +2183,7 @@ export class AgentFleetService extends EventEmitter {
             agentState.finalOutput = agentState.liveOutput;
             const parsed = parseCliUsageText(`${agentState.liveOutput.slice(-4000)}\n${stderrTail}`);
             if (parsed) {
-              this.recordUsage(session, agentState, parsed, 'replace', agentState.config.providerConfig?.model);
+              this.recordUsage(session, agentState, parsed, 'replace', this.effectiveModel(agentState));
             }
             resolve();
           } else {
@@ -1963,7 +2230,7 @@ export class AgentFleetService extends EventEmitter {
       engine: 'gemini-cli',
       role,
       extraSystemPrompt: await this.buildExtraSystemPrompt(session, agentState, targetPath),
-      model: agentState.config.providerConfig?.model,
+      model: this.effectiveModel(agentState),
       reasoningEffort: normalizeReasoningEffort(agentState.config.providerConfig?.reasoningEffort),
       autoApprove: effective.autoApprove
     });
@@ -2043,7 +2310,7 @@ export class AgentFleetService extends EventEmitter {
             agentState.finalOutput = agentState.liveOutput;
             const parsedUsage = parseCliUsageText(`${text.slice(-4000)}\n${stderrTail}`);
             if (parsedUsage) {
-              this.recordUsage(session, agentState, parsedUsage, 'replace', agentState.config.providerConfig?.model);
+              this.recordUsage(session, agentState, parsedUsage, 'replace', this.effectiveModel(agentState));
             }
             resolve();
           } else {

@@ -32,6 +32,7 @@ import { llmProfileService } from '../services/llmProfileService';
 import { llmModelCatalogService } from '../services/llmModelCatalogService';
 import { LLM_PROVIDER_PRESETS, profileFromLegacyConfig } from '../services/llmProfiles';
 import { pricingService } from '../services/pricingService';
+import { modelTierService } from '../services/modelTierService';
 import { providerErrorInfoOf } from '../services/providerErrors';
 import type { IpcContext } from './types';
 
@@ -99,6 +100,12 @@ export function registerAiIpc(ctx: IpcContext) {
   ipcMain.handle('pricing:get', () => pricingService.getState());
   ipcMain.handle('pricing:save', (_event, overrides: unknown) => pricingService.saveOverrides(overrides));
   ipcMain.handle('pricing:fetchOpenRouter', () => pricingService.fetchOpenRouterPrices());
+
+  // Тиры моделей (TASK-79, decision-44): таблица <userData>/model-tiers.json. «Заполнить из настроенного»
+  // ничего не пишет — черновик сохраняется отдельной кнопкой.
+  ipcMain.handle('modelTiers:get', () => modelTierService.getState());
+  ipcMain.handle('modelTiers:save', (_event, settings: unknown) => modelTierService.save(settings));
+  ipcMain.handle('modelTiers:seed', (_event, draft?: unknown) => modelTierService.seed(draft));
 
   ipcMain.handle('ai:getClaudeAuthStatus', async () => {
     return await aiAgentService.getClaudeAuthStatus();
