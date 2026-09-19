@@ -3,10 +3,10 @@ id: TASK-79.3
 title: >-
   Fallback слота по providerError в agentFleetService: API-слоты и Claude CLI,
   лог и уведомление
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 06:18'
-updated_date: '2026-09-19 06:53'
+updated_date: '2026-09-19 07:57'
 labels:
   - ai
   - routing

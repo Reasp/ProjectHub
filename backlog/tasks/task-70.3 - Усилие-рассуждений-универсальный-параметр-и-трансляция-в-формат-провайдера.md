@@ -1,10 +1,10 @@
 ---
 id: TASK-70.3
 title: 'Усилие рассуждений: универсальный параметр и трансляция в формат провайдера'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-18 12:54'
-updated_date: '2026-09-18 14:29'
+updated_date: '2026-09-19 07:57'
 labels:
   - ai
   - model-agnostic

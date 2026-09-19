@@ -3,10 +3,10 @@ id: TASK-79
 title: >-
   Тиры моделей (cheap/balanced/frontier) в ролях и слотах вместо жёстких id,
   каталог моделей от движков, fallback-цепочка при rate limit
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-15 03:14'
-updated_date: '2026-09-19 06:54'
+updated_date: '2026-09-19 07:57'
 labels:
   - ai
   - roles

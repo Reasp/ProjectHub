@@ -3,11 +3,11 @@ id: TASK-70.4
 title: >-
   Редактор цен, нулевая цена локальных моделей и usage OpenAI-совместимых
   серверов
-status: Review
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-18 12:54'
-updated_date: '2026-09-19 00:39'
+updated_date: '2026-09-19 07:57'
 labels:
   - ai
   - model-agnostic

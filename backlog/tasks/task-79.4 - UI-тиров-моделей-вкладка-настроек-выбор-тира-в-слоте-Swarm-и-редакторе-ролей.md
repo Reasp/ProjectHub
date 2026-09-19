@@ -1,10 +1,10 @@
 ---
 id: TASK-79.4
 title: 'UI тиров моделей: вкладка настроек, выбор тира в слоте Swarm и редакторе ролей'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 06:18'
-updated_date: '2026-09-19 06:53'
+updated_date: '2026-09-19 07:57'
 labels:
   - ai
   - ui

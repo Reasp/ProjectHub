@@ -3,10 +3,10 @@ id: TASK-70.5
 title: >-
   Профиль провайдера в слотах Swarm, ролях и Arena; выбор модели по профилям в
   AI Studio
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-18 12:54'
-updated_date: '2026-09-18 13:47'
+updated_date: '2026-09-19 07:57'
 labels:
   - ai
   - model-agnostic
@@ -97,4 +97,6 @@ AC#2 (часть про ModelSelectorDropdown), AC#6 и AC#7 TASK-70. Слот `
 ## Проверки
 Unit: `slotProvider.test.ts`, `providerSelect.test.ts`, дополнения в `llmProfiles.test.ts`, `swarmExport.test.ts`, `roleService.test.ts`; `agentFleetPersistence.test.ts` переведён на профили (слоты deepseek/custom при anthropic в AI Studio теперь намеренно падают). Полный `npm test` 2 раза: 106/106 файлов, 1176/1176, сирот 0 (13 node-процессов MCP-серверов до и после). ESLint 0 ошибок, 499 предупреждений (baseline 501). lint:docs, index-docs — ок.
 `pack:win` 2 раза (build зелёный, check-bundle ✅), последний exe 21:45:59, app.asar 21:45:57. Скриншоты собранного exe на копии userData и временном HOME (копии удалены): меню моделей с группой Ollama и пометкой local, поиск «qwen», триггер «qwen2.5:7b-instruct · Ollama», провайдер «Ollama · local» в редакторе роли, слот Swarm с профилем и подсказками модели. По скриншоту исправлен вылезающий ряд слота (flex-wrap).
+
+2026-09-19: закрыта по решению владельца. AC#4 (облачная модель) не отмечен — живая проверка облачного профиля вынесена в TASK-100.
 <!-- SECTION:NOTES:END -->

@@ -1,10 +1,10 @@
 ---
 id: TASK-79.5
 title: Отчёт о тире и переключениях модели в карточке агента и экспорте сессии
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 06:18'
-updated_date: '2026-09-19 06:53'
+updated_date: '2026-09-19 07:57'
 labels:
   - ai
   - swarm

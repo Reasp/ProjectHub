@@ -1,10 +1,10 @@
 ---
 id: TASK-79.1
 title: Модуль тиров моделей и таблица model-tiers.json с заполнением из настроенного
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 06:17'
-updated_date: '2026-09-19 06:53'
+updated_date: '2026-09-19 07:57'
 labels:
   - ai
   - routing

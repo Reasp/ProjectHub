@@ -1,10 +1,10 @@
 ---
 id: TASK-79.2
 title: 'modelTier в ролях и слотах Swarm, резолв модели тира для API и CLI-движков'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 06:17'
-updated_date: '2026-09-19 06:53'
+updated_date: '2026-09-19 07:57'
 labels:
   - ai
   - roles

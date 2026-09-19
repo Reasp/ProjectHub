@@ -3,10 +3,10 @@ id: TASK-70.6
 title: >-
   Понятные ошибки провайдера: классификатор, сообщение с советом, ошибка не
   роняет сессию
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 01:16'
-updated_date: '2026-09-19 01:49'
+updated_date: '2026-09-19 07:57'
 labels:
   - ai
   - providers
