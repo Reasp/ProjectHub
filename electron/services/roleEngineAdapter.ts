@@ -24,7 +24,8 @@ export const ENGINE_CAPABILITIES: Record<RoleEngine, Record<RoleFeature, boolean
   'claude-cli': { systemPrompt: true, model: true, tools: true, maxTurns: true },
   'codex-cli': { systemPrompt: true, model: true, tools: false, maxTurns: false },
   'gemini-cli': { systemPrompt: true, model: true, tools: false, maxTurns: false },
-  api: { systemPrompt: true, model: true, tools: true, maxTurns: false }
+  // maxTurns API-движка — лимит шагов tool-loop в agentFleetService (TASK-101, decision-46 п. 4).
+  api: { systemPrompt: true, model: true, tools: true, maxTurns: true }
 };
 
 const CLAUDE_TOOLS_BY_CATEGORY: Record<ToolCategory, string[]> = {

@@ -92,10 +92,11 @@ describe('buildEngineInvocation — api', () => {
     expect(result.promptPrefix).toBe(role().systemPrompt);
   });
 
-  it('tools поддерживаются, maxTurns — нет', () => {
+  it('tools и maxTurns поддерживаются (maxTurns — лимит шагов tool-loop, decision-46 п. 4)', () => {
     const r = role({ tools: ['read'], maxTurns: 3 });
     const result = buildEngineInvocation({ engine: 'api', role: r });
-    expect(result.unsupportedFeatures).toEqual(['maxTurns']);
+    expect(result.unsupportedFeatures).toEqual([]);
+    expect(ENGINE_CAPABILITIES.api.maxTurns).toBe(true);
   });
 });
 

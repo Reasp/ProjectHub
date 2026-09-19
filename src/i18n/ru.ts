@@ -2379,7 +2379,7 @@ export const ru: TranslationDictionary = {
       cancelled: 'отменено'
     },
     partialCostHint: 'Оценка: в событиях Claude CLI выход частичный, поэтому по ходам он не показан; точна только стоимость запуска.',
-    notExecutedHint: 'API-агент Swarm не исполняет инструменты: вызов модели записан, но не выполнен.',
+    notExecutedHint: 'Запуск до TASK-101: API-агент Swarm тогда не исполнял инструменты, вызов модели записан, но не выполнен.',
     switchesTitle: 'Переключения модели',
     errorsTitle: 'Ошибки',
     checkpointsTitle: 'Чекпоинты',

@@ -96,6 +96,8 @@ export type AgentTraceEvent =
   | (TraceBase & {
       type: 'hitl';
       requestId: string;
+      /** Вызов инструмента, для которого принято решение (API-агент Swarm, TASK-101); у Claude CLI нет. */
+      toolId?: string;
       decision: 'requested' | 'allow' | 'deny' | 'expired' | 'cancelled';
       tool?: string;
       title?: string;

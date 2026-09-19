@@ -474,7 +474,13 @@ export function buildAgentTimeline(
           ...(ev.title ? { title: ev.title } : {})
         };
         hitl.push(item);
-        // Решение относится к последнему вызову этого инструмента, начатому не позже решения.
+        // Решение с toolId (API-агент) — к этому вызову; иначе к последнему вызову этого инструмента,
+        // начатому не позже решения (несколько вызовов одного шага так различить нельзя).
+        const byId = ev.toolId ? toolOrder.find((t) => t.run === ev.run && t.toolId === ev.toolId) : undefined;
+        if (byId) {
+          byId.hitl.push(item);
+          break;
+        }
         for (let i = toolOrder.length - 1; i >= 0; i--) {
           const t = toolOrder[i];
           if (t.run !== ev.run || t.startedAt > ev.at + 1000) continue;

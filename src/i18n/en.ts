@@ -2379,7 +2379,7 @@ export const en: TranslationDictionary = {
       cancelled: 'cancelled'
     },
     partialCostHint: 'Estimate: Claude CLI events carry only partial output tokens, so output is not shown per turn; only the run cost is exact.',
-    notExecutedHint: 'Swarm API agents do not execute tools: the model call is recorded but not run.',
+    notExecutedHint: 'Run recorded before TASK-101: Swarm API agents did not execute tools then, so the call was recorded but not run.',
     switchesTitle: 'Model switches',
     errorsTitle: 'Errors',
     checkpointsTitle: 'Checkpoints',

@@ -9,7 +9,7 @@ export const ENGINE_CAPABILITIES: Record<RoleEngine, { tools: boolean; maxTurns:
   'claude-cli': { tools: true, maxTurns: true },
   'codex-cli': { tools: false, maxTurns: false },
   'gemini-cli': { tools: false, maxTurns: false },
-  api: { tools: true, maxTurns: false }
+  api: { tools: true, maxTurns: true }
 };
 
 /** Список читаемых предупреждений: что роль просит, но выбранный движок не умеет нативно. */

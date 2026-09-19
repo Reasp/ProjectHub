@@ -6,7 +6,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import treeKill from 'tree-kill';
 import simpleGit from 'simple-git';
 import { worktreeService } from './worktreeService.js';
-import { aiAgentService, type AIProviderConfig, type AIMessage } from './aiAgentService.js';
+import { aiAgentService, type AIProviderConfig, type AIMessage, type StreamToolBoundary } from './aiAgentService.js';
 import { claudeUsageService } from './claudeUsageService.js';
 import { claudeBridgeService, CLI_MCP_TOOL_TIMEOUT_MS } from './claudeBridgeService.js';
 import { hitlService } from './hitlService.js';
@@ -44,6 +44,10 @@ import { modelTierService } from './modelTierService.js';
 import { buildEngineInvocation, apiToolNamesForCategories, extractAppendSystemPrompt } from './roleEngineAdapter.js';
 import { buildAgentContext } from './contextBuilder.js';
 import { taskAllowsComputerUse } from './computerPolicy.js';
+import { computerUseService } from './computerUseService.js';
+import { resolveApiMaxSteps, selectComputerTools } from './apiToolPolicy.js';
+import type { ApiToolContext } from './apiToolExecutor.js';
+import { getApiToolExecutor } from './apiToolExecutorDeps.js';
 import type { RoleDefinition } from './roleTypes.js';
 import { SwarmSessionStore } from './swarmSessionStore.js';
 import { appendLiveOutput, pushAgentLog, resetLiveOutput } from './swarmLogBuffer.js';
@@ -313,6 +317,8 @@ export class AgentFleetService extends EventEmitter {
   private routingIndexes = new Map<string, number>();
   /** В текущей попытке хода агент вызывал инструменты — переключать модель уже нельзя (decision-44 п. 6). */
   private toolActivity = new Set<string>();
+  /** Вызов инструмента, который исполняет API-агент: agentId → id вызова (привязка решений HITL в трассе). */
+  private apiToolsInFlight = new Map<string, string>();
   private readyPromise: Promise<void> = Promise.resolve();
   /** Чекпоинты рабочего каталога агентов (decision-45); `null` — выключены (unit-тесты по умолчанию). */
   private readonly checkpoints: CheckpointService | null;
@@ -1682,12 +1688,14 @@ export class AgentFleetService extends EventEmitter {
       ...(session.doneLoop ? { iteration: session.doneLoop.currentIteration } : {}),
       ...(continueSession ? { continueSession: true } : {}),
       ...(rewindNote ? { afterRewind: true } : {}),
-      // API-агент Swarm инструменты не исполняет (decision-45, долг): вызовы останутся «не исполнены».
-      ...(agentState.config.engine === 'api' ? { toolsExecuted: false } : {}),
       promptChars: promptToRun.length
     });
     ensureHitlTraceSubscription();
-    hitlTraceSinks.set(busBase.sessionId, (event) => this.trace(session, agentState, event));
+    hitlTraceSinks.set(busBase.sessionId, (event) => {
+      // Решение по вызову, который сейчас исполняет API-агент, привязывается к нему (TASK-101).
+      const toolId = this.apiToolsInFlight.get(agentState.id);
+      this.trace(session, agentState, event.type === 'hitl' && toolId ? { ...event, toolId } : event);
+    });
     await this.captureCheckpoint(session, agentState, 'start');
 
     // Новый usage за этот ход: recordUsage всегда записывает новый объект.
@@ -1968,6 +1976,49 @@ export class AgentFleetService extends EventEmitter {
       [role?.systemPrompt, agentState.config.systemPromptAddon, session.doneLoop?.instructions].filter(Boolean).join('\n\n') || undefined;
     const allowedToolNames = role?.tools && role.tools.length > 0 ? apiToolNamesForCategories(role.tools) : undefined;
 
+    // Исполнитель инструментов с HITL (TASK-101, decision-46): правила AI Studio, суженные правами слота,
+    // корень файлов и команд — worktree слота, запросы и аудит — с источником, агентом и ролью.
+    const hitlSessionId = this.hitlSessionId(agentState);
+    const rulesConfig = applyRolePermissions(globalConfig, agentState.config.permissions);
+    const maxSteps = resolveApiMaxSteps(role?.maxTurns);
+    const doneLoop = session.mode === 'done_loop';
+    const taskAllowsComputer =
+      doneLoop && session.taskId
+        ? taskAllowsComputerUse((await findTaskFile(session.projectPath, session.taskId).catch(() => null))?.data.labels)
+        : false;
+    // Управление компьютером — только цикл «до готовности» по задаче с label computer-use (правило 20).
+    const computerTools = selectComputerTools(computerUseService.listProxyTools(), {
+      mode: session.mode,
+      taskAllowsComputerUse: taskAllowsComputer,
+      allowedToolNames
+    });
+    const toolContext: ApiToolContext = {
+      sessionId: hitlSessionId,
+      workDir: targetPath,
+      projectPath: session.projectPath,
+      config: rulesConfig,
+      origin: this.hitlOrigin(session),
+      engine: 'api',
+      agentId: agentState.id,
+      agentName: agentState.config.name,
+      role: agentState.config.role,
+      doneLoop,
+      taskAllowsComputerUse: taskAllowsComputer,
+      roleAutoApprove: agentState.config.permissions?.autoApprove,
+      isActive: () => agentState.status === 'running',
+      // Fallback модели запрещается исполнением инструмента, а не намерением модели (decision-44 п. 6).
+      onExecute: () => this.toolActivity.add(agentState.id),
+      onApprovalRequest: (request) => {
+        this.log(session, agentState, `[HITL] Ожидает решения (${request.type}): ${request.title}`);
+        this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
+      }
+    };
+    this.log(
+      session,
+      agentState,
+      `[HITL] Инструменты исполняются в ${targetPath} (auto-approve: ${rulesConfig.autoApprove ? 'вкл' : 'выкл'}${agentState.config.permissions ? ', права роли применены' : ''}, лимит шагов: ${maxSteps}${computerTools.length > 0 ? `, computer_*: ${computerTools.length}` : ''}).`
+    );
+
     // Повторный ход цикла «до готовности» продолжает тот же диалог (TASK-75).
     const history = continueSession ? this.apiHistories.get(agentState.id) ?? [] : [];
     const messages: AIMessage[] = [
@@ -1984,28 +2035,52 @@ export class AgentFleetService extends EventEmitter {
     const abortSet = this.abortControllers.get(session.id);
     abortSet?.add(controller);
     this.trackAgentAbort(agentState.id, controller);
+    // Остановка слота и бюджет: стрим, карточки HITL агента и его команды (decision-46 п. 3).
+    controller.signal.addEventListener('abort', () => claudeBridgeService.abortSession(hitlSessionId), { once: true });
 
     // Трасса (decision-45 п. 3): ход — запрос к модели, границы — колбэк tool-loop.
     const apiTrace = createApiTraceState(ensureTraceCounters(agentState).turns);
-    const traceApi = (chunk: ApiTraceChunk) => {
+    const traceApi = (chunk: ApiTraceChunk): Promise<void> | undefined => {
       const step = consumeApiChunk(apiTrace, chunk, Date.now());
       if (step.events.length > 0) {
         this.traceStep(session, agentState, step);
         ensureTraceCounters(agentState).turns = lastApiTurnOf(apiTrace);
       }
-      if (step.turnCompleted !== undefined) void this.captureCheckpoint(session, agentState, 'turn', step.turnCompleted);
+      // Tool-loop ждёт снимок хода до следующего запроса к модели (decision-46 п. 8).
+      if (step.turnCompleted !== undefined) return this.captureCheckpoint(session, agentState, 'turn', step.turnCompleted).then(() => undefined);
+      return undefined;
+    };
+    const onToolBoundary = (b: StreamToolBoundary): Promise<void> | undefined => {
+      switch (b.kind) {
+        case 'step':
+          return traceApi({ step: b.step, ...(b.model ? { model: b.model } : {}) });
+        case 'tool_result':
+          return traceApi({ toolResult: { id: b.id, name: b.name, ok: b.ok, outputChars: b.outputChars, durationMs: b.durationMs } });
+        case 'step_usage': {
+          // Бюджет между шагами (decision-46 п. 5): usage запроса складывается, итог streamChat его заменит.
+          const turnUsage = usageDelta(b.usage, undefined);
+          if (turnUsage) this.traceTurnUsage(session, agentState, lastApiTurnOf(apiTrace), turnUsage);
+          this.recordUsage(session, agentState, b.usage, 'add', config.model);
+          return undefined;
+        }
+        case 'step_limit':
+          this.log(session, agentState, `[Swarm] Достигнут лимит ходов${role?.maxTurns ? ' роли' : ''} (${b.maxSteps}) — ${b.pendingCalls} вызов(ов) последнего хода не исполнено, агент останавливается.`);
+          return undefined;
+      }
     };
 
     return new Promise((resolve, reject) => {
       let outputBuffer = '';
       let usageSeen = false;
+      let settled = false;
       const cleanup = () => {
+        settled = true;
         abortSet?.delete(controller);
         this.untrackAgentAbort(agentState.id, controller);
       };
       aiAgentService.streamChat(
         {
-          sessionId: `swarm-${agentState.id}`,
+          sessionId: hitlSessionId,
           projectPath: targetPath,
           messages,
           config,
@@ -2023,9 +2098,8 @@ export class AgentFleetService extends EventEmitter {
             this.log(session, agentState, `[Thought] ${chunk.thought.slice(0, 200)}...`);
           }
           if (chunk.toolCall) {
-            this.toolActivity.add(agentState.id);
             this.log(session, agentState, `[Tool] ${chunk.toolCall.name}`);
-            traceApi({ toolCall: { id: chunk.toolCall.id, name: chunk.toolCall.name, args: chunk.toolCall.args } });
+            void traceApi({ toolCall: { id: chunk.toolCall.id, name: chunk.toolCall.name, args: chunk.toolCall.args } });
           }
           if (chunk.usage) {
             usageSeen = true;
@@ -2052,15 +2126,31 @@ export class AgentFleetService extends EventEmitter {
           reject(info ? new ProviderError(info) : new Error(err));
         },
         {
-          onToolBoundary: (b) =>
-            b.kind === 'step'
-              ? traceApi({ step: b.step, ...(b.model ? { model: b.model } : {}) })
-              : traceApi({ toolResult: { id: b.id, name: b.name, ok: b.ok, outputChars: b.outputChars, durationMs: b.durationMs } })
+          executeTool: async (tc) => {
+            this.apiToolsInFlight.set(agentState.id, tc.id);
+            try {
+              return await getApiToolExecutor().execute(tc, toolContext);
+            } finally {
+              this.apiToolsInFlight.delete(agentState.id);
+            }
+          },
+          computerTools,
+          maxSteps,
+          onToolBoundary
         }
-      ).catch((err) => {
-        cleanup();
-        reject(err);
-      });
+      )
+        .then(() => {
+          // Прерванный стрим не вызывает ни onComplete, ни onError: статус остановки или бюджета уже выставлен.
+          if (!settled && controller.signal.aborted) {
+            cleanup();
+            agentState.finalOutput = outputBuffer;
+            resolve();
+          }
+        })
+        .catch((err) => {
+          cleanup();
+          reject(err);
+        });
     });
   }
 

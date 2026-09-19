@@ -172,7 +172,11 @@ export interface StreamChatComputerTool {
  */
 export type StreamToolBoundary =
   | { kind: 'step'; step: number; model?: string }
-  | { kind: 'tool_result'; id: string; name: string; ok: boolean; outputChars: number; durationMs: number };
+  | { kind: 'tool_result'; id: string; name: string; ok: boolean; outputChars: number; durationMs: number }
+  /** Usage одного запроса к модели (без цены) — для бюджета между шагами (TASK-101, decision-46 п. 5). */
+  | { kind: 'step_usage'; step: number; usage: AgentUsage }
+  /** Лимит шагов исчерпан: вызовы последнего шага не исполнены (decision-46 п. 4). */
+  | { kind: 'step_limit'; step: number; maxSteps: number; pendingCalls: number };
 
 /** Параметры многошагового tool-loop (TASK-82). */
 export interface StreamChatOptions {
@@ -182,8 +186,12 @@ export interface StreamChatOptions {
   computerTools?: StreamChatComputerTool[];
   /** Лимит запросов к модели в одном ходе. */
   maxSteps?: number;
-  /** Границы шагов и исполнения инструментов (трасса агента, TASK-72). */
-  onToolBoundary?: (boundary: StreamToolBoundary) => void;
+  /**
+   * Границы шагов и исполнения инструментов (трасса агента, TASK-72). Промис, возвращённый на
+   * `tool_result`, tool-loop дожидается до следующего запроса к модели — так Swarm снимает чекпоинт хода
+   * без гонки с моделью (decision-46 п. 8).
+   */
+  onToolBoundary?: (boundary: StreamToolBoundary) => void | Promise<void>;
 }
 
 /**
@@ -702,7 +710,7 @@ class AIAgentService {
    *
    * С `options.executeTool` — многошаговый tool-loop (TASK-82): вызовы инструментов из ответа модели
    * исполняются, результаты возвращаются модели, и так до ответа без вызовов или лимита шагов.
-   * Без исполнителя — прежнее поведение: один запрос, вызовы уходят чанками (API-путь Swarm/Done-loop).
+   * Без исполнителя — один запрос, вызовы уходят чанками (ревьюер арены); Swarm передаёт исполнитель (TASK-101).
    */
   public async streamChat(
     req: AIStreamRequest,
@@ -819,6 +827,7 @@ class AIAgentService {
       const note = `\n\n*(Остановлено: достигнут лимит шагов с инструментами — ${maxSteps})*`;
       loop.fullText += note;
       onChunk({ text: note });
+      await onToolBoundary?.({ kind: 'step_limit', step, maxSteps, pendingCalls: calls.length });
       return null;
     }
     const results: Array<{ call: LoopToolCall; result: ToolExecutionResult }> = [];
@@ -827,7 +836,7 @@ class AIAgentService {
       const startedAt = Date.now();
       const result = await executeTool(tc);
       results.push({ call: { id: tc.id, name: tc.name, args: tc.args }, result });
-      onToolBoundary?.({
+      await onToolBoundary?.({
         kind: 'tool_result',
         id: tc.id,
         name: tc.name,
@@ -871,6 +880,8 @@ class AIAgentService {
       onToolBoundary?.({ kind: 'step', step, model });
       const turn = await this.requestAnthropic(req, apiKey, capabilities, systemPrompt, messages, tools, step, signal, onChunk);
       this.accumulateTurn(loop, turn);
+      if (turn.usage) await onToolBoundary?.({ kind: 'step_usage', step, usage: turn.usage });
+      if (signal.aborted) throw abortError();
       const results = await this.executeToolStep(turn.toolCalls, step, maxSteps, loop, onChunk, signal, executeTool, onToolBoundary);
       if (!results) break;
       messages.push(...buildAnthropicToolTurn(turn.blocks, results));
@@ -1176,6 +1187,8 @@ class AIAgentService {
         turn.usage = estimateUsage({ inputChars, outputChars, model: req.config.model });
       }
       this.accumulateTurn(loop, turn);
+      await onToolBoundary?.({ kind: 'step_usage', step, usage: turn.usage });
+      if (signal.aborted) throw abortError();
       const results = await this.executeToolStep(turn.toolCalls, step, maxSteps, loop, onChunk, signal, executeTool, onToolBoundary);
       if (!results) break;
       messages.push(...buildOpenAIToolTurn(turn.text, results, { vision: target.compat.vision }));
