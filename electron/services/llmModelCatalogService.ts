@@ -4,6 +4,15 @@ import path from 'node:path';
 import { llmProfileService, type LlmProfileService } from './llmProfileService.js';
 import { buildProfileHeaders, modelsUrl } from './llmProfiles.js';
 import { isCatalogFresh, parseModelList, type ModelCatalogEntry, type ModelCatalogResult } from './llmModelCatalog.js';
+import {
+  ProviderError,
+  classifyHttpError,
+  providerErrorAdviceRu,
+  providerErrorWhatRu,
+  secretsFromHeaders,
+  toProviderErrorInfo,
+  type ProviderErrorContext
+} from './providerErrors.js';
 
 /** Сколько ждать ответа `/models`: локальный сервер отвечает мгновенно, облачный — за секунды. */
 const CATALOG_FETCH_TIMEOUT_MS = 15_000;
@@ -48,14 +57,24 @@ export class LlmModelCatalogService {
 
     // Прежний список годится как запасной, только если он получен с того же адреса.
     const fallback = entry && entry.baseUrl === profile.baseUrl ? entry : undefined;
+    const errorContext: ProviderErrorContext = {
+      provider: profile.name,
+      profileId: profile.id,
+      endpoint: modelsUrl(profile.baseUrl),
+      local: profile.local,
+      secrets: apiKey ? [apiKey] : []
+    };
     try {
+      // Заголовки — внутри try: профиль без обязательного ключа даёт ошибку каталога, а не исключение.
+      const headers = buildProfileHeaders(profile, apiKey);
+      errorContext.secrets = [...(errorContext.secrets ?? []), ...secretsFromHeaders(headers)];
       const response = await this.fetchImpl(modelsUrl(profile.baseUrl), {
         method: 'GET',
-        headers: buildProfileHeaders(profile, apiKey),
+        headers,
         signal: AbortSignal.timeout(CATALOG_FETCH_TIMEOUT_MS)
       });
       if (!response.ok) {
-        throw new Error(`сервер ответил ${response.status}: ${(await response.text()).slice(0, 300)}`);
+        throw new ProviderError(classifyHttpError({ status: response.status, body: await response.text(), headers: response.headers }, errorContext));
       }
       const models = parseModelList(await response.json());
       const fresh: ModelCatalogEntry = { baseUrl: profile.baseUrl, models, fetchedAt: Date.now() };
@@ -63,7 +82,20 @@ export class LlmModelCatalogService {
       await this.saveCache().catch((err) => console.warn('[LlmModelCatalog] Кэш не сохранён:', err));
       return { models, fetchedAt: fresh.fetchedAt, cached: false };
     } catch (err) {
-      const reason = err instanceof Error ? (err.name === 'TimeoutError' ? `нет ответа за ${CATALOG_FETCH_TIMEOUT_MS / 1000} с` : err.message) : String(err);
+      // Вид ошибки — тем же классификатором, что и запросы к модели (decision-43): «fetch failed»
+      // превращается в «сервер не принимает подключения (ECONNREFUSED)» с советом.
+      const info = toProviderErrorInfo(err, errorContext);
+      let reason: string;
+      if (!info) {
+        reason = String(err);
+      } else if (info.kind === 'unknown') {
+        reason = info.message;
+      } else {
+        const tech = info.status !== undefined ? `HTTP ${info.status}` : info.code ?? '';
+        const detail = info.reason === 'timeout' ? `нет ответа за ${CATALOG_FETCH_TIMEOUT_MS / 1000} с` : info.serverMessage;
+        const advice = providerErrorAdviceRu(info);
+        reason = `${providerErrorWhatRu(info)}${tech ? ` (${tech})` : ''}${detail ? `: ${detail}` : ''}.${advice ? ` ${advice}` : ''}`;
+      }
       return {
         models: fallback?.models ?? [],
         fetchedAt: fallback?.fetchedAt ?? null,

@@ -9,6 +9,7 @@
  * Модуль без зависимостей от Electron — импортируется чистыми модулями и unit-тестами.
  * Зеркало для рендерера — `src/types/electron.d.ts`.
  */
+import type { ProviderErrorInfo } from './providerErrors.js';
 
 export type CheckKind = 'lint' | 'test' | 'build' | 'typecheck' | 'custom';
 
@@ -138,6 +139,8 @@ export interface ReviewerVerdict {
   costUsd?: number;
   durationMs?: number;
   error?: string;
+  /** Снимок ошибки провайдера ревьюера (decision-43): вид, статус, retryable. */
+  providerError?: ProviderErrorInfo;
   /** Сырой ответ модели — показывается, если распарсить структуру не удалось. */
   raw?: string;
 }

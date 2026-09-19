@@ -56,6 +56,8 @@ import {
   verdictClass,
   verdictLabel
 } from '../../../utils/arenaFormat';
+import { providerErrorAdvice, providerErrorTitle } from '../../../lib/providerErrorView';
+import { AdviceText } from '../ProviderErrorCard';
 
 /** Вкладки карточки кандидата: к выводу/логам/диффу добавлены проверки и ревью судьи (TASK-61). */
 type AgentTab = 'output' | 'logs' | 'diff' | 'checks' | 'review';
@@ -683,6 +685,29 @@ export const SwarmArenaView: React.FC = () => {
                         )}
                       </div>
 
+                      {/* Причина падения на виду, а не только во всплывающей подсказке (TASK-70.6, decision-43) */}
+                      {agent.status === 'failed' && agent.error && (
+                        <div
+                          className="px-4 py-2 border-b border-rose-500/20 bg-rose-500/10 text-[11px] text-rose-300 flex items-start gap-2"
+                          title={agent.error}
+                          data-testid="agent-provider-error"
+                        >
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-rose-400" />
+                          <div className="min-w-0">
+                            <div className="font-semibold">
+                              {agent.providerError
+                                ? t.providerErrors.agentFailed.replace('{kind}', providerErrorTitle(agent.providerError, t.providerErrors))
+                                : t.providerErrors.agentFailed.replace('{kind}', agent.error.slice(0, 160))}
+                            </div>
+                            {agent.providerError && (
+                              <div className="text-rose-300/80 line-clamp-2">
+                                <AdviceText text={providerErrorAdvice(agent.providerError, t.providerErrors) ?? agent.error} />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Worktree & Metrics Bar */}
                       <div className="px-4 py-2 bg-secondary/20 border-b border-border/60 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                         <div className="flex items-center gap-2 text-muted-foreground truncate">
@@ -894,6 +919,11 @@ ${t.swarm.estimatedUsageTooltip}` : '')}
                                     <RefreshCw className="w-4 h-4 animate-spin text-primary" />
                                     {t.swarm.generatingSolution}
                                   </div>
+                                ) : agent.status === 'failed' && agent.error ? (
+                                  // Упавший агент без вывода: полный текст ошибки, а не «Ожидание старта» (TASK-70.6).
+                                  <div className="max-w-full px-2 text-[11px] text-rose-300/90 whitespace-pre-wrap break-words select-text">
+                                    {agent.error}
+                                  </div>
                                 ) : (
                                   t.swarm.waitingStart
                                 )}
@@ -1097,6 +1127,11 @@ ${t.swarm.estimatedUsageTooltip}` : '')}
                               <>
                                 {agent.review.status === 'failed' && (
                                   <div className="px-2 py-1.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded text-[11px]">
+                                    {agent.review.providerError && (
+                                      <div className="font-semibold">
+                                        {t.providerErrors.reviewerFailed.replace('{kind}', providerErrorTitle(agent.review.providerError, t.providerErrors))}
+                                      </div>
+                                    )}
                                     {t.judge.reviewFailed.replace('{error}', agent.review.error || '')}
                                   </div>
                                 )}

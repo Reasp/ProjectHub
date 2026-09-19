@@ -9,6 +9,7 @@ import { worktreeService } from '../../electron/services/worktreeService';
 import { aiAgentService } from '../../electron/services/aiAgentService';
 import { llmProfileService } from '../../electron/services/llmProfileService';
 import { profileFromPreset } from '../../electron/services/llmProfiles';
+import { classifyHttpError } from '../../electron/services/providerErrors';
 
 /** Слот с чужим облачным провайдером работает только через профиль (decision-40). */
 function mockProfiles(...ids: string[]) {
@@ -364,5 +365,50 @@ describe('AgentFleetService: стоимость и бюджет (TASK-56, AC #3,
     const md = fleet.exportSession(session.id, 'markdown')!;
     expect(md).toContain('~10 / ~100');
     expect(md).toContain('оценка по длине текста');
+  });
+
+  it('ошибка провайдера у одного слота не роняет остальные; вид ошибки в снимке и экспорте (decision-43)', async () => {
+    vi.spyOn(aiAgentService, 'streamChat').mockImplementation(async (req, onChunk, onComplete, onError) => {
+      if (req.config.model === 'no-such:1b') {
+        // Реальное тело Ollama 0.34 на несуществующую модель.
+        const info = classifyHttpError(
+          { status: 404, body: `{"error":{"message":"model 'no-such:1b' not found","type":"not_found_error","param":null,"code":null}}` },
+          { provider: 'Ollama', endpoint: 'http://127.0.0.1:11434/v1/chat/completions', model: 'no-such:1b', local: true }
+        );
+        onError(info.message, info);
+        return;
+      }
+      onChunk({ text: 'ok' });
+      onComplete({ id: 'm', role: 'assistant', content: 'ok', timestamp: new Date().toISOString() });
+    });
+    vi.spyOn(llmProfileService, 'listProfiles').mockResolvedValue([{ ...profileFromPreset('ollama', 'p-ollama', 'Ollama'), hasApiKey: false }]);
+    const fleet = new AgentFleetService(null);
+    const session = await fleet.startFanOut({
+      projectPath: 'F:/ProjectHub',
+      prompt: 'p',
+      useWorktrees: false,
+      agents: [
+        { id: 'bad', name: 'Bad', engine: 'api', providerConfig: { provider: 'openai-compatible', profileId: 'Ollama', model: 'no-such:1b' } },
+        { id: 'good', name: 'Good', engine: 'api', providerConfig: { provider: 'openai-compatible', profileId: 'Ollama', model: 'qwen2.5:7b' } },
+        { id: 'gone', name: 'Gone', engine: 'api', providerConfig: { provider: 'openai-compatible', profileId: 'Удалённый', model: 'x' } }
+      ]
+    });
+    await wait(30);
+    const [bad, good, gone] = session.agents;
+    expect(good.status).toBe('completed');
+    expect(good.providerError).toBeUndefined();
+    expect(bad.status).toBe('failed');
+    expect(bad.providerError).toMatchObject({ kind: 'model_not_found', status: 404, retryable: false, local: true, model: 'no-such:1b' });
+    expect(bad.error).toContain('ollama pull no-such:1b');
+    // Профиль не найден — ошибка настройки до запроса, тоже со снимком.
+    expect(gone.status).toBe('failed');
+    expect(gone.providerError).toMatchObject({ kind: 'config', reason: 'no_profile' });
+    expect(bad.logs.some((l) => l.includes('model_not_found (HTTP 404'))).toBe(true);
+
+    const md = fleet.exportSession(session.id, 'markdown')!;
+    expect(md).toContain('- Вид ошибки: `model_not_found (HTTP 404, код not_found_error, повтор без изменения настроек не поможет)`');
+    expect(md).toContain('- Вид ошибки: `config/no_profile');
+    const json = JSON.parse(fleet.exportSession(session.id, 'json')!);
+    expect(json.session.agents.find((a: { id: string }) => a.id === 'bad').providerError.kind).toBe('model_not_found');
   });
 });

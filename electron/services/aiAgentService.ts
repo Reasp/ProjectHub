@@ -24,7 +24,20 @@ import {
 import { buildOpenAICompatibleChatBody } from './openAICompatibleRequest.js';
 import { legacyProviderCompat, legacyProviderIsLocal, type LlmCompatFlags } from './llmProfiles.js';
 import { llmProfileService } from './llmProfileService.js';
-import { extractReasoningDelta, normalizeReasoningEffort, reasoningErrorHint, type ReasoningEffort } from './reasoningEffort.js';
+import { extractReasoningDelta, normalizeReasoningEffort, type ReasoningEffort } from './reasoningEffort.js';
+import {
+  ProviderError,
+  classifyHttpError,
+  classifyNetworkError,
+  classifyStreamError,
+  describeProviderErrorBrief,
+  providerConfigError,
+  secretsFromHeaders,
+  timeoutError,
+  toProviderErrorInfo,
+  type ProviderErrorContext,
+  type ProviderErrorInfo
+} from './providerErrors.js';
 
 /** Адрес, заголовки и флаги запроса к OpenAI-совместимому серверу; `label` — для сообщений. */
 interface OpenAICompatibleTarget {
@@ -34,7 +47,11 @@ interface OpenAICompatibleTarget {
   label: string;
   /** Сервер на машине пользователя: стоимость 0 (decision-42). */
   local: boolean;
+  /** Id профиля — для снимка ошибки (decision-43). */
+  profileId?: string;
 }
+
+const ANTHROPIC_MESSAGES_ENDPOINT = 'https://api.anthropic.com/v1/messages';
 import { logger } from './logger.js';
 import { buildClaudeCliCompletionCommand, parseClaudeCliCompletionOutput } from './claudeCliCompletion.js';
 import {
@@ -104,6 +121,9 @@ export interface AIMessage {
   timestamp: string;
   /** Токены и стоимость ответа модели, если провайдер их сообщил (TASK-56). */
   usage?: AgentUsage;
+  /** Ответ завершился ошибкой — пишет renderer (TASK-70.6); в историю для модели такой ответ не идёт. */
+  error?: string;
+  providerError?: ProviderErrorInfo;
 }
 
 /** Чанк стрима: текст/рассуждение/вызов инструмента, плюс usage ответа по завершении (TASK-56). */
@@ -242,6 +262,47 @@ function abortError(): Error {
   const err = new Error('Aborted');
   err.name = 'AbortError';
   return err;
+}
+
+/** Сетевая ошибка (обрыв, таймаут) → `ProviderError` со снимком; остальное, включая отмену, — как есть. */
+function asProviderError(err: unknown, ctx: ProviderErrorContext): unknown {
+  if (err instanceof ProviderError) return err;
+  const info = classifyNetworkError(err, ctx);
+  return info ? new ProviderError(info, { cause: err }) : err;
+}
+
+/**
+ * `fetch` к провайдеру: сетевая ошибка и ответ не 2xx становятся `ProviderError` с видом ошибки,
+ * адресом и моделью, без ключа (decision-43). Отмена (`AbortError`) пробрасывается как есть.
+ */
+async function fetchProvider(url: string, init: RequestInit, ctx: ProviderErrorContext): Promise<Response> {
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch (err) {
+    throw asProviderError(err, ctx);
+  }
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new ProviderError(classifyHttpError({ status: response.status, body, headers: response.headers }, ctx));
+  }
+  return response;
+}
+
+/** Контекст ошибки запроса к OpenAI-совместимому серверу: профиль, адрес, модель, ключ для вырезания. */
+function openAICompatibleErrorContext(target: OpenAICompatibleTarget, model: string | undefined): ProviderErrorContext {
+  return {
+    provider: target.label,
+    ...(target.profileId ? { profileId: target.profileId } : {}),
+    endpoint: target.endpoint,
+    ...(model ? { model } : {}),
+    local: target.local,
+    secrets: secretsFromHeaders(target.headers)
+  };
+}
+
+function anthropicErrorContext(model: string | undefined, apiKey: string): ProviderErrorContext {
+  return { provider: 'Anthropic', endpoint: ANTHROPIC_MESSAGES_ENDPOINT, ...(model ? { model } : {}), local: false, secrets: [apiKey] };
 }
 
 export interface ClaudeAuthStatus {
@@ -413,7 +474,7 @@ class AIAgentService {
     const config = req.config ?? (await this.getConfig());
     const model = config.model?.trim();
     if (!model || isUnsetModelId(model)) {
-      throw new Error('Модель не выбрана в настройках AI Studio.');
+      throw providerConfigError('Модель не выбрана в настройках AI Studio.', 'no_model');
     }
 
     const timeoutMs = req.timeoutMs ?? DEFAULT_COMPLETE_TIMEOUT_MS;
@@ -431,8 +492,9 @@ class AIAgentService {
             : await this.completeClaudeCli(req, model, controller.signal);
       return { text, model, provider: config.provider };
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw new Error(`Модель «${model}» не ответила за ${timeoutMs} мс.`, { cause: err });
+      // Отмена вызывающим кодом — как есть; срабатывание своего таймера — ошибка «сервер не ответил».
+      if (err instanceof Error && err.name === 'AbortError' && !req.signal?.aborted) {
+        throw new ProviderError(timeoutError(timeoutMs, { provider: config.provider, model }), { cause: err });
       }
       throw err;
     } finally {
@@ -450,7 +512,7 @@ class AIAgentService {
   ): Promise<string> {
     const apiKey = config.apiKey?.trim();
     if (!apiKey) {
-      throw new Error('API ключ Anthropic не указан: служебные запросы к модели идут по API, а не через Claude CLI.');
+      throw providerConfigError('API ключ Anthropic не указан: служебные запросы к модели идут по API, а не через Claude CLI.', 'no_key');
     }
 
     const body: Record<string, unknown> = {
@@ -462,20 +524,20 @@ class AIAgentService {
     };
     if (req.system) body.system = req.system;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
+    const response = await fetchProvider(
+      ANTHROPIC_MESSAGES_ENDPOINT,
+      {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify(body),
+        signal
       },
-      body: JSON.stringify(body),
-      signal
-    });
-
-    if (!response.ok) {
-      throw new Error(`Anthropic API Error (${response.status}): ${await response.text()}`);
-    }
+      anthropicErrorContext(model, apiKey)
+    );
 
     const data = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
     return (data.content ?? [])
@@ -553,31 +615,37 @@ class AIAgentService {
     model: string,
     signal: AbortSignal
   ): Promise<string> {
-    const { endpoint, headers, compat } = await this.resolveOpenAICompatibleTarget(config);
+    const target = await this.resolveOpenAICompatibleTarget(config);
+    const { endpoint, headers, compat } = target;
+    const errorContext = openAICompatibleErrorContext(target, model);
     const messages: Array<{ role: string; content: string }> = [];
     if (req.system) messages.push({ role: 'system', content: req.system });
     messages.push({ role: 'user', content: req.prompt });
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: req.temperature ?? 0,
-        [compat.maxTokensField]: req.maxTokens ?? DEFAULT_COMPLETE_MAX_TOKENS,
-        stream: false
-      }),
-      signal
-    });
-
-    if (!response.ok) {
-      throw new Error(`API Error (${response.status}): ${await response.text()}`);
-    }
+    const response = await fetchProvider(
+      endpoint,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: req.temperature ?? 0,
+          [compat.maxTokensField]: req.maxTokens ?? DEFAULT_COMPLETE_MAX_TOKENS,
+          stream: false
+        }),
+        signal
+      },
+      errorContext
+    );
 
     const data = (await response.json()) as {
+      error?: unknown;
       choices?: Array<{ message?: { content?: unknown } }>;
     };
+    // Некоторые серверы отвечают 200 с {"error": …} вместо текста.
+    const inBody = classifyStreamError(data, errorContext);
+    if (inBody) throw new ProviderError(inBody);
     const content = data.choices?.[0]?.message?.content;
     return typeof content === 'string' ? content.trim() : '';
   }
@@ -629,7 +697,8 @@ class AIAgentService {
     req: AIStreamRequest,
     onChunk: (payload: AIStreamChunkPayload) => void,
     onComplete: (msg: AIMessage) => void,
-    onError: (err: string) => void,
+    /** `info` — снимок ошибки провайдера (decision-43): вид, адрес, модель; для прочих ошибок — `unknown`. */
+    onError: (err: string, info?: ProviderErrorInfo) => void,
     options: StreamChatOptions = {}
   ): Promise<void> {
     const controller = new AbortController();
@@ -691,10 +760,14 @@ class AIAgentService {
         ...(loop.usage ? { usage: loop.usage } : {})
       });
     } catch (err: any) {
-      if (err.name === 'AbortError') {
+      if (err?.name === 'AbortError') {
         onChunk({ text: '\n\n*(Отменено пользователем)*' });
       } else {
-        onError(err.message || String(err));
+        const info = toProviderErrorInfo(err, { provider: req.config.provider, ...(req.config.model ? { model: req.config.model } : {}) });
+        const message = info?.message || err?.message || String(err);
+        // Ключ в сообщение не попадает: адрес очищен, заголовки авторизации вырезаны (providerErrors.ts).
+        logger.warn(`[aiAgentService] Сессия ${req.sessionId}: ${info ? describeProviderErrorBrief(info) : 'ошибка'} — ${message}`);
+        onError(message, info);
       }
     } finally {
       this.activeControllers.delete(req.sessionId);
@@ -760,7 +833,10 @@ class AIAgentService {
     const model = resolveAnthropicModelId(req.config.model);
     const apiKey = req.config.apiKey?.trim();
     if (!apiKey) {
-      throw new Error('API ключ Anthropic не указан. Пожалуйста, откройте настройки AI Studio и укажите ключ.');
+      throw providerConfigError('API ключ Anthropic не указан. Пожалуйста, откройте настройки AI Studio и укажите ключ.', 'no_key', {
+        provider: 'Anthropic',
+        model: req.config.model
+      });
     }
     const capabilities = await this.getAnthropicModelCapabilities(model, apiKey, signal);
     const messages: unknown[] = req.messages
@@ -821,7 +897,6 @@ class AIAgentService {
     signal: AbortSignal,
     onChunk: (payload: AIStreamChunkPayload) => void
   ): Promise<ModelTurn> {
-    const endpoint = 'https://api.anthropic.com/v1/messages';
     const { body, notes } = buildAnthropicMessagesBody(
       {
         model: req.config.model,
@@ -840,23 +915,28 @@ class AIAgentService {
       for (const note of notes) logger.info(`[aiAgentService] ${note}`);
     }
     const model = body.model as string;
+    const errorContext: ProviderErrorContext = {
+      ...anthropicErrorContext(model, apiKey),
+      toolsSent: tools.length > 0,
+      ...(req.config.reasoningEffort ? { reasoningEffort: String(req.config.reasoningEffort) } : {})
+    };
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
+    const response = await fetchProvider(
+      ANTHROPIC_MESSAGES_ENDPOINT,
+      {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify(body),
+        signal
       },
-      body: JSON.stringify(body),
-      signal
-    });
+      errorContext
+    );
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Anthropic API Error (${response.status}): ${errText}`);
-    }
-
+    let streamError: ProviderErrorInfo | undefined;
     let fullText = '';
     let fullThought = '';
     const toolCalls: AIToolCall[] = [];
@@ -870,8 +950,14 @@ class AIAgentService {
     const decoder = new TextDecoder();
     let buffer = '';
 
-    while (true) {
-      const { done, value } = await reader.read();
+    while (!streamError) {
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch (err) {
+        throw asProviderError(err, errorContext);
+      }
+      const { done, value } = chunk;
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
@@ -887,7 +973,11 @@ class AIAgentService {
         try {
           const parsed = JSON.parse(dataStr);
           const index = typeof parsed.index === 'number' ? parsed.index : blocks.size;
-          if (parsed.type === 'message_start' && parsed.message?.usage) {
+          if (parsed.type === 'error') {
+            // Событие error посреди потока (overloaded_error и т.п.) — раньше молча терялось.
+            streamError = classifyStreamError(parsed, errorContext);
+            if (streamError) break;
+          } else if (parsed.type === 'message_start' && parsed.message?.usage) {
             // Входные токены и кэш известны сразу; output_tokens придут в message_delta.
             usage = usageFromAnthropic(parsed.message.usage, parsed.message.model || model) ?? usage;
           } else if (parsed.type === 'message_delta' && parsed.usage) {
@@ -980,6 +1070,10 @@ class AIAgentService {
         }
       }
     }
+    if (streamError) {
+      await reader.cancel().catch(() => undefined);
+      throw new ProviderError(streamError);
+    }
 
     return {
       text: fullText,
@@ -998,7 +1092,14 @@ class AIAgentService {
   private async resolveOpenAICompatibleTarget(config: AIProviderConfig): Promise<OpenAICompatibleTarget> {
     if (config.provider === 'openai-compatible') {
       const target = await llmProfileService.resolveRequestTarget(config.profileId);
-      return { endpoint: target.endpoint, headers: target.headers, compat: target.compat, label: target.profile.name, local: target.profile.local };
+      return {
+        endpoint: target.endpoint,
+        headers: target.headers,
+        compat: target.compat,
+        label: target.profile.name,
+        local: target.profile.local,
+        profileId: target.profile.id
+      };
     }
     const { endpoint, headers } = resolveOpenAICompatibleEndpoint(config);
     return {
@@ -1084,34 +1185,39 @@ class AIAgentService {
       for (const note of notes) logger.info(`[aiAgentService] ${note}`);
     }
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal
-    });
+    // Отказ сервера разбирает классификатор (decision-43): «не поддерживает tools» — только если tools
+    // были в запросе, совет по усилию — только если усилие ушло в тело (notes пусты, decision-41 п. 2).
+    const errorContext: ProviderErrorContext = {
+      ...openAICompatibleErrorContext(target, typeof body.model === 'string' ? body.model : req.config.model),
+      toolsSent: Boolean(tools),
+      ...(reasoningEffort && notes.length === 0 ? { reasoningEffort } : {})
+    };
+    const response = await fetchProvider(
+      endpoint,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal
+      },
+      errorContext
+    );
 
-    if (!response.ok) {
-      const errText = await response.text();
-      if (tools && /does not support tools|tool(s)? (is|are) not supported|tool_choice/i.test(errText)) {
-        throw new Error(
-          `Модель «${body.model}» у провайдера ${target.label} не поддерживает вызов инструментов (tools). `
-          + `Для режима агента выберите модель с tool calling. Ответ API (${response.status}): ${errText}`
-        );
-      }
-      const hint = notes.length === 0 ? reasoningErrorHint(errText, reasoningEffort) : undefined;
-      throw new Error(`API Error (${response.status}): ${errText}${hint ? `
-${hint}` : ''}`);
-    }
-
+    // Ошибка внутри потока при статусе 200 (OpenRouter, Ollama) — раньше молча терялась.
+    let streamError: ProviderErrorInfo | undefined;
     let fullText = '';
     let fullThought = '';
     let usage: AgentUsage | null = null;
     const accumulator = new OpenAIToolCallAccumulator();
 
     type OpenAIDelta = { content?: string; tool_calls?: unknown };
-    type OpenAIStreamPayload = { usage?: unknown; model?: string; choices?: Array<{ delta?: OpenAIDelta; message?: OpenAIDelta }> };
+    type OpenAIStreamPayload = { error?: unknown; usage?: unknown; model?: string; choices?: Array<{ delta?: OpenAIDelta; message?: OpenAIDelta }> };
     const handlePayload = (parsed: OpenAIStreamPayload) => {
+      const inStream = classifyStreamError(parsed, errorContext);
+      if (inStream) {
+        streamError = inStream;
+        return;
+      }
       if (parsed.usage) {
         usage = usageFromOpenAI(parsed.usage, parsed.model || body.model) ?? usage;
       }
@@ -1136,7 +1242,12 @@ ${hint}` : ''}`);
     };
 
     if (!(response.headers.get('content-type') || '').includes('text/event-stream') && response.body) {
-      const text = await response.text();
+      let text: string;
+      try {
+        text = await response.text();
+      } catch (err) {
+        throw asProviderError(err, errorContext);
+      }
       try {
         handlePayload(JSON.parse(text));
       } catch {
@@ -1149,8 +1260,15 @@ ${hint}` : ''}`);
       const decoder = new TextDecoder();
       let buffer = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
+      while (!streamError) {
+        let chunk: ReadableStreamReadResult<Uint8Array>;
+        try {
+          chunk = await reader.read();
+        } catch (err) {
+          // Обрыв соединения посреди ответа (`terminated`) — сетевая ошибка провайдера.
+          throw asProviderError(err, errorContext);
+        }
+        const { done, value } = chunk;
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -1168,9 +1286,12 @@ ${hint}` : ''}`);
           } catch (e) {
             // ignore chunk parse errors
           }
+          if (streamError) break;
         }
       }
+      if (streamError) await reader.cancel().catch(() => undefined);
     }
+    if (streamError) throw new ProviderError(streamError);
 
     const toolCalls: AIToolCall[] = accumulator.finalize(`call-${step}`).map((call) => ({
       id: call.id,

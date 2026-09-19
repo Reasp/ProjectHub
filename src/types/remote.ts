@@ -233,7 +233,8 @@ export interface RemoteEventPayloads {
   'process:statusChanged': any;
   'ai:chunk': { sessionId: string; text?: string };
   'ai:complete': { sessionId: string; message: unknown };
-  'ai:error': { sessionId: string; error: string };
+  /** `errorKind` — вид ошибки провайдера (decision-43), если она классифицирована. */
+  'ai:error': { sessionId: string; error: string; errorKind?: string };
   /** Запрос HITL (TASK-57): решение отправляется RPC `hitl_decision` строго с `requestId`. */
   'ai:hitl': {
     requestId: string;

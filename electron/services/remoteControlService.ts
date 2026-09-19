@@ -2042,7 +2042,7 @@ class RemoteControlService {
             },
             (chunk) => this.broadcastEvent('ai:chunk', { sessionId, ...chunk }),
             (fullMsg) => this.broadcastEvent('ai:complete', { sessionId, message: fullMsg }),
-            (err) => this.broadcastEvent('ai:error', { sessionId, error: err })
+            (err, info) => this.broadcastEvent('ai:error', { sessionId, error: err, ...(info ? { errorKind: info.kind } : {}) })
           )
           .catch((err: any) => {
             this.broadcastEvent('ai:error', { sessionId, error: err?.message || String(err) });

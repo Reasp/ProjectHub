@@ -2171,4 +2171,68 @@ export interface TranslationDictionary {
     tabLabel: string;
     close: string;
   };
+  /** Ошибки LLM-провайдера (TASK-70.6, decision-43): заголовок по виду, совет, детали. */
+  providerErrors: {
+    heading: string;
+    kinds: {
+      auth: string;
+      quota: string;
+      model_not_found: string;
+      rate_limit: string;
+      unavailable: string;
+      bad_request: string;
+      config: string;
+      unknown: string;
+    };
+    reasons: {
+      forbidden: string;
+      tools: string;
+      reasoning: string;
+      context: string;
+      unsupported: string;
+      moderation: string;
+      refused: string;
+      dns: string;
+      timeout: string;
+      tls: string;
+      network: string;
+      overloaded: string;
+      endpoint: string;
+    };
+    advice: {
+      auth: string;
+      authProfile: string;
+      authForbidden: string;
+      quota: string;
+      modelNotFoundLocal: string;
+      modelNotFound: string;
+      rateLimit: string;
+      rateLimitWait: string;
+      refusedLocal: string;
+      refused: string;
+      dns: string;
+      timeoutLocal: string;
+      timeout: string;
+      tls: string;
+      unavailable: string;
+      tools: string;
+      reasoning: string;
+      context: string;
+      unsupported: string;
+      moderation: string;
+      badRequest: string;
+      endpoint: string;
+    };
+    provider: string;
+    model: string;
+    endpoint: string;
+    status: string;
+    serverResponse: string;
+    details: string;
+    retry: string;
+    retryable: string;
+    notRetryable: string;
+    agentFailed: string;
+    reviewerFailed: string;
+  };
 }

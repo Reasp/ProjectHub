@@ -5,8 +5,7 @@ import {
   extractReasoningDelta,
   normalizeReasoningEffort,
   openAICompatibleReasoningFields,
-  pickSupportedEffort,
-  reasoningErrorHint
+  pickSupportedEffort
 } from '../../electron/services/reasoningEffort';
 import { buildOpenAICompatibleChatBody } from '../../electron/services/openAICompatibleRequest';
 import { getPreset, legacyProviderCompat, type LlmCompatFlags } from '../../electron/services/llmProfiles';
@@ -77,15 +76,6 @@ describe('buildOpenAICompatibleChatBody: усилие в теле запроса
     expect(legacyProviderCompat('openrouter').reasoning).toBe('reasoning_object');
     expect(legacyProviderCompat('deepseek').reasoning).toBe('none');
     expect(legacyProviderCompat('custom').reasoning).toBe('none');
-  });
-});
-
-describe('reasoningErrorHint', () => {
-  it('подсказка только если усилие отправлено и ошибка про рассуждения', () => {
-    expect(reasoningErrorHint('"qwen2.5:7b-instruct" does not support thinking', 'high')).toMatch(/не приняла усилие рассуждений «high»/);
-    expect(reasoningErrorHint("invalid reasoning value: 'xhigh'", 'max')).toBeDefined();
-    expect(reasoningErrorHint('does not support thinking', undefined)).toBeUndefined();
-    expect(reasoningErrorHint('rate limit exceeded', 'high')).toBeUndefined();
   });
 });
 

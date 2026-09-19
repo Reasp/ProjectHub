@@ -1,6 +1,7 @@
 import type { AgentSlotState, SwarmSession } from './swarmTypes.js';
 import { addUsage, emptyUsage, formatTokens, formatUsd, type AgentUsage } from './agentCost.js';
 import { describeProviderInfo } from './slotProvider.js';
+import { describeProviderErrorBrief } from './providerErrors.js';
 
 /**
  * Экспорт swarm-сессии в Markdown-отчёт и JSON (TASK-56, AC #5) — для вложения в задачу
@@ -218,6 +219,11 @@ export function exportSwarmSessionMarkdown(session: SwarmSession, options: Markd
     if (agent.worktreeBranch) lines.push(`- Ветка: \`${agent.worktreeBranch}\``);
     if (agent.worktreePath) lines.push(`- Worktree: \`${agent.worktreePath}\``);
     if (agent.error) lines.push(`- Ошибка: ${agent.error}`);
+    // Вид ошибки провайдера (decision-43) — по нему решается, помог бы fallback (TASK-79).
+    if (agent.providerError) lines.push(`- Вид ошибки: \`${describeProviderErrorBrief(agent.providerError)}\``);
+    if (agent.review?.status === 'failed' && agent.review.providerError) {
+      lines.push(`- Ревьюер недоступен: \`${describeProviderErrorBrief(agent.review.providerError)}\``);
+    }
     const u = agentUsage(agent);
     if (u) {
       lines.push(

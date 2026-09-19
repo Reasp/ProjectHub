@@ -13,6 +13,7 @@
  */
 import type { AIProviderConfig } from './aiAgentService.js';
 import { normalizeReasoningEffort } from './reasoningEffort.js';
+import { providerConfigError } from './providerErrors.js';
 
 export type ProviderId = AIProviderConfig['provider'];
 
@@ -67,17 +68,18 @@ function clean(value: string | undefined | null): string | undefined {
  */
 export function resolveProfileRef(ref: string, profiles: readonly ProfileRefEntry[]): ProfileRefEntry {
   const needle = ref.trim();
-  if (!needle) throw new Error('Профиль провайдера не указан.');
+  if (!needle) throw providerConfigError('Профиль провайдера не указан.', 'no_profile');
   const byId = profiles.find((p) => p.id === needle);
   if (byId) return byId;
   const lower = needle.toLocaleLowerCase();
   const byName = profiles.filter((p) => p.name.trim().toLocaleLowerCase() === lower);
   if (byName.length === 1) return byName[0];
   if (byName.length > 1) {
-    throw new Error(`Имя профиля «${needle}» неоднозначно: таких профилей ${byName.length}. Переименуйте профили или укажите id.`);
+    throw providerConfigError(`Имя профиля «${needle}» неоднозначно: таких профилей ${byName.length}. Переименуйте профили или укажите id.`, 'no_profile');
   }
-  throw new Error(
-    `Профиль провайдера «${needle}» не найден. Создайте его в настройках AI Studio (OpenAI-compatible) или выберите другой.`
+  throw providerConfigError(
+    `Профиль провайдера «${needle}» не найден. Создайте его в настройках AI Studio (OpenAI-compatible) или выберите другой.`,
+    'no_profile'
   );
 }
 
@@ -98,7 +100,7 @@ export function providerConfigFromSpec(spec: ProviderSpec | undefined): Partial<
     out.profileId = profile;
   } else if (provider) {
     if (!isKnownProvider(provider)) {
-      throw new Error(`Неизвестный провайдер «${provider}». Допустимо: ${KNOWN_PROVIDERS.join(', ')}.`);
+      throw providerConfigError(`Неизвестный провайдер «${provider}». Допустимо: ${KNOWN_PROVIDERS.join(', ')}.`, 'provider');
     }
     out.provider = provider;
   }
@@ -171,7 +173,7 @@ function resolveSlotTarget(
 
   if (slot.provider === PROFILE_PROVIDER || slot.profileId) {
     if (!slot.profileId) {
-      throw new Error('У слота выбран OpenAI-совместимый провайдер, но не выбран профиль.');
+      throw providerConfigError('У слота выбран OpenAI-совместимый провайдер, но не выбран профиль.', 'no_profile');
     }
     const profile = resolveProfileRef(slot.profileId, profiles);
     // Та же пара «профиль AI Studio» — можно взять модель оттуда; иначе модель обязана быть у слота.
@@ -214,9 +216,10 @@ function resolveSlotTarget(
     return { config, info: { provider: config.provider, model: config.model, local: true } };
   }
 
-  throw new Error(
+  throw providerConfigError(
     `Провайдер слота «${slot.provider}» отличается от провайдера AI Studio («${global.provider}»), а ключ хранится только ` +
-      'для провайдера AI Studio. Создайте профиль OpenAI-совместимого провайдера и выберите его в слоте или роли.'
+      'для провайдера AI Studio. Создайте профиль OpenAI-совместимого провайдера и выберите его в слоте или роли.',
+    'provider'
   );
 }
 

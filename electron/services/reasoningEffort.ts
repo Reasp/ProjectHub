@@ -53,19 +53,6 @@ export function openAICompatibleReasoningFields(
   }
 }
 
-/**
- * Подсказка к ошибке сервера, если запрос с усилием отклонён из-за него. `undefined` — ошибка
- * не про рассуждения или усилие не отправлялось.
- */
-export function reasoningErrorHint(errText: string, sentEffort: ReasoningEffort | undefined): string | undefined {
-  if (!sentEffort) return undefined;
-  if (!/reason|think|effort/i.test(errText)) return undefined;
-  return (
-    `Модель не приняла усилие рассуждений «${sentEffort}». Выберите другой уровень или «по умолчанию модели» ` +
-    'в настройках AI Studio или слота, либо поменяйте формат усилия в профиле провайдера.'
-  );
-}
-
 /** Бюджет `budget_tokens` для моделей Anthropic, где есть только `thinking.type: "enabled"`. */
 export const ANTHROPIC_EFFORT_BUDGET_TOKENS: Readonly<Record<Exclude<ReasoningEffort, 'none'>, number>> = {
   low: 2048,

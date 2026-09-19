@@ -13,6 +13,7 @@ import {
   type AIToolCall,
   type AutoApproveRules
 } from './aiAgentService.js';
+import type { ProviderErrorInfo } from './providerErrors.js';
 import { isInsideProject } from './pathGuard.js';
 import { CHILD_CLOSE_GRACE_MS, superviseChildExit } from './processSweep.js';
 import { processManager } from './processManager.js';
@@ -1193,7 +1194,8 @@ class ClaudeBridgeService extends EventEmitter {
     },
     onChunk: (chunk: ClaudeBridgeMessageChunk) => void,
     onComplete: (msg: AIMessage) => void,
-    onError: (err: string) => void
+    /** `info` — снимок ошибки провайдера API-пути (decision-43); у Claude CLI его нет. */
+    onError: (err: string, info?: ProviderErrorInfo) => void
   ): Promise<void> {
     const { sessionId, projectPath } = req;
     const isMasterAutoApprove = Boolean(req.config.autoApprove);
@@ -1224,9 +1226,9 @@ class ClaudeBridgeService extends EventEmitter {
           this.finishSession(sessionId, projectPath, 'done', 'Задача успешно выполнена');
           onComplete(completedMsg);
         },
-        (err) => {
+        (err, info) => {
           this.finishSession(sessionId, projectPath, 'error', `Ошибка: ${err}`);
-          onError(err);
+          onError(err, info);
         },
         {
           executeTool: (tc) => this.executeApiTool(tc, req, rules, perms, onChunk),

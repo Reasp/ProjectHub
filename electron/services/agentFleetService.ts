@@ -18,6 +18,7 @@ import { loadRoles } from './roleService.js';
 import { llmProfileService } from './llmProfileService.js';
 import { normalizeReasoningEffort } from './reasoningEffort.js';
 import { apiConfigProblem, describeProviderInfo, providerConfigFromSpec, resolveSlotProviderConfig } from './slotProvider.js';
+import { ProviderError, describeProviderErrorBrief, providerConfigError, providerErrorInfoOf } from './providerErrors.js';
 import { buildEngineInvocation, apiToolNamesForCategories, extractAppendSystemPrompt } from './roleEngineAdapter.js';
 import { buildAgentContext } from './contextBuilder.js';
 import { taskAllowsComputerUse } from './computerPolicy.js';
@@ -556,6 +557,7 @@ export class AgentFleetService extends EventEmitter {
     agent.resumeCount = (agent.resumeCount ?? 0) + 1;
     agent.status = 'pending';
     agent.error = undefined;
+    agent.providerError = undefined;
     agent.finalOutput = undefined;
     agent.diffSummary = undefined;
     resetLiveOutput(agent);
@@ -1166,6 +1168,8 @@ export class AgentFleetService extends EventEmitter {
     agentState.metrics.endTime = undefined;
     agentState.metrics.durationMs = undefined;
     agentState.status = 'running';
+    // Ошибка прошлого хода (цикл «до готовности», повторный запуск) к новому ходу не относится.
+    agentState.providerError = undefined;
     this.log(session, agentState, `[Swarm] Старт агента "${agentState.config.name}" (движок: ${agentState.config.engine})...`);
     this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
     const busBase = this.agentBusBase(session, agentState);
@@ -1233,11 +1237,18 @@ export class AgentFleetService extends EventEmitter {
       console.error(`[AgentFleetService] Agent ${agentState.id} execution failed:`, err);
       agentState.metrics.endTime = Date.now();
       agentState.metrics.durationMs = agentState.metrics.endTime - startTime;
+      const providerError = providerErrorInfoOf(err);
       if (agentState.status === 'running') {
         agentState.status = 'failed';
         agentState.error = err.message || String(err);
+        // Снимок вида ошибки — для карточки, экспорта и решения о fallback в TASK-79 (decision-43).
+        if (providerError) agentState.providerError = providerError;
       }
-      this.log(session, agentState, `[Swarm Error] Ошибка: ${err.message || String(err)}`);
+      this.log(
+        session,
+        agentState,
+        `[Swarm Error] Ошибка${providerError ? ` провайдера, ${describeProviderErrorBrief(providerError)}` : ''}: ${err.message || String(err)}`
+      );
       try {
         await this.materializeAgentResult(session, agentState);
       } catch { /* ignore */ }
@@ -1467,9 +1478,10 @@ export class AgentFleetService extends EventEmitter {
           cleanup();
           resolve();
         },
-        (err) => {
+        (err, info) => {
           cleanup();
-          reject(new Error(err));
+          // Снимок ошибки провайдера едет дальше вместе с ошибкой — его запишет runSingleAgent.
+          reject(info ? new ProviderError(info) : new Error(err));
         }
       ).catch((err) => {
         cleanup();
@@ -1753,7 +1765,7 @@ export class AgentFleetService extends EventEmitter {
     const globalConfig = await aiAgentService.getConfig();
     const problem = apiConfigProblem(globalConfig);
     if (problem) {
-      throw new Error(`${reason}. Запасной API-путь недоступен: ${problem}. Установите CLI или настройте провайдера в AI Studio.`);
+      throw providerConfigError(`${reason}. Запасной API-путь недоступен: ${problem}. Установите CLI или настройте провайдера в AI Studio.`);
     }
     this.log(session, agentState, `[Swarm] ⚠️ ${reason} — используется API fallback с настройками AI Studio.`);
     return this.runApiAgent(session, agentState, targetPath, prompt, role, false, globalConfig);

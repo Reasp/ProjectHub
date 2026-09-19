@@ -109,7 +109,20 @@ describe('LlmModelCatalogService (TASK-70.2)', () => {
     const refreshed = await catalog.listModels('o', { refresh: true });
     expect(refreshed.models).toEqual(['qwen3:8b']);
     expect(refreshed.cached).toBe(true);
-    expect(refreshed.error).toMatch(/сервер ответил 503/);
+    expect(refreshed.error).toMatch(/сервер недоступен \(HTTP 503\): down/);
+  });
+
+  it('сервер не запущен — понятная причина вместо «fetch failed» (decision-43)', async () => {
+    await service.saveProfile({ profile: { id: 'l', presetId: 'ollama', name: 'Ollama', baseUrl: 'http://127.0.0.1:11999/v1', local: true } });
+    const refused = Object.assign(new TypeError('fetch failed'), {
+      cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11999'), { code: 'ECONNREFUSED' })
+    });
+    const catalog = new LlmModelCatalogService(service, path.join(dir, 'catalog.json'), vi.fn().mockRejectedValue(refused) as unknown as typeof fetch);
+    const result = await catalog.listModels('l');
+    expect(result.models).toEqual([]);
+    expect(result.error).toContain('сервер не принимает подключения (ECONNREFUSED)');
+    expect(result.error).toContain('Запустите локальный сервер');
+    expect(result.error).not.toContain('fetch failed');
   });
 
   it('смена адреса профиля делает кэш недействительным', async () => {

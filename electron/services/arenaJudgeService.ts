@@ -27,6 +27,7 @@ import { autoMergeDecision, recommendCandidate, scoreCandidates, type CandidateS
 import { buildReviewerPrompt, parseReviewerResponse } from './reviewerPrompt.js';
 import type { ArenaConfig, CheckRunResult, JudgeState, ReviewerVerdict } from './arenaTypes.js';
 import type { AgentSlotState, SwarmSession } from './swarmTypes.js';
+import { ProviderError, providerErrorInfoOf } from './providerErrors.js';
 
 /** Сколько ждать ответа ревьюера, прежде чем признать отзыв несостоявшимся. */
 export const REVIEWER_TIMEOUT_MS = 5 * 60 * 1000;
@@ -359,8 +360,15 @@ export class ArenaJudgeService {
       providerConfig = { ...resolved.config, temperature: 0 };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      const providerError = providerErrorInfoOf(err);
       for (const agent of candidates) {
-        agent.review = { agentId: agent.id, status: 'failed', model: config.reviewer.model ?? role?.model ?? '', error: message };
+        agent.review = {
+          agentId: agent.id,
+          status: 'failed',
+          model: config.reviewer.model ?? role?.model ?? '',
+          error: message,
+          ...(providerError ? { providerError } : {})
+        };
         hooks.log(agent, `[Судья] Ревьюер недоступен: ${message}`);
         hooks.onUpdate(agent.id);
       }
@@ -416,12 +424,14 @@ export class ArenaJudgeService {
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        const providerError = signal.aborted ? undefined : providerErrorInfoOf(err);
         agent.review = {
           agentId: agent.id,
           status: signal.aborted ? 'skipped' : 'failed',
           model: providerConfig.model,
           durationMs: Date.now() - startedAt,
-          error: message
+          error: message,
+          ...(providerError ? { providerError } : {})
         };
         hooks.log(agent, `[Судья] Ревьюер недоступен: ${message}`);
       }
@@ -506,7 +516,7 @@ export class ArenaJudgeService {
             if (finalMsg.usage?.costUsd !== undefined) costUsd = finalMsg.usage.costUsd;
             done(() => resolve({ text: finalMsg.content || buffer, ...(costUsd !== undefined ? { costUsd } : {}) }));
           },
-          (err) => done(() => reject(new Error(err)))
+          (err, info) => done(() => reject(info ? new ProviderError(info) : new Error(err)))
         )
         .catch((err) => done(() => reject(err instanceof Error ? err : new Error(String(err)))));
     });

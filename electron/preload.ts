@@ -4,6 +4,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 type PtyRemovedPayload = { sessionId: string; title: string; reason: 'ttl' };
 import type {
   ArenaSettings,
+  ProviderErrorInfo,
   CheckDefinition,
   IElectronAPI,
   ScanOptions,
@@ -366,9 +367,10 @@ const api: IElectronAPI = {
       ipcRenderer.removeListener(channel, handler);
     };
   },
-  onAIError: (sessionId: string, callback: (error: string) => void) => {
+  onAIError: (sessionId: string, callback: (error: string, info?: ProviderErrorInfo) => void) => {
     const channel = `ai:error:${sessionId}`;
-    const handler = (_event: any, data: any) => callback(data);
+    // Второй аргумент — снимок ошибки провайдера (decision-43), может отсутствовать.
+    const handler = (_event: any, data: any, info?: ProviderErrorInfo) => callback(data, info);
     ipcRenderer.on(channel, handler);
     return () => {
       ipcRenderer.removeListener(channel, handler);

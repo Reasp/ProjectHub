@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-09-15 03:05'
-updated_date: '2026-09-15 03:32'
+updated_date: '2026-09-19 01:50'
 labels:
   - ai
   - providers
@@ -54,5 +54,11 @@ GPT-6 Astra (`gpt-6-astra`): контекст 1,05 млн, $10/$50, `reasoning_e
 - [ ] #4 Таблица цен редактируется в UI (вход/выход/кэш, порог и множитель длинного контекста), импортируется из OpenRouter; локальные модели считаются по нулевой цене; расчёт покрыт unit-тестами
 - [ ] #5 Usage из ответов OpenAI-совместимых серверов (включая cached_tokens) попадает в AgentUsage; без usage — оценка с пометкой unknown
 - [ ] #6 Слот Swarm с любым профилем работает в Arena; проверено минимум на одной локальной модели (Ollama или LM Studio) и одной облачной
-- [ ] #7 Ошибки доступа/отсутствия модели показываются понятно и не роняют сессию; i18n ru/en; lint/test/check-bundle зелёные, pack:win собран
+- [x] #7 Ошибки доступа/отсутствия модели показываются понятно и не роняют сессию; i18n ru/en; lint/test/check-bundle зелёные, pack:win собран
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-09-19, AC#7 закрыт TASK-70.6 (decision-43): классификатор ошибок провайдера `providerErrors.ts` (auth, quota, model_not_found, rate_limit, unavailable, bad_request, config, unknown; retryable, retry-after), сообщение «что случилось — где — что сделать», ключи вырезаются. AI Studio — локализованная карточка ошибки ru/en с «Повторить», чат остаётся рабочим; слот Swarm — failed со снимком `providerError`, остальные слоты работают, вид ошибки в экспорте; ревьюер Arena — `review.providerError`; ошибки внутри SSE-потока больше не теряются. Проверено вживую на Ollama 0.34/0.31.2 (несуществующая модель, выключенный порт, fan-out с одним сломанным слотом) и 401 облачных сервисов без ключа; 429/402/5xx облака — фикстуры по документации (ключей нет). lint 0/499, test 111/1311, check-bundle ✅, pack:win собран (exe 09:47:40).
+<!-- SECTION:NOTES:END -->

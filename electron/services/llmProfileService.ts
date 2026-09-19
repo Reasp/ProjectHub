@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { secretStorageService } from './secretStorageService.js';
+import { providerConfigError } from './providerErrors.js';
 import {
   buildProfileHeaders,
   chatCompletionsUrl,
@@ -125,12 +126,12 @@ export class LlmProfileService {
   /** Профиль с расшифрованным ключом — только для main-процесса. */
   public async getProfileWithKey(id: string | undefined): Promise<{ profile: LlmProfile; apiKey?: string }> {
     if (!id) {
-      throw new Error('Профиль OpenAI-совместимого провайдера не выбран в настройках.');
+      throw providerConfigError('Профиль OpenAI-совместимого провайдера не выбран в настройках.', 'no_profile');
     }
     const { profiles } = await this.readFile();
     const stored = profiles.find((p) => p.id === id);
     if (!stored) {
-      throw new Error(`Профиль провайдера «${id}» не найден: возможно, он удалён. Выберите профиль в настройках AI Studio.`);
+      throw providerConfigError(`Профиль провайдера «${id}» не найден: возможно, он удалён. Выберите профиль в настройках AI Studio.`, 'no_profile');
     }
     const { apiKey, ...profile } = stored;
     return { profile, ...(apiKey ? { apiKey: secretStorageService.decrypt(apiKey) } : {}) };

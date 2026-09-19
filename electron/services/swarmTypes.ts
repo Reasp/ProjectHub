@@ -9,6 +9,7 @@ import type { RolePermissions } from './hitlTypes.js';
 import type { CandidateScore, CheckRunResult, JudgeState, ReviewerVerdict } from './arenaTypes.js';
 import type { DoneLoopState } from './doneLoopTypes.js';
 import type { ResolvedProviderInfo } from './slotProvider.js';
+import type { ProviderErrorInfo } from './providerErrors.js';
 
 /** `done_loop` — одиночный слот «до готовности» (TASK-75, decision-28). */
 export type SwarmMode = 'fan_out' | 'handoff' | 'done_loop';
@@ -121,6 +122,11 @@ export interface AgentSlotState {
   review?: ReviewerVerdict;
   /** Провайдер, с которым агент реально работал (API-движок, decision-40) — для экспорта и UI. */
   providerInfo?: ResolvedProviderInfo;
+  /**
+   * Снимок ошибки провайдера, если агент упал на запросе к модели или на настройке провайдера
+   * (decision-43): вид, статус, код, retry-after, retryable. По нему TASK-79 решает о fallback.
+   */
+  providerError?: ProviderErrorInfo;
 }
 
 export interface HandoffStageState {

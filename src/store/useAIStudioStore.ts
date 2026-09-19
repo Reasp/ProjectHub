@@ -20,6 +20,7 @@ import type {
   ContextPartKey
 } from '../types/electron';
 import { useProjectStore } from './useProjectStore';
+import { messagesForModel, retryTarget } from '../lib/providerErrorView';
 
 export type { AISession };
 
@@ -77,6 +78,11 @@ interface AIStudioState {
   toggleContextPart: (projectPath: string, sessionId: string, key: ContextPartKey, enabled: boolean) => void;
   clearSession: (projectPath: string, sessionId?: string) => void;
   sendMessage: (projectPath: string, text: string) => Promise<void>;
+  /**
+   * Повтор ответа, упавшего с ошибкой (TASK-70.6): сообщение пользователя и ответ с ошибкой убираются
+   * из диалога, и сообщение отправляется заново — с текущими настройками провайдера и модели.
+   */
+  retryFailedMessage: (projectPath: string, assistantMessageId: string) => Promise<void>;
   abortStream: () => Promise<void>;
   acceptDiff: (projectPath: string, messageId: string, toolId: string, filePath: string, newContent: string) => Promise<void>;
   rejectDiff: (projectPath: string, messageId: string, toolId: string) => void;
@@ -743,7 +749,7 @@ export const useAIStudioStore = create<AIStudioState>()(
           }
         });
 
-        const unsubError = window.api.onAIError(streamId, (err) => {
+        const unsubError = window.api.onAIError(streamId, (err, info) => {
           set((state) => {
             const pSessions = state.sessions[projectPath] || [];
             const sIdx = pSessions.findIndex((s) => s.id === activeSessionId);
@@ -754,8 +760,9 @@ export const useAIStudioStore = create<AIStudioState>()(
             const mIdx = msgs.findIndex((m) => m.id === assistantMsgId);
             if (mIdx === -1) return state;
 
-            const target = { ...msgs[mIdx] };
-            target.content = `${target.content || ''}\n\n⚠️ **Ошибка**: ${err}`;
+            // Ошибка — отдельными полями, а не текстом ответа: карточка показывает её локализованно
+            // (decision-43), а в историю для модели текст ошибки больше не попадает.
+            const target = { ...msgs[mIdx], error: err, ...(info ? { providerError: info } : {}) };
 
             msgs[mIdx] = target;
             targetSession.messages = msgs;
@@ -786,7 +793,7 @@ export const useAIStudioStore = create<AIStudioState>()(
         const streamReq: AIStreamRequest = {
           sessionId: streamId,
           projectPath,
-          messages: [...currentMessages, userMsg],
+          messages: messagesForModel([...currentMessages, userMsg]),
           config: get().config,
           mode: get().mode,
           claudeCliSessionId: currentSession.claudeCliSessionId,
@@ -803,6 +810,24 @@ export const useAIStudioStore = create<AIStudioState>()(
           set({ isStreaming: false, activeStreamSessionId: null });
           cleanup();
         }
+      },
+
+      retryFailedMessage: async (projectPath: string, assistantMessageId: string) => {
+        if (get().isStreaming) return;
+        const sessionId = get().activeSessionId[projectPath];
+        const session = (get().sessions[projectPath] || []).find((s) => s.id === sessionId);
+        if (!session) return;
+        const target = retryTarget(session.messages || [], assistantMessageId);
+        if (!target) return;
+        set((state) => ({
+          sessions: {
+            ...state.sessions,
+            [projectPath]: (state.sessions[projectPath] || []).map((s) =>
+              s.id === sessionId ? { ...s, messages: s.messages.filter((m) => !target.removeIds.includes(m.id)) } : s
+            )
+          }
+        }));
+        await get().sendMessage(projectPath, target.userText);
       },
 
       acceptDiff: async (projectPath: string, messageId: string, toolId: string, filePath: string, newContent: string) => {

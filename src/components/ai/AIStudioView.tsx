@@ -43,6 +43,7 @@ import { LiveActivitySidebar } from './LiveActivitySidebar';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 import { VoiceBadge } from '../voice/VoiceBadge';
 import { SwarmArenaView } from './swarm/SwarmArenaView';
+import { ProviderErrorCard } from './ProviderErrorCard';
 
 export const AIStudioView: React.FC = () => {
   const { t, language } = useTranslation();
@@ -86,6 +87,7 @@ export const AIStudioView: React.FC = () => {
     setSessionTask,
     toggleContextPart,
     sendMessage,
+    retryFailedMessage,
     abortStream,
     acceptDiff,
     rejectDiff
@@ -674,6 +676,16 @@ export const AIStudioView: React.FC = () => {
                             acceptDiff(projectPath, mId, tId, fPath, nContent)
                           }
                           onRejectDiff={(mId, tId) => rejectDiff(projectPath, mId, tId)}
+                        />
+                      )}
+
+                      {/* Ошибка ответа (TASK-70.6): локализованная карточка и повтор — чат остаётся рабочим */}
+                      {!isUser && msg.error && (
+                        <ProviderErrorCard
+                          error={msg.error}
+                          info={msg.providerError}
+                          onRetry={() => void retryFailedMessage(projectPath, msg.id)}
+                          retryDisabled={isStreaming}
                         />
                       )}
                     </div>

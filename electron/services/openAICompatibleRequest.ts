@@ -17,6 +17,7 @@
 import { isUnsetModelId } from './anthropicRequest.js';
 import type { LlmCompatFlags } from './llmProfiles.js';
 import { openAICompatibleReasoningFields, type ReasoningEffort } from './reasoningEffort.js';
+import { providerConfigError } from './providerErrors.js';
 
 export interface OpenAICompatibleBodyInput {
   /** Имя провайдера или профиля — для сообщения об ошибке. */
@@ -43,8 +44,10 @@ export interface OpenAICompatibleBodyInput {
  */
 export function resolveOpenAICompatibleModelId(model: string | undefined | null, provider: string): string {
   if (isUnsetModelId(model)) {
-    throw new Error(
-      `Модель не выбрана: укажите идентификатор модели провайдера ${provider} в настройках AI Studio или в слоте агента.`
+    throw providerConfigError(
+      `Модель не выбрана: укажите идентификатор модели провайдера ${provider} в настройках AI Studio или в слоте агента.`,
+      'no_model',
+      { provider }
     );
   }
   return (model as string).trim();

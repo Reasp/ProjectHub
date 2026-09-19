@@ -842,7 +842,7 @@ export interface IElectronAPI {
     }) => void
   ) => () => void;
   onAIComplete: (sessionId: string, callback: (message: AIMessage) => void) => () => void;
-  onAIError: (sessionId: string, callback: (error: string) => void) => () => void;
+  onAIError: (sessionId: string, callback: (error: string, info?: ProviderErrorInfo) => void) => () => void;
 
   // Multi-Agent Swarm & Fleet Orchestration (TASK-54)
   startSwarmFanOut: (options: StartFanOutOptions) => Promise<SwarmSession>;
@@ -1471,6 +1471,50 @@ export interface AIMessage {
   timestamp: string;
   /** Токены и стоимость ответа модели, если провайдер их сообщил (TASK-56). */
   usage?: AgentUsage;
+  /** Ответ завершился ошибкой (TASK-70.6): текст для пользователя; карточка строится по `providerError`. */
+  error?: string;
+  /** Снимок ошибки провайдера (decision-43) — локализованные заголовок и совет, кнопка «Повторить». */
+  providerError?: ProviderErrorInfo;
+}
+
+/** Зеркало `electron/services/providerErrors.ts` (decision-43). */
+export type ProviderErrorKind = 'auth' | 'quota' | 'model_not_found' | 'rate_limit' | 'unavailable' | 'bad_request' | 'config' | 'unknown';
+
+export type ProviderErrorReason =
+  | 'tools'
+  | 'reasoning'
+  | 'context'
+  | 'unsupported'
+  | 'moderation'
+  | 'refused'
+  | 'dns'
+  | 'timeout'
+  | 'tls'
+  | 'network'
+  | 'server'
+  | 'overloaded'
+  | 'forbidden'
+  | 'endpoint'
+  | 'no_model'
+  | 'no_key'
+  | 'no_profile'
+  | 'provider';
+
+export interface ProviderErrorInfo {
+  kind: ProviderErrorKind;
+  reason?: ProviderErrorReason;
+  status?: number;
+  code?: string;
+  retryable: boolean;
+  retryAfterMs?: number;
+  provider?: string;
+  profileId?: string;
+  endpoint?: string;
+  model?: string;
+  local?: boolean;
+  reasoningEffort?: string;
+  serverMessage?: string;
+  message: string;
 }
 
 /** Диалог AI Studio; хранится файлом `~/.projecthub/sessions/<hash(projectPath)>/<id>.json` (TASK-35). */
@@ -1834,6 +1878,7 @@ export interface ReviewerVerdict {
   costUsd?: number;
   durationMs?: number;
   error?: string;
+  providerError?: ProviderErrorInfo;
   raw?: string;
 }
 
@@ -1932,6 +1977,8 @@ export interface AgentSlotState {
   review?: ReviewerVerdict;
   /** Провайдер, с которым агент реально работал (API-движок, decision-40) — для экспорта и UI. */
   providerInfo?: ResolvedProviderInfo;
+  /** Снимок ошибки провайдера (decision-43), если агент упал на запросе к модели. */
+  providerError?: ProviderErrorInfo;
 }
 
 export interface HandoffStageState {

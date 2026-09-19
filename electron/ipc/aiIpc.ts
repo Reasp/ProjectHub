@@ -32,6 +32,7 @@ import { llmProfileService } from '../services/llmProfileService';
 import { llmModelCatalogService } from '../services/llmModelCatalogService';
 import { LLM_PROVIDER_PRESETS, profileFromLegacyConfig } from '../services/llmProfiles';
 import { pricingService } from '../services/pricingService';
+import { providerErrorInfoOf } from '../services/providerErrors';
 import type { IpcContext } from './types';
 
 export function registerAiIpc(ctx: IpcContext) {
@@ -189,9 +190,10 @@ export function registerAiIpc(ctx: IpcContext) {
   ipcMain.handle('ai:streamChat', async (_event, req: AIStreamRequest) => {
     const targetWin = ctx.getMainWindow();
     if (!targetWin) return;
-    const send = (channel: string, payload: unknown) => {
+    const send = (channel: string, payload: unknown, extra?: unknown) => {
       if (!targetWin.isDestroyed()) {
-        targetWin.webContents.send(channel, payload);
+        if (extra === undefined) targetWin.webContents.send(channel, payload);
+        else targetWin.webContents.send(channel, payload, extra);
       }
     };
 
@@ -200,13 +202,15 @@ export function registerAiIpc(ctx: IpcContext) {
         req,
         (chunk) => send(`ai:chunk:${req.sessionId}`, chunk),
         (fullMsg) => send(`ai:complete:${req.sessionId}`, fullMsg),
-        (err) => send(`ai:error:${req.sessionId}`, err)
+        // Второй аргумент — снимок ошибки провайдера (decision-43): renderer строит по нему локализованную карточку.
+        (err, info) => send(`ai:error:${req.sessionId}`, err, info)
       );
     } catch (err: any) {
-      const message = err?.message || String(err);
-      console.error(`[Main] ai:streamChat failed for session ${req.sessionId}:`, err);
+      const info = providerErrorInfoOf(err);
+      const message = info?.message || err?.message || String(err);
+      console.error(`[Main] ai:streamChat failed for session ${req.sessionId}: ${message}`);
       claudeBridgeService.setProjectStatus(req.projectPath, 'error', message);
-      send(`ai:error:${req.sessionId}`, message);
+      send(`ai:error:${req.sessionId}`, message, info);
     }
   });
 
