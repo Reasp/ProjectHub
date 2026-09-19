@@ -3,6 +3,8 @@ import path from 'node:path';
 import { getUserDataDir } from './appPaths.js';
 import type { AgentSlotState, HandoffStageState, SwarmSession } from './swarmTypes.js';
 import { AGENT_LOG_LIMITS } from './swarmLogBuffer.js';
+import type { AgentTraceEvent } from './agentTraceTypes.js';
+import { parseTraceJsonl, traceEventsToJsonl } from './agentTrace.js';
 
 /**
  * Файловое хранилище swarm-сессий (TASK-56, decision-16), по образцу `aiSessionStore`.
@@ -31,6 +33,8 @@ export const SWARM_STORAGE_LIMITS = {
 export const TRANSCRIPT_MAX_BYTES = 5 * 1024 * 1024;
 /** Сколько байт транскрипта отдаётся в UI по умолчанию (хвост). */
 export const TRANSCRIPT_READ_MAX_BYTES = 2 * 1024 * 1024;
+/** Трасса агента (TASK-72, decision-45 п. 6): ротация в `.trace.1.jsonl` при превышении. */
+export const TRACE_MAX_BYTES = 5 * 1024 * 1024;
 
 const ID_RE = /^[A-Za-z0-9_-]{1,120}$/;
 
@@ -143,6 +147,7 @@ export class SwarmSessionStore {
   private pendingSaves = new Map<string, { timer: NodeJS.Timeout; session: SwarmSession }>();
   private inFlight = new Map<string, Promise<void>>();
   private transcriptQueues = new Map<string, Promise<void>>();
+  private traceQueues = new Map<string, Promise<void>>();
 
   constructor(
     private readonly baseDir: string = path.join(getUserDataDir(), 'swarms'),
@@ -163,6 +168,10 @@ export class SwarmSessionStore {
 
   public transcriptFile(sessionId: string, agentId: string): string {
     return path.join(this.transcriptDir(sessionId), `${agentId}.log`);
+  }
+
+  public traceFile(sessionId: string, agentId: string): string {
+    return path.join(this.transcriptDir(sessionId), `${agentId}.trace.jsonl`);
   }
 
   private async ensureDir(dir: string): Promise<void> {
@@ -260,6 +269,7 @@ export class SwarmSessionStore {
     await Promise.allSettled(pending.map((entry) => this.save(entry.session)));
     await Promise.allSettled(Array.from(this.inFlight.values()));
     await Promise.allSettled(Array.from(this.transcriptQueues.values()));
+    await Promise.allSettled(Array.from(this.traceQueues.values()));
   }
 
   /** Удаляет файл состояния и каталог транскриптов сессии. */
@@ -315,6 +325,59 @@ export class SwarmSessionStore {
       if (this.transcriptQueues.get(key) === run) this.transcriptQueues.delete(key);
     });
     return run;
+  }
+
+  /**
+   * Дозапись событий трассы агента (JSONL). Записи одного файла сериализуются очередью; при
+   * превышении `TRACE_MAX_BYTES` файл ротируется в `.trace.1.jsonl` (предыдущий бэкап удаляется).
+   */
+  public appendTrace(sessionId: string, agentId: string, events: AgentTraceEvent[]): Promise<void> {
+    if (events.length === 0 || !isValidSwarmId(sessionId) || !isValidAgentId(agentId)) return Promise.resolve();
+    const text = traceEventsToJsonl(events);
+    const key = `${sessionId}/${agentId}`;
+    const previous = this.traceQueues.get(key) ?? Promise.resolve();
+    const run = previous
+      .catch(() => undefined)
+      .then(async () => {
+        await this.ensureDir(this.transcriptDir(sessionId));
+        const file = this.traceFile(sessionId, agentId);
+        try {
+          const stat = await fs.stat(file);
+          if (stat.size + Buffer.byteLength(text) > TRACE_MAX_BYTES) {
+            const backup = `${file.slice(0, -'.trace.jsonl'.length)}.trace.1.jsonl`;
+            await fs.rm(backup, { force: true }).catch(() => undefined);
+            await fs.rename(file, backup);
+          }
+        } catch {
+          /* файла ещё нет */
+        }
+        await fs.appendFile(file, text, 'utf8');
+      })
+      .catch((e) => {
+        console.warn(`[SwarmSessionStore] Не удалось дописать трассу ${key}:`, e);
+      });
+    this.traceQueues.set(key, run);
+    void run.then(() => {
+      if (this.traceQueues.get(key) === run) this.traceQueues.delete(key);
+    });
+    return run;
+  }
+
+  /**
+   * События трассы агента: ротированный бэкап и текущий файл. `truncated` — файл уже ротировался,
+   * поэтому самые ранние события могли быть удалены.
+   */
+  public async readTrace(sessionId: string, agentId: string): Promise<{ events: AgentTraceEvent[]; truncated: boolean }> {
+    if (!isValidSwarmId(sessionId) || !isValidAgentId(agentId)) return { events: [], truncated: false };
+    await (this.traceQueues.get(`${sessionId}/${agentId}`) ?? Promise.resolve()).catch(() => undefined);
+    const file = this.traceFile(sessionId, agentId);
+    const backup = `${file.slice(0, -'.trace.jsonl'.length)}.trace.1.jsonl`;
+    const read = async (p: string) => fs.readFile(p, 'utf8').catch(() => null);
+    const [old, current] = await Promise.all([read(backup), read(file)]);
+    return {
+      events: [...(old ? parseTraceJsonl(old) : []), ...(current ? parseTraceJsonl(current) : [])],
+      truncated: old !== null
+    };
   }
 
   /** Читает транскрипт (хвост не длиннее `maxBytes`). Возвращает null, если файла нет. */

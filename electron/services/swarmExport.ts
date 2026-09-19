@@ -3,6 +3,7 @@ import { addUsage, emptyUsage, formatTokens, formatUsd, type AgentUsage } from '
 import { describeProviderInfo } from './slotProvider.js';
 import { describeProviderErrorBrief } from './providerErrors.js';
 import { describeChainLink, describeFallbackStop, MAX_MODEL_SWITCHES } from './modelTiers.js';
+import { describeCheckpointPoint } from './agentTrace.js';
 
 /**
  * Экспорт swarm-сессии в Markdown-отчёт и JSON (TASK-56, AC #5) — для вложения в задачу
@@ -106,6 +107,28 @@ export function modelRoutingLines(agent: AgentSlotState): string[] {
   }
   if (routing.stopped && routing.stopped !== 'not_switchable') {
     lines.push(`- Цепочка остановлена: ${describeFallbackStop(routing.stopped, routing.maxSwitches ?? MAX_MODEL_SWITCHES)}`);
+  }
+  return lines;
+}
+
+/**
+ * Чекпоинты и откаты агента для отчёта (decision-45): сколько снимков, какие откаты и куда. Без
+ * чекпоинтов и откатов — пусто.
+ */
+export function checkpointLines(agent: AgentSlotState): string[] {
+  const lines: string[] = [];
+  const cps = agent.checkpoints ?? [];
+  if (cps.length > 0) {
+    const last = cps[cps.length - 1];
+    lines.push(`- Чекпоинты: ${cps.length} (последний #${last.n}, ${describeCheckpointPoint(last)}, \`${last.commit.slice(0, 7)}\`)`);
+  }
+  for (const rw of agent.rewinds ?? []) {
+    const cp = cps.find((c) => c.n === rw.toCheckpoint);
+    const where = describeCheckpointPoint({ kind: rw.toKind, turn: rw.toTurn, run: cp?.run });
+    lines.push(
+      `- Откат ${fmtDate(rw.at)}: к чекпоинту #${rw.toCheckpoint} (${where}), удалено файлов ${rw.removedFiles}` +
+        `${rw.preRewindCheckpoint ? `, прежнее состояние — чекпоинт #${rw.preRewindCheckpoint}` : ''}${rw.commitHash ? `, коммит \`${rw.commitHash.slice(0, 7)}\`` : ''}`
+    );
   }
   return lines;
 }
@@ -250,6 +273,7 @@ export function exportSwarmSessionMarkdown(session: SwarmSession, options: Markd
     lines.push(...modelRoutingLines(agent));
     if (agent.worktreeBranch) lines.push(`- Ветка: \`${agent.worktreeBranch}\``);
     if (agent.worktreePath) lines.push(`- Worktree: \`${agent.worktreePath}\``);
+    lines.push(...checkpointLines(agent));
     if (agent.error) lines.push(`- Ошибка: ${agent.error}`);
     // Вид ошибки провайдера (decision-43) — по нему решается, помог бы fallback (TASK-79).
     if (agent.providerError) lines.push(`- Вид ошибки: \`${describeProviderErrorBrief(agent.providerError)}\``);

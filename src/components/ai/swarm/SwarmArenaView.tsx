@@ -30,7 +30,9 @@ import {
   DollarSign,
   Gavel,
   ClipboardCheck,
-  Shuffle
+  Shuffle,
+  Activity,
+  History
 } from 'lucide-react';
 import { useSwarmStore } from '../../../store/useSwarmStore';
 import { useProjectStore } from '../../../store/useProjectStore';
@@ -60,9 +62,10 @@ import {
 import { providerErrorAdvice, providerErrorTitle } from '../../../lib/providerErrorView';
 import { chainLinkLabel } from '../../../lib/modelTierEditor';
 import { AdviceText } from '../ProviderErrorCard';
+import { AgentTimelinePanel } from './AgentTimelinePanel';
 
-/** Вкладки карточки кандидата: к выводу/логам/диффу добавлены проверки и ревью судьи (TASK-61). */
-type AgentTab = 'output' | 'logs' | 'diff' | 'checks' | 'review';
+/** Вкладки карточки кандидата: к выводу/логам/диффу добавлены проверки и ревью судьи (TASK-61), таймлайн (TASK-72). */
+type AgentTab = 'output' | 'logs' | 'diff' | 'checks' | 'review' | 'timeline';
 
 export const SwarmArenaView: React.FC = () => {
   const { t } = useTranslation();
@@ -134,6 +137,19 @@ export const SwarmArenaView: React.FC = () => {
       const res = await exportSwarmAction(currentSwarm.id, format);
       if (res.success && res.path) showNotice(t.swarm.exportDone.replace('{path}', res.path));
       else if (!res.canceled) await dialog.alert(t.swarm.exportError.replace('{error}', res.error || ''));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Трасса всех агентов сессии в JSONL (TASK-72, decision-45 п. 6).
+  const handleExportTrace = async () => {
+    if (!currentSwarm) return;
+    setIsExporting(true);
+    try {
+      const res = await window.api.exportAgentTrace(currentSwarm.id);
+      if (res.success && res.path) showNotice(t.agentTimeline.exportTraceDone.replace('{path}', res.path));
+      else if (!res.canceled) await dialog.alert(t.agentTimeline.exportTraceError.replace('{error}', res.error || ''));
     } finally {
       setIsExporting(false);
     }
@@ -329,6 +345,15 @@ export const SwarmArenaView: React.FC = () => {
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/70 transition-colors disabled:opacity-50"
               >
                 <Download className="w-3.5 h-3.5" /> .json
+              </button>
+              <button
+                onClick={handleExportTrace}
+                disabled={isExporting}
+                title={t.agentTimeline.exportTraceSession}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary border border-border/70 transition-colors disabled:opacity-50"
+                data-testid="swarm-export-trace"
+              >
+                <Activity className="w-3.5 h-3.5" /> .jsonl
               </button>
               {currentSwarm.status !== 'running' && currentSwarm.status !== 'preparing' && (
                 <button
@@ -632,6 +657,15 @@ export const SwarmArenaView: React.FC = () => {
                                 </span>
                               ) : null;
                             })()}
+                            {agent.rewinds && agent.rewinds.length > 0 && (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-amber-500/10 text-amber-300 border-amber-500/30"
+                                data-testid="agent-rewound-badge"
+                              >
+                                <History className="w-3 h-3" />
+                                {t.agentTimeline.rewoundBadge.replace('{n}', String(agent.rewinds[agent.rewinds.length - 1].toCheckpoint))}
+                              </span>
+                            )}
                             {agent.worktreeMissing && (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-rose-500/10 text-rose-400 border-rose-500/30">
                                 {t.swarm.worktreeMissingBadge}
@@ -939,10 +973,23 @@ ${t.swarm.estimatedUsageTooltip}` : '')}
                         >
                           <Gavel className="w-3.5 h-3.5" /> {t.judge.reviewTab}
                         </button>
+                        <button
+                          onClick={() => setAgentTab(agent.id, 'timeline')}
+                          className={`flex items-center gap-1.5 py-2 px-3 text-xs font-medium border-b-2 transition-colors ${
+                            currentTab === 'timeline'
+                              ? 'border-primary text-primary'
+                              : 'border-transparent text-muted-foreground hover:text-foreground'
+                          }`}
+                          data-testid="agent-tab-timeline"
+                        >
+                          <Activity className="w-3.5 h-3.5" /> {t.agentTimeline.tab}
+                        </button>
                       </div>
 
                       {/* Tab Body */}
                       <div className="flex-1 overflow-y-auto p-4 text-xs">
+                        {currentTab === 'timeline' && <AgentTimelinePanel session={currentSwarm} agent={agent} />}
+
                         {currentTab === 'output' && (
                           <div className="h-full overflow-y-auto">
                             {agent.liveOutput || agent.finalOutput ? (

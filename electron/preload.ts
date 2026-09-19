@@ -331,6 +331,13 @@ const api: IElectronAPI = {
   exportSwarm: (swarmId: string, format: 'markdown' | 'json') => ipcRenderer.invoke('swarm:export', swarmId, format),
   exportSwarmToFile: (swarmId: string, format: 'markdown' | 'json') =>
     ipcRenderer.invoke('swarm:exportToFile', swarmId, format),
+  // Таймлайн, откат, продолжение агента и трасса JSONL (TASK-72, decision-45)
+  getAgentTimeline: (swarmId: string, agentId: string) => ipcRenderer.invoke('swarm:getTimeline', swarmId, agentId),
+  rewindAgent: (swarmId: string, agentId: string, checkpoint: number) =>
+    ipcRenderer.invoke('swarm:rewind', swarmId, agentId, checkpoint),
+  continueAgent: (swarmId: string, agentId: string, instruction?: string) =>
+    ipcRenderer.invoke('swarm:continueAgent', swarmId, agentId, instruction),
+  exportAgentTrace: (swarmId: string, agentId?: string) => ipcRenderer.invoke('swarm:exportTrace', swarmId, agentId),
   onSwarmEvent: (callback: (event: any) => void) => {
     const handler = (_event: any, data: any) => callback(data);
     ipcRenderer.on('swarm:event', handler);

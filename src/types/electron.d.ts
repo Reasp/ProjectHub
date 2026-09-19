@@ -886,6 +886,11 @@ export interface IElectronAPI {
   getSwarmTranscript: (swarmId: string, agentId: string) => Promise<SwarmTranscript | null>;
   exportSwarm: (swarmId: string, format: SwarmExportFormat) => Promise<string | null>;
   exportSwarmToFile: (swarmId: string, format: SwarmExportFormat) => Promise<{ success: boolean; path?: string; error?: string; canceled?: boolean }>;
+  /** Таймлайн агента, чекпоинты и доступность отката (TASK-72, decision-45). */
+  getAgentTimeline: (swarmId: string, agentId: string) => Promise<AgentTimelineView | null>;
+  rewindAgent: (swarmId: string, agentId: string, checkpoint: number) => Promise<AgentRewindResult>;
+  continueAgent: (swarmId: string, agentId: string, instruction?: string) => Promise<{ success: boolean; error?: string }>;
+  exportAgentTrace: (swarmId: string, agentId?: string) => Promise<{ success: boolean; path?: string; error?: string; canceled?: boolean }>;
 
   // File Explorer & Helpers
   readDirectoryTree: (projectPath: string, subDir?: string, maxDepth?: number) => Promise<FileTreeNode[]>;
@@ -2000,6 +2005,200 @@ export interface AgentSlotState {
   providerError?: ProviderErrorInfo;
   /** Тир, фактическая модель и переключения модели (decision-44). */
   modelRouting?: ModelRoutingInfo;
+  /** Чекпоинты рабочего каталога по ходам (decision-45). */
+  checkpoints?: AgentCheckpoint[];
+  /** Откаты агента к чекпоинтам (decision-45). */
+  rewinds?: AgentRewindRecord[];
+  /** Сквозные номера запусков, ходов и чекпоинтов. */
+  trace?: AgentTraceCounters;
+  /** Пояснение об откате для следующего запуска агента. */
+  pendingRewindNote?: string;
+}
+
+// ─── Чекпоинты и таймлайн агента (TASK-72, decision-45); зеркало electron/services/agentTraceTypes.ts ───
+
+export type CheckpointKind = 'start' | 'turn' | 'end' | 'pre_rewind';
+
+export interface AgentCheckpoint {
+  n: number;
+  kind: CheckpointKind;
+  run?: number;
+  turn?: number;
+  at: number;
+  ref: string;
+  commit: string;
+  tree: string;
+  parent: string | null;
+  filesChanged?: number;
+}
+
+export interface AgentRewindRecord {
+  at: number;
+  toCheckpoint: number;
+  toTurn?: number;
+  toKind: CheckpointKind;
+  preRewindCheckpoint?: number;
+  removedFiles: number;
+  commitHash?: string;
+}
+
+export interface AgentTraceCounters {
+  runs: number;
+  turns: number;
+  checkpoints: number;
+}
+
+export interface TraceUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  costUsd?: number;
+  costSource?: AgentCostSource;
+  model?: string;
+  partial?: boolean;
+  estimated?: boolean;
+}
+
+export type TimelineToolStatus = 'ok' | 'error' | 'running' | 'no_result' | 'not_executed';
+export type TimelineHitlDecision = 'requested' | 'allow' | 'deny' | 'expired' | 'cancelled';
+
+export interface TimelineHitl {
+  requestId: string;
+  decision: TimelineHitlDecision;
+  decidedBy?: string;
+  rule?: string;
+  tool?: string;
+  title?: string;
+  at: number;
+}
+
+export interface TimelineTool {
+  toolId: string;
+  name: string;
+  input?: string;
+  run: number;
+  turn: number;
+  startedAt: number;
+  endedAt?: number;
+  durationMs?: number;
+  status: TimelineToolStatus;
+  outputChars?: number;
+  hitl: TimelineHitl[];
+}
+
+export interface TimelineTurn {
+  turn: number;
+  run: number;
+  startedAt: number;
+  endedAt?: number;
+  durationMs?: number;
+  model?: string;
+  tools: TimelineTool[];
+  usage?: TraceUsage;
+  checkpoint?: number;
+}
+
+export interface TimelineRun {
+  run: number;
+  engine?: string;
+  model?: string;
+  iteration?: number;
+  afterRewind?: boolean;
+  startedAt: number;
+  endedAt?: number;
+  durationMs?: number;
+  status?: string;
+  numTurns?: number;
+  usage?: TraceUsage;
+  turns: number[];
+  errors: string[];
+  checkpoints: number[];
+}
+
+export interface TimelineModelSwitch {
+  at: number;
+  run: number;
+  from: string;
+  to: string;
+  kind: string;
+  reason?: string;
+  waitedMs?: number;
+}
+
+export interface TimelineCheckpointEvent {
+  type: 'checkpoint';
+  v: 1;
+  at: number;
+  run: number;
+  turn?: number;
+  n: number;
+  kind: CheckpointKind;
+  ref: string;
+  commit: string;
+  tree: string;
+  parent: string | null;
+  filesChanged?: number;
+}
+
+export interface TimelineRewindEvent {
+  type: 'rewind';
+  v: 1;
+  at: number;
+  run: number;
+  toCheckpoint: number;
+  toTurn?: number;
+  preRewindCheckpoint?: number;
+  removedFiles: number;
+}
+
+export interface AgentTimeline {
+  runs: TimelineRun[];
+  turns: TimelineTurn[];
+  tools: TimelineTool[];
+  hitl: TimelineHitl[];
+  switches: TimelineModelSwitch[];
+  checkpoints: TimelineCheckpointEvent[];
+  rewinds: TimelineRewindEvent[];
+  toolNames: string[];
+  startedAt?: number;
+  endedAt?: number;
+  totals: {
+    runs: number;
+    turns: number;
+    tools: number;
+    toolErrors: number;
+    toolTimeMs: number;
+    durationMs: number;
+    costUsd?: number;
+    costPartial: boolean;
+  };
+  truncated?: boolean;
+}
+
+export interface AgentActionAvailability {
+  allowed: boolean;
+  reason?: string;
+}
+
+/** Ответ `swarm:getTimeline` (зеркало `AgentTimelineView` из agentFleetService). */
+export interface AgentTimelineView {
+  swarmId: string;
+  agentId: string;
+  timeline: AgentTimeline;
+  checkpoints: AgentCheckpoint[];
+  rewinds: AgentRewindRecord[];
+  rewind: AgentActionAvailability;
+  continueAgent: AgentActionAvailability;
+  pendingRewindNote?: string;
+}
+
+export interface AgentRewindResult {
+  success: boolean;
+  error?: string;
+  removedFiles?: number;
+  preRewindCheckpoint?: number;
+  commitHash?: string;
 }
 
 // ─── Тиры моделей (TASK-79, decision-44); зеркало electron/services/modelTiers.ts ───

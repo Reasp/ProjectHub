@@ -11,6 +11,7 @@ import type { DoneLoopState } from './doneLoopTypes.js';
 import type { ResolvedProviderInfo } from './slotProvider.js';
 import type { ProviderErrorInfo } from './providerErrors.js';
 import type { ModelRoutingInfo, ModelTier } from './modelTiers.js';
+import type { AgentCheckpoint, AgentRewindRecord, AgentTraceCounters } from './agentTraceTypes.js';
 
 /** `done_loop` — одиночный слот «до готовности» (TASK-75, decision-28). */
 export type SwarmMode = 'fan_out' | 'handoff' | 'done_loop';
@@ -135,6 +136,14 @@ export interface AgentSlotState {
   providerError?: ProviderErrorInfo;
   /** Тир, фактическая модель и переключения модели по fallback-цепочке (decision-44 п. 8). */
   modelRouting?: ModelRoutingInfo;
+  /** Чекпоинты рабочего каталога по ходам (decision-45): ref вне истории ветки, не больше 50. */
+  checkpoints?: AgentCheckpoint[];
+  /** Откаты агента к чекпоинтам (decision-45 п. 4). */
+  rewinds?: AgentRewindRecord[];
+  /** Сквозные номера запусков, ходов и чекпоинтов агента (трасса, decision-45 п. 3). */
+  trace?: AgentTraceCounters;
+  /** Пояснение об откате для следующего запуска агента: новая сессия движка, контекст «откатились к ходу N». */
+  pendingRewindNote?: string;
 }
 
 export interface HandoffStageState {

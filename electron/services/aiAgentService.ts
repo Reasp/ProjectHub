@@ -165,6 +165,15 @@ export interface StreamChatComputerTool {
   inputSchema: Record<string, any>;
 }
 
+/**
+ * Граница tool-loop для трассы агента (TASK-72, decision-45 п. 3): начало запроса к модели (шаг) и
+ * исполненный инструмент с длительностью. Отдельный колбэк, а не чанк: в AI Studio и Remote Control
+ * чанки уходят как есть.
+ */
+export type StreamToolBoundary =
+  | { kind: 'step'; step: number; model?: string }
+  | { kind: 'tool_result'; id: string; name: string; ok: boolean; outputChars: number; durationMs: number };
+
 /** Параметры многошагового tool-loop (TASK-82). */
 export interface StreamChatOptions {
   /** Исполнитель вызова: без него tool-loop выключен (один запрос, вызовы уходят чанками). */
@@ -173,6 +182,8 @@ export interface StreamChatOptions {
   computerTools?: StreamChatComputerTool[];
   /** Лимит запросов к модели в одном ходе. */
   maxSteps?: number;
+  /** Границы шагов и исполнения инструментов (трасса агента, TASK-72). */
+  onToolBoundary?: (boundary: StreamToolBoundary) => void;
 }
 
 /**
@@ -727,7 +738,7 @@ class AIAgentService {
       const maxSteps = options.maxSteps ?? DEFAULT_MAX_TOOL_STEPS;
 
       if (req.config.provider === 'anthropic') {
-        await this.runAnthropicLoop(req, systemPrompt, tools, controller.signal, onChunk, loop, maxSteps, options.executeTool);
+        await this.runAnthropicLoop(req, systemPrompt, tools, controller.signal, onChunk, loop, maxSteps, options.executeTool, options.onToolBoundary);
       } else {
         // OpenAI-совместимым провайдерам инструменты отдаются только вместе с исполнителем:
         // без него вызовы остались бы без результата.
@@ -739,7 +750,8 @@ class AIAgentService {
           onChunk,
           loop,
           maxSteps,
-          options.executeTool
+          options.executeTool,
+          options.onToolBoundary
         );
       }
 
@@ -799,7 +811,8 @@ class AIAgentService {
     loop: ToolLoopState,
     onChunk: (payload: AIStreamChunkPayload) => void,
     signal: AbortSignal,
-    executeTool?: StreamChatOptions['executeTool']
+    executeTool?: StreamChatOptions['executeTool'],
+    onToolBoundary?: StreamChatOptions['onToolBoundary']
   ): Promise<Array<{ call: LoopToolCall; result: ToolExecutionResult }> | null> {
     if (!executeTool || calls.length === 0) return null;
     if (step + 1 >= maxSteps) {
@@ -811,7 +824,17 @@ class AIAgentService {
     const results: Array<{ call: LoopToolCall; result: ToolExecutionResult }> = [];
     for (const tc of calls) {
       if (signal.aborted) throw abortError();
-      results.push({ call: { id: tc.id, name: tc.name, args: tc.args }, result: await executeTool(tc) });
+      const startedAt = Date.now();
+      const result = await executeTool(tc);
+      results.push({ call: { id: tc.id, name: tc.name, args: tc.args }, result });
+      onToolBoundary?.({
+        kind: 'tool_result',
+        id: tc.id,
+        name: tc.name,
+        ok: result.isError !== true,
+        outputChars: typeof result.content === 'string' ? result.content.length : 0,
+        durationMs: Date.now() - startedAt
+      });
     }
     if (signal.aborted) throw abortError();
     return results;
@@ -828,7 +851,8 @@ class AIAgentService {
     onChunk: (payload: AIStreamChunkPayload) => void,
     loop: ToolLoopState,
     maxSteps: number,
-    executeTool?: StreamChatOptions['executeTool']
+    executeTool?: StreamChatOptions['executeTool'],
+    onToolBoundary?: StreamChatOptions['onToolBoundary']
   ): Promise<void> {
     const model = resolveAnthropicModelId(req.config.model);
     const apiKey = req.config.apiKey?.trim();
@@ -844,9 +868,10 @@ class AIAgentService {
       .map((m) => ({ role: m.role, content: m.content }));
 
     for (let step = 0; ; step++) {
+      onToolBoundary?.({ kind: 'step', step, model });
       const turn = await this.requestAnthropic(req, apiKey, capabilities, systemPrompt, messages, tools, step, signal, onChunk);
       this.accumulateTurn(loop, turn);
-      const results = await this.executeToolStep(turn.toolCalls, step, maxSteps, loop, onChunk, signal, executeTool);
+      const results = await this.executeToolStep(turn.toolCalls, step, maxSteps, loop, onChunk, signal, executeTool, onToolBoundary);
       if (!results) break;
       messages.push(...buildAnthropicToolTurn(turn.blocks, results));
       this.separateSteps(loop, turn, onChunk);
@@ -1123,7 +1148,8 @@ class AIAgentService {
     onChunk: (payload: AIStreamChunkPayload) => void,
     loop: ToolLoopState,
     maxSteps: number,
-    executeTool?: StreamChatOptions['executeTool']
+    executeTool?: StreamChatOptions['executeTool'],
+    onToolBoundary?: StreamChatOptions['onToolBoundary']
   ): Promise<void> {
     const target = await this.resolveOpenAICompatibleTarget(req.config);
     loop.local = target.local;
@@ -1140,6 +1166,7 @@ class AIAgentService {
     const openAITools = tools.length > 0 && target.compat.tools ? toOpenAITools(tools) : undefined;
 
     for (let step = 0; ; step++) {
+      onToolBoundary?.({ kind: 'step', step, ...(req.config.model ? { model: req.config.model } : {}) });
       const inputChars = requestChars(messages, openAITools);
       const turn = await this.requestOpenAICompatible(req, target, messages, openAITools, step, signal, onChunk);
       if (!turn.usage) {
@@ -1149,7 +1176,7 @@ class AIAgentService {
         turn.usage = estimateUsage({ inputChars, outputChars, model: req.config.model });
       }
       this.accumulateTurn(loop, turn);
-      const results = await this.executeToolStep(turn.toolCalls, step, maxSteps, loop, onChunk, signal, executeTool);
+      const results = await this.executeToolStep(turn.toolCalls, step, maxSteps, loop, onChunk, signal, executeTool, onToolBoundary);
       if (!results) break;
       messages.push(...buildOpenAIToolTurn(turn.text, results, { vision: target.compat.vision }));
       this.separateSteps(loop, turn, onChunk);

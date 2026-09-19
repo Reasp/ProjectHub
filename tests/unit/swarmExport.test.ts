@@ -122,3 +122,22 @@ describe('swarmExport (TASK-56)', () => {
     expect(parsed.session.agents[0].metrics.usage.costUsd).toBe(0.5);
   });
 });
+
+describe('swarmExport: чекпоинты и откаты (TASK-72, decision-45)', () => {
+  it('Markdown показывает число чекпоинтов и откаты агента, JSON — поля целиком', () => {
+    const s = session();
+    const agent = s.agents[0];
+    agent.checkpoints = [
+      { n: 1, kind: 'start', run: 1, at: 1, ref: 'refs/projecthub/checkpoints/swarm-1/a1/1', commit: 'aaaaaaa1111', tree: 't1', parent: null },
+      { n: 2, kind: 'turn', run: 1, turn: 3, at: 2, ref: 'refs/projecthub/checkpoints/swarm-1/a1/2', commit: 'bbbbbbb2222', tree: 't2', parent: 'p' },
+      { n: 3, kind: 'pre_rewind', run: 1, at: 3, ref: 'refs/projecthub/checkpoints/swarm-1/a1/3', commit: 'ccccccc3333', tree: 't3', parent: 'p' }
+    ];
+    agent.rewinds = [{ at: 4_000, toCheckpoint: 2, toTurn: 3, toKind: 'turn', preRewindCheckpoint: 3, removedFiles: 2, commitHash: 'ddddddd4444' }];
+    const md = exportSwarmSessionMarkdown(s);
+    expect(md).toContain('- Чекпоинты: 3 (последний #3, перед откатом, `ccccccc`)');
+    expect(md).toContain('к чекпоинту #2 (после хода 3), удалено файлов 2, прежнее состояние — чекпоинт #3, коммит `ddddddd`');
+    const parsed = JSON.parse(exportSwarmSessionJson(s));
+    expect(parsed.session.agents[0].rewinds[0].toCheckpoint).toBe(2);
+    expect(parsed.session.agents[0].checkpoints).toHaveLength(3);
+  });
+});

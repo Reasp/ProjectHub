@@ -324,6 +324,8 @@ export class HitlService extends EventEmitter {
     const request: HitlRequest = { ...info, id, createdAt: this.now(), hostId: info.hostId || this.hostId };
     this.rememberDecided(request, decision === 'allow', { kind: 'auto', rule });
     this.writeDecision(request, decision, { kind: 'auto', rule }, undefined, undefined, detail);
+    // Трасса агента (TASK-72): локальное событие, не в шину — авто-решения не должны порождать уведомления.
+    this.emit('autoDecided', { request, approved: decision === 'allow', rule });
     return id;
   }
 

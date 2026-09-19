@@ -64,6 +64,24 @@ import { pricingService } from './pricingService.js';
 import { arenaJudgeService, judgeableAgents, type RunJudgeOptions } from './arenaJudgeService.js';
 import { doneLoopService, loadDoneLoopSettings, type DoneLoopRunResult } from './doneLoopService.js';
 import { findTaskFile } from './taskFileLookup.js';
+import { CheckpointService, checkpointService, ensureTraceCounters } from './checkpointService.js';
+import {
+  buildAgentTimeline,
+  buildTraceExport,
+  consumeApiChunk,
+  consumeClaudeCliEvent,
+  createApiTraceState,
+  createClaudeTraceState,
+  finalizeTraceEvent,
+  lastApiTurnOf,
+  describeCheckpointPoint,
+  lastTurnOf,
+  type ApiTraceChunk,
+  type TraceStep
+} from './agentTrace.js';
+import { AGENT_TRACE_FORMAT, AGENT_TRACE_VERSION, type AgentCheckpoint, type AgentRewindRecord, type AgentTimeline, type CheckpointKind, type TraceEventInput, type TraceUsage } from './agentTraceTypes.js';
+import { redactSecrets } from './hitlAudit.js';
+import type { HitlRequest } from './hitlTypes.js';
 import { superviseChildExit, type ChildExitSupervisor } from './processSweep.js';
 import type { ComposeResult, ComposeSelection, JudgeState } from './arenaTypes.js';
 import type {
@@ -198,6 +216,83 @@ function timeStamp(): string {
   return new Date().toISOString().slice(11, 19);
 }
 
+/**
+ * Приёмники HITL-событий для трассы агентов (TASK-72): `sessionId` агента в очереди HITL → запись в
+ * трассу. Одна подписка на шину и `hitlService` на процесс, а не на каждый экземпляр сервиса флота.
+ */
+const hitlTraceSinks = new Map<string, (event: TraceEventInput) => void>();
+let hitlTraceSubscribed = false;
+
+function hitlTraceTitle(request: HitlRequest): string | undefined {
+  const title = request.title ? redactSecrets(request.title) : '';
+  return title ? title.slice(0, 160) : undefined;
+}
+
+function ensureHitlTraceSubscription(): void {
+  if (hitlTraceSubscribed) return;
+  hitlTraceSubscribed = true;
+  const deliver = (request: HitlRequest, event: TraceEventInput) => {
+    const sink = hitlTraceSinks.get(request.sessionId);
+    if (sink) sink(event);
+  };
+  const base = (request: HitlRequest) => ({
+    requestId: request.id,
+    ...(request.tool ? { tool: request.tool } : {}),
+    ...(hitlTraceTitle(request) ? { title: hitlTraceTitle(request) } : {})
+  });
+  appEventBus.subscribe((event) => {
+    if (event.type === 'hitl:requested') deliver(event.request, { type: 'hitl', decision: 'requested', ...base(event.request) });
+    else if (event.type === 'hitl:decided') {
+      deliver(event.request, {
+        type: 'hitl',
+        decision: event.approved ? 'allow' : 'deny',
+        decidedBy: event.source.kind,
+        ...base(event.request)
+      });
+    } else if (event.type === 'hitl:expired') deliver(event.request, { type: 'hitl', decision: 'expired', ...base(event.request) });
+    else if (event.type === 'hitl:cancelled') deliver(event.request, { type: 'hitl', decision: 'cancelled', ...base(event.request) });
+  });
+  hitlService.on('autoDecided', (info: { request: HitlRequest; approved: boolean; rule: string }) => {
+    deliver(info.request, { type: 'hitl', decision: info.approved ? 'allow' : 'deny', decidedBy: 'auto', rule: info.rule, ...base(info.request) });
+  });
+}
+
+/** Разница usage «после запуска − до запуска»: usage агента накопительный по запускам. */
+function usageDelta(after: AgentUsage | undefined, before: AgentUsage | undefined): TraceUsage | undefined {
+  if (!after || after === before) return undefined;
+  const sub = (a: number | undefined, b: number | undefined) => Math.max(0, (a ?? 0) - (b ?? 0));
+  const cost =
+    typeof after.costUsd === 'number' ? Math.max(0, after.costUsd - (typeof before?.costUsd === 'number' ? before.costUsd : 0)) : undefined;
+  return {
+    inputTokens: sub(after.inputTokens, before?.inputTokens),
+    outputTokens: sub(after.outputTokens, before?.outputTokens),
+    cacheReadTokens: sub(after.cacheReadTokens, before?.cacheReadTokens),
+    cacheCreationTokens: sub(after.cacheCreationTokens, before?.cacheCreationTokens),
+    ...(cost !== undefined ? { costUsd: cost } : {}),
+    costSource: after.costSource,
+    ...(after.model ? { model: after.model } : {}),
+    ...(after.estimated ? { estimated: true } : {})
+  };
+}
+
+/** Итог проверки: можно ли откатить агента или продолжить его (decision-45 п. 4). */
+export interface AgentActionAvailability {
+  allowed: boolean;
+  reason?: string;
+}
+
+/** Ответ `swarm:getTimeline`: таймлайн из трассы, чекпоинты и доступность действий. */
+export interface AgentTimelineView {
+  swarmId: string;
+  agentId: string;
+  timeline: AgentTimeline;
+  checkpoints: AgentCheckpoint[];
+  rewinds: AgentRewindRecord[];
+  rewind: AgentActionAvailability;
+  continueAgent: AgentActionAvailability;
+  pendingRewindNote?: string;
+}
+
 export class AgentFleetService extends EventEmitter {
   private sessions = new Map<string, SwarmSession>();
   private activeProcesses = new Map<string, Set<ChildProcess>>();
@@ -219,12 +314,22 @@ export class AgentFleetService extends EventEmitter {
   /** В текущей попытке хода агент вызывал инструменты — переключать модель уже нельзя (decision-44 п. 6). */
   private toolActivity = new Set<string>();
   private readyPromise: Promise<void> = Promise.resolve();
+  /** Чекпоинты рабочего каталога агентов (decision-45); `null` — выключены (unit-тесты по умолчанию). */
+  private readonly checkpoints: CheckpointService | null;
+  /** Каталоги, для которых уже записано «не git-репозиторий» — строка в логе одна на агента. */
+  private checkpointNotices = new Set<string>();
 
   /**
    * @param store хранилище сессий; `null` — без персистентности (unit-тесты).
+   * @param options.checkpoints сервис чекпоинтов; без него снимки и откат выключены. Тесты включают его
+   *   явно и только на временных репозиториях, чтобы не писать ref в настоящий проект.
    */
-  constructor(private readonly store: SwarmSessionStore | null = null) {
+  constructor(
+    private readonly store: SwarmSessionStore | null = null,
+    options: { checkpoints?: CheckpointService | null } = {}
+  ) {
     super();
+    this.checkpoints = options.checkpoints ?? null;
   }
 
   /** Разрешается после восстановления сессий с диска (см. `init`). */
@@ -331,6 +436,150 @@ export class AgentFleetService extends EventEmitter {
       chunk: text,
       session
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Трасса и чекпоинты (TASK-72, decision-45)
+  // ---------------------------------------------------------------------------
+
+  /** Событие трассы агента: номер запуска и время проставляются здесь, запись — в файл трассы. */
+  private trace(session: SwarmSession, agent: AgentSlotState, input: TraceEventInput): void {
+    if (!this.store) return;
+    const counters = ensureTraceCounters(agent);
+    void this.store.appendTrace(session.id, agent.id, [finalizeTraceEvent(input, counters.runs, Date.now())]);
+  }
+
+  private traceStep(session: SwarmSession, agent: AgentSlotState, step: TraceStep): void {
+    for (const event of step.events) this.trace(session, agent, event);
+  }
+
+  /** Usage хода в трассу со стоимостью по общей таблице цен (у Claude CLI — оценка: выход частичный). */
+  private traceTurnUsage(session: SwarmSession, agent: AgentSlotState, turn: number, usage: TraceUsage): void {
+    const priced = priceUsage(
+      {
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        cacheReadTokens: usage.cacheReadTokens,
+        cacheCreationTokens: usage.cacheCreationTokens,
+        totalTokens: usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheCreationTokens,
+        costSource: 'unknown',
+        ...(usage.model ? { model: usage.model } : {})
+      },
+      usage.model ?? this.effectiveModel(agent),
+      this.currentPriceTable(),
+      { local: agent.providerInfo?.local === true }
+    );
+    this.trace(session, agent, {
+      type: 'usage',
+      scope: 'turn',
+      turn,
+      usage: {
+        ...usage,
+        ...(typeof priced.costUsd === 'number' ? { costUsd: priced.costUsd } : {}),
+        costSource: priced.costSource
+      }
+    });
+  }
+
+  /**
+   * Снимок рабочего каталога агента (decision-45 п. 1–2). Не бросает: неудача снимка не должна ронять
+   * агента. Вне git — одна строка в логе и больше ничего.
+   */
+  private async captureCheckpoint(
+    session: SwarmSession,
+    agent: AgentSlotState,
+    kind: CheckpointKind,
+    turn?: number
+  ): Promise<AgentCheckpoint | undefined> {
+    if (!this.checkpoints) return undefined;
+    const cwd = agent.worktreePath || session.projectPath;
+    if (!cwd || !this.pathExists(cwd)) return undefined;
+    const counters = ensureTraceCounters(agent);
+    const result = await this.checkpoints.capture({
+      swarmId: session.id,
+      agent,
+      cwd,
+      kind,
+      run: counters.runs,
+      ...(turn !== undefined ? { turn } : {})
+    });
+    if (result.status === 'created') {
+      const cp = result.checkpoint;
+      this.trace(session, agent, {
+        type: 'checkpoint',
+        n: cp.n,
+        kind: cp.kind,
+        ...(cp.turn !== undefined ? { turn: cp.turn } : {}),
+        ref: cp.ref,
+        commit: cp.commit,
+        tree: cp.tree,
+        parent: cp.parent,
+        ...(cp.filesChanged !== undefined ? { filesChanged: cp.filesChanged } : {}),
+        at: cp.at
+      });
+      if (result.pruned.length > 0) {
+        this.log(session, agent, `[Checkpoint] Лимит чекпоинтов: удалены старые #${result.pruned.map((c) => c.n).join(', #')}.`);
+      }
+      return cp;
+    }
+    const noticeKey = `${session.id}/${agent.id}`;
+    if (result.status === 'not_git' && !this.checkpointNotices.has(noticeKey)) {
+      this.checkpointNotices.add(noticeKey);
+      this.log(session, agent, `[Checkpoint] ${cwd} — не git-репозиторий: чекпоинты и откат недоступны.`);
+    } else if (result.status === 'error') {
+      this.log(session, agent, `[Checkpoint] ⚠️ Не удалось сделать снимок (${kind}): ${result.error}`);
+    }
+    return result.status === 'same_tree' ? result.checkpoint : undefined;
+  }
+
+  /** Почему нельзя откатить агента; `undefined` — можно (decision-45 п. 2, 4). */
+  private rewindBlockReason(session: SwarmSession, agent: AgentSlotState): string | undefined {
+    if (!this.checkpoints) return 'Чекпоинты выключены';
+    if (!agent.worktreePath || normalizeFsPath(agent.worktreePath) === normalizeFsPath(session.projectPath)) {
+      return 'Откат доступен только в изолированном worktree агента: в основном дереве проекта он перезаписал бы вашу работу';
+    }
+    if (agent.worktreeMissing || !this.pathExists(agent.worktreePath)) return 'Worktree агента не найден';
+    if (agent.winner || session.winnerAgentId === agent.id) {
+      return 'Результат агента уже влит в базовую ветку — откат разошёлся бы с ней';
+    }
+    if (isActiveAgentStatus(agent.status)) return 'Агент ещё работает — остановите его перед откатом';
+    if (isActiveSwarmStatus(session.status)) return 'Сессия ещё выполняется — дождитесь завершения или остановите её';
+    return undefined;
+  }
+
+  /** Почему нельзя продолжить агента из карточки; `undefined` — можно. */
+  private continueBlockReason(session: SwarmSession, agent: AgentSlotState): string | undefined {
+    if (session.mode !== 'fan_out') {
+      return session.mode === 'done_loop'
+        ? 'Ходами цикла «до готовности» управляет цикл: запустите его заново'
+        : 'Этапами конвейера управляет handoff: продолжение из карточки недоступно';
+    }
+    if (session.winnerAgentId) return 'Победитель уже выбран';
+    if (isActiveSwarmStatus(session.status)) return 'Сессия ещё выполняется';
+    if (isActiveAgentStatus(agent.status)) return 'Агент ещё работает';
+    if (agent.worktreePath && (agent.worktreeMissing || !this.pathExists(agent.worktreePath))) return 'Worktree агента не найден';
+    return undefined;
+  }
+
+  /** Дифф с базовой веткой по рабочему дереву агента (decision-8 п. 2). */
+  private async refreshAgentDiff(session: SwarmSession, agentState: AgentSlotState): Promise<void> {
+    if (!agentState.worktreeBranch) return;
+    try {
+      const diffRaw = await worktreeService.getWorktreeDiff(
+        session.projectPath,
+        agentState.worktreeBranch,
+        session.baseBranch,
+        agentState.worktreePath
+      );
+      agentState.diffSummary = parseDiffSummary(diffRaw);
+      this.log(
+        session,
+        agentState,
+        `[Swarm] Сформирован дифф: ${agentState.diffSummary.filesChanged} файлов, +${agentState.diffSummary.insertions} / -${agentState.diffSummary.deletions}`
+      );
+    } catch (diffErr) {
+      console.warn(`[AgentFleetService] Diff computation failed for ${agentState.id}:`, diffErr);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -489,6 +738,14 @@ export class AgentFleetService extends EventEmitter {
       message: brief
     };
     agentState.modelRouting?.switches.push(record);
+    this.trace(session, agentState, {
+      type: 'model_switch',
+      from: describeChainLink(from),
+      to: describeChainLink(to),
+      kind: info.kind,
+      ...(info.reason ? { reason: info.reason } : {}),
+      ...(decision.waitMs > 0 ? { waitedMs: decision.waitMs } : {})
+    });
     this.log(
       session,
       agentState,
@@ -690,8 +947,27 @@ export class AgentFleetService extends EventEmitter {
     if (restored.length > 0) {
       const interrupted = restored.filter((s) => s.status === 'interrupted').length;
       console.log(`[AgentFleetService] Restored ${restored.length} swarm session(s) from disk, ${interrupted} interrupted`);
+      // Ref чекпоинтов сессий, которых больше нет на диске (decision-45 п. 5) — в фоне, старт не ждёт git.
+      if (this.checkpoints) void this.pruneOrphanCheckpoints(restored.map((s) => s.projectPath));
     }
     return restored;
+  }
+
+  private async pruneOrphanCheckpoints(projectPaths: string[]): Promise<void> {
+    if (!this.checkpoints) return;
+    const known = new Set(this.sessions.keys());
+    const seen = new Set<string>();
+    for (const projectPath of projectPaths) {
+      const key = normalizeFsPath(projectPath);
+      if (seen.has(key) || !this.pathExists(projectPath)) continue;
+      seen.add(key);
+      try {
+        const removed = await this.checkpoints.pruneOrphans(projectPath, known);
+        if (removed > 0) console.log(`[AgentFleetService] Удалено осиротевших ref чекпоинтов в ${projectPath}: ${removed}`);
+      } catch (err) {
+        console.warn(`[AgentFleetService] Не удалось проверить ref чекпоинтов в ${projectPath}:`, err);
+      }
+    }
   }
 
   /**
@@ -799,6 +1075,16 @@ export class AgentFleetService extends EventEmitter {
       try {
         await worktreeService.pruneWorktrees(session.projectPath);
       } catch { /* ignore */ }
+    }
+
+    // Чекпоинты живут вместе с сессией и её worktree (decision-45 п. 5).
+    if (this.checkpoints && this.pathExists(session.projectPath)) {
+      try {
+        const removed = await this.checkpoints.deleteSession(session.projectPath, session.id);
+        if (removed > 0) console.log(`[AgentFleetService] Удалено ref чекпоинтов сессии ${session.id}: ${removed}`);
+      } catch (err) {
+        console.warn(`[AgentFleetService] Не удалось удалить ref чекпоинтов сессии ${session.id}:`, err);
+      }
     }
 
     this.sessions.delete(swarmId);
@@ -1345,7 +1631,17 @@ export class AgentFleetService extends EventEmitter {
     } = {}
   ): Promise<void> {
     const targetPath = agentState.worktreePath || session.projectPath;
-    const promptToRun = customPrompt || session.prompt;
+    let promptToRun = customPrompt || session.prompt;
+    let continueSession = turn.continueSession === true;
+    // После отката (decision-45 п. 4): новая сессия движка и пояснение, к какому ходу откатились.
+    const rewindNote = agentState.pendingRewindNote;
+    if (rewindNote) {
+      promptToRun = `${promptToRun}\n\n${rewindNote}`;
+      continueSession = false;
+      agentState.pendingRewindNote = undefined;
+      agentState.cliSessionId = undefined;
+      this.apiHistories.delete(agentState.id);
+    }
     const role = await this.resolveRole(session, agentState);
     if (role) {
       const unsupported = buildEngineInvocation({
@@ -1374,6 +1670,26 @@ export class AgentFleetService extends EventEmitter {
     const busBase = this.agentBusBase(session, agentState);
     appEventBus.publish({ type: 'agent:started', ...busBase, at: startTime });
 
+    // Трасса запуска (decision-45 п. 3): сквозной номер запуска, решения HITL агента, снимок «до».
+    const counters = ensureTraceCounters(agentState);
+    counters.runs += 1;
+    const turnsAtStart = counters.turns;
+    const startModel = this.effectiveModel(agentState);
+    this.trace(session, agentState, {
+      type: 'run_start',
+      engine: agentState.config.engine,
+      ...(startModel ? { model: startModel } : {}),
+      ...(session.doneLoop ? { iteration: session.doneLoop.currentIteration } : {}),
+      ...(continueSession ? { continueSession: true } : {}),
+      ...(rewindNote ? { afterRewind: true } : {}),
+      // API-агент Swarm инструменты не исполняет (decision-45, долг): вызовы останутся «не исполнены».
+      ...(agentState.config.engine === 'api' ? { toolsExecuted: false } : {}),
+      promptChars: promptToRun.length
+    });
+    ensureHitlTraceSubscription();
+    hitlTraceSinks.set(busBase.sessionId, (event) => this.trace(session, agentState, event));
+    await this.captureCheckpoint(session, agentState, 'start');
+
     // Новый usage за этот ход: recordUsage всегда записывает новый объект.
     const usageBeforeRun = agentState.metrics.usage;
     try {
@@ -1395,7 +1711,7 @@ export class AgentFleetService extends EventEmitter {
         }
         this.toolActivity.delete(agentState.id);
         try {
-          await this.runEngineTurn(session, agentState, targetPath, promptToRun, role, turn.continueSession === true);
+          await this.runEngineTurn(session, agentState, targetPath, promptToRun, role, continueSession);
           break;
         } catch (attemptErr) {
           if (!routing) throw attemptErr;
@@ -1429,28 +1745,14 @@ export class AgentFleetService extends EventEmitter {
         this.log(session, agentState, `[Swarm] Агент завершил работу за ${(agentState.metrics.durationMs / 1000).toFixed(1)} с.`);
       }
 
+      // Снимок «после запуска» — до авто-коммита, в очереди после снимков ходов (decision-45 п. 1).
+      await this.captureCheckpoint(session, agentState, 'end');
+
       // Фиксируем результат агента в Git (AC #1)
       await this.materializeAgentResult(session, agentState);
 
       // Собираем дифф с базовой веткой (AC #2)
-      if (agentState.worktreeBranch) {
-        try {
-          const diffRaw = await worktreeService.getWorktreeDiff(
-            session.projectPath,
-            agentState.worktreeBranch,
-            session.baseBranch,
-            agentState.worktreePath
-          );
-          agentState.diffSummary = parseDiffSummary(diffRaw);
-          this.log(
-            session,
-            agentState,
-            `[Swarm] Сформирован дифф: ${agentState.diffSummary.filesChanged} файлов, +${agentState.diffSummary.insertions} / -${agentState.diffSummary.deletions}`
-          );
-        } catch (diffErr) {
-          console.warn(`[AgentFleetService] Diff computation failed for ${agentState.id}:`, diffErr);
-        }
-      }
+      await this.refreshAgentDiff(session, agentState);
     } catch (err: any) {
       console.error(`[AgentFleetService] Agent ${agentState.id} execution failed:`, err);
       agentState.metrics.endTime = Date.now();
@@ -1467,12 +1769,27 @@ export class AgentFleetService extends EventEmitter {
         agentState,
         `[Swarm Error] Ошибка${providerError ? ` провайдера, ${describeProviderErrorBrief(providerError)}` : ''}: ${err.message || String(err)}`
       );
+      this.trace(session, agentState, {
+        type: 'error',
+        message: String(err?.message || err).slice(0, 2000),
+        ...(providerError ? { kind: providerError.kind } : {})
+      });
+      await this.captureCheckpoint(session, agentState, 'end').catch(() => undefined);
       try {
         await this.materializeAgentResult(session, agentState);
       } catch { /* ignore */ }
     } finally {
       // Агент больше не ждёт ответов: снимаем его запросы из очереди HITL (TASK-57).
       hitlService.cancelSession(busBase.sessionId, `Агент "${agentState.config.name}" завершил работу`);
+      hitlTraceSinks.delete(busBase.sessionId);
+      const runUsage = usageDelta(agentState.metrics.usage, usageBeforeRun);
+      if (runUsage) this.trace(session, agentState, { type: 'usage', scope: 'run', usage: runUsage });
+      this.trace(session, agentState, {
+        type: 'run_end',
+        status: agentState.status,
+        durationMs: agentState.metrics.durationMs ?? Date.now() - startTime,
+        numTurns: counters.turns - turnsAtStart
+      });
       const durationMs = agentState.metrics.durationMs;
       if (turn.suppressOutcomeEvent) {
         // Ход цикла «до готовности»: итоговое событие публикует сам цикл (TASK-75).
@@ -1668,6 +1985,17 @@ export class AgentFleetService extends EventEmitter {
     abortSet?.add(controller);
     this.trackAgentAbort(agentState.id, controller);
 
+    // Трасса (decision-45 п. 3): ход — запрос к модели, границы — колбэк tool-loop.
+    const apiTrace = createApiTraceState(ensureTraceCounters(agentState).turns);
+    const traceApi = (chunk: ApiTraceChunk) => {
+      const step = consumeApiChunk(apiTrace, chunk, Date.now());
+      if (step.events.length > 0) {
+        this.traceStep(session, agentState, step);
+        ensureTraceCounters(agentState).turns = lastApiTurnOf(apiTrace);
+      }
+      if (step.turnCompleted !== undefined) void this.captureCheckpoint(session, agentState, 'turn', step.turnCompleted);
+    };
+
     return new Promise((resolve, reject) => {
       let outputBuffer = '';
       let usageSeen = false;
@@ -1697,6 +2025,7 @@ export class AgentFleetService extends EventEmitter {
           if (chunk.toolCall) {
             this.toolActivity.add(agentState.id);
             this.log(session, agentState, `[Tool] ${chunk.toolCall.name}`);
+            traceApi({ toolCall: { id: chunk.toolCall.id, name: chunk.toolCall.name, args: chunk.toolCall.args } });
           }
           if (chunk.usage) {
             usageSeen = true;
@@ -1721,6 +2050,12 @@ export class AgentFleetService extends EventEmitter {
           cleanup();
           // Снимок ошибки провайдера едет дальше вместе с ошибкой — его запишет runSingleAgent.
           reject(info ? new ProviderError(info) : new Error(err));
+        },
+        {
+          onToolBoundary: (b) =>
+            b.kind === 'step'
+              ? traceApi({ step: b.step, ...(b.model ? { model: b.model } : {}) })
+              : traceApi({ toolResult: { id: b.id, name: b.name, ok: b.ok, outputChars: b.outputChars, durationMs: b.durationMs } })
         }
       ).catch((err) => {
         cleanup();
@@ -1829,6 +2164,10 @@ export class AgentFleetService extends EventEmitter {
       let turnUsage = emptyUsage();
       let assistantTurns = 0;
       let stoppedByTurnLimit = false;
+      // Трасса (decision-45 п. 3): ход — сообщение модели (`message.id`), время — `timestamp` событий.
+      const traceState = createClaudeTraceState(ensureTraceCounters(agentState).turns, startedAt);
+      // Одно сообщение приходит несколькими `assistant` с повторённым usage — учитываем его один раз.
+      let lastUsageMessageId: string | undefined;
       // API-ошибка хода (decision-44 п. 7): CLI выходит с кодом 0, но ход не выполнен.
       let cliApiError: ClaudeCliErrorInput | null = null;
       let cliRetryAfterMs: number | undefined;
@@ -1845,6 +2184,15 @@ export class AgentFleetService extends EventEmitter {
         if (typeof event.session_id === 'string' && event.session_id) {
           agentState.cliSessionId = event.session_id;
         }
+        const traceStep = consumeClaudeCliEvent(traceState, event, Date.now());
+        if (traceStep.events.length > 0) {
+          this.traceStep(session, agentState, traceStep);
+          ensureTraceCounters(agentState).turns = lastTurnOf(traceState);
+        }
+        if (traceStep.newMessageUsage && traceState.currentTurn !== undefined) {
+          this.traceTurnUsage(session, agentState, traceState.currentTurn, traceStep.newMessageUsage);
+        }
+        if (traceStep.turnCompleted !== undefined) void this.captureCheckpoint(session, agentState, 'turn', traceStep.turnCompleted);
         const apiError = parseClaudeCliErrorEvent(event);
         if (apiError && event.type === 'rate_limit_event') {
           cliRetryAfterMs = apiError.retryAfterMs;
@@ -1877,13 +2225,18 @@ export class AgentFleetService extends EventEmitter {
               this.log(session, agentState, `[Tool] ${item.name} ${input.slice(0, 300)}`);
             }
           }
-          const usage = usageFromClaudeAssistantEvent(event);
+          const messageId = typeof event.message.id === 'string' && event.message.id ? event.message.id : undefined;
+          const newMessage = !messageId || messageId !== lastUsageMessageId;
+          if (newMessage) lastUsageMessageId = messageId;
+          const usage = newMessage ? usageFromClaudeAssistantEvent(event) : null;
           if (usage) {
             turnUsage = addUsage(turnUsage, usage);
             const stopped = this.recordUsage(session, agentState, usage, 'add', usage.model);
             if (stopped) return;
             this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agentState.id, session });
           }
+          // Лимит ходов роли считает сообщения модели, а не события (одно сообщение — несколько событий).
+          if (!newMessage) return;
           assistantTurns += 1;
           if (maxTurns && assistantTurns >= maxTurns && !stoppedByTurnLimit) {
             stoppedByTurnLimit = true;
@@ -2537,6 +2890,224 @@ export class AgentFleetService extends EventEmitter {
   }
 
   // ---------------------------------------------------------------------------
+  // Таймлайн, откат, продолжение, экспорт трассы (TASK-72, decision-45)
+  // ---------------------------------------------------------------------------
+
+  /** Таймлайн агента из файла трассы, чекпоинты и доступность отката и продолжения. */
+  public async getTimeline(swarmId: string, agentId: string): Promise<AgentTimelineView | null> {
+    const session = this.sessions.get(swarmId);
+    const agent = session?.agents.find((a) => a.id === agentId);
+    if (!session || !agent) return null;
+    const { events, truncated } = this.store ? await this.store.readTrace(swarmId, agentId) : { events: [], truncated: false };
+    const active = isActiveAgentStatus(agent.status);
+    const timeline = buildAgentTimeline(events, { truncated, active, ...(active ? { now: Date.now() } : {}) });
+    const rewindReason = this.rewindBlockReason(session, agent);
+    const continueReason = this.continueBlockReason(session, agent);
+    return {
+      swarmId,
+      agentId,
+      timeline,
+      checkpoints: agent.checkpoints ?? [],
+      rewinds: agent.rewinds ?? [],
+      rewind: rewindReason ? { allowed: false, reason: rewindReason } : { allowed: true },
+      continueAgent: continueReason ? { allowed: false, reason: continueReason } : { allowed: true },
+      ...(agent.pendingRewindNote ? { pendingRewindNote: agent.pendingRewindNote } : {})
+    };
+  }
+
+  /**
+   * Откат рабочего каталога агента к чекпоинту (decision-45 п. 4): снимок `pre_rewind`, возврат ветки
+   * к родителю снимка и файлов к снимку, фиксация коммитом `rewind(...)`, пересчёт диффа, пометка агента.
+   * Следующий запуск агента — новая сессия движка с пояснением об откате.
+   */
+  public async rewindAgent(
+    swarmId: string,
+    agentId: string,
+    checkpointN: number
+  ): Promise<{ success: boolean; error?: string; removedFiles?: number; preRewindCheckpoint?: number; commitHash?: string }> {
+    const session = this.sessions.get(swarmId);
+    const agent = session?.agents.find((a) => a.id === agentId);
+    if (!session || !agent) return { success: false, error: 'Сессия или агент не найдены' };
+    const blocked = this.rewindBlockReason(session, agent);
+    if (blocked || !this.checkpoints || !agent.worktreePath) return { success: false, error: blocked ?? 'Откат недоступен' };
+    const target = agent.checkpoints?.find((c) => c.n === checkpointN);
+    if (!target) return { success: false, error: `Чекпоинт #${checkpointN} не найден` };
+    const cwd = agent.worktreePath;
+    if (!(await this.checkpoints.exists(cwd, target))) {
+      return { success: false, error: `Ref чекпоинта #${checkpointN} не найден в репозитории (удалён вручную или сборщиком мусора)` };
+    }
+
+    await this.checkpoints.whenIdle(session.id, agent.id);
+    const counters = ensureTraceCounters(agent);
+    let outcome: Awaited<ReturnType<CheckpointService['rewind']>>;
+    try {
+      outcome = await this.checkpoints.rewind(session.id, agent, cwd, target, counters.runs);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.log(session, agent, `[Checkpoint] ❌ Откат к #${target.n} не удался: ${message}`);
+      this.persist(session, true);
+      return { success: false, error: message };
+    }
+    const { preRewind, result } = outcome;
+    if (preRewind) {
+      this.trace(session, agent, {
+        type: 'checkpoint',
+        n: preRewind.n,
+        kind: preRewind.kind,
+        ref: preRewind.ref,
+        commit: preRewind.commit,
+        tree: preRewind.tree,
+        parent: preRewind.parent,
+        at: preRewind.at
+      });
+    }
+
+    const where = describeCheckpointPoint(target);
+    // Ветка вернулась к родителю снимка: прежний коммит результата больше не её HEAD.
+    agent.commitHash = result.head ?? undefined;
+    agent.lastCommitHash = result.head ?? agent.lastCommitHash;
+    agent.stashHash = undefined;
+    const role = agent.config.role || agent.config.name || 'contender';
+    await this.materializeAgentResult(session, agent, `rewind(${role}): чекпоинт #${target.n} (${where})`);
+    await this.refreshAgentDiff(session, agent);
+
+    const record: AgentRewindRecord = {
+      at: Date.now(),
+      toCheckpoint: target.n,
+      ...(target.turn !== undefined ? { toTurn: target.turn } : {}),
+      toKind: target.kind,
+      ...(preRewind ? { preRewindCheckpoint: preRewind.n } : {}),
+      removedFiles: result.removedFiles.length,
+      ...(agent.commitHash ? { commitHash: agent.commitHash } : {})
+    };
+    agent.rewinds = [...(agent.rewinds ?? []), record];
+    agent.pendingRewindNote =
+      `[ProjectHub] Рабочий каталог откатён к чекпоинту #${target.n} (${where}, ${new Date(target.at).toISOString()}). ` +
+      `Изменения, сделанные после этой точки, отменены${preRewind ? ` (они сохранены в чекпоинте #${preRewind.n})` : ''}; ` +
+      'предыдущая сессия не продолжается. Изучи текущее состояние файлов и историю git и продолжи задачу с этой точки.';
+    agent.cliSessionId = undefined;
+    this.apiHistories.delete(agent.id);
+    this.trace(session, agent, {
+      type: 'rewind',
+      toCheckpoint: target.n,
+      ...(target.turn !== undefined ? { toTurn: target.turn } : {}),
+      ...(preRewind ? { preRewindCheckpoint: preRewind.n } : {}),
+      removedFiles: result.removedFiles.length
+    });
+    this.log(
+      session,
+      agent,
+      `[Checkpoint] ⏪ Откат к чекпоинту #${target.n} (${where}): удалено файлов ${result.removedFiles.length}` +
+        `${preRewind ? `, прежнее состояние — чекпоинт #${preRewind.n}` : ''}.`
+    );
+    this.persist(session, true);
+    this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agent.id, session });
+    return {
+      success: true,
+      removedFiles: result.removedFiles.length,
+      ...(preRewind ? { preRewindCheckpoint: preRewind.n } : {}),
+      ...(agent.commitHash ? { commitHash: agent.commitHash } : {})
+    };
+  }
+
+  /**
+   * Продолжение агента fan-out после отката или с уточнением (decision-45 п. 4): новый запуск в том же
+   * worktree, новая сессия движка; пояснение об откате добавит `runSingleAgent`.
+   */
+  public async continueAgent(swarmId: string, agentId: string, instruction?: string): Promise<{ success: boolean; error?: string }> {
+    const session = this.sessions.get(swarmId);
+    const agent = session?.agents.find((a) => a.id === agentId);
+    if (!session || !agent) return { success: false, error: 'Сессия или агент не найдены' };
+    const blocked = this.continueBlockReason(session, agent);
+    if (blocked) return { success: false, error: blocked };
+
+    const extra = typeof instruction === 'string' ? instruction.trim().slice(0, 4000) : '';
+    const prompt = extra ? `${session.prompt}\n\n[ProjectHub] Уточнение пользователя: ${extra}` : session.prompt;
+    session.status = 'running';
+    session.completedAt = undefined;
+    session.error = undefined;
+    this.ensureSessionTracking(session.id);
+    agent.status = 'pending';
+    agent.error = undefined;
+    agent.providerError = undefined;
+    agent.finalOutput = undefined;
+    resetLiveOutput(agent);
+    this.log(session, agent, `[Swarm] Продолжение агента${agent.pendingRewindNote ? ' после отката' : ''}${extra ? ' с уточнением' : ''}.`);
+    this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
+
+    void (async () => {
+      // Итог нового запуска (`replace`) складывается с прежними запусками, а не затирает их — как в цикле.
+      if (agent.metrics.usage) this.usageBaselines.set(agent.id, agent.metrics.usage);
+      try {
+        await this.runSingleAgent(session, agent, prompt);
+      } finally {
+        this.usageBaselines.delete(agent.id);
+      }
+      if (session.status !== 'running') return;
+      if (session.agents.every((a) => !isActiveAgentStatus(a.status) && a.status !== 'interrupted')) this.finishSession(session);
+    })();
+    return { success: true };
+  }
+
+  /**
+   * Трасса в JSONL (decision-45 п. 6): строка `header` (формат, версия, `totals` как у JSON-экспорта сессии,
+   * сводка агентов), затем события агентов с `agentId`. Без `agentId` — все агенты сессии.
+   */
+  public async exportTrace(swarmId: string, agentId?: string): Promise<string | null> {
+    const session = this.sessions.get(swarmId);
+    if (!session || !this.store) return null;
+    const agents = agentId ? session.agents.filter((a) => a.id === agentId) : session.agents;
+    if (agents.length === 0) return null;
+    const totals = summarizeSwarmSession(session);
+    const perAgent: Array<{ agentId: string; events: Awaited<ReturnType<SwarmSessionStore['readTrace']>>['events'] }> = [];
+    for (const agent of agents) {
+      const { events } = await this.store.readTrace(session.id, agent.id);
+      perAgent.push({ agentId: agent.id, events });
+    }
+    return buildTraceExport(
+      {
+        type: 'header',
+        format: AGENT_TRACE_FORMAT,
+        v: AGENT_TRACE_VERSION,
+        exportedAt: new Date().toISOString(),
+        sessionFormat: 'projecthub-swarm-session',
+        sessionVersion: 1,
+        swarmId: session.id,
+        ...(session.taskId ? { taskId: session.taskId } : {}),
+        ...(session.taskTitle ? { taskTitle: session.taskTitle } : {}),
+        mode: session.mode,
+        status: session.status,
+        baseBranch: session.baseBranch,
+        createdAt: session.createdAt,
+        ...(session.completedAt ? { completedAt: session.completedAt } : {}),
+        totals: {
+          usage: totals.usage,
+          costUsd: totals.costUsd,
+          durationMs: totals.durationMs,
+          agentsCompleted: totals.agentsCompleted,
+          agentsFailed: totals.agentsFailed
+        },
+        agents: agents.map((a) => ({
+          id: a.id,
+          name: a.config.name,
+          engine: a.config.engine,
+          ...(a.config.role ? { role: a.config.role } : {}),
+          model: a.metrics.usage?.model || a.providerInfo?.model || a.modelRouting?.current?.model || a.config.providerConfig?.model,
+          status: a.status,
+          ...(a.worktreeBranch ? { branch: a.worktreeBranch } : {}),
+          ...(a.metrics.usage ? { usage: a.metrics.usage } : {}),
+          ...(typeof a.metrics.costUsd === 'number' ? { costUsd: a.metrics.costUsd } : {}),
+          durationMs: a.metrics.durationMs,
+          checkpoints: a.checkpoints ?? [],
+          rewinds: a.rewinds ?? [],
+          ...(a.trace ? { trace: a.trace } : {})
+        }))
+      },
+      perAgent
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Pick Winner / Stop
   // ---------------------------------------------------------------------------
 
@@ -2626,6 +3197,11 @@ export class AgentFleetService extends EventEmitter {
                 console.warn(`[AgentFleetService] Failed to delete branch ${agent.worktreeBranch}:`, branchErr);
               }
             }
+            // Worktree проигравшего удалён — его чекпоинты больше не к чему откатывать (decision-45 п. 5).
+            if (this.checkpoints) {
+              await this.checkpoints.deleteAgent(session.projectPath, session.id, agent.id).catch(() => 0);
+              agent.checkpoints = [];
+            }
           } catch (cleanErr) {
             console.warn(`[AgentFleetService] Failed to cleanup worktree ${agent.worktreePath}:`, cleanErr);
           }
@@ -2709,7 +3285,9 @@ export class AgentFleetService extends EventEmitter {
    */
   public async materializeAgentResult(
     session: SwarmSession,
-    agentState: AgentSlotState
+    agentState: AgentSlotState,
+    /** Сообщение коммита вместо `agent(<role>): <task>` — например, фиксация отката (decision-45 п. 4). */
+    commitMessage?: string
   ): Promise<void> {
     const targetPath = agentState.worktreePath;
     if (!targetPath || !this.pathExists(targetPath)) return;
@@ -2730,7 +3308,7 @@ export class AgentFleetService extends EventEmitter {
       if (shouldAutoCommit) {
         const role = agentState.config.role || agentState.config.name || 'contender';
         const taskOrSession = session.taskId || session.id;
-        const commitMsg = `agent(${role}): ${taskOrSession}`;
+        const commitMsg = commitMessage ?? `agent(${role}): ${taskOrSession}`;
 
         // Коммит с явным авторством ProjectHub Agent без изменения глобального gitconfig
         await git.raw([
@@ -2808,4 +3386,4 @@ export class AgentFleetService extends EventEmitter {
   }
 }
 
-export const agentFleetService = new AgentFleetService(new SwarmSessionStore());
+export const agentFleetService = new AgentFleetService(new SwarmSessionStore(), { checkpoints: checkpointService });

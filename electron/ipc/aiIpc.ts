@@ -405,6 +405,44 @@ export function registerAiIpc(ctx: IpcContext) {
     return await agentFleetService.readTranscript(swarmId, agentId);
   });
 
+  // Таймлайн, откат к чекпоинту, продолжение агента и трасса JSONL (TASK-72, decision-45)
+  ipcMain.handle('swarm:getTimeline', async (_event, swarmId: string, agentId: string) => {
+    if (typeof swarmId !== 'string' || typeof agentId !== 'string') return null;
+    return await agentFleetService.getTimeline(swarmId, agentId);
+  });
+
+  ipcMain.handle('swarm:rewind', async (_event, swarmId: string, agentId: string, checkpoint: number) => {
+    if (typeof swarmId !== 'string' || typeof agentId !== 'string' || !Number.isInteger(checkpoint)) {
+      return { success: false, error: 'Invalid arguments' };
+    }
+    return await agentFleetService.rewindAgent(swarmId, agentId, checkpoint);
+  });
+
+  ipcMain.handle('swarm:continueAgent', async (_event, swarmId: string, agentId: string, instruction?: string) => {
+    if (typeof swarmId !== 'string' || typeof agentId !== 'string') return { success: false, error: 'Invalid arguments' };
+    return await agentFleetService.continueAgent(swarmId, agentId, typeof instruction === 'string' ? instruction : undefined);
+  });
+
+  ipcMain.handle('swarm:exportTrace', async (_event, swarmId: string, agentId?: string) => {
+    if (typeof swarmId !== 'string') return { success: false, error: 'Invalid swarm id' };
+    const content = await agentFleetService.exportTrace(swarmId, typeof agentId === 'string' ? agentId : undefined);
+    if (content === null) return { success: false, error: `Трасса сессии ${swarmId} не найдена` };
+    const win = ctx.getMainWindow();
+    const dialogOptions = {
+      title: 'Экспорт трассы агента',
+      defaultPath: `${swarmId}${typeof agentId === 'string' ? `-${agentId}` : ''}.trace.jsonl`,
+      filters: [{ name: 'JSON Lines', extensions: ['jsonl'] }]
+    };
+    const result = win ? await dialog.showSaveDialog(win, dialogOptions) : await dialog.showSaveDialog(dialogOptions);
+    if (result.canceled || !result.filePath) return { success: false, canceled: true };
+    try {
+      await fs.writeFile(result.filePath, content, 'utf-8');
+      return { success: true, path: result.filePath };
+    } catch (err: unknown) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   ipcMain.handle('swarm:export', async (_event, swarmId: string, format: SwarmExportFormat) => {
     if (typeof swarmId !== 'string') return null;
     return agentFleetService.exportSession(swarmId, format === 'json' ? 'json' : 'markdown');
