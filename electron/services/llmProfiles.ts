@@ -165,7 +165,8 @@ export const LLM_PROVIDER_PRESETS: readonly LlmProviderPreset[] = [
     baseUrl: 'http://127.0.0.1:11434/v1',
     requiresApiKey: false,
     local: true,
-    compat: compat({ reasoning: 'ollama_think' })
+    // usage в стриме по stream_options.include_usage — проверено на Ollama 0.34.0 и 0.31.2 (decision-42).
+    compat: compat({ streamUsage: true, reasoning: 'ollama_think' })
   },
   {
     id: 'lmstudio',
@@ -342,13 +343,23 @@ export function buildProfileHeaders(profile: LlmProfile, apiKey: string | undefi
 }
 
 /**
+ * Прежний провайдер работает на этой машине: `ollama` всегда (как в снимке слота, decision-40),
+ * `custom` — если адрес указывает на localhost. Основа нулевой цены (decision-42).
+ */
+export function legacyProviderIsLocal(provider: string, baseUrl: string | undefined): boolean {
+  if (provider === 'ollama') return true;
+  return provider === 'custom' && typeof baseUrl === 'string' && baseUrl.trim() !== '' && isLocalBaseUrl(baseUrl);
+}
+
+/**
  * Флаги совместимости прежних провайдеров `openrouter`/`deepseek`/`ollama`/`custom`: ровно то
  * поведение, которое было зашито в код до профилей (TASK-56, TASK-92).
  */
 export function legacyProviderCompat(provider: string): LlmCompatFlags {
   return {
     ...BASE_COMPAT,
-    streamUsage: provider !== 'ollama',
+    // Ollama принимает stream_options.include_usage (проверено на 0.34.0 и 0.31.2, decision-42).
+    streamUsage: true,
     openRouterUsage: provider === 'openrouter',
     // Формат усилия — как у пресетов; без выбранного усилия запрос не меняется (decision-41 п. 3).
     reasoning: provider === 'ollama' ? 'ollama_think' : provider === 'openrouter' ? 'reasoning_object' : 'none'
@@ -388,7 +399,7 @@ export function profileFromLegacyConfig(config: { provider: string; baseUrl?: st
     ...profile,
     name: `${profile.name} (AI Studio)`,
     baseUrl,
-    local: config.provider === 'ollama' || (config.provider === 'custom' && isLocalBaseUrl(baseUrl)),
+    local: legacyProviderIsLocal(config.provider, baseUrl),
     compat: legacyProviderCompat(config.provider)
   };
 }

@@ -20,7 +20,8 @@ import {
   Lock,
   LogOut,
   Clock,
-  History
+  History,
+  DollarSign
 } from 'lucide-react';
 import { useAIStudioStore, DEFAULT_AUTO_APPROVE_RULES } from '../../store/useAIStudioStore';
 import { useHitlStore } from '../../store/useHitlStore';
@@ -28,6 +29,7 @@ import type { AIProviderConfig, AutoApproveRules } from '../../types/electron';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useTimers } from '../../hooks/useTimeoutState';
 import { LlmProfilesSection } from './LlmProfilesSection';
+import { PricingEditorSection } from './PricingEditorSection';
 import { useLlmProfiles } from './ProviderProfileSelect';
 import { ReasoningEffortSelect } from './ReasoningEffortSelect';
 import { effortTargetKind } from '../../lib/reasoningEffort';
@@ -76,7 +78,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
   const { config, saveConfig, claudeAuth, startClaudeLogin, claudeLogout, fetchClaudeAuth } = useAIStudioStore();
   const openHitlCenter = useHitlStore((s) => s.openCenter);
 
-  const [activeTab, setActiveTab] = useState<'general' | 'autoApprove'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'autoApprove' | 'pricing'>('general');
   const [form, setForm] = useState<AIProviderConfig>({
     ...config,
     autoApproveRules: config.autoApproveRules || { ...DEFAULT_AUTO_APPROVE_RULES }
@@ -256,6 +258,20 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
             {form.autoApprove && (
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('pricing')}
+            data-testid="ai-settings-tab-pricing"
+            className={`pb-2.5 px-3 border-b-2 text-xs font-semibold flex items-center gap-2 transition ${
+              activeTab === 'pricing'
+                ? 'border-amber-500 text-amber-300'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <DollarSign className="w-3.5 h-3.5 text-amber-400" />
+            <span>{t.pricing.tabLabel}</span>
           </button>
         </div>
 
@@ -923,6 +939,9 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
             </div>
           )}
 
+          {/* Цены сохраняются своей кнопкой и сразу применяются (TASK-70.4). */}
+          {activeTab === 'pricing' && <PricingEditorSection />}
+
           {/* Footer Actions */}
           <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-2">
             <button
@@ -930,8 +949,9 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
               onClick={onClose}
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition"
             >
-              {t.common.cancel}
+              {activeTab === 'pricing' ? t.pricing.close : t.common.cancel}
             </button>
+            {activeTab !== 'pricing' && (
             <button
               type="submit"
               className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-lg shadow-indigo-600/20 transition flex items-center gap-1.5"
@@ -939,6 +959,7 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
               <CheckCircle2 className="w-3.5 h-3.5" />
               {t.aiStudio.settingsModal.save}
             </button>
+            )}
           </div>
         </form>
       </div>

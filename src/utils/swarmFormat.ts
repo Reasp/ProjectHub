@@ -8,6 +8,8 @@ import type { AgentSlotState, AgentUsage, SwarmSession } from '../types/electron
 export function formatUsd(value: number | undefined): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
   if (value === 0) return '$0.00';
+  // Доли цента локальных и дешёвых моделей: две значащие цифры, а не «$0.0000» (TASK-70.4).
+  if (value < 0.0001) return `$${value.toFixed(Math.min(8, 1 - Math.floor(Math.log10(value))))}`;
   if (value < 0.01) return `$${value.toFixed(4)}`;
   return `$${value.toFixed(2)}`;
 }

@@ -92,7 +92,7 @@ describe('swarmExport (TASK-56)', () => {
     const md = exportSwarmSessionMarkdown(session());
     expect(md).toContain('- Провайдер: профиль «Ollama» (локальная) · `qwen2.5:7b-instruct`');
     expect(md).toContain('- Профиль: id `p-ollama`, локальная модель');
-    expect(md).toContain('стоимость $0.12 (price-table)');
+    expect(md).toContain('стоимость $0.12 (по таблице цен)');
     const parsed = JSON.parse(exportSwarmSessionJson(session()));
     expect(parsed.session.agents[1].providerInfo).toEqual({
       provider: 'openai-compatible',

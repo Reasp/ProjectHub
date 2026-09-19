@@ -167,6 +167,8 @@ describe('agentCost (TASK-56): парсинг usage', () => {
     expect(formatUsd(undefined)).toBe('—');
     expect(formatUsd(0)).toBe('$0.00');
     expect(formatUsd(0.0042)).toBe('$0.0042');
+    expect(formatUsd(0.00004)).toBe('$0.000040');
+    expect(formatUsd(0.0000123)).toBe('$0.000012');
     expect(formatUsd(1.5)).toBe('$1.50');
     expect(formatTokens(999)).toBe('999');
     expect(formatTokens(12_345)).toBe('12.3k');

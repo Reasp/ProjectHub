@@ -51,10 +51,13 @@ describe('buildOpenAICompatibleChatBody (TASK-92)', () => {
     expect(buildOpenAICompatibleChatBody({ provider: 'custom', compat: legacyProviderCompat('custom'), model: 'm', messages, tools: [] })).not.toHaveProperty('tools');
   });
 
-  it('учёт usage: Ollama без stream_options, OpenRouter с usage.include', () => {
+  it('учёт usage: Ollama со stream_options (decision-42), OpenRouter с usage.include', () => {
     const ollama = buildOpenAICompatibleChatBody({ provider: 'ollama', compat: legacyProviderCompat('ollama'), model: 'llama3.1', messages });
-    expect(ollama).not.toHaveProperty('stream_options');
+    expect(ollama.stream_options).toEqual({ include_usage: true });
     expect(ollama).not.toHaveProperty('usage');
+    // Сервер без флага streamUsage — без stream_options.
+    const plain = buildOpenAICompatibleChatBody({ provider: 'custom', compat: { ...legacyProviderCompat('custom'), streamUsage: false }, model: 'm', messages });
+    expect(plain).not.toHaveProperty('stream_options');
 
     const openrouter = buildOpenAICompatibleChatBody({ provider: 'openrouter', compat: legacyProviderCompat('openrouter'), model: 'x/y', messages });
     expect(openrouter.stream_options).toEqual({ include_usage: true });

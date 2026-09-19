@@ -303,4 +303,66 @@ describe('AgentFleetService: стоимость и бюджет (TASK-56, AC #3,
     expect(JSON.parse(fleet.exportSession(session.id, 'json')!).totals.costUsd).toBeCloseTo(0.5, 6);
     expect(fleet.exportSession('missing', 'json')).toBeNull();
   });
+
+  it('локальный профиль: стоимость 0 (local) по профилю, а не по имени модели; экспорт «$0.00 (локальная)» (decision-42)', async () => {
+    vi.spyOn(aiAgentService, 'streamChat').mockImplementation(async (_req, onChunk, onComplete) => {
+      onChunk({ usage: { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 500, cacheCreationTokens: 0, totalTokens: 2_000_500, costSource: 'unknown' } });
+      onComplete({ id: 'm', role: 'assistant', content: 'x', timestamp: new Date().toISOString() });
+    });
+    vi.spyOn(llmProfileService, 'listProfiles').mockResolvedValue([
+      { ...profileFromPreset('ollama', 'p-ollama', 'Ollama'), hasApiKey: false },
+      { ...profileFromPreset('custom', 'p-cloud', 'Cloud'), baseUrl: 'https://cloud.example/v1', hasApiKey: false }
+    ]);
+    const fleet = new AgentFleetService(null);
+    // Модель платная в таблице — у облачного профиля цена есть, у локального — ноль.
+    fleet.setPriceTable({ updatedAt: '2026-01-01', models: { qwen: { input: 1, output: 1 } } });
+    const session = await fleet.startFanOut({
+      projectPath: 'F:/ProjectHub',
+      prompt: 'p',
+      useWorktrees: false,
+      agents: [
+        { id: 'loc', name: 'Local', engine: 'api', providerConfig: { provider: 'openai-compatible', profileId: 'p-ollama', model: 'qwen2.5:7b' } },
+        { id: 'cld', name: 'Cloud', engine: 'api', providerConfig: { provider: 'openai-compatible', profileId: 'p-cloud', model: 'qwen2.5:7b' } }
+      ]
+    });
+    await wait(30);
+    const [loc, cld] = session.agents;
+    expect(loc.metrics.usage).toMatchObject({ costUsd: 0, costSource: 'local' });
+    expect(cld.metrics.usage).toMatchObject({ costSource: 'price-table' });
+    expect(cld.metrics.usage!.costUsd).toBeCloseTo(2, 3);
+    const md = fleet.exportSession(session.id, 'markdown')!;
+    expect(md).toContain('$0.00 (локальная)');
+    expect(md).toContain('стоимость $0.00 (локальная)');
+    expect(JSON.parse(fleet.exportSession(session.id, 'json')!).session.agents.find((a: { id: string }) => a.id === 'loc').metrics.usage.costSource).toBe('local');
+  });
+
+  it('без usage от сервера — оценка по длине текста: у локального 0, у облачного стоимость неизвестна (decision-42)', async () => {
+    vi.spyOn(aiAgentService, 'streamChat').mockImplementation(async (_req, onChunk, onComplete) => {
+      onChunk({ text: 'x'.repeat(400) });
+      onComplete({ id: 'm', role: 'assistant', content: 'x'.repeat(400), timestamp: new Date().toISOString() });
+    });
+    vi.spyOn(llmProfileService, 'listProfiles').mockResolvedValue([
+      { ...profileFromPreset('ollama', 'p-ollama', 'Ollama'), hasApiKey: false },
+      { ...profileFromPreset('custom', 'p-cloud', 'Cloud'), baseUrl: 'https://cloud.example/v1', hasApiKey: false }
+    ]);
+    const fleet = new AgentFleetService(null);
+    fleet.setPriceTable({ updatedAt: '2026-01-01', models: { qwen: { input: 1, output: 1 } } });
+    const session = await fleet.startFanOut({
+      projectPath: 'F:/ProjectHub',
+      prompt: 'p'.repeat(40),
+      useWorktrees: false,
+      agents: [
+        { id: 'loc', name: 'Local', engine: 'api', providerConfig: { provider: 'openai-compatible', profileId: 'p-ollama', model: 'qwen2.5:7b' } },
+        { id: 'cld', name: 'Cloud', engine: 'api', providerConfig: { provider: 'openai-compatible', profileId: 'p-cloud', model: 'qwen2.5:7b' } }
+      ]
+    });
+    await wait(30);
+    const [loc, cld] = session.agents;
+    expect(loc.metrics.usage).toMatchObject({ estimated: true, inputTokens: 10, outputTokens: 100, costUsd: 0, costSource: 'local' });
+    expect(cld.metrics.usage).toMatchObject({ estimated: true, outputTokens: 100, costSource: 'unknown' });
+    expect(cld.metrics.usage!.costUsd).toBeUndefined();
+    const md = fleet.exportSession(session.id, 'markdown')!;
+    expect(md).toContain('~10 / ~100');
+    expect(md).toContain('оценка по длине текста');
+  });
 });

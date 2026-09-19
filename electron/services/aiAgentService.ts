@@ -9,7 +9,8 @@ import { buildAgentContext, buildComputerUseInstructions } from './contextBuilde
 import { secretStorageService } from './secretStorageService.js';
 import matter from 'gray-matter';
 import { assertInsideProject, isInsideProject } from './pathGuard.js';
-import { addUsage, usageFromAnthropic, usageFromOpenAI, type AgentUsage } from './agentCost.js';
+import { addUsage, estimateUsage, priceUsage, usageFromAnthropic, usageFromOpenAI, type AgentUsage } from './agentCost.js';
+import { pricingService } from './pricingService.js';
 import { isToolAllowed } from './hitlPolicy.js';
 import { resolveOpenAICompatibleEndpoint } from './llmEndpoint.js';
 import {
@@ -21,7 +22,7 @@ import {
   type AnthropicModelCapabilities
 } from './anthropicRequest.js';
 import { buildOpenAICompatibleChatBody } from './openAICompatibleRequest.js';
-import { legacyProviderCompat, type LlmCompatFlags } from './llmProfiles.js';
+import { legacyProviderCompat, legacyProviderIsLocal, type LlmCompatFlags } from './llmProfiles.js';
 import { llmProfileService } from './llmProfileService.js';
 import { extractReasoningDelta, normalizeReasoningEffort, reasoningErrorHint, type ReasoningEffort } from './reasoningEffort.js';
 
@@ -31,6 +32,8 @@ interface OpenAICompatibleTarget {
   headers: Record<string, string>;
   compat: LlmCompatFlags;
   label: string;
+  /** Сервер на машине пользователя: стоимость 0 (decision-42). */
+  local: boolean;
 }
 import { logger } from './logger.js';
 import { buildClaudeCliCompletionCommand, parseClaudeCliCompletionOutput } from './claudeCliCompletion.js';
@@ -202,6 +205,18 @@ interface ToolLoopState {
   fullThought: string;
   toolCalls: AIToolCall[];
   usage: AgentUsage | null;
+  /** Провайдер локальный (профиль `local`, прежний `ollama`) — для нулевой цены. */
+  local?: boolean;
+}
+
+/** Символы сообщений запроса для оценки usage, когда сервер его не сообщил. */
+function requestChars(messages: unknown[], tools: unknown): number {
+  let chars = tools ? JSON.stringify(tools).length : 0;
+  for (const m of messages) {
+    const content = (m as { content?: unknown })?.content;
+    chars += typeof content === 'string' ? content.length : content ? JSON.stringify(content).length : 0;
+  }
+  return chars;
 }
 
 /** Аргумент командной строки для spawn с `shell: true` (как в claudeBridgeService). */
@@ -659,7 +674,11 @@ class AIAgentService {
         );
       }
 
-      if (loop.usage) onChunk({ usage: loop.usage });
+      // Стоимость — той же таблицей и функцией, что и в Swarm (pricingService, decision-42).
+      if (loop.usage) {
+        loop.usage = priceUsage(loop.usage, loop.usage.model || req.config.model, await pricingService.ensureLoaded(), { local: loop.local });
+        onChunk({ usage: loop.usage });
+      }
       onComplete({
         id: `msg-${Date.now()}`,
         role: 'assistant',
@@ -979,10 +998,16 @@ class AIAgentService {
   private async resolveOpenAICompatibleTarget(config: AIProviderConfig): Promise<OpenAICompatibleTarget> {
     if (config.provider === 'openai-compatible') {
       const target = await llmProfileService.resolveRequestTarget(config.profileId);
-      return { endpoint: target.endpoint, headers: target.headers, compat: target.compat, label: target.profile.name };
+      return { endpoint: target.endpoint, headers: target.headers, compat: target.compat, label: target.profile.name, local: target.profile.local };
     }
     const { endpoint, headers } = resolveOpenAICompatibleEndpoint(config);
-    return { endpoint, headers, compat: legacyProviderCompat(config.provider), label: config.provider };
+    return {
+      endpoint,
+      headers,
+      compat: legacyProviderCompat(config.provider),
+      label: config.provider,
+      local: legacyProviderIsLocal(config.provider, endpoint)
+    };
   }
 
   /**
@@ -1000,6 +1025,7 @@ class AIAgentService {
     executeTool?: StreamChatOptions['executeTool']
   ): Promise<void> {
     const target = await this.resolveOpenAICompatibleTarget(req.config);
+    loop.local = target.local;
     const messages: unknown[] = [
       { role: 'system', content: systemPrompt },
       ...req.messages
@@ -1013,7 +1039,14 @@ class AIAgentService {
     const openAITools = tools.length > 0 && target.compat.tools ? toOpenAITools(tools) : undefined;
 
     for (let step = 0; ; step++) {
+      const inputChars = requestChars(messages, openAITools);
       const turn = await this.requestOpenAICompatible(req, target, messages, openAITools, step, signal, onChunk);
+      if (!turn.usage) {
+        // Сервер не прислал usage (нет флага streamUsage или сервер его не поддерживает) — оценка по длине
+        // запроса и ответа с пометкой estimated (decision-42).
+        const outputChars = turn.text.length + turn.thought.length + turn.toolCalls.reduce((n, tc) => n + JSON.stringify(tc.args ?? {}).length, 0);
+        turn.usage = estimateUsage({ inputChars, outputChars, model: req.config.model });
+      }
       this.accumulateTurn(loop, turn);
       const results = await this.executeToolStep(turn.toolCalls, step, maxSteps, loop, onChunk, signal, executeTool);
       if (!results) break;

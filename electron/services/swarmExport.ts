@@ -21,6 +21,20 @@ export function agentUsage(agent: AgentSlotState): AgentUsage | undefined {
   return agent.metrics?.usage;
 }
 
+const COST_SOURCE_LABELS: Record<AgentUsage['costSource'], string> = {
+  provider: 'по данным провайдера',
+  'price-table': 'по таблице цен',
+  local: 'локальная',
+  unknown: 'неизвестна'
+};
+
+/** Стоимость агента для отчёта: у локальной модели — «$0.00 (локальная)», а не «—» (decision-42). */
+export function formatAgentCost(usage: AgentUsage | undefined, fallbackCostUsd?: number): string {
+  const cost = usage?.costUsd ?? fallbackCostUsd;
+  if (typeof cost !== 'number') return '—';
+  return usage?.costSource === 'local' ? `${formatUsd(cost)} (локальная)` : formatUsd(cost);
+}
+
 /** Сводка по сессии: суммарные токены, стоимость и длительность (от старта до завершения). */
 export function summarizeSwarmSession(session: SwarmSession): SwarmSessionTotals {
   let usage = emptyUsage();
@@ -155,8 +169,13 @@ export function exportSwarmSessionMarkdown(session: SwarmSession, options: Markd
   lines.push('|---|---|---|---|---|---|---|---|---|---|');
   for (const agent of session.agents) {
     const u = agentUsage(agent);
-    const tokens = u ? `${formatTokens(u.inputTokens + u.cacheReadTokens + u.cacheCreationTokens)} / ${formatTokens(u.outputTokens)}` : agent.metrics.tokensEstimated ? `~${formatTokens(agent.metrics.tokensEstimated)}` : '—';
-    const cost = typeof (u?.costUsd ?? agent.metrics.costUsd) === 'number' ? formatUsd(u?.costUsd ?? agent.metrics.costUsd) : '—';
+    const approx = u?.estimated ? '~' : '';
+    const tokens = u
+      ? `${approx}${formatTokens(u.inputTokens + u.cacheReadTokens + u.cacheCreationTokens)} / ${approx}${formatTokens(u.outputTokens)}`
+      : agent.metrics.tokensEstimated
+        ? `~${formatTokens(agent.metrics.tokensEstimated)}`
+        : '—';
+    const cost = formatAgentCost(u, agent.metrics.costUsd);
     const diff = agent.diffSummary ? `${agent.diffSummary.filesChanged} файлов, +${agent.diffSummary.insertions}/-${agent.diffSummary.deletions}` : '—';
     const commit = agent.commitHash ? `\`${agent.commitHash.slice(0, 7)}\`` : agent.stashHash ? `stash \`${agent.stashHash.slice(0, 7)}\`` : '—';
     const name = `${agent.winner || session.winnerAgentId === agent.id ? '🏆 ' : ''}${agent.config.name}`;
@@ -202,7 +221,7 @@ export function exportSwarmSessionMarkdown(session: SwarmSession, options: Markd
     const u = agentUsage(agent);
     if (u) {
       lines.push(
-        `- Usage: вход ${formatTokens(u.inputTokens)}, выход ${formatTokens(u.outputTokens)}, кэш чтение ${formatTokens(u.cacheReadTokens)}, кэш запись ${formatTokens(u.cacheCreationTokens)}${u.model ? `, модель \`${u.model}\`` : ''}${typeof u.costUsd === 'number' ? `, стоимость ${formatUsd(u.costUsd)} (${u.costSource})` : ''}`
+        `- Usage${u.estimated ? ' (оценка по длине текста, сервер не сообщил usage)' : ''}: вход ${formatTokens(u.inputTokens)}, выход ${formatTokens(u.outputTokens)}, кэш чтение ${formatTokens(u.cacheReadTokens)}, кэш запись ${formatTokens(u.cacheCreationTokens)}${u.model ? `, модель \`${u.model}\`` : ''}${typeof u.costUsd === 'number' ? `, стоимость ${formatUsd(u.costUsd)} (${COST_SOURCE_LABELS[u.costSource]})` : ''}`
       );
     }
     lines.push('');

@@ -31,6 +31,7 @@ import { buildAgentContext } from '../services/contextBuilder';
 import { llmProfileService } from '../services/llmProfileService';
 import { llmModelCatalogService } from '../services/llmModelCatalogService';
 import { LLM_PROVIDER_PRESETS, profileFromLegacyConfig } from '../services/llmProfiles';
+import { pricingService } from '../services/pricingService';
 import type { IpcContext } from './types';
 
 export function registerAiIpc(ctx: IpcContext) {
@@ -90,6 +91,13 @@ export function registerAiIpc(ctx: IpcContext) {
   ipcMain.handle('llmProfiles:listModels', (_event, id: string, refresh?: boolean) =>
     llmModelCatalogService.listModels(String(id), { refresh: refresh === true })
   );
+
+  // Таблица цен агентов (TASK-70.4, decision-42): встроенная + переопределения agent-pricing.json.
+  // Сохранение сразу применяется в Swarm и AI Studio. Импорт OpenRouter — только по кнопке и ничего не пишет.
+  void pricingService.ensureLoaded();
+  ipcMain.handle('pricing:get', () => pricingService.getState());
+  ipcMain.handle('pricing:save', (_event, overrides: unknown) => pricingService.saveOverrides(overrides));
+  ipcMain.handle('pricing:fetchOpenRouter', () => pricingService.fetchOpenRouterPrices());
 
   ipcMain.handle('ai:getClaudeAuthStatus', async () => {
     return await aiAgentService.getClaudeAuthStatus();

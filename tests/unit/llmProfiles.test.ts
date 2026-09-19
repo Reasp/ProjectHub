@@ -84,7 +84,8 @@ describe('normalizeProfile', () => {
       presetId: 'ollama',
       compat: { tools: false, vision: true, maxTokensField: 'whatever', reasoning: 'ollama_think', streamUsage: 'yes' }
     });
-    expect(p.compat).toMatchObject({ tools: false, vision: true, maxTokensField: 'max_tokens', reasoning: 'ollama_think', streamUsage: false });
+    expect(p.compat).toMatchObject({ tools: false, vision: true, maxTokensField: 'max_tokens', reasoning: 'ollama_think', streamUsage: true });
+    // Мусорный streamUsage не перекрывает пресет: у Ollama usage в стриме включён (decision-42).
     expect(p.local).toBe(true);
   });
 
@@ -130,7 +131,8 @@ describe('buildProfileHeaders', () => {
 
 describe('legacyProviderCompat', () => {
   it('сохраняет прежнее поведение провайдеров', () => {
-    expect(legacyProviderCompat('ollama')).toMatchObject({ streamUsage: false, openRouterUsage: false, maxTokensField: 'max_tokens' });
+    // Ollama принимает stream_options.include_usage (decision-42).
+    expect(legacyProviderCompat('ollama')).toMatchObject({ streamUsage: true, openRouterUsage: false, maxTokensField: 'max_tokens' });
     expect(legacyProviderCompat('openrouter')).toMatchObject({ streamUsage: true, openRouterUsage: true });
     expect(legacyProviderCompat('deepseek')).toMatchObject({ streamUsage: true, openRouterUsage: false });
   });

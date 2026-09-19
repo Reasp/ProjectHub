@@ -18,6 +18,7 @@ import { CHILD_CLOSE_GRACE_MS, superviseChildExit } from './processSweep.js';
 import { processManager } from './processManager.js';
 import { claudeUsageService } from './claudeUsageService.js';
 import { parseClaudeResultEvent, priceUsage, type AgentUsage } from './agentCost.js';
+import { pricingService } from './pricingService.js';
 import { hitlService, ApprovalCancelledError } from './hitlService.js';
 import { appEventBus } from './eventBus.js';
 import { buildAgentContext, buildComputerUseInstructions } from './contextBuilder.js';
@@ -1866,7 +1867,8 @@ class ClaudeBridgeService extends EventEmitter {
             // Реальные токены и total_cost_usd ответа — в сообщение AI Studio (TASK-56).
             const summary = parseClaudeResultEvent(event);
             if (summary && (summary.usage.totalTokens > 0 || typeof summary.usage.costUsd === 'number')) {
-              resultUsage = priceUsage(summary.usage, summary.usage.model);
+              // Та же таблица цен, что у Swarm и API-пути AI Studio (decision-42).
+              resultUsage = priceUsage(summary.usage, summary.usage.model, pricingService.getTable());
               onChunk({ usage: resultUsage });
             }
           }

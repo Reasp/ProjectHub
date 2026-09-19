@@ -25,11 +25,10 @@ import type { RoleDefinition } from './roleTypes.js';
 import { SwarmSessionStore } from './swarmSessionStore.js';
 import { appendLiveOutput, pushAgentLog, resetLiveOutput } from './swarmLogBuffer.js';
 import {
-  BUILTIN_PRICE_TABLE,
   addUsage,
   emptyUsage,
+  estimateUsage,
   formatUsd,
-  mergePriceTables,
   parseClaudeResultEvent,
   parseCliUsageText,
   priceUsage,
@@ -38,6 +37,7 @@ import {
   type PriceTable
 } from './agentCost.js';
 import { exportSwarmSessionJson, exportSwarmSessionMarkdown, summarizeSwarmSession } from './swarmExport.js';
+import { pricingService } from './pricingService.js';
 import { arenaJudgeService, judgeableAgents, type RunJudgeOptions } from './arenaJudgeService.js';
 import { doneLoopService, loadDoneLoopSettings, type DoneLoopRunResult } from './doneLoopService.js';
 import { findTaskFile } from './taskFileLookup.js';
@@ -75,8 +75,8 @@ export type {
   SwarmTranscript
 } from './swarmTypes.js';
 
-/** Файл пользовательских переопределений цен моделей (см. agentCost.ts). */
-export const AGENT_PRICING_FILE = 'agent-pricing.json';
+/** Файл пользовательских переопределений цен моделей (читает и пишет pricingService, decision-42). */
+export { AGENT_PRICING_FILE } from './pricingService.js';
 
 /** Дополнение к промпту при возобновлении прерванного агента в том же worktree. */
 export const RESUME_PROMPT_SUFFIX =
@@ -185,8 +185,8 @@ export class AgentFleetService extends EventEmitter {
   private apiHistories = new Map<string, AIMessage[]>();
   /** Usage предыдущих ходов цикла: итог хода (`replace`) складывается с ним, а не затирает его. */
   private usageBaselines = new Map<string, AgentUsage>();
-  private priceTable: PriceTable = BUILTIN_PRICE_TABLE;
-  private priceTableLoaded = false;
+  /** Таблица цен, подменённая через `setPriceTable` (тесты); иначе общая таблица `pricingService`. */
+  private priceTableOverride: PriceTable | null = null;
   private readyPromise: Promise<void> = Promise.resolve();
 
   /**
@@ -306,27 +306,21 @@ export class AgentFleetService extends EventEmitter {
   // Стоимость и бюджет
   // ---------------------------------------------------------------------------
 
-  /** Таблица цен: встроенная + переопределения из `<userData>/agent-pricing.json` (читается один раз). */
+  /**
+   * Таблица цен: встроенная + переопределения из `<userData>/agent-pricing.json`. Общая с AI Studio
+   * (`pricingService`, decision-42): сохранение в редакторе цен применяется без перезапуска.
+   */
   public async getPriceTable(): Promise<PriceTable> {
-    if (this.priceTableLoaded) return this.priceTable;
-    this.priceTableLoaded = true;
-    try {
-      const file = path.join(getUserDataDir(), AGENT_PRICING_FILE);
-      if (existsSync(file)) {
-        const raw = JSON.parse(await fs.readFile(file, 'utf8'));
-        this.priceTable = mergePriceTables(BUILTIN_PRICE_TABLE, raw);
-        console.log(`[AgentFleetService] Loaded custom price table (${Object.keys(this.priceTable.models).length} models, updated ${this.priceTable.updatedAt})`);
-      }
-    } catch (err) {
-      console.warn('[AgentFleetService] Failed to read agent-pricing.json, using built-in prices:', err);
-    }
-    return this.priceTable;
+    return this.priceTableOverride ?? (await pricingService.ensureLoaded());
   }
 
-  /** Подмена таблицы цен (тесты, настройки). */
+  /** Подмена таблицы цен (тесты). */
   public setPriceTable(table: PriceTable): void {
-    this.priceTable = table;
-    this.priceTableLoaded = true;
+    this.priceTableOverride = table;
+  }
+
+  private currentPriceTable(): PriceTable {
+    return this.priceTableOverride ?? pricingService.getTable();
   }
 
   private recomputeSessionCost(session: SwarmSession): void {
@@ -353,7 +347,10 @@ export class AgentFleetService extends EventEmitter {
           ? addUsage(baseline, usage)
           : usage
         : addUsage(agent.metrics.usage ?? emptyUsage(), usage);
-    const priced = priceUsage(merged, model ?? merged.model ?? agent.config.providerConfig?.model, this.priceTable);
+    // Локальный провайдер (снимок providerInfo, decision-40) — нулевая цена по провайдеру, а не по имени модели.
+    const priced = priceUsage(merged, model ?? merged.model ?? agent.config.providerConfig?.model, this.currentPriceTable(), {
+      local: agent.providerInfo?.local === true
+    });
     agent.metrics.usage = priced;
     agent.metrics.costUsd = priced.costUsd;
     this.recomputeSessionCost(session);
@@ -1174,6 +1171,8 @@ export class AgentFleetService extends EventEmitter {
     const busBase = this.agentBusBase(session, agentState);
     appEventBus.publish({ type: 'agent:started', ...busBase, at: startTime });
 
+    // Новый usage за этот ход: recordUsage всегда записывает новый объект.
+    const usageBeforeRun = agentState.metrics.usage;
     try {
       if (agentState.config.engine === 'claude-cli') {
         await this.runClaudeCliAgent(session, agentState, targetPath, promptToRun, role, turn.continueSession === true);
@@ -1189,7 +1188,16 @@ export class AgentFleetService extends EventEmitter {
       agentState.metrics.durationMs = agentState.metrics.endTime - startTime;
       const chars = agentState.metrics.charsGenerated || agentState.liveOutput.length;
       agentState.metrics.charsGenerated = chars;
-      // Грубая оценка нужна только когда реального usage нет.
+      // Сервер или CLI не сообщили usage — оценка по длине промпта и вывода с пометкой `estimated`:
+      // у локального провайдера стоимость 0, у платной модели — неизвестна (decision-42).
+      if (agentState.metrics.usage === usageBeforeRun && chars > 0) {
+        this.recordUsage(
+          session,
+          agentState,
+          estimateUsage({ inputChars: promptToRun.length, outputChars: chars, model: agentState.providerInfo?.model || agentState.config.providerConfig?.model }),
+          'replace'
+        );
+      }
       agentState.metrics.tokensEstimated = agentState.metrics.usage ? undefined : Math.round(chars / 4);
       agentState.metrics.speedCharsPerSec = Math.round((chars / Math.max(1, agentState.metrics.durationMs)) * 1000);
 

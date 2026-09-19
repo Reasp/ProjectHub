@@ -177,6 +177,7 @@ export const SwarmArenaView: React.FC = () => {
   const costSourceLabel = (source: string | undefined): string => {
     if (source === 'provider') return t.swarm.costSourceProvider;
     if (source === 'price-table') return t.swarm.costSourcePriceTable;
+    if (source === 'local') return t.swarm.costSourceLocal;
     return t.swarm.costSourceUnknown;
   };
 
@@ -736,8 +737,11 @@ export const SwarmArenaView: React.FC = () => {
                                 .replace('{input}', formatTokens(agent.metrics.usage.inputTokens))
                                 .replace('{output}', formatTokens(agent.metrics.usage.outputTokens))
                                 .replace('{cacheRead}', formatTokens(agent.metrics.usage.cacheReadTokens))
-                                .replace('{cacheWrite}', formatTokens(agent.metrics.usage.cacheCreationTokens))}
+                                .replace('{cacheWrite}', formatTokens(agent.metrics.usage.cacheCreationTokens)) +
+                                (agent.metrics.usage.estimated ? `
+${t.swarm.estimatedUsageTooltip}` : '')}
                             >
+                              {agent.metrics.usage.estimated ? '~' : ''}
                               {formatTokens(agentInputTokens(agent.metrics.usage))} / {formatTokens(agent.metrics.usage.outputTokens)} tok
                             </span>
                           ) : agent.metrics.tokensEstimated ? (
@@ -756,11 +760,18 @@ export const SwarmArenaView: React.FC = () => {
                                   ? `${t.swarm.costLabel}: ${formatUsd(agent.metrics.usage.costUsd)} (${costSourceLabel(agent.metrics.usage.costSource)})${
                                       agent.config.budgetUsd ? ` / ${t.swarm.budgetLabel} ${formatUsd(agent.config.budgetUsd)}` : ''
                                     }`
-                                  : t.swarm.costUnknownTooltip.replace('{model}', agent.metrics.usage.model || agent.config.providerConfig?.model || '?')
+                                  : agent.metrics.usage.estimated
+                                    ? t.swarm.costEstimatedTooltip
+                                    : t.swarm.costUnknownTooltip.replace('{model}', agent.metrics.usage.model || agent.config.providerConfig?.model || '?')
                               }
                             >
                               <DollarSign className="w-3 h-3" />
                               {typeof agent.metrics.usage.costUsd === 'number' ? formatUsd(agent.metrics.usage.costUsd) : '—'}
+                              {agent.metrics.usage.costSource === 'local' && (
+                                <span className="text-muted-foreground" data-testid="agent-cost-local">
+                                  ({t.swarm.costSourceLocal})
+                                </span>
+                              )}
                             </span>
                           ) : null}
 

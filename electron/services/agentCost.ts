@@ -8,10 +8,13 @@
  * 1. `provider` — стоимость сообщил сам провайдер (`total_cost_usd` в событии `result` Claude CLI).
  * 2. `price-table` — посчитано по usage и таблице цен (встроенной или переопределённой пользователем
  *    в `<userData>/agent-pricing.json`).
- * 3. `unknown` — usage есть, но модель в таблице не найдена (стоимость не показывается).
+ * 3. `local` — модель работает на машине пользователя (признак `local` профиля или прежний провайдер
+ *    `ollama`), стоимость 0 независимо от имени модели и таблицы (decision-42).
+ * 4. `unknown` — модель в таблице не найдена, либо usage — оценка по длине текста у платной модели
+ *    (стоимость не показывается).
  */
 
-export type CostSource = 'provider' | 'price-table' | 'unknown';
+export type CostSource = 'provider' | 'price-table' | 'local' | 'unknown';
 
 export interface AgentUsage {
   inputTokens: number;
@@ -25,6 +28,8 @@ export interface AgentUsage {
   model?: string;
   /** Число ответов модели (turns) — для CLI-агентов. */
   turns?: number;
+  /** Токены оценены по длине текста: сервер не сообщил usage (decision-42). */
+  estimated?: boolean;
 }
 
 /** Цены в USD за 1 млн токенов. */
@@ -118,7 +123,7 @@ export function withTotal(usage: Omit<AgentUsage, 'totalTokens'>): AgentUsage {
 export function addUsage(a: AgentUsage, b: AgentUsage): AgentUsage {
   const costKnown = typeof a.costUsd === 'number' || typeof b.costUsd === 'number';
   const costUsd = costKnown ? (a.costUsd ?? 0) + (b.costUsd ?? 0) : undefined;
-  const sourceRank: Record<CostSource, number> = { unknown: 0, 'price-table': 1, provider: 2 };
+  const sourceRank: Record<CostSource, number> = { unknown: 0, local: 1, 'price-table': 2, provider: 3 };
   const costSource = sourceRank[a.costSource] >= sourceRank[b.costSource] ? a.costSource : b.costSource;
   return withTotal({
     inputTokens: a.inputTokens + b.inputTokens,
@@ -128,7 +133,8 @@ export function addUsage(a: AgentUsage, b: AgentUsage): AgentUsage {
     ...(costUsd !== undefined ? { costUsd } : {}),
     costSource,
     model: a.model || b.model,
-    turns: (a.turns ?? 0) + (b.turns ?? 0) || undefined
+    turns: (a.turns ?? 0) + (b.turns ?? 0) || undefined,
+    ...(a.estimated || b.estimated ? { estimated: true } : {})
   });
 }
 
@@ -181,12 +187,58 @@ export function computeCostUsd(usage: AgentUsage, model: string | undefined, tab
   return Math.round(cost * 1_000_000) / 1_000_000;
 }
 
-/** Если стоимость ещё не известна от провайдера, дописывает её по таблице цен. */
-export function priceUsage(usage: AgentUsage, model: string | undefined, table: PriceTable = BUILTIN_PRICE_TABLE): AgentUsage {
+export interface PriceUsageOptions {
+  /**
+   * Провайдер локальный: признак `local` профиля или снимка `providerInfo`, прежний `ollama`
+   * (decision-39, decision-40). Цена считается по провайдеру, а не по имени модели: `qwen` у
+   * облачного сервиса платная, та же модель в локальном Ollama — нет.
+   */
+  local?: boolean;
+}
+
+/**
+ * Стоимость usage (decision-42): стоимость провайдера не перетирается; локальный провайдер — 0
+ * (`local`); оценка по длине текста у платной модели — `unknown` без стоимости (выдавать догадку
+ * за счёт нельзя); иначе по таблице цен (`price-table`) или `unknown`, если модели нет в таблице.
+ */
+export function priceUsage(
+  usage: AgentUsage,
+  model: string | undefined,
+  table: PriceTable = BUILTIN_PRICE_TABLE,
+  options: PriceUsageOptions = {}
+): AgentUsage {
   if (usage.costSource === 'provider' && typeof usage.costUsd === 'number') return usage;
+  const withModel = usage.model || model ? { model: usage.model || model } : {};
+  if (options.local) return { ...usage, ...withModel, costUsd: 0, costSource: 'local' };
+  if (usage.estimated) return { ...usage, costSource: 'unknown', costUsd: undefined };
   const costUsd = computeCostUsd(usage, model, table);
   if (costUsd === undefined) return { ...usage, costSource: 'unknown', costUsd: undefined };
-  return { ...usage, costUsd, costSource: 'price-table', model: usage.model || model };
+  return { ...usage, ...withModel, costUsd, costSource: 'price-table' };
+}
+
+/** Грубая оценка: ~4 символа на токен (как прежний `tokensEstimated`). */
+export const ESTIMATED_CHARS_PER_TOKEN = 4;
+
+/**
+ * Usage по длине текста, когда сервер его не сообщил (нет `stream_options.include_usage`, CLI без
+ * итоговой строки). Помечается `estimated`, стоимость — только у локального провайдера (0).
+ */
+export function estimateUsage(input: { inputChars: number; outputChars: number; model?: string }): AgentUsage {
+  const tokens = (chars: number) => (Number.isFinite(chars) && chars > 0 ? Math.ceil(chars / ESTIMATED_CHARS_PER_TOKEN) : 0);
+  return withTotal({
+    inputTokens: tokens(input.inputChars),
+    outputTokens: tokens(input.outputChars),
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    costSource: 'unknown',
+    estimated: true,
+    ...(input.model ? { model: input.model } : {})
+  });
+}
+
+/** Цена за 1M токенов: конечное неотрицательное число. */
+export function isValidPriceValue(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 /** Слияние встроенной таблицы с пользовательскими переопределениями (`agent-pricing.json`). */
@@ -198,12 +250,14 @@ export function mergePriceTables(base: PriceTable, override: unknown): PriceTabl
     for (const [key, value] of Object.entries(o.models as Record<string, unknown>)) {
       if (!value || typeof value !== 'object') continue;
       const v = value as Partial<ModelPrice>;
-      if (typeof v.input !== 'number' || typeof v.output !== 'number') continue;
-      models[normalizeModelId(key)] = {
+      if (!isValidPriceValue(v.input) || !isValidPriceValue(v.output)) continue;
+      const id = normalizeModelId(key);
+      if (!id) continue;
+      models[id] = {
         input: v.input,
         output: v.output,
-        ...(typeof v.cacheRead === 'number' ? { cacheRead: v.cacheRead } : {}),
-        ...(typeof v.cacheWrite === 'number' ? { cacheWrite: v.cacheWrite } : {})
+        ...(isValidPriceValue(v.cacheRead) ? { cacheRead: v.cacheRead } : {}),
+        ...(isValidPriceValue(v.cacheWrite) ? { cacheWrite: v.cacheWrite } : {})
       };
     }
   }
@@ -378,6 +432,8 @@ export function parseCliUsageText(text: string): AgentUsage | null {
 export function formatUsd(value: number | undefined): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
   if (value === 0) return '$0.00';
+  // Доли цента локальных и дешёвых моделей: две значащие цифры, а не «$0.0000» (TASK-70.4).
+  if (value < 0.0001) return `$${value.toFixed(Math.min(8, 1 - Math.floor(Math.log10(value))))}`;
   if (value < 0.01) return `$${value.toFixed(4)}`;
   return `$${value.toFixed(2)}`;
 }

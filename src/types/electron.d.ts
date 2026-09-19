@@ -792,6 +792,11 @@ export interface IElectronAPI {
   listLlmProfileModels: (id: string, refresh?: boolean) => Promise<ModelCatalogResult>;
   /** Перенос сохранённого прежнего провайдера AI Studio в профиль (decision-40); конфиг не меняет. */
   importLegacyLlmProfile: (provider: string) => Promise<LlmProfileView>;
+  /** Таблица цен агентов: встроенная и переопределения `agent-pricing.json` (TASK-70.4, decision-42). */
+  getAgentPricing: () => Promise<AgentPricingState>;
+  saveAgentPricing: (overrides: PriceOverrides) => Promise<AgentPricingState>;
+  /** Цены OpenRouter (`GET /api/v1/models`, без ключа); ничего не сохраняет. */
+  fetchOpenRouterPrices: () => Promise<OpenRouterImportResult>;
   getClaudeAuthStatus: () => Promise<ClaudeAuthStatus>;
   startClaudeLogin: () => Promise<boolean>;
   claudeLogout: () => Promise<boolean>;
@@ -1645,7 +1650,53 @@ export type AgentSlotStatus =
   | 'interrupted'
   | 'budget_exceeded';
 
-export type AgentCostSource = 'provider' | 'price-table' | 'unknown';
+export type AgentCostSource = 'provider' | 'price-table' | 'local' | 'unknown';
+
+/** Зеркало `electron/services/agentCost.ts::ModelPrice` — USD за 1M токенов. */
+export interface ModelPrice {
+  input: number;
+  output: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
+export interface PriceTable {
+  updatedAt: string;
+  models: Record<string, ModelPrice>;
+}
+
+/** Зеркало `electron/services/agentPricing.ts`. */
+export type PriceOverrideSource = 'manual' | 'openrouter';
+
+export interface PriceOverrideEntry extends ModelPrice {
+  source?: PriceOverrideSource;
+}
+
+export interface PriceOverrides {
+  updatedAt?: string;
+  models: Record<string, PriceOverrideEntry>;
+}
+
+export interface AgentPricingState {
+  builtin: PriceTable;
+  overrides: PriceOverrides;
+  filePath: string;
+  loadError?: string;
+}
+
+export interface OpenRouterImportedPrice {
+  id: string;
+  sourceId: string;
+  name?: string;
+  price: ModelPrice;
+  hasLongContextTier: boolean;
+}
+
+export interface OpenRouterImportResult {
+  entries: OpenRouterImportedPrice[];
+  skipped: { variant: number; dynamic: number; invalid: number; duplicate: number };
+  total: number;
+}
 
 /** Реальный usage и стоимость ответа модели/прогона агента (TASK-56). */
 export interface AgentUsage {
@@ -1658,6 +1709,8 @@ export interface AgentUsage {
   costSource: AgentCostSource;
   model?: string;
   turns?: number;
+  /** Токены оценены по длине текста: сервер не сообщил usage. */
+  estimated?: boolean;
 }
 
 export interface AgentSlotConfig {
