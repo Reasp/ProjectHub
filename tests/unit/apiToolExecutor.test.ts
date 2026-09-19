@@ -210,3 +210,96 @@ describe('ApiToolExecutor — исполнение в worktree с HITL и ауд
     expect(none.isError).toBe(true);
   });
 });
+
+describe('ApiToolExecutor — события вызова для чата AI Studio (decision-47)', () => {
+  const studio = (config: AIProviderConfig, over: Partial<ApiToolContext> = {}) =>
+    ctx(config, {
+      sessionId: 'studio-1',
+      origin: 'studio',
+      agentId: undefined,
+      agentName: undefined,
+      role: undefined,
+      hitlProjectPath: path.resolve('/tmp/project'),
+      allowBackground: true,
+      ...over
+    });
+
+  it('команда: running, вывод по мере поступления, итог; карточка и её завершение получают вызов', async () => {
+    const deps = fakeDeps();
+    deps.runCommand = async (command, cwd, options) => {
+      options.onOutput?.('par');
+      options.onOutput?.('partial');
+      return { output: 'partial done', exitCode: 0, timedOut: false };
+    };
+    const updates: Array<[string, string | undefined]> = [];
+    const events: string[] = [];
+    const ex = new ApiToolExecutor(deps);
+    const call = { id: 'c1', name: 'run_command', args: { command: 'npm test' } };
+    const res = await ex.execute(call, studio(manual, {
+      onToolUpdate: (c, u) => updates.push([u.status, u.result]),
+      onApprovalRequest: (r, c) => events.push(`request:${r.type}:${c?.id}`),
+      onApprovalSettled: (r) => events.push(`settled:${r.type}`)
+    }));
+    expect(res).toEqual({ content: 'partial done' });
+    expect(events).toEqual(['request:command:c1', 'settled:command']);
+    expect(updates).toEqual([['running', undefined], ['running', 'par'], ['running', 'partial'], ['accepted', 'partial done']]);
+  });
+
+  it('hitlProjectPath — projectPath карточек и аудита, файлы и команды — в workDir', async () => {
+    const deps = fakeDeps();
+    const ex = new ApiToolExecutor(deps);
+    await ex.execute({ id: 'w', name: 'write_file', args: { filePath: 'a.txt', content: 'A' } }, studio(manual));
+    await ex.execute({ id: 'r', name: 'read_file', args: { filePath: 'a.txt' } }, studio(auto));
+    expect(deps.asked[0]).toMatchObject({ projectPath: path.resolve('/tmp/project'), origin: 'studio', sessionId: 'studio-1' });
+    expect(deps.asked[0].agentId).toBeUndefined();
+    expect(deps.autos[0].info.projectPath).toBe(path.resolve('/tmp/project'));
+    expect(deps.files.get(path.join(WT, 'a.txt'))).toBe('A');
+  });
+
+  it('фоновая команда с allowBackground уходит в менеджер процессов, без зависимости — ошибка', async () => {
+    const deps = fakeDeps();
+    const started: unknown[] = [];
+    deps.startBackgroundProcess = async (projectPath, command, name, workDir) => {
+      started.push({ projectPath, command, name, workDir });
+      return { id: 'p-1', name, pid: 7 };
+    };
+    const statuses: string[] = [];
+    const ex = new ApiToolExecutor(deps);
+    const res = await ex.execute(
+      { id: 'b', name: 'run_command', args: { command: 'npm run dev', background: true, name: 'dev' } },
+      studio(auto, { onToolUpdate: (_c, u) => statuses.push(u.status) })
+    );
+    expect(res.content).toContain('запущен в фоне (pid 7, id "p-1")');
+    expect(started).toEqual([{ projectPath: path.resolve('/tmp/project'), command: 'npm run dev', name: 'dev', workDir: WT }]);
+    expect(statuses).toEqual(['running', 'accepted']);
+    expect(deps.commands).toHaveLength(0);
+    expect(deps.autos[0].rule).toBe('auto-command');
+
+    const noDep = await new ApiToolExecutor(fakeDeps()).execute({ id: 'b2', name: 'run_command', args: { command: 'x', background: true } }, studio(auto));
+    expect(noDep.isError).toBe(true);
+  });
+
+  it('итоговые статусы: чтение — done, отказ политики и человека — rejected, ненулевой код — error', async () => {
+    const deps = fakeDeps(() => ({ approved: false }));
+    deps.files.set(path.join(WT, 'in.txt'), 'x');
+    const ex = new ApiToolExecutor(deps);
+    const last: Record<string, string> = {};
+    const c = studio(auto, { onToolUpdate: (call, u) => { last[call.id] = u.status; } });
+    await ex.execute({ id: 'read', name: 'read_file', args: { filePath: 'in.txt' } }, c);
+    await ex.execute({ id: 'outside', name: 'write_file', args: { filePath: '../x', content: '' } }, c);
+    await ex.execute({ id: 'unknown', name: 'spawn_subagent', args: {} }, c);
+    await ex.execute({ id: 'fail', name: 'run_command', args: { command: 'npm run fail' } }, c);
+    await ex.execute({ id: 'nope', name: 'write_file', args: { filePath: 'a', content: '' } }, studio(manual, { onToolUpdate: (call, u) => { last[call.id] = u.status; } }));
+    expect(last).toEqual({ read: 'done', outside: 'rejected', unknown: 'rejected', fail: 'error', nope: 'rejected' });
+  });
+
+  it('computer_*: running и итог с числом картинок в чат, модели — результат прокси', async () => {
+    const deps = fakeDeps();
+    deps.callComputerTool = async () => ({ content: 'снимок', images: [{ mimeType: 'image/png', data: 'AA' }] });
+    const updates: Array<[string, string | undefined]> = [];
+    const ex = new ApiToolExecutor(deps);
+    const res = await ex.execute({ id: 'cu', name: 'computer_screenshot', args: {} }, studio(auto, { onToolUpdate: (_c, u) => updates.push([u.status, u.result]) }));
+    expect(res.images).toHaveLength(1);
+    expect(updates).toEqual([['running', undefined], ['done', 'снимок\n[изображений: 1]']]);
+  });
+});

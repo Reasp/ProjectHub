@@ -87,6 +87,19 @@ describe('planApiToolCall — вердикт общей политики', () =>
     expect(planApiToolCall(cfg, WT, 'run_command', { command: '  ' })).toMatchObject({ verdict: 'deny', rule: 'bad-args' });
   });
 
+  it('фоновые команды с allowBackground (AI Studio) идут по политике команд и помечаются в плане', () => {
+    const opts = { allowBackground: true };
+    expect(planApiToolCall(auto, WT, 'run_command', { command: 'npm run dev', background: true }, opts)).toMatchObject({
+      verdict: 'allow',
+      rule: 'auto-command',
+      background: true
+    });
+    expect(planApiToolCall(manual, WT, 'run_command', { command: 'npm run dev', background: true }, opts)).toMatchObject({ verdict: 'ask', background: true });
+    const denied = applyRolePermissions(auto, { commandDenyList: ['npm run dev'] });
+    expect(planApiToolCall(denied, WT, 'run_command', { command: 'npm run dev', background: true }, opts)).toMatchObject({ verdict: 'ask', rule: 'command-denied' });
+    expect(planApiToolCall(auto, WT, 'run_command', { command: 'npm test' }, opts).background).toBeUndefined();
+  });
+
   it('allow-список прав роли отклоняет инструмент вне списка, но пропускает алиас', () => {
     const cfg = applyRolePermissions(auto, { allowedTools: ['Read'] });
     expect(planApiToolCall(cfg, WT, 'read_file', { filePath: 'a.txt' })).toMatchObject({ verdict: 'allow' });

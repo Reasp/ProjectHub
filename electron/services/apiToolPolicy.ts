@@ -4,12 +4,12 @@ import type { AIProviderConfig } from './aiAgentService.js';
 import type { HitlRequestType } from './hitlTypes.js';
 
 /**
- * Политика инструментов API-агента Swarm (TASK-101, decision-46 п. 1, 2, 4, 6): чистые функции без
+ * Политика инструментов API-агента Swarm и AI Studio (TASK-101, TASK-103, decision-46 п. 1, 2, 4, 6, decision-47): чистые функции без
  * Electron, сети и файловой системы. Вердикт даёт та же `evaluateToolRequest`, что решает за Claude CLI
  * в Swarm (decision-10), поэтому у двух движков одного слота одни правила. Исполнение — `apiToolExecutor.ts`.
  */
 
-/** Инструменты API-движка (`aiAgentService.getAnthropicTools`), которые умеет исполнять Swarm. */
+/** Инструменты API-движка (`aiAgentService.getAnthropicTools`), которые умеет исполнять общий исполнитель. */
 export type ApiToolKind = 'read' | 'list' | 'search' | 'write' | 'command' | 'question' | 'computer' | 'unknown';
 
 /** Префикс инструментов прокси управления компьютером (`computerToolCatalog.COMPUTER_TOOL_PREFIX`). */
@@ -67,6 +67,13 @@ export interface ApiToolPlan {
   approvalType: HitlRequestType;
   filePath?: string;
   command?: string;
+  /** `run_command` с `background: true`, разрешённый контекстом (AI Studio, decision-47 п. 3). */
+  background?: boolean;
+}
+
+export interface ApiToolPlanOptions {
+  /** Фоновые команды разрешены (AI Studio). В Swarm их нет: процесс пережил бы агента (decision-46 п. 2). */
+  allowBackground?: boolean;
 }
 
 /**
@@ -74,14 +81,20 @@ export interface ApiToolPlan {
  * `config` — уже суженная правами роли конфигурация (`applyRolePermissions`), `workDir` — worktree слота.
  * `computer_*` здесь только разрешаются allow-списком: их политику применяет прокси (decision-27).
  */
-export function planApiToolCall(config: AIProviderConfig, workDir: string, name: string, args: Record<string, unknown>): ApiToolPlan {
+export function planApiToolCall(
+  config: AIProviderConfig,
+  workDir: string,
+  name: string,
+  args: Record<string, unknown>,
+  options: ApiToolPlanOptions = {}
+): ApiToolPlan {
   const kind = apiToolKind(name);
   const rules = config.autoApproveRules;
   const deny = (rule: string, reason: string, approvalType: HitlRequestType = 'command'): ApiToolPlan =>
     ({ kind, verdict: 'deny', rule, reason, approvalType });
 
   if (kind === 'unknown') {
-    return deny('unknown-tool', `Инструмент ${name} недоступен агенту Swarm.`);
+    return deny('unknown-tool', `Инструмент ${name} недоступен агенту.`);
   }
   if (!isApiToolAllowed(name, rules?.allowedTools)) {
     return deny('tool-not-allowed', `Инструмент ${name} не входит в allow-список роли.`, kind === 'computer' ? 'computer_action' : 'command');
@@ -122,7 +135,7 @@ export function planApiToolCall(config: AIProviderConfig, workDir: string, name:
       verdict = evaluateToolRequest(narrowed, workDir, 'run_command', { command });
       approvalType = 'command';
       if (!command.trim()) verdict = { verdict: 'deny', rule: 'bad-args', reason: 'Не указана команда (command).' };
-      else if (args.background === true) {
+      else if (args.background === true && !options.allowBackground) {
         verdict = {
           verdict: 'deny',
           rule: 'background-not-allowed',
@@ -142,7 +155,8 @@ export function planApiToolCall(config: AIProviderConfig, workDir: string, name:
     approvalType,
     ...(kind === 'read' || kind === 'write' ? { filePath } : {}),
     ...(kind === 'list' ? { filePath: text(args.subDir) || '.' } : {}),
-    ...(kind === 'command' ? { command } : {})
+    ...(kind === 'command' ? { command } : {}),
+    ...(kind === 'command' && args.background === true && options.allowBackground ? { background: true } : {})
   };
 }
 

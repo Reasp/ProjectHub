@@ -2,7 +2,6 @@ import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'n
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import os from 'node:os';
 import { EventEmitter } from 'node:events';
 import treeKill from 'tree-kill';
 import {
@@ -10,13 +9,10 @@ import {
   PROJECT_HUB_CLAUDE_DIR,
   type AIProviderConfig,
   type AIMessage,
-  type AIToolCall,
-  type AutoApproveRules
+  type AIToolCall
 } from './aiAgentService.js';
 import type { ProviderErrorInfo } from './providerErrors.js';
-import { isInsideProject } from './pathGuard.js';
 import { CHILD_CLOSE_GRACE_MS, superviseChildExit } from './processSweep.js';
-import { processManager } from './processManager.js';
 import { claudeUsageService } from './claudeUsageService.js';
 import { parseClaudeResultEvent, priceUsage, type AgentUsage } from './agentCost.js';
 import { pricingService } from './pricingService.js';
@@ -25,8 +21,9 @@ import { appEventBus } from './eventBus.js';
 import { buildAgentContext, buildComputerUseInstructions } from './contextBuilder.js';
 import { computerUseService, type ComputerCallContext } from './computerUseService.js';
 import { COMPUTER_TOOL_PREFIX } from './computerToolCatalog.js';
-import type { ToolExecutionResult } from './apiToolLoop.js';
-import { searchProjectDocs } from './ragSearch.js';
+import type { ApiToolContext } from './apiToolExecutor.js';
+import { getApiToolExecutor } from './apiToolExecutorDeps.js';
+import { createStudioToolCallbacks } from './studioToolAdapter.js';
 import { claudeCliEffortArgs, normalizeReasoningEffort } from './reasoningEffort.js';
 import {
   applyRolePermissions,
@@ -1198,12 +1195,6 @@ class ClaudeBridgeService extends EventEmitter {
     onError: (err: string, info?: ProviderErrorInfo) => void
   ): Promise<void> {
     const { sessionId, projectPath } = req;
-    const isMasterAutoApprove = Boolean(req.config.autoApprove);
-    const rules = req.config.autoApproveRules;
-    const canAutoCommands = isMasterAutoApprove && (rules ? rules.allowCommands !== false : true);
-    const canAutoWrite = isMasterAutoApprove && (rules ? rules.allowFileWrite !== false : true);
-    const canAutoRead = rules ? rules.allowFileRead !== false : true;
-    const canAutoSubagents = isMasterAutoApprove && (rules ? rules.allowSubagents !== false : true);
 
     // If using Anthropic without API key, run directly via local Claude CLI subscription!
     const useCli = req.config.provider === 'anthropic' && (!req.config.apiKey || !req.config.apiKey.trim());
@@ -1214,7 +1205,7 @@ class ClaudeBridgeService extends EventEmitter {
       return this.runClaudeCliTask(req, onChunk, onComplete, onError);
     }
 
-    const perms = { canAutoCommands, canAutoWrite, canAutoRead, canAutoSubagents };
+    const toolContext = this.studioToolContext(req, onChunk);
     try {
       // Многошаговый tool-loop (TASK-82): инструменты исполняются по ходу ответа модели, их результаты
       // возвращаются модели до финального ответа. Раньше вызовы исполнялись в обработчике чанка, а
@@ -1231,7 +1222,7 @@ class ClaudeBridgeService extends EventEmitter {
           onError(err, info);
         },
         {
-          executeTool: (tc) => this.executeApiTool(tc, req, rules, perms, onChunk),
+          executeTool: (tc) => getApiToolExecutor().execute(tc, toolContext),
           computerTools: req.mode === 'agent' ? computerUseService.listProxyTools() : []
         }
       );
@@ -1246,344 +1237,33 @@ class ClaudeBridgeService extends EventEmitter {
   }
 
   /**
-   * Исполнитель tool-loop API-агента (TASK-82): `computer_*` — через прокси управления компьютером
-   * (политика, HITL, аудит внутри), остальные — через прежний контур разрешений `handleApiToolCall`.
-   * Чтение файла, список каталога и поиск по документации раньше только проверялись и модели ничего
-   * не возвращали — теперь возвращают результат.
+   * Контекст общего исполнителя API-инструментов для сессии AI Studio (TASK-103, decision-47). Файлы и
+   * команды — в рабочем дереве сессии (worktree, TASK-62), карточки и статус — по корню проекта.
+   * Политика общая с Swarm и Claude CLI (`evaluateToolRequest`); фоновые команды разрешены.
    */
-  private async executeApiTool(
-    tc: AIToolCall,
+  private studioToolContext(
     req: { sessionId: string; projectPath: string; config: AIProviderConfig; workspaceRoot?: string },
-    rules: AutoApproveRules | undefined,
-    perms: { canAutoCommands: boolean; canAutoWrite: boolean; canAutoRead: boolean; canAutoSubagents: boolean },
     onChunk: (chunk: ClaudeBridgeMessageChunk) => void
-  ): Promise<ToolExecutionResult> {
+  ): ApiToolContext {
     const { sessionId, projectPath } = req;
-    try {
-      if (tc.name.startsWith(COMPUTER_TOOL_PREFIX)) {
-        tc.status = 'running';
-        onChunk({ toolCall: { ...tc } });
-        const res = await computerUseService.callTool(tc.name, tc.args, {
-          sessionId,
-          projectPath,
-          origin: 'studio',
-          engine: 'api',
-          approvalTimeoutMs: this.approvalTimeoutMs(req.config),
-          onApprovalRequest: (request) => onChunk({ approvalRequest: request })
-        });
-        const text = res.content.map((c) => (c.type === 'text' ? c.text : '')).filter(Boolean).join('\n');
-        const images = res.content.flatMap((c) => (c.type === 'image' ? [{ mimeType: c.mimeType, data: c.data }] : []));
-        tc.status = res.isError ? 'error' : 'done';
-        tc.result = [text, images.length > 0 ? `[изображений: ${images.length}]` : ''].filter(Boolean).join('\n');
-        onChunk({ toolCall: tc });
-        return { content: text, isError: res.isError, images };
-      }
-      await this.handleApiToolCall(tc, req, rules, perms, onChunk);
-      if (tc.result === undefined && tc.status !== 'rejected' && tc.status !== 'error') {
-        await this.executeReadOnlyApiTool(tc, req.workspaceRoot?.trim() || projectPath, projectPath, onChunk);
-      }
-    } catch (err: any) {
-      if (err instanceof ApprovalCancelledError) {
-        tc.status = 'rejected';
-        tc.result = err.message;
-      } else {
-        tc.status = 'error';
-        tc.result = `Error: ${err?.message || String(err)}`;
-      }
-      onChunk({ toolCall: tc });
-    }
-    const content = typeof tc.result === 'string' ? tc.result : tc.result === undefined ? 'OK' : JSON.stringify(tc.result);
-    return { content, isError: tc.status === 'error' || tc.status === 'rejected' };
-  }
-
-  /** Инструменты API-агента только для чтения, прошедшие проверку разрешений в `handleApiToolCall`. */
-  private async executeReadOnlyApiTool(
-    tc: AIToolCall,
-    workDir: string,
-    projectPath: string,
-    onChunk: (chunk: ClaudeBridgeMessageChunk) => void
-  ): Promise<void> {
-    const maxChars = 100_000;
-    if (tc.name === 'read_file' || tc.name === 'read') {
-      const filePath = String(tc.args.filePath || tc.args.path || '');
-      if (!filePath || !isInsideProject(workDir, filePath)) {
-        tc.status = 'rejected';
-        tc.result = `Чтение отклонено: путь "${filePath}" находится вне корня проекта.`;
-      } else {
-        const text = await fs.readFile(path.resolve(workDir, filePath), 'utf-8');
-        tc.status = 'done';
-        tc.result = text.length > maxChars ? `${text.slice(0, maxChars)}\n…[файл усечён]` : text;
-      }
-    } else if (tc.name === 'list_dir') {
-      const subDir = String(tc.args.subDir || '');
-      if (subDir && !isInsideProject(workDir, subDir)) {
-        tc.status = 'rejected';
-        tc.result = `Каталог "${subDir}" находится вне корня проекта.`;
-      } else {
-        const entries = await fs.readdir(path.resolve(workDir, subDir || '.'), { withFileTypes: true });
-        tc.status = 'done';
-        tc.result = entries.map((e) => (e.isDirectory() ? `${e.name}/` : e.name)).sort().join('\n') || '(пусто)';
-      }
-    } else if (tc.name === 'search_rag') {
-      const results = await searchProjectDocs({ projectPath, query: String(tc.args.query || ''), mode: 'all', limit: 5 });
-      tc.status = 'done';
-      tc.result = results.map((r) => `- [${r.category}] ${r.fileRelative}${r.heading ? ` — ${r.heading}` : ''}: ${r.snippet}`).join('\n') || 'Ничего не найдено';
-    } else {
-      return;
-    }
-    onChunk({ toolCall: tc });
-  }
-
-  /** Запуск команды агента: в фоне через processManager (background: true) или с ожиданием и таймаутом. */
-  private async runCommandTool(
-    tc: AIToolCall,
-    cmd: string,
-    sessionId: string,
-    projectPath: string,
-    rules: AutoApproveRules | undefined,
-    onChunk: (chunk: ClaudeBridgeMessageChunk) => void,
-    /** Рабочее дерево сессии: worktree или сам корень проекта (TASK-62). */
-    workspaceRoot: string = projectPath
-  ): Promise<void> {
-    this.setProjectStatus(projectPath, 'running', `Выполняется: ${cmd}`);
-
-    if (tc.args.background === true) {
-      const name = String(tc.args.name || `agent-${Date.now().toString(36)}`).trim();
-      const info = await processManager.startProcess(projectPath, cmd, name, { workspaceRoot });
-      tc.status = 'accepted';
-      tc.result = `Процесс "${info.name}" запущен в фоне (pid ${info.pid ?? '?'}, id "${info.id}"). `
-        + 'Цикл агента не блокируется; логи и остановка — во вкладке Processes.';
-      onChunk({ toolCall: tc });
-      return;
-    }
-
-    const timeoutSec = rules?.commandTimeoutSec;
-    const timeoutMs = typeof timeoutSec === 'number' && timeoutSec > 0 ? timeoutSec * 1000 : SUBPROCESS_DEFAULT_TIMEOUT_MS;
-    const res = await this.executeSubprocess(
-      cmd,
-      workspaceRoot,
-      (outputSoFar) => {
-        tc.status = 'running';
-        tc.result = outputSoFar;
-        onChunk({ toolCall: { ...tc } });
-      },
-      { sessionId, timeoutMs }
-    );
-    tc.status = res.timedOut ? 'error' : 'accepted';
-    tc.result = this.formatSubprocessResult(res, timeoutMs);
-    onChunk({ toolCall: tc });
-  }
-
-  private formatSubprocessResult(res: SubprocessResult, timeoutMs: number): string {
-    const output = res.truncated
-      ? `[… вывод усечён, показан только последний ${Math.round(SUBPROCESS_MAX_OUTPUT_BYTES / 1024)} КБ …]\n${res.output}`
-      : res.output;
-    if (res.timedOut) {
-      return `Команда прервана по таймауту (${Math.round(timeoutMs / 1000)} с) и убита вместе с дочерними процессами. `
-        + 'Для долгоживущих процессов (dev-серверы, вотчеры) запускай run_command с background: true.\n' + output;
-    }
-    if (res.exitCode === 0) {
-      return output || 'Команда успешно выполнена (код 0)';
-    }
-    return `Команда завершилась с кодом ${res.exitCode}:\n${output}`;
-  }
-
-  private async handleApiToolCall(
-    tc: AIToolCall,
-    req: { sessionId: string; projectPath: string; config: AIProviderConfig; workspaceRoot?: string },
-    rules: AutoApproveRules | undefined,
-    perms: { canAutoCommands: boolean; canAutoWrite: boolean; canAutoRead: boolean; canAutoSubagents: boolean },
-    onChunk: (chunk: ClaudeBridgeMessageChunk) => void
-  ): Promise<void> {
-    const { sessionId, projectPath } = req;
-    // Инструменты работают в активном рабочем дереве сессии (worktree), TASK-62.
-    const workDir = req.workspaceRoot?.trim() || projectPath;
-    const { canAutoCommands, canAutoWrite } = perms;
-    const timeoutMs = this.approvalTimeoutMs(req.config);
-    const meta = { origin: 'studio' as const, engine: 'api' as const, tool: tc.name };
-    const autoInfo = (type: ApprovalRequest['type'], extra: Partial<ApprovalRequest> = {}) =>
-      ({ sessionId, projectPath, type, title: `${tc.name}`, ...meta, ...extra });
-    if (tc.name === 'ask_question' || tc.name === 'AskUserQuestion') {
-      const qData = this.parseQuestionData(tc.args);
-      const approvalReq: ApprovalRequest = {
-        id: hitlService.newRequestId(),
-        sessionId,
-        projectPath,
-        ...meta,
-        type: 'question',
-        title: qData.title || 'Вопрос от ассистента',
-        details: qData.subtitle,
-        questionData: qData,
-        createdAt: Date.now()
-      };
-
-      onChunk({ approvalRequest: approvalReq });
-      const res = await this.requestApproval(approvalReq, { timeoutMs });
-      tc.status = res.approved ? 'accepted' : 'rejected';
-      tc.result = res.text || (res.approved ? 'Подтверждено пользователем' : 'Отклонено пользователем');
-      onChunk({ toolCall: tc });
-    } else if (tc.name === 'read_file' || tc.name === 'read') {
-      const filePath = tc.args.filePath || tc.args.path || '';
-      const isExcludedFromRead = rules?.readExcludePatterns && this.isPathExcluded(filePath, rules.readExcludePatterns);
-
-      if (isExcludedFromRead) {
-        const approvalReq: ApprovalRequest = {
-          id: hitlService.newRequestId(),
-          sessionId,
-          projectPath,
-          ...meta,
-          filePath,
-          type: 'question',
-          title: `Разрешение на чтение защищенного файла`,
-          details: `Файл ${filePath} находится в списке исключений для чтения. Разрешить агенту доступ?`,
-          questionData: {
-            title: 'Чтение защищенного файла',
-            subtitle: `Разрешить агенту прочитать файл ${filePath}?`,
-            options: [
-              { id: 'allow', label: 'Разрешить чтение', description: 'Предоставить агенту содержимое файла' },
-              { id: 'deny', label: 'Запретить чтение', description: 'Скрыть содержимое файла от агента' }
-            ],
-            isMultiSelect: false,
-            allowOther: false
-          },
-          createdAt: Date.now()
-        };
-
-        onChunk({ approvalRequest: approvalReq });
-        const res = await this.requestApproval(approvalReq, { timeoutMs });
-        if (!res.approved || res.text?.includes('deny') || res.text?.includes('Запретить')) {
-          tc.status = 'rejected';
-          tc.result = `Доступ к чтению файла ${filePath} отклонен пользователем`;
-          onChunk({ toolCall: tc });
-          return;
-        }
-      }
-    } else if (tc.name === 'run_command' || tc.name === 'bash') {
-      const cmd = tc.args.command || tc.args.cmd || '';
-      const isDenied = rules?.commandDenyList && this.isCommandDenied(cmd, rules.commandDenyList);
-      const shouldAutoRun = canAutoCommands && !isDenied;
-      const runApproved = async (requestId: string) => {
-        try {
-          await this.runCommandTool(tc, cmd, sessionId, projectPath, rules, onChunk, workDir);
-          hitlService.recordOutcome(requestId, tc.status === 'error' ? 'failed' : 'executed');
-        } catch (e: any) {
-          tc.status = 'error';
-          tc.result = `Error: ${e.message}`;
-          onChunk({ toolCall: tc });
-          hitlService.recordOutcome(requestId, 'failed', e?.message);
-        }
-      };
-
-      if (shouldAutoRun) {
-        await runApproved(hitlService.recordAutoDecision(autoInfo('command', { command: cmd }), 'allow', 'auto-command'));
-      } else {
-        const approvalReq: ApprovalRequest = {
-          id: hitlService.newRequestId(),
-          sessionId,
-          projectPath,
-          ...meta,
-          type: 'command',
-          title: isDenied ? `⚠️ Заблокированная команда требует подтверждения: ${cmd}` : `Разрешение на запуск команды: ${cmd}`,
-          command: cmd,
-          details: tc.args.explanation || (isDenied ? 'Команда находится в списке запрещенных для авто-запуска' : 'Выполнение команды терминала'),
-          createdAt: Date.now()
-        };
-
-        onChunk({ approvalRequest: approvalReq });
-        const res = await this.requestApproval(approvalReq, { timeoutMs });
-
-        if (res.approved) {
-          await runApproved(approvalReq.id);
-        } else {
-          tc.status = 'rejected';
-          tc.result = `Отклонено пользователем: ${res.text || 'Без комментария'}`;
-          onChunk({ toolCall: tc });
-        }
-      }
-      this.setProjectStatus(projectPath, 'running', 'Обработка результатов...');
-    } else if (tc.name === 'write_file' || tc.name === 'write_to_file') {
-      const filePath = tc.args.filePath || tc.args.path || '';
-      const content = tc.args.content || '';
-      const isExcluded = rules?.writeExcludePatterns && this.isPathExcluded(filePath, rules.writeExcludePatterns);
-      const shouldAutoWrite = canAutoWrite && !isExcluded;
-
-      const applyApproved = async (requestId: string, successMessage: string) => {
-        try {
-          await aiAgentService.applyDiff(workDir, filePath, content);
-          tc.status = 'accepted';
-          tc.result = successMessage;
-          onChunk({ toolCall: tc });
-          hitlService.recordOutcome(requestId, 'executed');
-        } catch (e: any) {
-          hitlService.recordOutcome(requestId, 'failed', e?.message);
-          throw e;
-        }
-      };
-
-      if (!isInsideProject(workDir, filePath)) {
-        // Абсолютный путь вне проекта или выход через `..` — отклоняем до любых
-        // одобрений, даже при auto-approve, и объясняем модели причину (TASK-32).
-        tc.status = 'rejected';
-        tc.result = `Запись отклонена: путь "${filePath}" находится вне корня проекта "${projectPath}". `
-          + 'Разрешены только пути внутри проекта — укажи путь относительно его корня без выхода через "..".';
-        onChunk({ toolCall: tc });
-        hitlService.recordAutoDecision(autoInfo('file_write', { filePath }), 'deny', 'outside-project', tc.result);
-      } else if (shouldAutoWrite) {
-        await applyApproved(
-          hitlService.recordAutoDecision(autoInfo('file_write', { filePath }), 'allow', 'auto-write'),
-          `Файл ${filePath} успешно записан`
-        );
-      } else {
-        let oldContent = '';
-        const fullPath = path.resolve(workDir, filePath);
-        if (existsSync(fullPath)) {
-          try {
-            oldContent = await fs.readFile(fullPath, 'utf-8');
-          } catch {}
-        }
-        const patch = aiAgentService.generateDiff(oldContent, content, filePath);
-        tc.diff = { filePath, oldContent, newContent: content, patch };
-
-        const approvalReq: ApprovalRequest = {
-          id: hitlService.newRequestId(),
-          sessionId,
-          projectPath,
-          ...meta,
-          type: 'file_write',
-          title: isExcluded ? `⚠️ Файл в списке исключений: ${filePath}` : `Разрешение на запись файла: ${filePath}`,
-          filePath,
-          details: isExcluded ? 'Файл защищен списком исключений авто-одобрения' : (tc.args.explanation || 'Изменение содержимого файла'),
-          diff: tc.diff,
-          createdAt: Date.now()
-        };
-
-        onChunk({ approvalRequest: approvalReq, toolCall: tc });
-        const res = await this.requestApproval(approvalReq, { timeoutMs });
-        if (res.approved) {
-          await applyApproved(approvalReq.id, `Файл ${filePath} успешно сохранен`);
-        } else {
-          tc.status = 'rejected';
-          tc.result = `Отклонено пользователем: ${res.text || 'Без комментария'}`;
-          onChunk({ toolCall: tc });
-        }
-      }
-    } else if (tc.name === 'spawn_subagent' || tc.name === 'dispatch_agent') {
-      const subTask = tc.args.task || tc.args.prompt || 'Подзадача';
-      const subagentId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const subagent: SubagentInfo = {
-        id: subagentId,
-        parentSessionId: sessionId,
-        projectPath,
-        name: tc.args.name || `Подагент #${subagentId.slice(-4)}`,
-        task: subTask,
-        status: 'running',
-        progress: 'Инициализация подзадачи...',
-        startedAt: Date.now()
-      };
-
-      this.registerSubagent(subagent);
-      onChunk({ subagent });
-    }
+    const isRunning = () => this.activeSessions.has(sessionId) && !this.abortedSessions.has(sessionId);
+    return {
+      sessionId,
+      workDir: req.workspaceRoot?.trim() || projectPath,
+      hitlProjectPath: projectPath,
+      projectPath,
+      config: req.config,
+      origin: 'studio',
+      engine: 'api',
+      allowBackground: true,
+      isActive: isRunning,
+      ...createStudioToolCallbacks({
+        emit: onChunk,
+        setStatus: (status, message, pending) => this.setProjectStatus(projectPath, status, message, pending),
+        hasPendingApprovals: () => this.getPendingApprovalIds(sessionId).length > 0,
+        isSessionActive: isRunning
+      })
+    };
   }
 
   private async runClaudeCliTask(

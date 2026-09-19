@@ -9,7 +9,6 @@ import type {
   AISession,
   AIProviderConfig,
   AIMessage,
-  AIToolCall,
   AIStreamRequest,
   ClaudeAuthStatus,
   ApprovalRequest,
@@ -21,6 +20,7 @@ import type {
 } from '../types/electron';
 import { useProjectStore } from './useProjectStore';
 import { messagesForModel, retryTarget } from '../lib/providerErrorView';
+import { upsertToolCall } from '../lib/aiToolCalls';
 
 export type { AISession };
 
@@ -631,7 +631,7 @@ export const useAIStudioStore = create<AIStudioState>()(
               target.thought = (target.thought || '') + chunk.thought;
             }
             if (chunk.toolCall) {
-              target.toolCalls = [...(target.toolCalls || []), chunk.toolCall];
+              target.toolCalls = upsertToolCall(target.toolCalls, chunk.toolCall);
             }
 
             msgs[mIdx] = target;
