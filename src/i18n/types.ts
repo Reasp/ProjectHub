@@ -1643,6 +1643,61 @@ export interface TranslationDictionary {
     taskNotMoved: string;
     taskWriteError: string;
   };
+  /** Планировщик подзадач (TASK-80, decision-49). */
+  plan: {
+    title: string;
+    empty: string;
+    generate: string;
+    generating: string;
+    approve: string;
+    reapprove: string;
+    stop: string;
+    discard: string;
+    awaitingApproval: string;
+    changed: string;
+    counts: string;
+    cost: string;
+    integrationBranch: string;
+    integrationHint: string;
+    parallel: string;
+    step: string;
+    dependsOn: string;
+    skip: string;
+    unskip: string;
+    openSession: string;
+    iterations: string;
+    error: string;
+    architectErrors: string;
+    attempts: string;
+    conflictTitle: string;
+    conflictFiles: string;
+    conflictRetry: string;
+    conflictSkip: string;
+    conflictStop: string;
+    confirmStopTitle: string;
+    confirmStopText: string;
+    confirmDiscardTitle: string;
+    confirmDiscardText: string;
+    states: {
+      pending: string;
+      running: string;
+      completed: string;
+      merging: string;
+      merged: string;
+      conflict: string;
+      failed: string;
+      blocked: string;
+      skipped: string;
+      missing: string;
+    };
+    outcomes: {
+      success: string;
+      partial: string;
+      failed: string;
+      budget_exceeded: string;
+      stopped: string;
+    };
+  };
   remote: {
     title: string;
     subtitle: string;

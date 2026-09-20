@@ -1,10 +1,10 @@
 ---
 id: TASK-102.1
 title: Чистые модули продолжения цикла и перезапуска handoff после отката с тестами
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 13:42'
-updated_date: '2026-09-19 13:57'
+updated_date: '2026-09-20 01:52'
 labels:
   - swarm
   - git

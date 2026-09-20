@@ -3,10 +3,10 @@ id: TASK-102.3
 title: >-
   UI продолжения после отката в карточке и заголовке сессии, i18n, живая
   проверка и скриншот exe
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 13:42'
-updated_date: '2026-09-20 00:50'
+updated_date: '2026-09-20 01:52'
 labels:
   - swarm
   - ui

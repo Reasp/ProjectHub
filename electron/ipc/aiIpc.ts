@@ -22,6 +22,7 @@ import {
   type SwarmExportFormat
 } from '../services/agentFleetService';
 import { loadDoneLoopSettings } from '../services/doneLoopService';
+import { planService, type ConflictResolution, type GeneratePlanOptions } from '../services/planService';
 import { assertRegisteredProject } from '../services/projectPathGuard';
 import type { RunJudgeOptions } from '../services/arenaJudgeService';
 import { loadArenaConfig, saveArenaConfig } from '../services/arenaConfig';
@@ -293,6 +294,49 @@ export function registerAiIpc(ctx: IpcContext) {
     const safeProject = await assertRegisteredProject(projectPath);
     return await loadDoneLoopSettings(safeProject);
   });
+
+  // Планировщик подзадач (TASK-80, decision-49)
+  planService.on('planEvent', (event) => {
+    const win = ctx.getMainWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('plan:event', event);
+    }
+  });
+
+  ipcMain.handle('plan:generate', async (_event, options: GeneratePlanOptions) => {
+    const safeProject = await assertRegisteredProject(options.projectPath);
+    try {
+      return await planService.generatePlan({ ...options, projectPath: safeProject });
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcMain.handle('plan:list', async (_event, projectPath?: string) => {
+    const safeProject = projectPath ? await assertRegisteredProject(projectPath) : undefined;
+    return planService.listPlans(safeProject);
+  });
+
+  ipcMain.handle('plan:getForTask', async (_event, projectPath: string, taskId: string) => {
+    const safeProject = await assertRegisteredProject(projectPath);
+    const plan = planService.getPlanForTask(safeProject, taskId);
+    if (plan) await planService.refreshGraph(plan);
+    return plan ?? null;
+  });
+
+  ipcMain.handle('plan:approve', async (_event, planId: string) => planService.approvePlan(planId));
+
+  ipcMain.handle('plan:stop', async (_event, planId: string) => planService.stopPlan(planId));
+
+  ipcMain.handle('plan:skipNode', async (_event, planId: string, taskId: string, skipped: boolean) =>
+    planService.skipNode(planId, taskId, skipped)
+  );
+
+  ipcMain.handle('plan:resolveConflict', async (_event, planId: string, taskId: string, action: ConflictResolution) =>
+    planService.resolveConflict(planId, taskId, action)
+  );
+
+  ipcMain.handle('plan:discard', async (_event, planId: string) => planService.discardPlan(planId));
 
   // Запуск агента, назначенного на задачу через assignee (decision-9 п.4, TASK-60)
   ipcMain.handle(

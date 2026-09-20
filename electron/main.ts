@@ -14,6 +14,7 @@ import { ptyService } from './services/ptyService';
 import { gitService } from './services/gitService';
 import { windowStateService } from './services/windowStateService';
 import { agentFleetService, isActiveAgentStatus, isActiveSwarmStatus } from './services/agentFleetService';
+import { planService } from './services/planService';
 import { invalidateInspectCache } from './services/projectScanner';
 import { logger, parseLogLevel } from './services/logger';
 import { getUserDataDir } from './services/appPaths';
@@ -551,6 +552,8 @@ async function performGracefulShutdown() {
   try {
     // Активные swarm-сессии помечаются interrupted и сбрасываются на диск (TASK-56)
     await agentFleetService.shutdown();
+    // Состояние планов — на диск: узлы продолжатся после перезапуска (TASK-80)
+    await planService.flush();
   } catch (e) {
     console.warn('[Main] Error cleaning up swarm sessions:', e);
     try { agentFleetService.killAll(); } catch { /* ignore */ }
@@ -691,6 +694,9 @@ app.whenReady().then(() => {
 
   // Восстановление swarm-сессий с диска: незавершённые помечаются interrupted (TASK-56)
   void agentFleetService.init();
+
+  // Планы подзадач с диска: узлы прерванных сессий возвращаются в очередь (TASK-80, decision-49)
+  void planService.init().catch((err) => console.error('[Main] Failed to init plan service:', err));
 
   // Единый HITL-контур: очередь <userData>/hitl/pending.json и аудит <userData>/audit (TASK-57)
   hitlService.configure({ hostId: remoteControlService.getHostId() });

@@ -12,6 +12,11 @@ describe('taskIdToFilePrefix', () => {
     expect(taskIdToFilePrefix('64')).toBe('task-64');
   });
 
+  it('сохраняет номер подзадачи целиком (TASK-80.1)', () => {
+    expect(taskIdToFilePrefix('TASK-80.1')).toBe('task-80.1');
+    expect(taskIdToFilePrefix('TASK-80.1.2')).toBe('task-80.1.2');
+  });
+
   it('без номера в id возвращает null', () => {
     expect(taskIdToFilePrefix('no-number-here')).toBeNull();
   });
@@ -43,6 +48,19 @@ describe('findTaskFile', () => {
     expect(match?.data.title).toBe('Context builder');
     expect(match?.content).toContain('текст');
     expect(match?.filePath.endsWith('task-64 - Context builder.md')).toBe(true);
+  });
+
+  it('различает задачу и её подзадачи (TASK-80, decision-49)', async () => {
+    const tasksDir = path.join(projectPath, 'backlog', 'tasks');
+    const write = (name: string, id: string, title: string) =>
+      fs.writeFile(path.join(tasksDir, name), ['---', `id: ${id}`, `title: ${title}`, '---', '', 'тело'].join('\n'), 'utf-8');
+    // Подзадача создаётся раньше родителя в порядке чтения каталога — совпадения по префиксу мало.
+    await write('task-64.1 - Подзадача.md', 'TASK-64.1', 'Подзадача');
+    await write('task-640 - Другая.md', 'TASK-640', 'Другая');
+
+    expect((await findTaskFile(projectPath, 'TASK-64'))?.data.id).toBe('TASK-64');
+    expect((await findTaskFile(projectPath, 'TASK-64.1'))?.data.id).toBe('TASK-64.1');
+    expect((await findTaskFile(projectPath, 'TASK-640'))?.data.id).toBe('TASK-640');
   });
 
   it('не находит несуществующую задачу', async () => {

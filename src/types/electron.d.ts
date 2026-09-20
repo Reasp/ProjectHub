@@ -855,6 +855,20 @@ export interface IElectronAPI {
   /** Цикл «до готовности» (TASK-75). */
   startSwarmDoneLoop: (options: StartDoneLoopOptions) => Promise<SwarmSession | { error: string }>;
   getDoneLoopConfig: (projectPath: string) => Promise<DoneLoopSettings>;
+  // Планировщик подзадач (TASK-80, decision-49)
+  generatePlan: (options: GeneratePlanOptions) => Promise<PlanState | { error: string }>;
+  listPlans: (projectPath?: string) => Promise<PlanState[]>;
+  getPlanForTask: (projectPath: string, taskId: string) => Promise<PlanState | null>;
+  approvePlan: (planId: string) => Promise<{ success: boolean; error?: string }>;
+  stopPlan: (planId: string) => Promise<{ success: boolean; error?: string }>;
+  skipPlanNode: (planId: string, taskId: string, skipped: boolean) => Promise<{ success: boolean; error?: string }>;
+  resolvePlanConflict: (
+    planId: string,
+    taskId: string,
+    action: 'retry' | 'skip' | 'stop'
+  ) => Promise<{ success: boolean; error?: string }>;
+  discardPlan: (planId: string) => Promise<{ success: boolean; error?: string }>;
+  onPlanEvent: (callback: (event: PlanEventPayload) => void) => () => void;
   runAssignedAgent: (options: {
     projectPath: string;
     taskId: string;
@@ -1316,7 +1330,8 @@ export type AppBusEvent =
       swarmId: string;
       projectPath: string;
       name: string;
-      mode: 'fan-out' | 'handoff';
+      /** `plan` — сводное событие плана подзадач (TASK-80, decision-49). */
+      mode: 'fan-out' | 'handoff' | 'plan';
       outcome: 'completed' | 'failed' | 'stopped';
       agentsTotal: number;
       agentsFailed: number;
@@ -2459,6 +2474,85 @@ export interface StartDoneLoopOptions {
   maxIterations?: number;
   checkIds?: string[];
   autoReview?: boolean;
+}
+
+/** Планировщик подзадач (TASK-80, decision-49). Зеркало `electron/services/planTypes.ts`. */
+export type PlanNodeState =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'merging'
+  | 'merged'
+  | 'conflict'
+  | 'failed'
+  | 'blocked'
+  | 'skipped'
+  | 'missing';
+
+export type PlanPhase = 'planning' | 'awaiting_approval' | 'running' | 'finished' | 'failed';
+
+export type PlanOutcome = 'success' | 'partial' | 'failed' | 'budget_exceeded' | 'stopped';
+
+export interface PlanNode {
+  key: string;
+  taskId: string;
+  title: string;
+  state: PlanNodeState;
+  dependsOn: string[];
+  swarmId?: string;
+  branch?: string;
+  mergeCommit?: string;
+  conflictFiles?: string[];
+  costUsd?: number;
+  iterations?: number;
+  reason?: string;
+  startedAt?: number;
+  finishedAt?: number;
+}
+
+export interface PlanSettings {
+  maxParallel: number;
+  budgetUsd?: number;
+  maxIterations?: number;
+  checkIds?: string[];
+  agent?: AgentSlotConfig;
+  architect?: AgentSlotConfig;
+}
+
+export interface PlanState {
+  id: string;
+  projectPath: string;
+  taskId: string;
+  taskTitle?: string;
+  phase: PlanPhase;
+  outcome?: PlanOutcome;
+  reason?: string;
+  createdAt: number;
+  updatedAt: number;
+  completedAt?: number;
+  settings: PlanSettings;
+  summary?: string;
+  nodes: PlanNode[];
+  integrationBranch?: string;
+  integrationWorktree?: string;
+  approvedGraphHash?: string;
+  approvedAt?: number;
+  architect: { attempts: number; costUsd?: number; errors?: string[]; rawResponse?: string };
+  totalCostUsd?: number;
+  stopped?: boolean;
+}
+
+export interface GeneratePlanOptions {
+  projectPath: string;
+  taskId: string;
+  taskTitle?: string;
+  settings?: Partial<PlanSettings>;
+}
+
+export interface PlanEventPayload {
+  type: 'plan_updated' | 'plan_removed';
+  planId: string;
+  plan?: PlanState;
 }
 
 export interface SwarmEventPayload {

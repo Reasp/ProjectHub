@@ -3,10 +3,10 @@ id: TASK-102.2
 title: >-
   Интеграция продолжения после отката в agentFleetService: цикл, конвейер,
   трасса и usage
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 13:42'
-updated_date: '2026-09-19 14:00'
+updated_date: '2026-09-20 01:52'
 labels:
   - swarm
   - git

@@ -1128,7 +1128,11 @@ export class AgentFleetService extends EventEmitter {
   // ---------------------------------------------------------------------------
 
   private async detectBaseBranch(projectPath: string, fallback?: string): Promise<string> {
-    let baseBranch = fallback || 'main';
+    // Явно заданная ветка важнее текущей ветки основного дерева: планировщик запускает узлы от
+    // интеграционной ветки плана, а не от того, что человек сейчас открыл (TASK-80, decision-49 п. 4).
+    const explicit = fallback?.trim();
+    if (explicit) return explicit;
+    let baseBranch = 'main';
     try {
       const git = simpleGit(projectPath);
       const status = await git.status();

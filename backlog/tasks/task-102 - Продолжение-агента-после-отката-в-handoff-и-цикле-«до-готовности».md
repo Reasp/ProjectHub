@@ -1,10 +1,10 @@
 ---
 id: TASK-102
 title: Продолжение агента после отката в handoff и цикле «до готовности»
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 11:47'
-updated_date: '2026-09-20 00:52'
+updated_date: '2026-09-20 01:52'
 labels:
   - swarm
   - git

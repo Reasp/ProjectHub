@@ -229,7 +229,8 @@ export type AppBusEvent =
       swarmId: string;
       projectPath: string;
       name: string;
-      mode: 'fan-out' | 'handoff';
+      /** `plan` — сводное событие плана подзадач (TASK-80, decision-49). */
+      mode: 'fan-out' | 'handoff' | 'plan';
       outcome: 'completed' | 'failed' | 'stopped';
       agentsTotal: number;
       agentsFailed: number;

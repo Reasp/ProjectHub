@@ -37,6 +37,7 @@ import { useFederationStore } from '../../store/useFederationStore';
 import { useDialog } from '../../hooks/useDialog';
 import { generateTaskDraft } from '../../services/aiAssistantService';
 import { MarkdownViewer } from '../common/MarkdownViewer';
+import { PlanPanel } from './PlanPanel';
 import {
   matchStatus,
   resolveDoneStatus,
@@ -79,7 +80,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   } = useProjectStore();
   // Статусы задаёт backlog/config.yml проекта, а не код ProjectHub (TASK-68, decision-24).
   const taskStatuses = backlogConfig.statuses;
-  const { openNewSwarmModal, swarms, runAssignedAgentAction } = useSwarmStore();
+  const { openNewSwarmModal, swarms, runAssignedAgentAction, setActiveSwarmId } = useSwarmStore();
   const federationPeers = useFederationStore((s) => s.peers);
   const { rolesByProject, loadRolesAction } = useRolesStore();
   const roles = rolesByProject[selectedProject?.path || ''] || [];
@@ -599,6 +600,20 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 </div>
               </div>
             </>
+          )}
+
+          {/* План подзадач (TASK-80, decision-49): граф узлов, утверждение и запуск */}
+          {selectedProject && !isDescriptionExpanded && (
+            <PlanPanel
+              projectPath={selectedProject.path}
+              taskId={task.id}
+              taskTitle={task.title}
+              onOpenSession={(swarmId) => {
+                setActiveSwarmId(selectedProject.path, swarmId);
+                onClose();
+                setMainTab('ai');
+              }}
+            />
           )}
 
           {/* Description & Markdown Editor */}

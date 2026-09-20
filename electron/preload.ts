@@ -20,6 +20,7 @@ import type {
   NotificationDelivery,
   NotificationSettings,
   NotificationSeverity,
+  PlanEventPayload,
   PushToTalkEvent,
   PushToTalkSettings,
   PushToTalkStatus,
@@ -306,6 +307,24 @@ const api: IElectronAPI = {
   // Цикл «до готовности» (TASK-75)
   startSwarmDoneLoop: (options: unknown) => ipcRenderer.invoke('swarm:startDoneLoop', options),
   getDoneLoopConfig: (projectPath: string) => ipcRenderer.invoke('doneLoop:getConfig', projectPath),
+  // Планировщик подзадач (TASK-80, decision-49)
+  generatePlan: (options: unknown) => ipcRenderer.invoke('plan:generate', options),
+  listPlans: (projectPath?: string) => ipcRenderer.invoke('plan:list', projectPath),
+  getPlanForTask: (projectPath: string, taskId: string) => ipcRenderer.invoke('plan:getForTask', projectPath, taskId),
+  approvePlan: (planId: string) => ipcRenderer.invoke('plan:approve', planId),
+  stopPlan: (planId: string) => ipcRenderer.invoke('plan:stop', planId),
+  skipPlanNode: (planId: string, taskId: string, skipped: boolean) =>
+    ipcRenderer.invoke('plan:skipNode', planId, taskId, skipped),
+  resolvePlanConflict: (planId: string, taskId: string, action: 'retry' | 'skip' | 'stop') =>
+    ipcRenderer.invoke('plan:resolveConflict', planId, taskId, action),
+  discardPlan: (planId: string) => ipcRenderer.invoke('plan:discard', planId),
+  onPlanEvent: (callback: (event: PlanEventPayload) => void) => {
+    const handler = (_event: unknown, data: PlanEventPayload) => callback(data);
+    ipcRenderer.on('plan:event', handler);
+    return () => {
+      ipcRenderer.removeListener('plan:event', handler);
+    };
+  },
   // Запуск агента, назначенного на задачу через assignee (decision-9, TASK-60)
   runAssignedAgent: (options: { projectPath: string; taskId: string; taskTitle?: string; prompt: string; roleSlug: string; hostId?: string }) =>
     ipcRenderer.invoke('swarm:runAssigned', options),
