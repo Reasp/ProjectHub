@@ -63,6 +63,7 @@ import { providerErrorAdvice, providerErrorTitle } from '../../../lib/providerEr
 import { chainLinkLabel } from '../../../lib/modelTierEditor';
 import { AdviceText } from '../ProviderErrorCard';
 import { AgentTimelinePanel } from './AgentTimelinePanel';
+import { continueDialogText, pendingContinueAgent } from '../../../lib/rewindContinueView';
 
 /** Вкладки карточки кандидата: к выводу/логам/диффу добавлены проверки и ревью судьи (TASK-61), таймлайн (TASK-72). */
 type AgentTab = 'output' | 'logs' | 'diff' | 'checks' | 'review' | 'timeline';
@@ -115,6 +116,28 @@ export const SwarmArenaView: React.FC = () => {
       if (!res.success) await dialog.alert(t.swarm.resumeError.replace('{error}', res.error || ''));
     } finally {
       setIsResuming(false);
+    }
+  };
+
+  // Продолжение цикла или перезапуск конвейера после отката из заголовка сессии (TASK-102, decision-48 п. 6).
+  const [isContinuing, setIsContinuing] = useState(false);
+  const pendingContinue = currentSwarm ? pendingContinueAgent(currentSwarm) : null;
+  const handleContinueAfterRewind = async () => {
+    if (!currentSwarm || !pendingContinue) return;
+    const text = continueDialogText(pendingContinue.mode, currentSwarm, pendingContinue.fromStage, t.agentTimeline);
+    const instruction = await dialog.prompt({
+      title: text.title,
+      message: text.message,
+      placeholder: t.agentTimeline.continuePromptPlaceholder,
+      confirmText: t.agentTimeline.continueConfirmOk
+    });
+    if (instruction === null) return;
+    setIsContinuing(true);
+    try {
+      const res = await window.api.continueAgent(currentSwarm.id, pendingContinue.agent.id, instruction || undefined);
+      if (!res.success) await dialog.alert(t.agentTimeline.continueError.replace('{error}', res.error ?? ''));
+    } finally {
+      setIsContinuing(false);
     }
   };
 
@@ -448,6 +471,33 @@ export const SwarmArenaView: React.FC = () => {
               </div>
             )}
 
+            {/* Откат в цикле или конвейере: продолжение ведёт контроллер сессии (decision-48) */}
+            {pendingContinue && pendingContinue.mode !== 'agent' && (
+              <div
+                className="p-4 rounded-xl border border-amber-500/40 bg-amber-500/5 flex flex-col md:flex-row md:items-center justify-between gap-3"
+                data-testid="swarm-rewind-banner"
+              >
+                <div className="flex items-start gap-3">
+                  <RotateCcw className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">{t.agentTimeline.rewindBannerTitle[pendingContinue.mode]}</div>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                      {t.agentTimeline.rewindBannerDesc[pendingContinue.mode].replace(/\{n\}/g, String((pendingContinue.fromStage ?? 0) + 1))}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => void handleContinueAfterRewind()}
+                  disabled={isContinuing}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                  data-testid="swarm-continue-after-rewind"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  {t.agentTimeline.continueAfterRewind}
+                </button>
+              </div>
+            )}
+
             {currentSwarm.status === 'failed' && currentSwarm.error && (
               <div className="px-3 py-2 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -574,6 +624,13 @@ export const SwarmArenaView: React.FC = () => {
                           {stage.durationMs && (
                             <div className="text-[10px] text-muted-foreground mt-1">
                               {(stage.durationMs / 1000).toFixed(1)} {t.swarm.secondsUnit}
+                            </div>
+                          )}
+                          {Boolean(stage.invalidatedAt || stage.rerunCount) && (
+                            <div className="text-[10px] text-amber-300/90 mt-1" data-testid="handoff-stage-rewind">
+                              {stage.invalidatedAt ? t.agentTimeline.stageInvalidated : null}
+                              {stage.invalidatedAt && stage.rerunCount ? ' · ' : null}
+                              {stage.rerunCount ? t.agentTimeline.stageRerun.replace('{n}', String(stage.rerunCount)) : null}
                             </div>
                           )}
                         </div>

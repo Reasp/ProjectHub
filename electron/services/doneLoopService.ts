@@ -41,6 +41,14 @@ import {
 import type { CheckDefinition, CheckRunResult } from './arenaTypes.js';
 import type { DoneLoopIteration, DoneLoopOutcome, DoneLoopProjectSettings, DoneLoopSettings, DoneLoopState } from './doneLoopTypes.js';
 import type { AgentSlotState, SwarmSession } from './swarmTypes.js';
+import {
+  buildLoopContinuationPrompt,
+  cancelledSummaryText,
+  iterationInSegment,
+  loopSegmentNumber,
+  loopSegmentStart,
+  uncheckHarnessCriteria
+} from './rewindContinuation.js';
 
 export interface DoneLoopHooks {
   /** Один ход агента в его рабочем каталоге (включая авто-коммит результата). */
@@ -59,6 +67,11 @@ export interface DoneLoopRunOptions {
   resume?: boolean;
   /** Приписка к промпту при возобновлении (задаёт вызывающий сервис). */
   resumeSuffix?: string;
+  /**
+   * Продолжение после отката (decision-48 п. 2): новый отрезок цикла, запись о нём уже в
+   * `session.continuations`. Пояснение об откате к промпту добавит ход агента.
+   */
+  continuation?: boolean;
 }
 
 export interface DoneLoopRunResult {
@@ -132,7 +145,10 @@ export class DoneLoopService {
     });
 
     let prompt = this.initialPrompt(session, state, options);
-    let continueSession = Boolean(options.resume);
+    const segmentStart = loopSegmentStart(session.continuations);
+    const segment = loopSegmentNumber(session.continuations);
+    // Первая итерация отрезка после отката — новая сессия движка (decision-45 п. 4.6).
+    let continueSession = Boolean(options.resume) && state.iterations.length > segmentStart;
 
     for (;;) {
       if (hooks.isStopped()) return this.fail(state, 'stopped', 'Цикл остановлен человеком', hooks);
@@ -142,17 +158,23 @@ export class DoneLoopService {
         startedAt: Date.now(),
         checks: [],
         criteria: [],
-        reportFound: false
+        reportFound: false,
+        ...(segment > 0 ? { segment } : {})
       };
       state.iterations.push(iteration);
       state.currentIteration = iteration.index;
       state.phase = 'running_agent';
-      hooks.log(`[Done-loop] Итерация ${iteration.index}/${state.settings.maxIterations}: ход агента`);
+      // Лимит итераций действует на отрезок цикла (decision-48 п. 2.3), номера итераций сквозные.
+      const inSegment = iterationInSegment(iteration.index, segmentStart);
+      hooks.log(
+        `[Done-loop] Итерация ${iteration.index}${segment > 0 ? ` (${inSegment}/${state.settings.maxIterations} после отката)` : `/${state.settings.maxIterations}`}: ход агента`
+      );
       hooks.onUpdate();
 
       const costBefore = agentCost(agent);
-      await hooks.runTurn(prompt, { iteration: iteration.index, continueSession: continueSession || iteration.index > 1 });
+      await hooks.runTurn(prompt, { iteration: iteration.index, continueSession: continueSession || inSegment > 1 });
       continueSession = false;
+      if (agent.trace?.runs) iteration.run = agent.trace.runs;
       iteration.agentStatus = agent.status;
       iteration.commitHash = agent.commitHash;
       const costAfter = agentCost(agent);
@@ -184,7 +206,7 @@ export class DoneLoopService {
       }
 
       const decision = decideNext({
-        iteration: iteration.index,
+        iteration: inSegment,
         maxIterations: state.settings.maxIterations,
         stopped: hooks.isStopped(),
         agentStatus: agent.status,
@@ -200,7 +222,7 @@ export class DoneLoopService {
 
       if (decision.action === 'retry') {
         hooks.log(`[Done-loop] Итерация ${iteration.index} не принята — повторный ход с ошибками и незакрытыми критериями.`);
-        prompt = this.retryPrompt(state, iteration);
+        prompt = this.retryPrompt(state, iteration, segmentStart);
         continue;
       }
       if (decision.action === 'finish') {
@@ -212,18 +234,34 @@ export class DoneLoopService {
   }
 
   private initialPrompt(session: SwarmSession, state: DoneLoopState, options: DoneLoopRunOptions): string {
+    const loops = (session.continuations ?? []).filter((c) => c.mode === 'loop');
+    const continuation = loops[loops.length - 1];
+    if (options.continuation) {
+      return buildLoopContinuationPrompt({ basePrompt: session.prompt, iterations: state.iterations, instruction: continuation?.instruction });
+    }
     if (!options.resume) return session.prompt;
     // Незаконченная итерация пересчитывается заново: её ход прерван, проверки не досчитаны.
     const last = state.iterations[state.iterations.length - 1];
     if (last && !last.finishedAt) state.iterations.pop();
+    const segmentStart = loopSegmentStart(session.continuations);
+    if (continuation && state.iterations.length <= segmentStart) {
+      // Прерван первый ход отрезка после отката: пояснение уже израсходовано, берём его из записи продолжения.
+      const base = buildLoopContinuationPrompt({
+        basePrompt: session.prompt,
+        iterations: state.iterations,
+        instruction: continuation.instruction,
+        note: continuation.note
+      });
+      return `${base}${options.resumeSuffix ?? ''}`;
+    }
     const previous = state.iterations[state.iterations.length - 1];
-    const base = previous?.decision === 'retry' ? this.retryPrompt(state, previous) : session.prompt;
+    const base = previous?.decision === 'retry' ? this.retryPrompt(state, previous, segmentStart) : session.prompt;
     return `${base}${options.resumeSuffix ?? ''}`;
   }
 
-  private retryPrompt(state: DoneLoopState, iteration: DoneLoopIteration): string {
+  private retryPrompt(state: DoneLoopState, iteration: DoneLoopIteration, segmentStart: number): string {
     return buildRetryPrompt({
-      iteration: iteration.index,
+      iteration: iterationInSegment(iteration.index, segmentStart),
       maxIterations: state.settings.maxIterations,
       checks: iteration.checks,
       criteria: iteration.criteria,
@@ -328,9 +366,11 @@ export class DoneLoopService {
       }
 
       let reviewStatus: string | undefined;
+      let previousStatus: string | undefined;
       if (state.settings.autoReview) {
         const backlogConfig = await readBacklogConfig(session.projectPath);
         reviewStatus = findReviewStatus(backlogConfig.statuses);
+        if (typeof file.data.status === 'string') previousStatus = file.data.status;
         if (reviewStatus) file.data.status = reviewStatus;
         else hooks.log('[Done-loop] В конфиге Backlog.md проекта нет статуса Review — статус задачи не изменён.');
       }
@@ -340,6 +380,7 @@ export class DoneLoopService {
         buildDoneLoopFinalSummary({
           outcome: 'success',
           iterations: iteration.index,
+          segmentIterations: iterationInSegment(iteration.index, loopSegmentStart(session.continuations)),
           maxIterations: state.settings.maxIterations,
           agentName: agent.config.name,
           engine: agent.config.engine,
@@ -353,7 +394,14 @@ export class DoneLoopService {
         })
       );
       await writeTaskFile(filePath, { ...file, content: body });
-      state.task = { filePath, criteriaChecked: checked, movedToReview: Boolean(reviewStatus), ...(reviewStatus ? { reviewStatus } : {}), finalSummaryWritten: true };
+      state.task = {
+        filePath,
+        criteriaChecked: checked,
+        movedToReview: Boolean(reviewStatus),
+        ...(reviewStatus ? { reviewStatus } : {}),
+        ...(reviewStatus && previousStatus && previousStatus !== reviewStatus ? { previousStatus } : {}),
+        finalSummaryWritten: true
+      };
       hooks.log(
         `[Done-loop] ✅ Готово: отмечено критериев ${checked.length}${reviewStatus ? `, задача переведена в ${reviewStatus}` : ''}, Final Summary записан.`
       );
@@ -363,6 +411,44 @@ export class DoneLoopService {
       hooks.log(`[Done-loop] Цикл успешен, но записать итог в задачу не удалось: ${message}`);
     }
     hooks.onUpdate();
+  }
+
+  /**
+   * Подготовка цикла к продолжению после отката (decision-48 п. 2.5): итог прошлого успеха описывает
+   * отменённое состояние — снимаем свои отметки критериев, возвращаем статус задачи, заменяем Final Summary.
+   * Затем цикл снова «идёт»: итог и причина очищаются, отрезок начнёт `run` с `continuation`.
+   */
+  public async reopenAfterRewind(session: SwarmSession, checkpointN: number | undefined, log: (line: string) => void): Promise<void> {
+    const state = session.doneLoop;
+    if (!state) return;
+    const task = state.task;
+    if (state.outcome === 'success' && task?.filePath && existsSync(task.filePath)) {
+      try {
+        const file = await readTaskFile(task.filePath);
+        let body = file.content;
+        const unchecked = uncheckHarnessCriteria(body, task.criteriaChecked, state.criteriaBaseline);
+        if (unchecked) body = unchecked.content;
+        let statusRestored = false;
+        if (task.movedToReview && task.previousStatus && task.reviewStatus && file.data.status === task.reviewStatus) {
+          file.data.status = task.previousStatus;
+          statusRestored = true;
+        }
+        if (task.finalSummaryWritten) body = applyFinalSummary(body, cancelledSummaryText(checkpointN, new Date()));
+        await writeTaskFile(task.filePath, { ...file, content: body });
+        const statusNote = statusRestored
+          ? `, статус задачи возвращён в ${task.previousStatus}`
+          : task.movedToReview
+            ? ', статус задачи не менялся (прежний не записан или изменён вручную)'
+            : '';
+        log(`[Done-loop] Итог прошлого успеха отменён откатом: снято отметок критериев ${unchecked?.unchecked.length ?? 0}${statusNote}.`);
+      } catch (err) {
+        log(`[Done-loop] Не удалось отменить итог прошлого успеха в файле задачи: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    state.outcome = undefined;
+    state.reason = undefined;
+    state.phase = 'running_agent';
+    state.task = { ...(task?.filePath ? { filePath: task.filePath } : {}), criteriaChecked: [] };
   }
 
   private fail(state: DoneLoopState, outcome: DoneLoopOutcome, reason: string, hooks: DoneLoopHooks): DoneLoopRunResult {

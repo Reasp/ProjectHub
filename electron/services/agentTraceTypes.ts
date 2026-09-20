@@ -132,6 +132,17 @@ export type AgentTraceEvent =
     })
   | (TraceBase & { type: 'error'; message: string; kind?: string })
   | (TraceBase & {
+      /** Продолжение после отката или с уточнением (decision-48 п. 4) — перед `run_start` нового запуска. */
+      type: 'continue';
+      mode: 'agent' | 'loop' | 'handoff';
+      toCheckpoint?: number;
+      /** Цикл: номер первой итерации нового отрезка. */
+      iteration?: number;
+      /** Handoff: номер этапа (0-based). */
+      stage?: number;
+      instruction?: boolean;
+    })
+  | (TraceBase & {
       type: 'run_end';
       status: string;
       durationMs: number;
@@ -221,6 +232,7 @@ export interface AgentTimeline {
   switches: TimelineModelSwitch[];
   checkpoints: Array<Extract<AgentTraceEvent, { type: 'checkpoint' }>>;
   rewinds: Array<Extract<AgentTraceEvent, { type: 'rewind' }>>;
+  continuations: Array<Extract<AgentTraceEvent, { type: 'continue' }>>;
   toolNames: string[];
   startedAt?: number;
   endedAt?: number;

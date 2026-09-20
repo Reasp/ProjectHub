@@ -1,10 +1,10 @@
 ---
 id: TASK-103
 title: AI Studio переходит на общий исполнитель API-инструментов apiToolExecutor
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 12:30'
-updated_date: '2026-09-19 13:27'
+updated_date: '2026-09-19 13:34'
 labels:
   - hitl
   - ai-studio
@@ -41,3 +41,9 @@ ADR: decision-47 (accepted). Подзадачи 103.1–103.3 в Review.
 - Трасса AI Studio и перевод голоса — не цели (decision-47 п. 5, 6).
 - Проверки: снимок чанков до/после, живой прогон на qwen2.5 с одобрением через MCP, скриншоты собранного exe. lint 0 ошибок (494 предупреждения при baseline 499), 1429 тестов, check-bundle ок.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+AI Studio переведена на общий исполнитель API-инструментов (decision-47): одна политика с Swarm и Claude CLI, адаптер чата studioToolAdapter с прежним форматом чанков, фоновые команды флагом allowBackground, одна строка на вызов в списке шагов. Проверено снимком чанков до/после, живым прогоном на qwen2.5 с одобрением через MCP и скриншотами собранного exe. Коммит 6f747c0.
+<!-- SECTION:FINAL_SUMMARY:END -->

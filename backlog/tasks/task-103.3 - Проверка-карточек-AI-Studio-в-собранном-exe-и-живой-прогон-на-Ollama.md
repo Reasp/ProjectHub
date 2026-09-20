@@ -1,10 +1,10 @@
 ---
 id: TASK-103.3
 title: Проверка карточек AI Studio в собранном exe и живой прогон на Ollama
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 13:08'
-updated_date: '2026-09-19 13:27'
+updated_date: '2026-09-19 13:34'
 labels:
   - hitl
   - ai-studio

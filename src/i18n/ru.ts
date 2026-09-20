@@ -2411,6 +2411,33 @@ export const ru: TranslationDictionary = {
     continueConfirmOk: 'Запустить',
     continueError: 'Не удалось продолжить агента: {error}',
     continuePending: 'Следующий запуск получит пояснение об откате.',
+    continueLoopButton: 'Продолжить цикл',
+    continueHandoffButton: 'Перезапустить с этапа {n}',
+    continueLoopPromptTitle: 'Продолжить цикл после отката',
+    continueLoopPromptMessage:
+      'Цикл продолжится итерацией {next} в том же worktree, в новой сессии агента с пояснением об откате. Проверки и критерии приёмки будут сверены заново, лимит — {max} итераций на продолжение, бюджет цикла общий с прежними итерациями. Если цикл уже завершился успехом, отметки критериев в задаче будут сняты до нового результата. Можно добавить уточнение (необязательно).',
+    continueHandoffPromptTitle: 'Перезапустить конвейер после отката',
+    continueHandoffPromptMessage:
+      'Этапы {stages} будут выполнены заново в общем worktree: откатанный этап — в новой сессии с пояснением об откате, последующие — с его новым результатом. Можно добавить уточнение для откатанного этапа (необязательно).',
+    continueAfterRewind: 'Продолжить после отката',
+    rewindBannerTitle: {
+      loop: 'Агент цикла откатан к чекпоинту',
+      handoff: 'Этап конвейера откатан к чекпоинту'
+    },
+    rewindBannerDesc: {
+      loop: 'Итерации после точки отката помечены как отменённые. Продолжите цикл новой итерацией или закройте сессию.',
+      handoff: 'Результаты этапа {n} и последующих отменены: worktree у конвейера общий. Перезапустите конвейер с этапа {n}.'
+    },
+    continuationsTitle: 'Продолжения',
+    continuationItem: {
+      agent: '{time}: продолжение агента',
+      loop: '{time}: цикл продолжен с итерации {iteration}',
+      handoff: '{time}: перезапуск с этапа {stage}'
+    },
+    iterationRolledBack: { full: 'отменена откатом', partial: 'частично отменена откатом' },
+    iterationSegment: 'после отката {n}',
+    stageInvalidated: 'отменён откатом',
+    stageRerun: 'перезапуск ×{n}',
     exportTrace: 'Трасса .jsonl',
     exportTraceSession: 'Трасса всех агентов (.jsonl)',
     exportTraceDone: 'Трасса сохранена: {path}',

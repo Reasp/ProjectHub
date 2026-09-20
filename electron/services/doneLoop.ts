@@ -354,6 +354,8 @@ export function buildDoneLoopFinalSummary(input: {
   outcome: DoneLoopOutcome;
   iterations: number;
   maxIterations: number;
+  /** Итераций в текущем отрезке цикла, если цикл продолжали после отката (decision-48 п. 2.3). */
+  segmentIterations?: number;
   agentName: string;
   engine: string;
   criteria: CriterionVerification[];
@@ -365,9 +367,14 @@ export function buildDoneLoopFinalSummary(input: {
   commitHash?: string;
 }): string {
   const lines: string[] = [];
+  // Лимит действует на отрезок, а номера итераций сквозные: после продолжения показываем оба числа.
+  const inSegment = input.segmentIterations;
+  const count =
+    inSegment !== undefined && inSegment !== input.iterations
+      ? `итераций ${input.iterations}, после отката ${inSegment} из ${input.maxIterations}`
+      : `итераций ${input.iterations} из ${input.maxIterations}`;
   lines.push(
-    `Выполнено агентом ProjectHub в режиме «до готовности» (${input.agentName}, движок ${input.engine}): ${OUTCOME_LABELS[input.outcome]}, ` +
-      `итераций ${input.iterations} из ${input.maxIterations}.`
+    `Выполнено агентом ProjectHub в режиме «до готовности» (${input.agentName}, движок ${input.engine}): ${OUTCOME_LABELS[input.outcome]}, ${count}.`
   );
   if (input.reportSummary) lines.push('', input.reportSummary.trim());
 

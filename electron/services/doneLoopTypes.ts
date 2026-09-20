@@ -64,6 +64,15 @@ export interface DoneLoopIteration {
   /** Агент менял чекбоксы критериев в файле задачи — ProjectHub откатил правку. */
   tamperedCriteria?: boolean;
   decision?: DoneLoopDecisionAction;
+  /** Сквозной номер запуска движка агента (`AgentSlotState.trace.runs`) — по нему откат помечает итерации. */
+  run?: number;
+  /**
+   * Итерация отменена откатом (decision-48 п. 2.2): `full` — вся её работа, `partial` — часть ходов.
+   * Пересчитывается на каждом откате, итерация из истории не удаляется.
+   */
+  rolledBack?: 'full' | 'partial';
+  /** Номер отрезка цикла: 0 — исходный запуск, N — N-е продолжение после отката. */
+  segment?: number;
 }
 
 /** Настройки конкретного запуска (итог слияния `.projecthub.json` и выбора в модалке). */
@@ -109,6 +118,8 @@ export interface DoneLoopState {
     criteriaChecked: number[];
     movedToReview?: boolean;
     reviewStatus?: string;
+    /** Статус задачи до перевода в Review — вернуть его, если успех отменён откатом (decision-48 п. 2.5). */
+    previousStatus?: string;
     finalSummaryWritten?: boolean;
     error?: string;
   };

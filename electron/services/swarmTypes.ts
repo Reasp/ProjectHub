@@ -163,6 +163,31 @@ export interface HandoffStageState {
   /** Коммит, которым зафиксирован результат этапа (TASK-55 `materializeAgentResult`). */
   commitHash?: string;
   durationMs?: number;
+  /** Результат этапа отменён откатом этого или более раннего этапа (decision-48 п. 3.1). */
+  invalidatedAt?: number;
+  /** Сколько раз этап перезапускался после отката. */
+  rerunCount?: number;
+}
+
+/** Как продолжается агент после отката (decision-48 п. 1). */
+export type ContinueMode = 'agent' | 'loop' | 'handoff';
+
+/** Запись о продолжении после отката или с уточнением (decision-48 п. 4). */
+export interface SwarmContinuation {
+  at: number;
+  mode: ContinueMode;
+  agentId: string;
+  /** Чекпоинт последнего отката агента, если продолжение идёт после отката. */
+  toCheckpoint?: number;
+  /** Цикл: сколько итераций было до этого отрезка. */
+  afterIteration?: number;
+  /** Handoff: с какого этапа (0-based) и какие этапы перезапущены. */
+  fromStage?: number;
+  stages?: number[];
+  /** Уточнение человека (до 4000 символов). */
+  instruction?: string;
+  /** Пояснение об откате, ушедшее в промпт, — чтобы пересобрать промпт после перезапуска приложения. */
+  note?: string;
 }
 
 export interface SwarmSession {
@@ -197,6 +222,8 @@ export interface SwarmSession {
   judge?: JudgeState;
   /** Состояние цикла «до готовности» (режим `done_loop`, TASK-75). */
   doneLoop?: DoneLoopState;
+  /** Продолжения после отката (decision-48 п. 4). */
+  continuations?: SwarmContinuation[];
 }
 
 export interface StartFanOutOptions {

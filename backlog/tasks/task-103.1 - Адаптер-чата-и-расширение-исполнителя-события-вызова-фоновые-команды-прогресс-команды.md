@@ -3,10 +3,10 @@ id: TASK-103.1
 title: >-
   Адаптер чата и расширение исполнителя: события вызова, фоновые команды,
   прогресс команды
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 13:08'
-updated_date: '2026-09-19 13:27'
+updated_date: '2026-09-19 13:34'
 labels:
   - hitl
   - ai-studio

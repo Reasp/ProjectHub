@@ -2411,6 +2411,33 @@ export const en: TranslationDictionary = {
     continueConfirmOk: 'Start',
     continueError: 'Could not continue the agent: {error}',
     continuePending: 'The next run will explain the rewind to the agent.',
+    continueLoopButton: 'Continue loop',
+    continueHandoffButton: 'Rerun from stage {n}',
+    continueLoopPromptTitle: 'Continue the loop after rewind',
+    continueLoopPromptMessage:
+      'The loop continues with iteration {next} in the same worktree, in a new agent session with a note about the rewind. Checks and acceptance criteria are verified again, the limit is {max} iterations per continuation, and the loop budget is shared with earlier iterations. If the loop had already succeeded, the criteria marks in the task are cleared until the new result. You can add a clarification (optional).',
+    continueHandoffPromptTitle: 'Rerun the pipeline after rewind',
+    continueHandoffPromptMessage:
+      'Stages {stages} run again in the shared worktree: the rewound stage in a new session with a note about the rewind, the following ones with its new result. You can add a clarification for the rewound stage (optional).',
+    continueAfterRewind: 'Continue after rewind',
+    rewindBannerTitle: {
+      loop: 'The loop agent was rewound to a checkpoint',
+      handoff: 'A pipeline stage was rewound to a checkpoint'
+    },
+    rewindBannerDesc: {
+      loop: 'Iterations after the rewind point are marked as cancelled. Continue the loop with a new iteration or close the session.',
+      handoff: 'Results of stage {n} and later are cancelled because the pipeline shares one worktree. Rerun the pipeline from stage {n}.'
+    },
+    continuationsTitle: 'Continuations',
+    continuationItem: {
+      agent: '{time}: agent continued',
+      loop: '{time}: loop continued from iteration {iteration}',
+      handoff: '{time}: rerun from stage {stage}'
+    },
+    iterationRolledBack: { full: 'cancelled by rewind', partial: 'partly cancelled by rewind' },
+    iterationSegment: 'after rewind {n}',
+    stageInvalidated: 'cancelled by rewind',
+    stageRerun: 'rerun ×{n}',
     exportTrace: 'Trace .jsonl',
     exportTraceSession: 'Trace of all agents (.jsonl)',
     exportTraceDone: 'Trace saved: {path}',

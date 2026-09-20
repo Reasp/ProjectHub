@@ -889,7 +889,11 @@ export interface IElectronAPI {
   /** Таймлайн агента, чекпоинты и доступность отката (TASK-72, decision-45). */
   getAgentTimeline: (swarmId: string, agentId: string) => Promise<AgentTimelineView | null>;
   rewindAgent: (swarmId: string, agentId: string, checkpoint: number) => Promise<AgentRewindResult>;
-  continueAgent: (swarmId: string, agentId: string, instruction?: string) => Promise<{ success: boolean; error?: string }>;
+  continueAgent: (
+    swarmId: string,
+    agentId: string,
+    instruction?: string
+  ) => Promise<{ success: boolean; error?: string; mode?: ContinueMode }>;
   exportAgentTrace: (swarmId: string, agentId?: string) => Promise<{ success: boolean; path?: string; error?: string; canceled?: boolean }>;
 
   // File Explorer & Helpers
@@ -2152,6 +2156,19 @@ export interface TimelineRewindEvent {
   removedFiles: number;
 }
 
+/** Продолжение после отката или с уточнением (decision-48 п. 4). */
+export interface TimelineContinueEvent {
+  type: 'continue';
+  v: 1;
+  at: number;
+  run: number;
+  mode: ContinueMode;
+  toCheckpoint?: number;
+  iteration?: number;
+  stage?: number;
+  instruction?: boolean;
+}
+
 export interface AgentTimeline {
   runs: TimelineRun[];
   turns: TimelineTurn[];
@@ -2160,6 +2177,7 @@ export interface AgentTimeline {
   switches: TimelineModelSwitch[];
   checkpoints: TimelineCheckpointEvent[];
   rewinds: TimelineRewindEvent[];
+  continuations: TimelineContinueEvent[];
   toolNames: string[];
   startedAt?: number;
   endedAt?: number;
@@ -2189,7 +2207,8 @@ export interface AgentTimelineView {
   checkpoints: AgentCheckpoint[];
   rewinds: AgentRewindRecord[];
   rewind: AgentActionAvailability;
-  continueAgent: AgentActionAvailability;
+  /** Режим продолжения по сессии (decision-48 п. 1); для handoff — этап (0-based), с которого перезапуск. */
+  continueAgent: AgentActionAvailability & { mode: ContinueMode; fromStage?: number };
   pendingRewindNote?: string;
 }
 
@@ -2280,6 +2299,24 @@ export interface HandoffStageState {
   /** Коммит, которым зафиксирован результат этапа. */
   commitHash?: string;
   durationMs?: number;
+  /** Результат этапа отменён откатом этого или более раннего этапа (decision-48 п. 3.1). */
+  invalidatedAt?: number;
+  rerunCount?: number;
+}
+
+export type ContinueMode = 'agent' | 'loop' | 'handoff';
+
+/** Запись о продолжении после отката (зеркало `SwarmContinuation`, decision-48 п. 4). */
+export interface SwarmContinuation {
+  at: number;
+  mode: ContinueMode;
+  agentId: string;
+  toCheckpoint?: number;
+  afterIteration?: number;
+  fromStage?: number;
+  stages?: number[];
+  instruction?: string;
+  note?: string;
 }
 
 export interface SwarmSession {
@@ -2310,6 +2347,8 @@ export interface SwarmSession {
   judge?: JudgeState;
   /** Состояние цикла «до готовности» (TASK-75). */
   doneLoop?: DoneLoopState;
+  /** Продолжения после отката (decision-48 п. 4). */
+  continuations?: SwarmContinuation[];
 }
 
 export interface StartFanOutOptions {
@@ -2372,6 +2411,11 @@ export interface DoneLoopIteration {
   commitHash?: string;
   tamperedCriteria?: boolean;
   decision?: 'finish' | 'retry' | 'fail';
+  run?: number;
+  /** Отменена откатом (decision-48 п. 2.2). */
+  rolledBack?: 'full' | 'partial';
+  /** Отрезок цикла: 0 — исходный запуск, N — N-е продолжение после отката. */
+  segment?: number;
 }
 
 export interface DoneLoopSettings {
@@ -2396,6 +2440,7 @@ export interface DoneLoopState {
     criteriaChecked: number[];
     movedToReview?: boolean;
     reviewStatus?: string;
+    previousStatus?: string;
     finalSummaryWritten?: boolean;
     error?: string;
   };

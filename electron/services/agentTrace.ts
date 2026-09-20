@@ -311,6 +311,7 @@ const KNOWN_TYPES = new Set([
   'usage',
   'checkpoint',
   'rewind',
+  'continue',
   'error',
   'run_end'
 ]);
@@ -397,6 +398,7 @@ export function buildAgentTimeline(
     switches: [],
     checkpoints: [],
     rewinds: [],
+    continuations: [],
     toolNames: [],
     totals: { runs: 0, turns: 0, tools: 0, toolErrors: 0, toolTimeMs: 0, durationMs: 0, costPartial: false },
     ...(options.truncated ? { truncated: true } : {})
@@ -419,6 +421,11 @@ export function buildAgentTimeline(
 
   const lastTurnOfRun = new Map<number, TimelineTurn>();
   for (const ev of events) {
+    // Продолжение пишется до `run_start` нового запуска: к запуску не относится и пустой запуск не создаёт.
+    if (ev.type === 'continue') {
+      timeline.continuations.push(ev);
+      continue;
+    }
     const run = runOf(ev.run, ev.at);
     switch (ev.type) {
       case 'run_start':

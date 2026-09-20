@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "658327841e146a8882d4b44cea2174480bf8e7376a6e30200994cead5caf44ed",
+  "docsHash": "30c8dc986e226303fde1ff48159c2f765f823a824d1e3aa5fd3de4b3905342a2",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -47,6 +47,7 @@
     "backlog/decisions/decision-45 - Чекпоинты-ходов-агента-в-worktree-откат-таймлайн-инструментов-и-трасса-JSONL.md",
     "backlog/decisions/decision-46 - Исполнитель-инструментов-API-агента-Swarm-с-HITL-лимит-шагов-и-бюджет-по-шагам.md",
     "backlog/decisions/decision-47 - AI-Studio-на-общем-исполнителе-API-инструментов-адаптер-чата-и-политика.md",
+    "backlog/decisions/decision-48 - Продолжение-после-отката-в-цикле-«до-готовности»-и-перезапуск-этапов-handoff.md",
     "backlog/decisions/decision-5 - Модель-безопасности-десктопа-изоляция-рендерера-реестр-проектов-локальный-MCP-и-секреты.md",
     "backlog/decisions/decision-6 - Git-worktree-как-единица-изоляции-задачи-и-агента.md",
     "backlog/decisions/decision-7 - Local-first-хранение-состояния-и-отсутствие-телеметрии.md",
@@ -63,6 +64,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 573,
-  "builtAt": "2026-09-19T13:28:40.805Z"
+  "chunks": 589,
+  "builtAt": "2026-09-20T00:49:48.793Z"
 }

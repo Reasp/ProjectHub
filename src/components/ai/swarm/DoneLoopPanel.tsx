@@ -23,6 +23,7 @@ import {
   iterationStats,
   iterationTone
 } from '../../../utils/doneLoopFormat';
+import { currentSegmentIterations } from '../../../lib/rewindContinueView';
 
 const TONE_CLASS: Record<ReturnType<typeof iterationTone>, string> = {
   success: 'bg-emerald-500',
@@ -41,7 +42,12 @@ export const DoneLoopPanel: React.FC<{ session: SwarmSession }> = ({ session }) 
   if (!loop) return null;
 
   const d = t.doneLoop;
+  const tt = t.agentTimeline;
   const max = loop.settings.maxIterations;
+  // После продолжения лимит действует на отрезок (decision-48 п. 2.3): полоса и счётчик — по текущему отрезку.
+  const segmentIterations = currentSegmentIterations(session);
+  const segmentStart = loop.iterations.length - segmentIterations.length;
+  const segmentCurrent = Math.max(loop.currentIteration - segmentStart, 0);
   const active = isActiveDoneLoopPhase(loop.phase) && session.status === 'running';
   const lastIndex = loop.iterations[loop.iterations.length - 1]?.index ?? -1;
   const openIndex = expanded ?? lastIndex;
@@ -63,7 +69,7 @@ export const DoneLoopPanel: React.FC<{ session: SwarmSession }> = ({ session }) 
         </div>
         <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
           <span className="text-primary font-medium">
-            {d.iterationProgress.replace('{current}', String(Math.max(loop.currentIteration, 0))).replace('{max}', String(max))}
+            {d.iterationProgress.replace('{current}', String(segmentCurrent)).replace('{max}', String(max))}
           </span>
           {typeof loop.totalCostUsd === 'number' && (
             <span className="flex items-center gap-0.5 font-mono">
@@ -75,9 +81,9 @@ export const DoneLoopPanel: React.FC<{ session: SwarmSession }> = ({ session }) 
         </div>
       </div>
 
-      <div className="flex gap-1" aria-label={d.iterationProgress.replace('{current}', String(loop.currentIteration)).replace('{max}', String(max))}>
+      <div className="flex gap-1" aria-label={d.iterationProgress.replace('{current}', String(segmentCurrent)).replace('{max}', String(max))}>
         {Array.from({ length: max }, (_, i) => (
-          <div key={i} className={`h-1.5 flex-1 rounded-full ${TONE_CLASS[iterationTone(loop.iterations[i])]}`} />
+          <div key={i} className={`h-1.5 flex-1 rounded-full ${TONE_CLASS[iterationTone(segmentIterations[i])]}`} />
         ))}
       </div>
 
@@ -125,7 +131,11 @@ export const DoneLoopPanel: React.FC<{ session: SwarmSession }> = ({ session }) 
           const isOpen = openIndex === it.index;
           const running = !it.finishedAt;
           return (
-            <div key={it.index} className="rounded-lg border border-border/60 bg-secondary/10">
+            <div
+              key={it.index}
+              className={`rounded-lg border border-border/60 bg-secondary/10 ${it.rolledBack === 'full' ? 'opacity-60' : ''}`}
+              data-testid={`done-loop-iteration-${it.index}`}
+            >
               <button
                 type="button"
                 onClick={() => setExpanded(isOpen ? -1 : it.index)}
@@ -133,6 +143,14 @@ export const DoneLoopPanel: React.FC<{ session: SwarmSession }> = ({ session }) 
               >
                 {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 <span className="font-semibold text-foreground">{d.iterationLabel.replace('{n}', String(it.index))}</span>
+                {it.segment ? (
+                  <span className="px-1.5 rounded border border-primary/30 text-[10px] text-primary">
+                    {tt.iterationSegment.replace('{n}', String(it.segment))}
+                  </span>
+                ) : null}
+                {it.rolledBack && (
+                  <span className="px-1.5 rounded border border-amber-500/40 text-[10px] text-amber-300">{tt.iterationRolledBack[it.rolledBack]}</span>
+                )}
                 <span className={`inline-flex items-center gap-1 ${stats.checksFailed > 0 ? 'text-rose-400' : 'text-muted-foreground'}`}>
                   <ClipboardCheck className="w-3 h-3" />
                   {d.checksCount.replace('{passed}', String(stats.checksPassed)).replace('{total}', String(stats.checksTotal))}

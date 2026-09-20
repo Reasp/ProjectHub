@@ -15,6 +15,7 @@ import {
   toolStatusClass,
   turnUsage
 } from '../../../lib/agentTimelineView';
+import { continueButtonText, continueDialogText } from '../../../lib/rewindContinueView';
 
 /** Как часто перечитывать трассу, пока агент работает. */
 const LIVE_REFRESH_MS = 2000;
@@ -107,9 +108,12 @@ export const AgentTimelinePanel: React.FC<Props> = ({ session, agent }) => {
   };
 
   const handleContinue = async () => {
+    if (!view) return;
+    // Режим продолжения — по сессии (decision-48): агент fan-out, новая итерация цикла или перезапуск этапов.
+    const text = continueDialogText(view.continueAgent.mode, session, view.continueAgent.fromStage, tt);
     const instruction = await dialog.prompt({
-      title: tt.continuePromptTitle,
-      message: tt.continuePromptMessage,
+      title: text.title,
+      message: text.message,
       placeholder: tt.continuePromptPlaceholder,
       confirmText: tt.continueConfirmOk
     });
@@ -198,7 +202,7 @@ export const AgentTimelinePanel: React.FC<Props> = ({ session, agent }) => {
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50"
               data-testid="agent-continue"
             >
-              <Play className="w-3 h-3" /> {tt.continueButton}
+              <Play className="w-3 h-3" /> {continueButtonText(view.continueAgent.mode, view.continueAgent.fromStage, tt)}
             </button>
           )}
         </div>
@@ -424,6 +428,20 @@ export const AgentTimelinePanel: React.FC<Props> = ({ session, agent }) => {
                   .replace('{n}', String(rw.toCheckpoint))
                   .replace('{point}', pointLabel({ kind: rw.toKind, turn: rw.toTurn }))
                   .replace('{removed}', String(rw.removedFiles))}
+              </div>
+            ))}
+          </div>
+        )}
+        {view && view.timeline.continuations.length > 0 && (
+          <div className="pt-1 space-y-0.5" data-testid="agent-continuations">
+            <div className="font-semibold text-foreground">{tt.continuationsTitle}</div>
+            {view.timeline.continuations.map((c, i) => (
+              <div key={`${c.at}-${i}`} className="text-muted-foreground">
+                {tt.continuationItem[c.mode]
+                  .replace('{time}', new Date(c.at).toLocaleTimeString())
+                  .replace('{iteration}', String(c.iteration ?? ''))
+                  .replace('{stage}', String((c.stage ?? 0) + 1))}
+                {c.toCheckpoint !== undefined && <span className="font-mono text-primary"> · #{c.toCheckpoint}</span>}
               </div>
             ))}
           </div>

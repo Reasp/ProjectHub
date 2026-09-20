@@ -68,6 +68,18 @@ import { pricingService } from './pricingService.js';
 import { arenaJudgeService, judgeableAgents, type RunJudgeOptions } from './arenaJudgeService.js';
 import { doneLoopService, loadDoneLoopSettings, type DoneLoopRunResult } from './doneLoopService.js';
 import { findTaskFile } from './taskFileLookup.js';
+import {
+  applyRollbackMarks,
+  continueModeOf,
+  doneLoopContinueBlockReason,
+  handoffRewindBlockReason,
+  instructionBlock,
+  invalidatedStage,
+  normalizeInstruction,
+  planHandoffRerun,
+  stageIndexOfAgent,
+  stagesInvalidatedBy
+} from './rewindContinuation.js';
 import { CheckpointService, checkpointService, ensureTraceCounters } from './checkpointService.js';
 import {
   buildAgentTimeline,
@@ -92,6 +104,7 @@ import type {
   AgentSlotConfig,
   AgentSlotDiffSummary,
   AgentSlotState,
+  ContinueMode,
   HandoffStageState,
   StartDoneLoopOptions,
   StartFanOutOptions,
@@ -293,7 +306,8 @@ export interface AgentTimelineView {
   checkpoints: AgentCheckpoint[];
   rewinds: AgentRewindRecord[];
   rewind: AgentActionAvailability;
-  continueAgent: AgentActionAvailability;
+  /** Продолжение: режим по сессии (decision-48 п. 1), для handoff — этап, с которого пойдёт перезапуск. */
+  continueAgent: AgentActionAvailability & { mode: ContinueMode; fromStage?: number };
   pendingRewindNote?: string;
 }
 
@@ -548,22 +562,30 @@ export class AgentFleetService extends EventEmitter {
     if (agent.winner || session.winnerAgentId === agent.id) {
       return 'Результат агента уже влит в базовую ветку — откат разошёлся бы с ней';
     }
-    if (isActiveAgentStatus(agent.status)) return 'Агент ещё работает — остановите его перед откатом';
     if (isActiveSwarmStatus(session.status)) return 'Сессия ещё выполняется — дождитесь завершения или остановите её';
+    // Этап, отменённый более ранним откатом, ждёт перезапуска (`pending`): причина — в конвейере (decision-48 п. 3.2).
+    const handoffReason =
+      session.mode === 'handoff' ? handoffRewindBlockReason(session.handoffStages, stageIndexOfAgent(session.handoffStages, agent.id)) : undefined;
+    if (handoffReason) return handoffReason;
+    if (isActiveAgentStatus(agent.status)) return 'Агент ещё работает — остановите его перед откатом';
     return undefined;
   }
 
   /** Почему нельзя продолжить агента из карточки; `undefined` — можно. */
   private continueBlockReason(session: SwarmSession, agent: AgentSlotState): string | undefined {
-    if (session.mode !== 'fan_out') {
-      return session.mode === 'done_loop'
-        ? 'Ходами цикла «до готовности» управляет цикл: запустите его заново'
-        : 'Этапами конвейера управляет handoff: продолжение из карточки недоступно';
-    }
-    if (session.winnerAgentId) return 'Победитель уже выбран';
     if (isActiveSwarmStatus(session.status)) return 'Сессия ещё выполняется';
+    if (session.status === 'interrupted') return 'Сессия прервана перезапуском ProjectHub — используйте «Возобновить»';
     if (isActiveAgentStatus(agent.status)) return 'Агент ещё работает';
     if (agent.worktreePath && (agent.worktreeMissing || !this.pathExists(agent.worktreePath))) return 'Worktree агента не найден';
+    // Цикл и конвейер продолжаются контроллером сессии, и только после отката (decision-48 п. 2–3).
+    if (session.mode === 'done_loop') {
+      return doneLoopContinueBlockReason({ state: session.doneLoop, hasPendingRewind: Boolean(agent.pendingRewindNote) });
+    }
+    if (session.mode === 'handoff') {
+      const plan = planHandoffRerun(session.handoffStages, session.agents, agent.id);
+      return 'error' in plan ? plan.error : undefined;
+    }
+    if (session.winnerAgentId) return 'Победитель уже выбран';
     return undefined;
   }
 
@@ -1023,9 +1045,9 @@ export class AgentFleetService extends EventEmitter {
     this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
 
     if (session.mode === 'handoff') {
-      void this.executeHandoff(session, startIndex, true);
+      void this.executeHandoff(session, startIndex, 'resume');
     } else if (session.mode === 'done_loop') {
-      void this.executeDoneLoop(session, true);
+      void this.executeDoneLoop(session, 'resume');
     } else {
       void this.executeFanOut(session, true);
     }
@@ -1329,11 +1351,12 @@ export class AgentFleetService extends EventEmitter {
     this.ensureSessionTracking(swarmId);
     this.emitSwarmEvent({ type: 'swarm_updated', swarmId, session });
 
-    void this.executeDoneLoop(session, false);
+    void this.executeDoneLoop(session, 'start');
     return session;
   }
 
-  private async executeDoneLoop(session: SwarmSession, resume: boolean): Promise<void> {
+  private async executeDoneLoop(session: SwarmSession, how: 'start' | 'resume' | 'continue'): Promise<void> {
+    const resume = how === 'resume';
     session.status = 'running';
     this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
 
@@ -1348,7 +1371,7 @@ export class AgentFleetService extends EventEmitter {
 
     if (resume) {
       this.prepareAgentForResume(session, agent);
-    } else if (session.useWorktrees) {
+    } else if (how === 'start' && session.useWorktrees) {
       try {
         const branchName = `swarm/${session.id.slice(-6)}/done-${sanitizeSlug(session.taskId || agent.config.name || agent.id)}`;
         agent.status = 'preparing';
@@ -1388,7 +1411,7 @@ export class AgentFleetService extends EventEmitter {
           isStopped: () => session.status !== 'running' || controller.signal.aborted,
           signal: controller.signal
         },
-        { resume, resumeSuffix: RESUME_PROMPT_SUFFIX }
+        { resume, resumeSuffix: RESUME_PROMPT_SUFFIX, continuation: how === 'continue' }
       );
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
@@ -2830,7 +2853,7 @@ export class AgentFleetService extends EventEmitter {
 
     this.emitSwarmEvent({ type: 'swarm_updated', swarmId, session });
 
-    void this.executeHandoff(session, 0, false);
+    void this.executeHandoff(session, 0, 'start');
 
     return session;
   }
@@ -2894,7 +2917,13 @@ export class AgentFleetService extends EventEmitter {
     return parts.filter(Boolean).join('\n');
   }
 
-  private async executeHandoff(session: SwarmSession, startIndex: number, resume: boolean): Promise<void> {
+  private async executeHandoff(
+    session: SwarmSession,
+    startIndex: number,
+    how: 'start' | 'resume' | 'rerun',
+    rerun: { instruction?: string } = {}
+  ): Promise<void> {
+    const resume = how === 'resume';
     session.status = 'running';
     this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
 
@@ -2902,7 +2931,7 @@ export class AgentFleetService extends EventEmitter {
     let sharedWorktreePath = session.projectPath;
     let sharedWorktreeBranch = session.baseBranch;
 
-    if (resume) {
+    if (how !== 'start') {
       const known = session.agents.find((a) => a.worktreePath);
       if (known) {
         sharedWorktreePath = known.worktreePath!;
@@ -2937,6 +2966,20 @@ export class AgentFleetService extends EventEmitter {
 
       const resumingThisStage = resume && i === startIndex && agentState.status === 'interrupted';
       if (resumingThisStage) this.prepareAgentForResume(session, agentState);
+      // Перезапуск после отката (decision-48 п. 3.3): этап и все последующие — заново в том же worktree.
+      const rerunning = how === 'rerun';
+      if (rerunning) {
+        stageState.rerunCount = (stageState.rerunCount ?? 0) + 1;
+        stageState.invalidatedAt = undefined;
+        agentState.error = undefined;
+        agentState.providerError = undefined;
+        agentState.finalOutput = undefined;
+        agentState.diffSummary = undefined;
+        resetLiveOutput(agentState);
+        if (i !== startIndex && (agentState.trace?.runs ?? 0) > 0) {
+          this.trace(session, agentState, { type: 'continue', mode: 'handoff', stage: i });
+        }
+      }
 
       let stagePrompt = `[Задача проекта]: ${session.prompt}\n\n`;
       if (stageState.instructions) {
@@ -2947,13 +2990,21 @@ export class AgentFleetService extends EventEmitter {
       }
       stagePrompt += `Выполни свою часть работы в рамках роли "${stageState.role}".`;
       if (resumingThisStage) stagePrompt += RESUME_PROMPT_SUFFIX;
+      if (rerunning && i === startIndex && rerun.instruction) stagePrompt += `\n\n${instructionBlock(rerun.instruction)}`;
 
       stageState.inputPrompt = stagePrompt;
       stageState.status = 'running';
       this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
 
       const stageStart = Date.now();
-      await this.runSingleAgent(session, agentState, stagePrompt);
+      // Повторный запуск того же агента (возобновление, перезапуск после отката): итог хода складывается
+      // с прежним usage, а не затирает его (decision-48 п. 3.5, decision-28 п. 6).
+      if (agentState.metrics.usage) this.usageBaselines.set(agentState.id, agentState.metrics.usage);
+      try {
+        await this.runSingleAgent(session, agentState, stagePrompt);
+      } finally {
+        this.usageBaselines.delete(agentState.id);
+      }
 
       stageState.durationMs = Date.now() - stageStart;
       stageState.status = agentState.status === 'completed' ? 'completed' : 'failed';
@@ -3000,7 +3051,11 @@ export class AgentFleetService extends EventEmitter {
       checkpoints: agent.checkpoints ?? [],
       rewinds: agent.rewinds ?? [],
       rewind: rewindReason ? { allowed: false, reason: rewindReason } : { allowed: true },
-      continueAgent: continueReason ? { allowed: false, reason: continueReason } : { allowed: true },
+      continueAgent: {
+        ...(continueReason ? { allowed: false, reason: continueReason } : { allowed: true }),
+        mode: continueModeOf(session.mode),
+        ...(session.mode === 'handoff' ? { fromStage: stageIndexOfAgent(session.handoffStages, agent.id) } : {})
+      },
       ...(agent.pendingRewindNote ? { pendingRewindNote: agent.pendingRewindNote } : {})
     };
   }
@@ -3077,6 +3132,7 @@ export class AgentFleetService extends EventEmitter {
       'предыдущая сессия не продолжается. Изучи текущее состояние файлов и историю git и продолжи задачу с этой точки.';
     agent.cliSessionId = undefined;
     this.apiHistories.delete(agent.id);
+    this.applyRewindToController(session, agent, target);
     this.trace(session, agent, {
       type: 'rewind',
       toCheckpoint: target.n,
@@ -3091,7 +3147,7 @@ export class AgentFleetService extends EventEmitter {
         `${preRewind ? `, прежнее состояние — чекпоинт #${preRewind.n}` : ''}.`
     );
     this.persist(session, true);
-    this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agent.id, session });
+    this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
     return {
       success: true,
       removedFiles: result.removedFiles.length,
@@ -3104,24 +3160,25 @@ export class AgentFleetService extends EventEmitter {
    * Продолжение агента fan-out после отката или с уточнением (decision-45 п. 4): новый запуск в том же
    * worktree, новая сессия движка; пояснение об откате добавит `runSingleAgent`.
    */
-  public async continueAgent(swarmId: string, agentId: string, instruction?: string): Promise<{ success: boolean; error?: string }> {
+  public async continueAgent(
+    swarmId: string,
+    agentId: string,
+    instruction?: string
+  ): Promise<{ success: boolean; error?: string; mode?: ContinueMode }> {
     const session = this.sessions.get(swarmId);
     const agent = session?.agents.find((a) => a.id === agentId);
     if (!session || !agent) return { success: false, error: 'Сессия или агент не найдены' };
     const blocked = this.continueBlockReason(session, agent);
-    if (blocked) return { success: false, error: blocked };
+    const mode = continueModeOf(session.mode);
+    if (blocked) return { success: false, error: blocked, mode };
 
-    const extra = typeof instruction === 'string' ? instruction.trim().slice(0, 4000) : '';
-    const prompt = extra ? `${session.prompt}\n\n[ProjectHub] Уточнение пользователя: ${extra}` : session.prompt;
-    session.status = 'running';
-    session.completedAt = undefined;
-    session.error = undefined;
-    this.ensureSessionTracking(session.id);
-    agent.status = 'pending';
-    agent.error = undefined;
-    agent.providerError = undefined;
-    agent.finalOutput = undefined;
-    resetLiveOutput(agent);
+    const extra = normalizeInstruction(instruction);
+    if (mode === 'loop') return this.continueDoneLoop(session, agent, extra);
+    if (mode === 'handoff') return this.rerunHandoff(session, agent, extra);
+
+    const prompt = extra ? `${session.prompt}\n\n${instructionBlock(extra)}` : session.prompt;
+    this.recordContinuation(session, agent, 'agent', extra, {});
+    this.reopenSessionFor(session, agent);
     this.log(session, agent, `[Swarm] Продолжение агента${agent.pendingRewindNote ? ' после отката' : ''}${extra ? ' с уточнением' : ''}.`);
     this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
 
@@ -3136,7 +3193,122 @@ export class AgentFleetService extends EventEmitter {
       if (session.status !== 'running') return;
       if (session.agents.every((a) => !isActiveAgentStatus(a.status) && a.status !== 'interrupted')) this.finishSession(session);
     })();
-    return { success: true };
+    return { success: true, mode };
+  }
+
+  /** Сессия снова выполняется, агент готов к новому запуску (общая часть всех режимов продолжения). */
+  private reopenSessionFor(session: SwarmSession, agent: AgentSlotState): void {
+    session.status = 'running';
+    session.completedAt = undefined;
+    session.error = undefined;
+    this.ensureSessionTracking(session.id);
+    agent.status = 'pending';
+    agent.error = undefined;
+    agent.providerError = undefined;
+    agent.finalOutput = undefined;
+    resetLiveOutput(agent);
+  }
+
+  /** Запись о продолжении в сессии и событие `continue` в трассе агента (decision-48 п. 4). */
+  private recordContinuation(
+    session: SwarmSession,
+    agent: AgentSlotState,
+    mode: ContinueMode,
+    instruction: string,
+    extra: { afterIteration?: number; fromStage?: number; stages?: number[] }
+  ): void {
+    const toCheckpoint = agent.pendingRewindNote ? agent.rewinds?.[agent.rewinds.length - 1]?.toCheckpoint : undefined;
+    session.continuations = [
+      ...(session.continuations ?? []),
+      {
+        at: Date.now(),
+        mode,
+        agentId: agent.id,
+        ...(toCheckpoint !== undefined ? { toCheckpoint } : {}),
+        ...extra,
+        ...(instruction ? { instruction } : {}),
+        ...(agent.pendingRewindNote ? { note: agent.pendingRewindNote } : {})
+      }
+    ];
+    this.trace(session, agent, {
+      type: 'continue',
+      mode,
+      ...(toCheckpoint !== undefined ? { toCheckpoint } : {}),
+      ...(extra.afterIteration !== undefined ? { iteration: extra.afterIteration + 1 } : {}),
+      ...(extra.fromStage !== undefined ? { stage: extra.fromStage } : {}),
+      ...(instruction ? { instruction: true } : {})
+    });
+  }
+
+  /**
+   * Что откат меняет в контроллере сессии (decision-48 п. 2.2, 3.1): в цикле — пометки итераций, отменённых
+   * откатом; в handoff — этап агента и все последующие отменяются, их результат описывает удалённые коммиты.
+   */
+  private applyRewindToController(session: SwarmSession, agent: AgentSlotState, target: AgentCheckpoint): void {
+    if (session.mode === 'done_loop' && session.doneLoop) {
+      session.doneLoop.iterations = applyRollbackMarks(session.doneLoop.iterations, target);
+      const marked = session.doneLoop.iterations.filter((it) => it.rolledBack);
+      if (marked.length > 0) {
+        this.log(
+          session,
+          agent,
+          `[Done-loop] Откат отменил итерации: ${marked.map((it) => `${it.index}${it.rolledBack === 'partial' ? ' (частично)' : ''}`).join(', ')}.`
+        );
+      }
+      return;
+    }
+    if (session.mode !== 'handoff' || !session.handoffStages) return;
+    const stageIndex = stageIndexOfAgent(session.handoffStages, agent.id);
+    const invalidated = stagesInvalidatedBy(session.handoffStages, stageIndex);
+    if (invalidated.length === 0) return;
+    const at = Date.now();
+    session.handoffStages = session.handoffStages.map((s) => (invalidated.includes(s.stageIndex) ? invalidatedStage(s, at) : s));
+    session.currentHandoffStageIndex = stageIndex;
+    for (const later of session.handoffStages.slice(stageIndex + 1)) {
+      const laterAgent = session.agents.find((a) => a.id === later.agentId);
+      if (!laterAgent) continue;
+      laterAgent.status = 'pending';
+      laterAgent.finalOutput = undefined;
+      laterAgent.diffSummary = undefined;
+      laterAgent.commitHash = undefined;
+      laterAgent.pendingRewindNote = undefined;
+      this.log(session, laterAgent, `[Handoff] Результат этапа ${later.stageIndex + 1} отменён откатом этапа ${stageIndex + 1}.`);
+    }
+  }
+
+  /** Новый отрезок цикла «до готовности» после отката (decision-48 п. 2). */
+  private async continueDoneLoop(
+    session: SwarmSession,
+    agent: AgentSlotState,
+    instruction: string
+  ): Promise<{ success: boolean; error?: string; mode: ContinueMode }> {
+    const state = session.doneLoop!;
+    const toCheckpoint = agent.rewinds?.[agent.rewinds.length - 1]?.toCheckpoint;
+    await doneLoopService.reopenAfterRewind(session, toCheckpoint, (line) => this.log(session, agent, line));
+    this.recordContinuation(session, agent, 'loop', instruction, { afterIteration: state.iterations.length });
+    this.reopenSessionFor(session, agent);
+    this.log(
+      session,
+      agent,
+      `[Done-loop] Продолжение цикла после отката${instruction ? ' с уточнением' : ''}: до ${state.settings.maxIterations} итераций, начиная с ${state.iterations.length + 1}.`
+    );
+    void this.executeDoneLoop(session, 'continue');
+    return { success: true, mode: 'loop' };
+  }
+
+  /** Перезапуск конвейера с откатанного этапа до конца (decision-48 п. 3.3). */
+  private rerunHandoff(session: SwarmSession, agent: AgentSlotState, instruction: string): { success: boolean; error?: string; mode: ContinueMode } {
+    const plan = planHandoffRerun(session.handoffStages, session.agents, agent.id);
+    if ('error' in plan) return { success: false, error: plan.error, mode: 'handoff' };
+    this.recordContinuation(session, agent, 'handoff', instruction, { fromStage: plan.fromStage, stages: plan.stages });
+    this.reopenSessionFor(session, agent);
+    this.log(
+      session,
+      agent,
+      `[Handoff] Перезапуск конвейера после отката: этапы ${plan.stages.map((i) => i + 1).join(', ')}${instruction ? ' с уточнением' : ''}.`
+    );
+    void this.executeHandoff(session, plan.fromStage, 'rerun', { instruction });
+    return { success: true, mode: 'handoff' };
   }
 
   /**

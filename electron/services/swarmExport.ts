@@ -244,7 +244,10 @@ export function exportSwarmSessionMarkdown(session: SwarmSession, options: Markd
     lines.push('## Этапы конвейера');
     lines.push('');
     for (const stage of session.handoffStages) {
-      lines.push(`${stage.stageIndex + 1}. **${stage.role}** — ${statusLabel(stage.status)}${stage.durationMs ? ` (${fmtDuration(stage.durationMs)})` : ''}`);
+      lines.push(
+        `${stage.stageIndex + 1}. **${stage.role}** — ${statusLabel(stage.status)}${stage.durationMs ? ` (${fmtDuration(stage.durationMs)})` : ''}` +
+          `${stage.invalidatedAt ? `, результат отменён откатом ${fmtDate(stage.invalidatedAt)}` : ''}${stage.rerunCount ? `, перезапусков: ${stage.rerunCount}` : ''}`
+      );
     }
     lines.push('');
   }
@@ -259,7 +262,28 @@ export function exportSwarmSessionMarkdown(session: SwarmSession, options: Markd
       const accepted = it.criteria.filter((c) => c.accepted).length;
       lines.push(
         `${it.index}. проверок упало ${failed}/${it.checks.length}, критериев засчитано ${accepted}/${it.criteria.length}` +
-          `${typeof it.costUsd === 'number' ? `, ${formatUsd(it.costUsd)}` : ''}${it.decision ? `, решение: ${it.decision}` : ''}`
+          `${typeof it.costUsd === 'number' ? `, ${formatUsd(it.costUsd)}` : ''}${it.decision ? `, решение: ${it.decision}` : ''}` +
+          `${it.rolledBack ? `, отменена откатом${it.rolledBack === 'partial' ? ' частично' : ''}` : ''}${it.segment ? `, продолжение ${it.segment}` : ''}`
+      );
+    }
+    lines.push('');
+  }
+
+  // Продолжения после отката (decision-48 п. 4).
+  if (session.continuations?.length) {
+    lines.push('## Продолжения после отката');
+    lines.push('');
+    for (const c of session.continuations) {
+      const agentName = session.agents.find((a) => a.id === c.agentId)?.config.name ?? c.agentId;
+      const what =
+        c.mode === 'loop'
+          ? `цикл продолжен с итерации ${(c.afterIteration ?? 0) + 1}`
+          : c.mode === 'handoff'
+            ? `перезапуск этапов ${(c.stages ?? []).map((i) => i + 1).join(', ')}`
+            : 'продолжение агента';
+      lines.push(
+        `- ${fmtDate(c.at)}: ${agentName} — ${what}${c.toCheckpoint !== undefined ? `, после отката к чекпоинту #${c.toCheckpoint}` : ''}` +
+          `${c.instruction ? `; уточнение: ${cell(c.instruction.slice(0, 300))}` : ''}`
       );
     }
     lines.push('');
