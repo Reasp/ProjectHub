@@ -3,10 +3,10 @@ id: TASK-80
 title: >-
   Планировщик: роль architect → план → подзадачи в Backlog с зависимостями →
   граф → авто-диспетчер в слоты (worktree на подзадачу)
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-15 03:14'
-updated_date: '2026-09-21 02:20'
+updated_date: '2026-09-21 04:34'
 labels:
   - swarm
   - planning

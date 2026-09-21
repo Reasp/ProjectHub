@@ -1,10 +1,10 @@
 ---
 id: TASK-80.4
 title: 'Живая проверка планировщика на qwen2.5:7b-instruct и скриншот собранного exe'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-20 01:59'
-updated_date: '2026-09-21 02:20'
+updated_date: '2026-09-21 04:34'
 labels:
   - swarm
   - planning
