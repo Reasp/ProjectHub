@@ -19,6 +19,15 @@ describe('worktreeService unit tests', () => {
       expect(extractTaskId('main')).toBeUndefined();
       expect(extractTaskId('feature/login-page')).toBeUndefined();
     });
+
+    it('узнаёт подзадачу в ветке узла плана: точки заменены дефисами (TASK-80.4)', () => {
+      // Иначе worktree узла плана записывался бы во frontmatter родительской задачи task-1.
+      expect(extractTaskId('swarm/0-kcgm/done-task-1-3')).toBe('task-1.3');
+      expect(extractTaskId('.worktrees/swarm-0-kcgm-done-task-1-2')).toBe('task-1.2');
+      expect(extractTaskId('task-80-1-4')).toBe('task-80.1.4');
+      // хвост не из цифр по-прежнему не считается номером подзадачи
+      expect(extractTaskId('done-task-7-report')).toBe('task-7');
+    });
   });
 
   describe('parseWorktreeListPorcelain', () => {

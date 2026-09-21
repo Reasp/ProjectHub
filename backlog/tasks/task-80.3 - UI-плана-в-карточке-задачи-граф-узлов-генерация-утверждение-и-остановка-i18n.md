@@ -3,10 +3,10 @@ id: TASK-80.3
 title: >-
   UI плана в карточке задачи: граф узлов, генерация, утверждение и остановка,
   i18n
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-20 01:59'
-updated_date: '2026-09-20 02:31'
+updated_date: '2026-09-21 02:08'
 labels:
   - swarm
   - planning

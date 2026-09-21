@@ -60,6 +60,8 @@ const nodeReport = () =>
 
 let root: string;
 let repo: string;
+/** Сколько слияний планировщика шло одновременно: интеграционный worktree один на план. */
+let mergeStats: { inFlight: number; max: number; delayFirstMs: number };
 let store: SwarmSessionStore;
 let planStore: PlanStore;
 let fleet: AgentFleetService;
@@ -175,7 +177,28 @@ beforeEach(async () => {
   store = new SwarmSessionStore(path.join(root, 'swarms'), 10);
   planStore = new PlanStore(path.join(root, 'plans'), 10);
   fleet = new AgentFleetService(store, { checkpoints: new CheckpointService() });
-  plans = new PlanService(planStore, { fleet, git: (cwd, args) => execGit(args, { cwd }) });
+  mergeStats = { inFlight: 0, max: 0, delayFirstMs: 0 };
+  plans = new PlanService(planStore, {
+    fleet,
+    git: async (cwd, args) => {
+      const isMerge = args[0] === 'merge' && args[1] !== '--abort';
+      if (!isMerge) return execGit(args, { cwd });
+      mergeStats.inFlight += 1;
+      mergeStats.max = Math.max(mergeStats.max, mergeStats.inFlight);
+      try {
+        // Задержка внутри «критической секции»: без очереди слияний второй merge успеет
+        // зайти в тот же worktree, пока первый ещё идёт, и счётчик покажет 2.
+        if (mergeStats.delayFirstMs > 0) {
+          const delay = mergeStats.delayFirstMs;
+          mergeStats.delayFirstMs = 0;
+          await wait(delay);
+        }
+        return await execGit(args, { cwd });
+      } finally {
+        mergeStats.inFlight -= 1;
+      }
+    }
+  });
   await plans.init();
   vi.spyOn(processManager, 'runOnce').mockResolvedValue({ exitCode: 0, output: 'ok', truncated: false, timedOut: false, durationMs: 1, startedAt: Date.now() });
 });
@@ -266,6 +289,9 @@ describe('запуск плана', () => {
     await waitFor(() => finished(plan), 120_000);
     // два независимых узла действительно работали одновременно, третий — нет
     expect(calls.stats.maxInFlight).toBe(2);
+    // а вот слияния — строго по очереди: два `git merge` в одном интеграционном worktree мешают
+    // друг другу, и `merge --abort` одного обрывал бы слияние другого (TASK-80.4)
+    expect(mergeStats.max).toBe(1);
     expect(plan.outcome).toBe('success');
     expect(plan.nodes.map((n) => n.state)).toEqual(['merged', 'merged', 'merged']);
     expect(calls.nodeCalls.sort()).toEqual(['TASK-1.1', 'TASK-1.2', 'TASK-1.3']);
@@ -361,6 +387,29 @@ describe('конфликт слияния', () => {
     expect(plan.outcome).toBe('partial');
     // интеграционный worktree остался чистым после merge --abort
     expect((await git(plan.integrationWorktree!, 'status', '--porcelain')).trim()).toBe('');
+  }, 120_000);
+});
+
+describe('очередь слияний', () => {
+  it('слияния узлов не накладываются друг на друга, конфликт не оставляет мусора', async () => {
+    // Оба узла держатся барьером и правят один файл, а первое слияние искусственно замедлено:
+    // второе не должно зайти в тот же worktree, пока первое идёт. Точную гонку тест не
+    // воспроизводит (её видно только под полной нагрузкой), но инвариант фиксирует.
+    mockEngine({
+      architect: () => planAnswer(),
+      nodeFile: (taskId) => ({ name: 'shared.txt', content: `base\nот ${taskId}\n` }),
+      barrier: ['TASK-1.1', 'TASK-1.2']
+    });
+    vi.spyOn(hitlService, 'request').mockResolvedValue({ approved: true, text: 'skip' });
+
+    const plan = await startPlan();
+    mergeStats.delayFirstMs = 1500;
+    await plans.approvePlan(plan.id);
+    await waitFor(() => finished(plan), 120_000);
+
+    expect(mergeStats.max).toBe(1);
+    expect((await git(plan.integrationWorktree!, 'status', '--porcelain')).trim()).toBe('');
+    expect(plan.nodes.filter((n) => n.state === 'merged')).toHaveLength(1);
   }, 120_000);
 });
 

@@ -3,10 +3,10 @@ id: TASK-80.1
 title: >-
   Чистые модули плана: схема ответа architect, валидация графа и диспетчер узлов
   с тестами
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-20 01:58'
-updated_date: '2026-09-20 02:30'
+updated_date: '2026-09-21 02:08'
 labels:
   - swarm
   - planning

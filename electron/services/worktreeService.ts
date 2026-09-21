@@ -22,11 +22,18 @@ function normalizePath(p: string): string {
 }
 
 /**
- * Извлечение ID задачи (task-N) из имени ветки или пути.
+ * Извлечение ID задачи (`task-N`, включая подзадачи `task-N.M`) из имени ветки или пути.
+ *
+ * Точки в именах веток заменяются на дефисы (`sanitizeSlug` в `agentFleetService`), поэтому хвост
+ * из цифр после номера читается как номер подзадачи: `swarm/0-abcd/done-task-1-3` → `task-1.3`.
+ * Без этого worktree узла плана записывался бы во frontmatter **родительской** задачи `task-1`
+ * (найдено живым прогоном планировщика, TASK-80.4).
  */
 export function extractTaskId(branchOrPath: string): string | undefined {
-  const match = branchOrPath.match(/(?:^|[\\/_-])(task-\d+)(?:[\\/_-]|$)/i);
-  return match ? match[1].toLowerCase() : undefined;
+  const match = branchOrPath.match(/(?:^|[\\/_-])(task-\d+(?:-\d+)*)(?:[\\/_-]|$)/i);
+  if (!match) return undefined;
+  const numbers = match[1].toLowerCase().replace(/^task-/, '').split('-');
+  return `task-${numbers.join('.')}`;
 }
 
 /**

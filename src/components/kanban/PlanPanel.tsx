@@ -87,14 +87,26 @@ export const PlanPanel: React.FC<PlanPanelProps> = ({ projectPath, taskId, taskT
 
   const handleStop = async () => {
     if (!plan) return;
-    const ok = await dialog.confirm({ title: t.plan.confirmStopTitle, message: t.plan.confirmStopText, danger: true });
+    // Без явного confirmText опасный диалог подписывает кнопку словом «Удалить» (DialogHost),
+    // а здесь план останавливают, а не удаляют — найдено на скриншотах собранного exe (TASK-80.4).
+    const ok = await dialog.confirm({
+      title: t.plan.confirmStopTitle,
+      message: t.plan.confirmStopText,
+      confirmText: t.plan.stop,
+      danger: true
+    });
     if (!ok) return;
     await run(() => window.api.stopPlan(plan.id));
   };
 
   const handleDiscard = async () => {
     if (!plan) return;
-    const ok = await dialog.confirm({ title: t.plan.confirmDiscardTitle, message: t.plan.confirmDiscardText, danger: true });
+    const ok = await dialog.confirm({
+      title: t.plan.confirmDiscardTitle,
+      message: t.plan.confirmDiscardText,
+      confirmText: t.plan.discard,
+      danger: true
+    });
     if (!ok) return;
     await run(async () => {
       const result = await window.api.discardPlan(plan.id);

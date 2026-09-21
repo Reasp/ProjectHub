@@ -3,10 +3,10 @@ id: TASK-80.2
 title: >-
   Сервис планировщика: роль architect, подзадачи Backlog, интеграционная ветка,
   слияние и HITL
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-20 01:59'
-updated_date: '2026-09-20 02:30'
+updated_date: '2026-09-21 02:08'
 labels:
   - swarm
   - planning

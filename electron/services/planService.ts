@@ -92,6 +92,8 @@ export class PlanService extends EventEmitter {
   private plans = new Map<string, PlanState>();
   /** Планы, для которых прямо сейчас крутится диспетчер: решения не должны пересекаться. */
   private dispatching = new Set<string>();
+  /** Очередь слияний по плану: интеграционный worktree один, параллельные merge в нём недопустимы. */
+  private mergeQueues = new Map<string, Promise<void>>();
   private subscribed = false;
 
   constructor(
@@ -446,6 +448,7 @@ export class PlanService extends EventEmitter {
       return { success: false, error: 'Сначала остановите план' };
     }
     this.plans.delete(planId);
+    this.mergeQueues.delete(planId);
     await this.store.delete(planId);
     this.emit('planEvent', { type: 'plan_removed', planId });
     return { success: true };
@@ -680,15 +683,34 @@ export class PlanService extends EventEmitter {
   }
 
   private async mergeNodeAndContinue(plan: PlanState, node: PlanNode): Promise<void> {
-    await this.mergeNode(plan, node);
+    await this.withMergeLock(plan.id, () => this.mergeNode(plan, node));
     this.emitPlan(plan, true);
     void this.dispatch(plan.id);
   }
 
   /**
+   * Слияния одного плана идут строго по очереди: интеграционный worktree один на план, и два
+   * одновременных `git merge` в нём мешают друг другу — параллельные узлы завершаются почти
+   * одновременно, и `merge --abort` одного обрывал бы слияние другого, оставляя дерево грязным
+   * (найдено флаки-падением теста конфликта под полной нагрузкой, TASK-80.4).
+   */
+  private withMergeLock<T>(planId: string, fn: () => Promise<T>): Promise<T> {
+    const previous = this.mergeQueues.get(planId) ?? Promise.resolve();
+    const result = previous.then(fn, fn);
+    this.mergeQueues.set(
+      planId,
+      result.then(
+        () => undefined,
+        () => undefined
+      )
+    );
+    return result;
+  }
+
+  /**
    * Слияние ветки узла в интеграционную — внутри её worktree, а не через `mergeWorktree`:
    * тот чекаутит целевую ветку в основном дереве проекта и не работает с веткой, занятой
-   * worktree (decision-49 Context).
+   * worktree (decision-49 Context). Вызывать только под {@link withMergeLock}.
    */
   private async mergeNode(plan: PlanState, node: PlanNode): Promise<boolean> {
     if (!plan.integrationWorktree || !node.branch) {
@@ -789,7 +811,7 @@ export class PlanService extends EventEmitter {
     }
 
     node.state = 'completed';
-    await this.mergeNode(plan, node);
+    await this.withMergeLock(plan.id, () => this.mergeNode(plan, node));
     this.emitPlan(plan, true);
     void this.dispatch(plan.id);
     return { success: true };
