@@ -8,7 +8,7 @@ import simpleGit from 'simple-git';
 import { worktreeService } from './worktreeService.js';
 import { aiAgentService, type AIProviderConfig, type AIMessage, type StreamToolBoundary } from './aiAgentService.js';
 import { claudeUsageService } from './claudeUsageService.js';
-import { claudeBridgeService, CLI_MCP_TOOL_TIMEOUT_MS } from './claudeBridgeService.js';
+import { claudeBridgeService, CLI_HITL_MCP_SERVER_NAME, CLI_MCP_TOOL_TIMEOUT_MS } from './claudeBridgeService.js';
 import { hitlService } from './hitlService.js';
 import { applyRolePermissions } from './hitlPolicy.js';
 import { appEventBus } from './eventBus.js';
@@ -43,6 +43,8 @@ import {
 import { modelTierService } from './modelTierService.js';
 import { buildEngineInvocation, apiToolNamesForCategories, extractAppendSystemPrompt } from './roleEngineAdapter.js';
 import { buildAgentContext } from './contextBuilder.js';
+import { MEMORY_TOOL_PREFIX } from './memoryTools.js';
+import { appendSessionNoteToTask, formatSessionNote, resolveNoteStatus, type SessionNoteInput, type SessionNoteStatus } from './taskSessionNote.js';
 import { taskAllowsComputerUse } from './computerPolicy.js';
 import { computerUseService } from './computerUseService.js';
 import { resolveApiMaxSteps, selectComputerTools } from './apiToolPolicy.js';
@@ -420,9 +422,64 @@ export class AgentFleetService extends EventEmitter {
   private emitSwarmEvent(event: SwarmEventPayload): void {
     this.emit('swarmEvent', event);
     if (event.session && event.type !== 'swarm_removed') {
+      this.trackTaskNote(event.session);
       const terminal = event.type === 'swarm_completed' || event.type === 'swarm_updated';
       this.persist(event.session, terminal && !isActiveSwarmStatus(event.session.status));
     }
+  }
+
+  /** Запись заметки хода в файл задачи; подменяется в тестах. */
+  public taskNoteWriter: (projectPath: string, taskId: string, note: string) => Promise<boolean> = appendSessionNoteToTask;
+
+  /**
+   * Заметка хода (TASK-76, decision-51 п. 8): одна запись в Implementation Notes задачи на сессию, когда
+   * сессия с задачей впервые приходит в конечный статус. Активный статус сбрасывает флаг — продолжение
+   * после отката (decision-48) получает свою заметку, а выбор победителя арены новой не порождает.
+   */
+  private trackTaskNote(session: SwarmSession): void {
+    if (!session.taskId) return;
+    if (isActiveSwarmStatus(session.status)) {
+      session.taskNoteWritten = false;
+      return;
+    }
+    if (session.status !== 'completed' && session.status !== 'failed' && session.status !== 'stopped') return;
+    if (session.taskNoteWritten !== false) return;
+    session.taskNoteWritten = true;
+    const note = formatSessionNote(this.sessionNoteInput(session, session.status));
+    const taskId = session.taskId;
+    this.taskNoteWriter(session.projectPath, taskId, note)
+      .then((written) => {
+        if (!written) console.warn(`[AgentFleetService] Заметка хода не записана: файл задачи ${taskId} не найден`);
+      })
+      .catch((err) => console.warn(`[AgentFleetService] Заметка хода для ${taskId} не записана:`, err));
+  }
+
+  private sessionNoteInput(session: SwarmSession, status: SessionNoteStatus): SessionNoteInput {
+    const iterations = session.doneLoop?.iterations ?? [];
+    const reportSummary = [...iterations].reverse().find((it) => it.reportSummary?.trim())?.reportSummary;
+    const winner = session.winnerAgentId ? session.agents.find((a) => a.id === session.winnerAgentId) : undefined;
+    const summarySource = winner ?? (session.agents.length === 1 ? session.agents[0] : undefined);
+    const failedAgent = session.agents.find((a) => a.status === 'failed' && a.error);
+    return {
+      at: new Date(session.completedAt ?? Date.now()),
+      mode: session.mode,
+      status: resolveNoteStatus(status, session.agents.map((a) => a.status)),
+      error: session.error ?? session.doneLoop?.reason ?? failedAgent?.error,
+      totalCostUsd: session.totalCostUsd,
+      agents: session.agents.map((a) => ({
+        name: a.config.name,
+        role: a.config.role,
+        engine: a.config.engine,
+        model: this.effectiveModel(a),
+        status: a.status,
+        branch: a.worktreeBranch,
+        commitHash: a.commitHash,
+        costUsd: a.metrics.usage?.costUsd ?? a.metrics.costUsd
+      })),
+      ...(session.mode === 'done_loop' ? { iterations: iterations.length } : {}),
+      summary: reportSummary ?? summarySource?.finalOutput,
+      continuation: session.continuations?.length ?? 0
+    };
   }
 
   /** Сохранение состояния: троттлинг по умолчанию, немедленная запись для терминальных событий. */
@@ -1916,6 +1973,7 @@ export class AgentFleetService extends EventEmitter {
       permissions,
       // Агент роя работает в своём worktree — карточки одобрения и диффы берут файлы оттуда (TASK-62).
       workspaceRoot: targetPath,
+      ...(session.taskId ? { taskId: session.taskId } : {}),
       // Управление компьютером в цикле «до готовности» — только по явному разрешению задачи (TASK-82).
       doneLoop: session.mode === 'done_loop',
       taskAllowsComputerUse:
@@ -1959,15 +2017,22 @@ export class AgentFleetService extends EventEmitter {
    * `systemPromptAddon` слота + contextBuilder (задача/AC, RAG, GitNexus, git-статус worktree),
    * дальше течёт как `extraSystemPrompt` в `buildEngineInvocation` для любого движка одинаково.
    */
-  private async buildExtraSystemPrompt(session: SwarmSession, agentState: AgentSlotState, targetPath: string): Promise<string | undefined> {
+  private async buildExtraSystemPrompt(
+    session: SwarmSession,
+    agentState: AgentSlotState,
+    targetPath: string,
+    /** Префикс инструментов памяти, если движок умеет в неё писать (TASK-76); Codex и Gemini — без него. */
+    memoryToolPrefix?: string
+  ): Promise<string | undefined> {
     // Инструкция цикла «до готовности» (формат отчёта, правила) — одна для всех движков (TASK-75).
     const addon = [agentState.config.systemPromptAddon, session.doneLoop?.instructions].filter(Boolean).join('\n\n') || undefined;
-    if (!session.taskId) return addon;
     try {
+      // Без задачи в контексте остаётся только память проекта (decision-51 п. 6)
       const context = await buildAgentContext({
         projectPath: session.projectPath,
         taskId: session.taskId,
-        gitCwd: targetPath
+        gitCwd: targetPath,
+        memoryToolPrefix
       });
       return [addon, context.combined].filter(Boolean).join('\n\n') || undefined;
     } catch (err) {
@@ -2032,6 +2097,7 @@ export class AgentFleetService extends EventEmitter {
       doneLoop,
       taskAllowsComputerUse: taskAllowsComputer,
       roleAutoApprove: agentState.config.permissions?.autoApprove,
+      ...(session.taskId ? { taskId: session.taskId } : {}),
       isActive: () => agentState.status === 'running',
       // Fallback модели запрещается исполнением инструмента, а не намерением модели (decision-44 п. 6).
       onExecute: () => this.toolActivity.add(agentState.id),
@@ -2108,7 +2174,9 @@ export class AgentFleetService extends EventEmitter {
       aiAgentService.streamChat(
         {
           sessionId: hitlSessionId,
-          projectPath: targetPath,
+          // Корень проекта — для контекста (память и задачи в основном дереве, decision-51 п. 3), worktree — рабочий каталог
+          projectPath: session.projectPath,
+          workspaceRoot: targetPath,
           messages,
           config,
           mode: 'agent',
@@ -2213,7 +2281,7 @@ export class AgentFleetService extends EventEmitter {
     const invocation = buildEngineInvocation({
       engine: 'claude-cli',
       role,
-      extraSystemPrompt: await this.buildExtraSystemPrompt(session, agentState, targetPath),
+      extraSystemPrompt: await this.buildExtraSystemPrompt(session, agentState, targetPath, `mcp__${CLI_HITL_MCP_SERVER_NAME}__${MEMORY_TOOL_PREFIX}`),
       model: this.effectiveModel(agentState),
       reasoningEffort: normalizeReasoningEffort(agentState.config.providerConfig?.reasoningEffort),
       budgetUsd: agentState.config.budgetUsd

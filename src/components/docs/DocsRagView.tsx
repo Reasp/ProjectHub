@@ -22,13 +22,15 @@ import {
   Code,
   List,
   Quote,
-  AlertCircle
+  AlertCircle,
+  Brain
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useTimeoutState, useTimers } from '../../hooks/useTimeoutState';
 import { CreateDocModal } from './CreateDocModal';
 import { MarkdownViewer } from '../common/MarkdownViewer';
+import { MemoryView } from './MemoryView';
 import type { DocItem } from '../../types/electron';
 
 export const DocsRagView: React.FC = () => {
@@ -57,6 +59,8 @@ export const DocsRagView: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'decision' | 'doc'>('all');
   const [viewMode, setViewMode] = useState<'preview' | 'edit' | 'split'>('preview');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  /** Раздел вкладки: документы Backlog.md или память проекта (TASK-76). */
+  const [section, setSection] = useState<'docs' | 'memory'>('docs');
   // Уведомление об успешном сохранении гаснет само; таймер снимается при размонтировании (TASK-50)
   const [saveSuccessNotice, showSaveSuccessNotice] = useTimeoutState(false, 3000);
   const { setTimer } = useTimers();
@@ -204,6 +208,21 @@ export const DocsRagView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2.5 shrink-0 flex-nowrap">
+          <div className="flex items-center gap-1 bg-[#10121d] p-1 rounded-xl border border-slate-800 text-[11px]" data-testid="docs-section-switch">
+            {(['docs', 'memory'] as const).map((key) => (
+              <button
+                key={key}
+                onClick={() => setSection(key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium transition ${
+                  section === key ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {key === 'memory' ? <Brain className="w-3.5 h-3.5" /> : <BookOpen className="w-3.5 h-3.5" />}
+                {key === 'memory' ? t.memory.tabMemory : t.memory.tabDocs}
+              </button>
+            ))}
+          </div>
+
           <button
             onClick={() => setIsCreateModalOpen(true)}
             title={t.docs.newDoc}
@@ -225,7 +244,11 @@ export const DocsRagView: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Split: Left Docs List, Right Editor / Viewer */}
+      {/* Память проекта (TASK-76): свой список и карточка вместо списка документов */}
+      {section === 'memory' && selectedProject ? (
+        <MemoryView projectPath={selectedProject.path} />
+      ) : (
+      /* Main Split: Left Docs List, Right Editor / Viewer */
       <div className="flex-1 flex gap-5 overflow-hidden">
         {/* Left Column: Docs List */}
         <div className="w-80 bg-[#141724]/70 border border-slate-800 rounded-2xl flex flex-col overflow-hidden">
@@ -528,6 +551,7 @@ export const DocsRagView: React.FC = () => {
           )}
         </div>
       </div>
+      )}
 
       {/* Modal for creating new ADR / Doc */}
       <CreateDocModal

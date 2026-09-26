@@ -313,6 +313,44 @@ export function applyFinalSummary(content: string, summary: string): string {
   return [...before, '', '## Final Summary', ...replacement, ...after].join('\n');
 }
 
+export const NOTES_BEGIN = '<!-- SECTION:NOTES:BEGIN -->';
+export const NOTES_END = '<!-- SECTION:NOTES:END -->';
+const NOTES_HEADING = /^##\s+Implementation Notes\s*$/i;
+
+/**
+ * Дописывает заметку в конец `## Implementation Notes` в нативном формате Backlog.md (маркеры
+ * `SECTION:NOTES`, TASK-76). Прежние заметки не трогаются. Секции нет — она создаётся перед
+ * `## Final Summary` (или `## Comments`), иначе в конце файла.
+ */
+export function applyImplementationNote(content: string, note: string): string {
+  const lines = content.split('\n');
+  const body = descriptionLines(note);
+
+  const block = findMarkerBlock(lines, NOTES_BEGIN, NOTES_END);
+  if (block) {
+    const existing = trimBlankEdges(lines.slice(block.start, block.end));
+    const merged = existing.length > 0 ? [...existing, '', ...body] : body;
+    lines.splice(block.start, block.end - block.start, ...merged);
+    return lines.join('\n');
+  }
+
+  const section = findHeadingSection(lines, NOTES_HEADING);
+  if (section) {
+    // Секция без маркеров (написана руками): старый текст остаётся внутри маркеров
+    const existing = trimBlankEdges(lines.slice(section.body.start, section.body.end));
+    const merged = existing.length > 0 ? [...existing, '', ...body] : body;
+    lines.splice(section.body.start, section.body.end - section.body.start, '', NOTES_BEGIN, ...merged, NOTES_END, '');
+    return lines.join('\n');
+  }
+
+  const nextAt = lines.findIndex((l) => FINAL_SUMMARY_HEADING.test(l.trim()) || COMMENTS_HEADING.test(l.trim()));
+  const insertAt = nextAt === -1 ? lines.length : nextAt;
+  const before = withoutTrailingBlanks(lines.slice(0, insertAt));
+  const after = lines.slice(insertAt);
+  const tail = after.length > 0 ? [''] : [];
+  return [...before, '', '## Implementation Notes', '', NOTES_BEGIN, ...body, NOTES_END, ...tail, ...after].join('\n');
+}
+
 /**
  * Возвращает отметки критериев к эталону `completed` (по порядку), не трогая тексты.
  * Нужна циклу «до готовности»: критерии отмечает только ProjectHub (decision-28), правка агента

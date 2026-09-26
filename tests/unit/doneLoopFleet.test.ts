@@ -139,7 +139,7 @@ describe('agentFleetService: цикл «до готовности» (TASK-75)', 
     expect(outcomes).toEqual(['agent:finished']);
   });
 
-  it('при исчерпании лимита итераций не трогает задачу и публикует agent:failed с причиной', async () => {
+  it('при исчерпании лимита итераций не отмечает критерии и статус, оставляет заметку хода и публикует agent:failed', async () => {
     vi.spyOn(aiAgentService, 'streamChat').mockImplementation(async (_req, _onChunk, onComplete) => {
       onComplete({ id: 'm', role: 'assistant', content: report('not_done', 'не успел'), timestamp: new Date().toISOString() });
     });
@@ -160,12 +160,23 @@ describe('agentFleetService: цикл «до готовности» (TASK-75)', 
     expect(session.status).toBe('failed');
     expect(session.doneLoop).toMatchObject({ outcome: 'iteration_limit', phase: 'failed' });
     expect(session.error).toMatch(/лимит итераций \(2\)/);
-    expect(await fs.readFile(taskFile, 'utf-8')).toBe(TASK_FILE);
+    // Критерии и статус не тронуты; единственный след провала — заметка хода (decision-51 п. 8, пересмотр decision-28 п. 7)
+    await vi.waitFor(async () => expect(await fs.readFile(taskFile, 'utf-8')).toContain('<!-- SECTION:NOTES:END -->'), { timeout: 5000 });
+    const after = await fs.readFile(taskFile, 'utf-8');
+    expect(after).toContain('status: In Progress');
+    expect(after).toContain('- [ ] #1 Функция sum складывает числа');
+    expect(after).not.toContain('## Final Summary');
+    expect(after).toMatch(/\*\*Сессия агента .* UTC\*\* — цикл «до готовности», провал, итераций: 2/);
+    expect(after).toMatch(/Причина: .*лимит итераций/);
+    const notes = after.match(/<!-- SECTION:NOTES:BEGIN -->[\s\S]*<!-- SECTION:NOTES:END -->/g) ?? [];
+    expect(notes).toHaveLength(1);
+    expect((notes[0].match(/Сессия агента/g) ?? []).length).toBe(1);
 
     const failed = publish.mock.calls.map(([e]) => e).filter((e) => e.type === 'agent:failed');
     expect(failed).toHaveLength(1);
     expect((failed[0] as { error: string }).error).toMatch(/До готовности: .*лимит итераций/);
-  });
+    // Ожидание заметки хода под нагрузкой полного прогона не укладывается в стандартные 5 с
+  }, 30_000);
 
   it('откатывает отметки критериев, поставленные агентом в файле задачи', async () => {
     vi.spyOn(aiAgentService, 'streamChat').mockImplementation(async (_req, _onChunk, onComplete) => {

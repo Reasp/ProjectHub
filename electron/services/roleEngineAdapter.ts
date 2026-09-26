@@ -39,8 +39,9 @@ const CLAUDE_TOOLS_BY_CATEGORY: Record<ToolCategory, string[]> = {
 
 /** Инструменты API-движка (`aiAgentService.getAnthropicTools`) по категориям. */
 const API_TOOLS_BY_CATEGORY: Record<ToolCategory, string[]> = {
-  read: ['read_file', 'list_dir'],
-  write: ['write_file'],
+  // Память проекта (TASK-76): поиск — вместе с чтением, запись и удаление — с записью
+  read: ['read_file', 'list_dir', 'memory_search'],
+  write: ['write_file', 'memory_write', 'memory_delete'],
   command: ['run_command'],
   search: ['search_rag'],
   subagent: [],

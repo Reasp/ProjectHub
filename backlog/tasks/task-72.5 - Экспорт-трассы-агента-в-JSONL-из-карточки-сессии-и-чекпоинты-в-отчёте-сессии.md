@@ -1,10 +1,10 @@
 ---
 id: TASK-72.5
 title: Экспорт трассы агента в JSONL из карточки сессии и чекпоинты в отчёте сессии
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 11:13'
-updated_date: '2026-09-19 11:44'
+updated_date: '2026-09-26 13:22'
 labels:
   - swarm
   - observability

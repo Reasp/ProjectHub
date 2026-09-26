@@ -18,9 +18,10 @@ import { parseClaudeResultEvent, priceUsage, type AgentUsage } from './agentCost
 import { pricingService } from './pricingService.js';
 import { hitlService, ApprovalCancelledError } from './hitlService.js';
 import { appEventBus } from './eventBus.js';
-import { buildAgentContext, buildComputerUseInstructions } from './contextBuilder.js';
+import { buildAgentContext, buildComputerUseInstructions, type ContextPartKey } from './contextBuilder.js';
 import { computerUseService, type ComputerCallContext } from './computerUseService.js';
 import { COMPUTER_TOOL_PREFIX } from './computerToolCatalog.js';
+import { MEMORY_TOOL_PREFIX, type MemoryToolContext } from './memoryTools.js';
 import type { ApiToolContext } from './apiToolExecutor.js';
 import { getApiToolExecutor } from './apiToolExecutorDeps.js';
 import { createStudioToolCallbacks } from './studioToolAdapter.js';
@@ -258,6 +259,8 @@ export interface CliPermissionMeta {
   doneLoop?: boolean;
   /** Задача явно разрешила управление компьютером (label `computer-use`). */
   taskAllowsComputerUse?: boolean;
+  /** Задача сессии — источник фактов памяти проекта (TASK-76). */
+  taskId?: string;
 }
 
 interface CliPermissionContext extends CliPermissionMeta {
@@ -396,6 +399,25 @@ class ClaudeBridgeService extends EventEmitter {
    * источник, агент, роль, флаги Done-loop и канал карточек одобрения той же сессии. null — сессия
    * завершена, прокси отклоняет действие.
    */
+  /**
+   * Контекст вызова `memory_*` для CLI-сессии (TASK-76, decision-51 п. 4): путь сессии (worktree агента
+   * или корень проекта — корень находит `memoryTools` по реестру), агент, роль и задача. null — сессия завершена.
+   */
+  public getMemoryCallContext(sessionId: string): MemoryToolContext | null {
+    const ctx = this.cliPermissionContexts.get(sessionId);
+    if (!ctx) return null;
+    return {
+      sessionPath: ctx.projectPath,
+      sessionId,
+      origin: ctx.origin ?? 'studio',
+      engine: ctx.engine ?? 'claude-cli',
+      ...(ctx.agentId ? { agentId: ctx.agentId } : {}),
+      ...(ctx.agentName ? { agentName: ctx.agentName } : {}),
+      ...(ctx.role ? { role: ctx.role } : {}),
+      ...(ctx.taskId ? { taskId: ctx.taskId } : {})
+    };
+  }
+
   public getComputerCallContext(sessionId: string): ComputerCallContext | null {
     const ctx = this.cliPermissionContexts.get(sessionId);
     if (!ctx) return null;
@@ -517,6 +539,11 @@ class ClaudeBridgeService extends EventEmitter {
     // Инструменты управления компьютером прокси ProjectHub: политику, HITL и аудит применяет сам
     // прокси (computerUseService, TASK-82) — второй запрос через permission_prompt не нужен.
     if (toolName.startsWith(`mcp__${CLI_HITL_MCP_SERVER_NAME}__${COMPUTER_TOOL_PREFIX}`)) {
+      return allow();
+    }
+
+    // Память проекта (TASK-76, decision-51 п. 4): формат, секреты, дубликаты и аудит проверяет сам сервис памяти.
+    if (toolName.startsWith(`mcp__${CLI_HITL_MCP_SERVER_NAME}__${MEMORY_TOOL_PREFIX}`)) {
       return allow();
     }
 
@@ -1179,7 +1206,7 @@ class ClaudeBridgeService extends EventEmitter {
       workspaceRoot?: string;
       /** Задача, привязанная к сессии AI Studio (TASK-64) — по ней contextBuilder собирает контекст. */
       taskId?: string;
-      contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>;
+      contextParts?: Partial<Record<ContextPartKey, boolean>>;
       /**
        * Встроенные инструменты Claude CLI, доступные сессии (`--tools`); пустой список — ни одного,
        * остаются только MCP-инструменты ProjectHub (`computer_*`). Без поля — набор CLI по умолчанию.
@@ -1242,7 +1269,7 @@ class ClaudeBridgeService extends EventEmitter {
    * Политика общая с Swarm и Claude CLI (`evaluateToolRequest`); фоновые команды разрешены.
    */
   private studioToolContext(
-    req: { sessionId: string; projectPath: string; config: AIProviderConfig; workspaceRoot?: string },
+    req: { sessionId: string; projectPath: string; config: AIProviderConfig; workspaceRoot?: string; taskId?: string },
     onChunk: (chunk: ClaudeBridgeMessageChunk) => void
   ): ApiToolContext {
     const { sessionId, projectPath } = req;
@@ -1256,6 +1283,7 @@ class ClaudeBridgeService extends EventEmitter {
       origin: 'studio',
       engine: 'api',
       allowBackground: true,
+      ...(req.taskId ? { taskId: req.taskId } : {}),
       isActive: isRunning,
       ...createStudioToolCallbacks({
         emit: onChunk,
@@ -1277,7 +1305,7 @@ class ClaudeBridgeService extends EventEmitter {
       /** Активное рабочее дерево сессии (worktree); по умолчанию — корень проекта (TASK-62). */
       workspaceRoot?: string;
       taskId?: string;
-      contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>;
+      contextParts?: Partial<Record<ContextPartKey, boolean>>;
       builtinTools?: string[];
       systemPromptAddon?: string;
     },
@@ -1334,17 +1362,17 @@ class ClaudeBridgeService extends EventEmitter {
     // Claude CLI через тот же канал `--append-system-prompt`, что и роли в agentFleetService.
     // Инструкция accessibility-first — когда сессии доступны инструменты computer_* (TASK-82).
     const systemAddon: string[] = [];
-    if (req.taskId) {
-      try {
-        const agentContext = await buildAgentContext({
-          projectPath,
-          taskId: req.taskId,
-          enabledParts: req.contextParts
-        });
-        if (agentContext.combined) systemAddon.push(agentContext.combined);
-      } catch (err) {
-        console.warn('[claudeBridgeService] contextBuilder failed:', err);
-      }
+    // Без задачи в контексте остаётся только память проекта (decision-51 п. 6)
+    try {
+      const agentContext = await buildAgentContext({
+        projectPath,
+        taskId: req.taskId,
+        enabledParts: req.contextParts,
+        memoryToolPrefix: `mcp__${CLI_HITL_MCP_SERVER_NAME}__${MEMORY_TOOL_PREFIX}`
+      });
+      if (agentContext.combined) systemAddon.push(agentContext.combined);
+    } catch (err) {
+      console.warn('[claudeBridgeService] contextBuilder failed:', err);
     }
     if (computerUseService.listProxyTools().length > 0) {
       systemAddon.push(buildComputerUseInstructions(`mcp__${CLI_HITL_MCP_SERVER_NAME}__${COMPUTER_TOOL_PREFIX}`));
@@ -1376,7 +1404,8 @@ class ClaudeBridgeService extends EventEmitter {
     const hitl = await this.prepareCliPermissions(sessionId, projectPath, req.config, onChunk, {
       origin: 'studio',
       engine: 'claude-cli',
-      workspaceRoot: workDir
+      workspaceRoot: workDir,
+      ...(req.taskId ? { taskId: req.taskId } : {})
     });
     let hitlWarning = '';
     if (hitl) {

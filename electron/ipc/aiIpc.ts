@@ -28,7 +28,7 @@ import type { RunJudgeOptions } from '../services/arenaJudgeService';
 import { loadArenaConfig, saveArenaConfig } from '../services/arenaConfig';
 import type { ArenaSettings } from '../services/actionConfigService';
 import type { CheckDefinition, ComposeSelection } from '../services/arenaTypes';
-import { buildAgentContext } from '../services/contextBuilder';
+import { buildAgentContext, type ContextPartKey } from '../services/contextBuilder';
 import { llmProfileService } from '../services/llmProfileService';
 import { llmModelCatalogService } from '../services/llmModelCatalogService';
 import { LLM_PROVIDER_PRESETS, profileFromLegacyConfig } from '../services/llmProfiles';
@@ -229,7 +229,7 @@ export function registerAiIpc(ctx: IpcContext) {
       _event,
       projectPath: string,
       taskId: string,
-      contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>
+      contextParts?: Partial<Record<ContextPartKey, boolean>>
     ) => {
       const safeProject = await assertRegisteredProject(projectPath);
       return await buildAgentContext({ projectPath: safeProject, taskId, enabledParts: contextParts });

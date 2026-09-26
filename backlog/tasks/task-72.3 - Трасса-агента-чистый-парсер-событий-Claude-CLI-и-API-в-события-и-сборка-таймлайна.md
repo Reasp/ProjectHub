@@ -3,10 +3,10 @@ id: TASK-72.3
 title: >-
   Трасса агента: чистый парсер событий Claude CLI и API в события и сборка
   таймлайна
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 11:12'
-updated_date: '2026-09-19 11:44'
+updated_date: '2026-09-26 13:22'
 labels:
   - swarm
   - observability

@@ -46,7 +46,7 @@ Antigravity свой каталог скиллов, `.claude/skills/` он не 
    `npm run index-docs`, чтобы обновить векторный индекс. Индекс (`.rag-index/`) коммитится в git.
    Актуальность индекса проверяется автоматически: `npm run lint:docs` (обязателен перед коммитом)
    падает, если хэш документов в `.rag-index/meta.json` не совпадает с текущим содержимым
-   `backlog/docs/` и `backlog/decisions/`; `npm run build` при этом лишь предупреждает.
+   `backlog/docs/`, `backlog/decisions/` и `backlog/memory/`; `npm run build` при этом лишь предупреждает.
    Отдельно: `npm run check-index`. Модель эмбеддингов — многоязычная
    `Xenova/multilingual-e5-small` (документация на русском); запросы кодируются той моделью,
    что записана в `meta.json` индекса, поэтому индекс и поиск не расходятся.
@@ -111,6 +111,13 @@ Antigravity свой каталог скиллов, `.claude/skills/` он не 
         ---
         ```
     - Запрещено создавать произвольные markdown-файлы без `id` и `doc-` / `decision-` префиксов, так как они не распознаются веб-интерфейсом Backlog.md и вызывают ошибки отображения.
+    - **Память проекта (`backlog/memory/`, decision-51)** — не документы Backlog.md: один факт = один файл
+      `backlog/memory/mem-<N> - <Title-Slug>.md`, frontmatter `id`, `title`, `description`, `type`
+      (`project | feedback | reference`), `created`, необязательные `updated`, `source`, `author` — все значения
+      строками в кавычках (правило 16). Индекс `backlog/memory/MEMORY.md` генерирует ProjectHub — руками не
+      править. Писать память агент должен инструментом `memory_write` (встроенный MCP ProjectHub или
+      инструмент API-агента): он проверяет формат, секреты и дубликаты. Секреты в память не пишутся никогда;
+      `npm run lint:docs` проверяет формат, секреты и соответствие индекса файлам.
 14. **Обязательная сборка распакованного десктопного приложения (Unpacked Desktop Build)**:
     - После любых изменений в исходном коде `ProjectHub` агент обязан выполнять быструю сборку распакованного десктопного приложения через `npm run pack:win`, чтобы обновлять исполняемый бинарник в каталоге `release/win-unpacked/ProjectHub.exe` без долгой упаковки в portable-архив.
 15. **Стандарты вставки и отображения изображений в документации (`backlog/docs/`, `backlog/decisions/`)**:

@@ -1,10 +1,10 @@
 ---
 id: TASK-101.3
 title: 'Таймлайн и чекпоинты API-агента Swarm, живая проверка на Ollama и скриншот exe'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 12:30'
-updated_date: '2026-09-19 13:00'
+updated_date: '2026-09-26 13:22'
 labels:
   - swarm
   - hitl

@@ -2,6 +2,7 @@ import { evaluateToolRequest, isToolAllowed, type PolicyVerdict } from './hitlPo
 import { DEFAULT_MAX_TOOL_STEPS } from './apiToolLoop.js';
 import type { AIProviderConfig } from './aiAgentService.js';
 import type { HitlRequestType } from './hitlTypes.js';
+import { isMemoryToolName } from './memoryTools.js';
 
 /**
  * Политика инструментов API-агента Swarm и AI Studio (TASK-101, TASK-103, decision-46 п. 1, 2, 4, 6, decision-47): чистые функции без
@@ -10,7 +11,7 @@ import type { HitlRequestType } from './hitlTypes.js';
  */
 
 /** Инструменты API-движка (`aiAgentService.getAnthropicTools`), которые умеет исполнять общий исполнитель. */
-export type ApiToolKind = 'read' | 'list' | 'search' | 'write' | 'command' | 'question' | 'computer' | 'unknown';
+export type ApiToolKind = 'read' | 'list' | 'search' | 'write' | 'command' | 'question' | 'computer' | 'memory' | 'unknown';
 
 /** Префикс инструментов прокси управления компьютером (`computerToolCatalog.COMPUTER_TOOL_PREFIX`). */
 const COMPUTER_PREFIX = 'computer_';
@@ -31,7 +32,7 @@ const KIND_BY_NAME: Record<string, ApiToolKind> = {
  * Имена-аналоги Claude Code для allow-списка роли (`permissions.allowedTools`): роль, написанная под
  * Claude CLI (`Read`, `Bash`), так же разрешает соответствующие инструменты API-движка.
  */
-const CLAUDE_ALIASES: Record<Exclude<ApiToolKind, 'computer' | 'unknown'>, string[]> = {
+const CLAUDE_ALIASES: Record<Exclude<ApiToolKind, 'computer' | 'memory' | 'unknown'>, string[]> = {
   read: ['Read'],
   list: ['Read', 'Glob', 'LS'],
   search: ['Grep'],
@@ -42,6 +43,7 @@ const CLAUDE_ALIASES: Record<Exclude<ApiToolKind, 'computer' | 'unknown'>, strin
 
 export function apiToolKind(name: string): ApiToolKind {
   if (name.startsWith(COMPUTER_PREFIX)) return 'computer';
+  if (isMemoryToolName(name)) return 'memory';
   return KIND_BY_NAME[name] ?? 'unknown';
 }
 
@@ -51,6 +53,11 @@ export function isApiToolAllowed(name: string, allowedTools?: string[]): boolean
   if (isToolAllowed(name, allowedTools)) return true;
   const kind = apiToolKind(name);
   if (kind === 'computer' || kind === 'unknown') return false;
+  // Память подчиняется категориям роли (decision-51 п. 4): поиск — вместе с чтением, запись и удаление — с записью
+  if (kind === 'memory') {
+    const aliases = name === 'memory_search' ? CLAUDE_ALIASES.read : CLAUDE_ALIASES.write;
+    return aliases.some((alias) => isToolAllowed(alias, allowedTools));
+  }
   return CLAUDE_ALIASES[kind].some((alias) => isToolAllowed(alias, allowedTools));
 }
 
@@ -101,6 +108,10 @@ export function planApiToolCall(
   }
   if (kind === 'computer') {
     return { kind, verdict: 'allow', rule: 'computer-proxy', approvalType: 'computer_action' };
+  }
+  // Формат, секреты, дубликаты и аудит проверяет сервис памяти (decision-51 п. 4–5) — карточки HITL нет.
+  if (kind === 'memory') {
+    return { kind, verdict: 'allow', rule: 'memory', approvalType: name === 'memory_search' ? 'question' : 'file_write' };
   }
 
   // Allow-список уже проверен с алиасами — дальше политика видит его пустым, чтобы не отклонить

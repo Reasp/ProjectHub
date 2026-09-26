@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import matter from 'gray-matter';
 import type { RagSearchOptions, RagSearchResult } from '../../src/types/electron';
+import { MEMORY_DIR, MEMORY_DIR_SEGMENTS, MEMORY_INDEX_FILE } from './memoryFormat';
 import { projectRegistry } from './projectRegistry';
 import { ensureModelsCacheDir } from './appPaths';
 import { resolveEmbeddingModel, type EmbeddingModel } from './ragEmbeddingModel';
@@ -124,13 +125,17 @@ async function vectorSearch(indexDir: string, query: string, limit: number): Pro
   return vectorSearchInProcess(indexDir, query, limit);
 }
 
-async function scanProjectMarkdownFiles(projectPath: string): Promise<Array<{ filePath: string; relative: string; category: 'doc' | 'decision' | 'task' }>> {
-  const results: Array<{ filePath: string; relative: string; category: 'doc' | 'decision' | 'task' }> = [];
+type ScanCategory = RagSearchResult['category'];
+
+async function scanProjectMarkdownFiles(projectPath: string): Promise<Array<{ filePath: string; relative: string; category: ScanCategory }>> {
+  const results: Array<{ filePath: string; relative: string; category: ScanCategory }> = [];
 
   const targets = [
     { dir: path.join(projectPath, 'backlog', 'docs'), category: 'doc' as const },
     { dir: path.join(projectPath, 'backlog', 'decisions'), category: 'decision' as const },
-    { dir: path.join(projectPath, 'backlog', 'tasks'), category: 'task' as const }
+    { dir: path.join(projectPath, 'backlog', 'tasks'), category: 'task' as const },
+    // Память проекта (TASK-76, decision-51 п. 7); индекс MEMORY.md дублирует факты и пропускается
+    { dir: path.join(projectPath, ...MEMORY_DIR_SEGMENTS), category: 'memory' as const }
   ];
 
   for (const { dir, category } of targets) {
@@ -138,7 +143,7 @@ async function scanProjectMarkdownFiles(projectPath: string): Promise<Array<{ fi
       try {
         const files = await fs.readdir(dir);
         for (const file of files) {
-          if (file.endsWith('.md')) {
+          if (file.endsWith('.md') && !(category === 'memory' && file === MEMORY_INDEX_FILE)) {
             const fullPath = path.join(dir, file);
             results.push({
               filePath: fullPath,
@@ -199,9 +204,10 @@ export async function searchProjectDocs(options: RagSearchOptions): Promise<RagS
             const similarityScore = Math.max(0, Math.min(1, 1 - distance / 1.5));
 
             const rel = r.file || '';
-            let cat: 'doc' | 'decision' | 'task' = 'doc';
+            let cat: ScanCategory = 'doc';
             if (rel.includes('decisions')) cat = 'decision';
             else if (rel.includes('tasks')) cat = 'task';
+            else if (rel.replace(/\\/g, '/').includes(`${MEMORY_DIR}/`)) cat = 'memory';
 
             searchResults.push({
               projectName: proj.name,

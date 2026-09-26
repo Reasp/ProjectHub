@@ -3,10 +3,10 @@ id: TASK-72
 title: >-
   Чекпоинты по ходам и откат (rewind) в worktree, таймлайн инструментов с
   длительностью и стоимостью, экспорт трассы JSONL
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-15 03:08'
-updated_date: '2026-09-19 11:50'
+updated_date: '2026-09-26 13:22'
 labels:
   - swarm
   - git

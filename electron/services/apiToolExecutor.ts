@@ -46,6 +46,8 @@ export interface ApiToolExecutorDeps {
   searchDocs(projectPath: string, query: string): Promise<string>;
   parseQuestion(args: Record<string, unknown>): QuestionData;
   callComputerTool?(name: string, args: Record<string, unknown>, ctx: ApiToolContext): Promise<ToolExecutionResult>;
+  /** Инструменты памяти проекта (TASK-76): корень проекта, проверки и аудит — в `memoryTools`. */
+  callMemoryTool?(name: string, args: Record<string, unknown>, ctx: ApiToolContext): Promise<ToolExecutionResult>;
 }
 
 /** Статус вызова для чата: те же значения, что у `AIToolCall.status`, кроме `pending`. */
@@ -83,6 +85,8 @@ export interface ApiToolContext {
   roleAutoApprove?: boolean;
   /** Разрешить `run_command` с `background: true` (AI Studio, decision-47 п. 3). */
   allowBackground?: boolean;
+  /** Задача сессии — источник фактов памяти проекта (TASK-76). */
+  taskId?: string;
   /** Агент ещё работает: перед каждым инструментом (стоп, бюджет). */
   isActive(): boolean;
   /** Инструмент прошёл политику и начинает исполняться — для запрета fallback модели (decision-44 п. 6). */
@@ -177,6 +181,16 @@ export class ApiToolExecutor {
         status: result.isError ? 'error' : 'done',
         chatResult: [result.content, images].filter(Boolean).join('\n')
       };
+    }
+
+    if (plan.kind === 'memory' && plan.verdict !== 'deny') {
+      if (!this.deps.callMemoryTool) {
+        return { result: { content: 'Память проекта агенту недоступна.', isError: true }, status: 'error' };
+      }
+      ctx.onExecute?.(call, plan);
+      ctx.onToolUpdate?.(call, { kind: plan.kind, status: 'running' });
+      const result = await this.deps.callMemoryTool(call.name, args, ctx);
+      return { result, status: result.isError ? 'error' : call.name === 'memory_search' ? 'done' : 'accepted' };
     }
 
     const meta = this.meta(ctx, call.name);

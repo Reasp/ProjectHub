@@ -134,7 +134,7 @@ function mockEngine(options: {
       opts?.onToolBoundary?.({ kind: 'step', step: 0, model: 'm' });
       const file = options.nodeFile ? options.nodeFile(taskId) : { name: `${taskId.replace(/\W/g, '')}.txt`, content: taskId };
       if (file) {
-        await fs.writeFile(path.join(req.projectPath ?? '', file.name), file.content);
+        await fs.writeFile(path.join(req.workspaceRoot ?? req.projectPath ?? '', file.name), file.content);
         onChunk({ toolCall: { id: `c-${taskId}`, name: 'write_file', args: { path: file.name } } });
         opts?.onToolBoundary?.({ kind: 'tool_result', id: `c-${taskId}`, name: 'write_file', ok: true, outputChars: 2, durationMs: 1 });
       }

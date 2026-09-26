@@ -186,7 +186,8 @@ describe('AgentFleetService: API-агент исполняет инструме�
     });
     await waitFor(() => session.status === 'completed');
     expect(maxSteps).toBe(2);
-    expect(allowed).toEqual(['read_file', 'list_dir', 'write_file']);
+    // Инструменты памяти идут с категориями read и write (TASK-76, decision-51 п. 4)
+    expect(allowed).toEqual(['read_file', 'list_dir', 'memory_search', 'write_file', 'memory_write', 'memory_delete']);
     expect(session.agents[0].logs.join('\n')).toContain('Достигнут лимит ходов роли (2)');
     expect(session.agents[0].logs.join('\n')).not.toContain('не поддерживает нативно');
   }, 60_000);

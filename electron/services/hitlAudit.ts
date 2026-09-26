@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import type { HitlAuditEntry, HitlAuditQuery } from './hitlTypes.js';
+import { REDACTION_PATTERNS } from './secretPatterns.js';
 
 /**
  * Аудит-лог решений HITL (TASK-57, decision-10 п. 4).
@@ -20,21 +21,8 @@ export const COMMAND_PREVIEW_MAX = 160;
 export const COMMENT_MAX = 200;
 export const DEFAULT_QUERY_LIMIT = 500;
 
-const SECRET_PATTERNS: Array<[RegExp, string]> = [
-  // Authorization: Bearer <token>, --header "Authorization: ..."
-  [/(bearer\s+)[A-Za-z0-9\-_.=+/]+/gi, '$1***'],
-  // key=value / key: value для типичных имён секретов
-  [/((?:api[_-]?key|access[_-]?token|auth[_-]?token|token|secret|password|passwd|pwd|authorization|client[_-]?secret)\s*[=:]\s*["']?)[^\s"'&;]+/gi, '$1***'],
-  // Известные префиксы ключей
-  [/\b(sk-(?:ant-)?[A-Za-z0-9\-_]{8,})/g, 'sk-***'],
-  [/\b(gh[pousr]_[A-Za-z0-9]{10,})/g, 'gh*_***'],
-  [/\b(xox[abpr]-[A-Za-z0-9-]{10,})/g, 'xox*-***'],
-  [/\b(AKIA[0-9A-Z]{12,})/g, 'AKIA***'],
-  // Пароли в URL: https://user:pass@host
-  [/((?:https?|ftp|postgres(?:ql)?|mysql|redis|mongodb(?:\+srv)?):\/\/[^\s/@:]+:)[^\s/@]+@/gi, '$1***@'],
-  // Переменные окружения вида FOO_TOKEN=... в начале команды
-  [/\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASS)\s*=\s*)[^\s]+/g, '$1***']
-];
+/** Шаблоны маскировки общие с детектором секретов памяти проекта (decision-51 п. 5). */
+const SECRET_PATTERNS = REDACTION_PATTERNS;
 
 /** Вырезает похожие на секреты фрагменты из произвольного текста команды. */
 export function redactSecrets(text: string): string {

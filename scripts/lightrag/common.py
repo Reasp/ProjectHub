@@ -23,7 +23,9 @@ EMBED_DIM = 1024  # bge-m3
 
 # Документация, которую индексируем — те же корни, что у scripts/rag/index-docs.mjs.
 # Без верхнеуровневой docs/ — документация живёт внутри backlog/.
-DOC_ROOTS = ["backlog/docs", "backlog/decisions"]
+DOC_ROOTS = ["backlog/docs", "backlog/decisions", "backlog/memory"]
+# Индекс памяти генерируется из фактов и дублировал бы их (decision-51 п. 7).
+SKIP_FILES = {"backlog/memory/MEMORY.md"}
 
 
 def collect_markdown_files():
@@ -33,6 +35,8 @@ def collect_markdown_files():
         if not base.exists():
             continue
         for path in base.rglob("*.md"):
+            if path.relative_to(ROOT).as_posix() in SKIP_FILES:
+                continue
             files.append(path)
     return files
 

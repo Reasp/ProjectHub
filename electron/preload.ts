@@ -33,7 +33,8 @@ import type {
   TtsChunkPayload,
   TtsDonePayload,
   TtsDownloadProgress,
-  TtsErrorPayload
+  TtsErrorPayload,
+  MemoryDraftInput
 } from '../src/types/electron';
 
 const api: IElectronAPI = {
@@ -452,6 +453,12 @@ const api: IElectronAPI = {
       ipcRenderer.removeListener('voice:push-to-talk-status', handler);
     };
   },
+
+  // Память проекта (TASK-76): факты backlog/memory — список, правка человеком, удаление
+  listMemory: (projectPath: string) => ipcRenderer.invoke('memory:list', projectPath),
+  writeMemory: (projectPath: string, draft: MemoryDraftInput, replace?: string) =>
+    ipcRenderer.invoke('memory:write', projectPath, draft, replace),
+  deleteMemory: (projectPath: string, id: string) => ipcRenderer.invoke('memory:delete', projectPath, id),
 
   // Локальный TTS на голосах Piper (TASK-69): генерация в воркере main, воспроизведение в рендерере
   getTtsStatus: () => ipcRenderer.invoke('tts:getStatus'),

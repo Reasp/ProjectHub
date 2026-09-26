@@ -11,7 +11,7 @@ interface ContextAppliedCardProps {
   onClearTask: () => void;
 }
 
-const PART_KEYS: ContextPartKey[] = ['task', 'rag', 'gitnexus', 'git'];
+const PART_KEYS: ContextPartKey[] = ['task', 'memory', 'rag', 'gitnexus', 'git'];
 
 export const ContextAppliedCard: React.FC<ContextAppliedCardProps> = ({
   projectPath,

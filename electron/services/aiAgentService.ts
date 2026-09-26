@@ -5,7 +5,8 @@ import os from 'node:os';
 import { spawn, type ChildProcess, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import treeKill from 'tree-kill';
 import { searchProjectDocs } from './ragSearch.js';
-import { buildAgentContext, buildComputerUseInstructions } from './contextBuilder.js';
+import { buildAgentContext, buildComputerUseInstructions, type ContextPartKey } from './contextBuilder.js';
+import { MEMORY_TOOL_DEFINITIONS, MEMORY_TOOL_PREFIX } from './memoryTools.js';
 import { secretStorageService } from './secretStorageService.js';
 import matter from 'gray-matter';
 import { assertInsideProject, isInsideProject } from './pathGuard.js';
@@ -149,7 +150,7 @@ export interface AIStreamRequest {
   /** Задача, в контексте которой идёт диалог (TASK-64) — по ней собирается contextBuilder. */
   taskId?: string;
   /** Какие части контекста включены на сессию (по умолчанию все); см. `ContextPartKey`. */
-  contextParts?: Partial<Record<'task' | 'rag' | 'gitnexus' | 'git', boolean>>;
+  contextParts?: Partial<Record<ContextPartKey, boolean>>;
   /**
    * Активное рабочее дерево сессии (worktree), TASK-62. Инструменты работы с файлами и
    * командами используют его как рабочий каталог; контекст задачи по-прежнему собирается
@@ -734,7 +735,8 @@ class AIAgentService {
         req.taskId,
         req.contextParts,
         req.workspaceRoot,
-        computerTools.length > 0
+        computerTools.length > 0,
+        req.mode === 'agent' && Boolean(options.executeTool) && isToolAllowed('memory_write', req.allowedToolNames)
       );
       const tools: AnthropicToolDefinition[] = req.mode === 'agent'
         ? [
@@ -1355,7 +1357,9 @@ class AIAgentService {
     contextParts?: AIStreamRequest['contextParts'],
     workspaceRoot?: string,
     /** Агенту доступны инструменты `computer_*` — добавить инструкцию accessibility-first (TASK-82). */
-    computerUse = false
+    computerUse = false,
+    /** Агенту доступен `memory_write` — добавить инструкцию памяти проекта (TASK-76). */
+    memoryWrite = false
   ): Promise<string> {
     // Рабочий каталог — активное дерево (worktree), задачи и документация — общий backlog проекта.
     const workDir = workspaceRoot?.trim() || projectPath;
@@ -1363,14 +1367,19 @@ class AIAgentService {
 Working directory: "${workDir}".
 Answer directly, clearly, and concisely as Claude Code. If the user addresses you in Russian, answer naturally in Russian while preserving technical terms, file paths, and code.`;
 
+    // Без задачи в контексте остаётся только память проекта (decision-51 п. 6)
     let taskContext = '';
-    if (taskId) {
-      try {
-        const context = await buildAgentContext({ projectPath, taskId, enabledParts: contextParts });
-        taskContext = context.combined;
-      } catch (err) {
-        console.warn('[aiAgentService] contextBuilder failed:', err);
-      }
+    try {
+      const context = await buildAgentContext({
+        projectPath,
+        taskId,
+        enabledParts: contextParts,
+        gitCwd: workDir,
+        ...(memoryWrite ? { memoryToolPrefix: MEMORY_TOOL_PREFIX } : {})
+      });
+      taskContext = context.combined;
+    } catch (err) {
+      console.warn('[aiAgentService] contextBuilder failed:', err);
     }
 
     return [base, roleSystemPrompt, taskContext, computerUse ? buildComputerUseInstructions() : ''].filter(Boolean).join('\n\n');
@@ -1466,7 +1475,9 @@ Answer directly, clearly, and concisely as Claude Code. If the user addresses yo
           },
           required: ['question', 'options']
         }
-      }
+      },
+      // Память проекта (TASK-76, decision-51 п. 4): одна реализация с MCP-сервером Claude CLI
+      ...MEMORY_TOOL_DEFINITIONS.map((d) => ({ name: d.name, description: d.description, input_schema: d.input_schema }))
     ];
     if (!allowedToolNames || allowedToolNames.length === 0) return all;
     const allowed = new Set(allowedToolNames);

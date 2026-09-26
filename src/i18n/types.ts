@@ -775,6 +775,45 @@ export interface TranslationDictionary {
     createError: string;
     placeholderText: string;
   };
+  /** Память проекта (TASK-76, decision-51): раздел во вкладке документов. */
+  memory: {
+    tabDocs: string;
+    tabMemory: string;
+    title: string;
+    subtitle: string;
+    newFact: string;
+    refresh: string;
+    searchPlaceholder: string;
+    allTypes: string;
+    types: Record<'project' | 'feedback' | 'reference', string>;
+    typeHints: Record<'project' | 'feedback' | 'reference', string>;
+    empty: string;
+    emptyHint: string;
+    noSelection: string;
+    fieldTitle: string;
+    fieldDescription: string;
+    fieldBody: string;
+    fieldType: string;
+    bodyHint: string;
+    source: string;
+    author: string;
+    created: string;
+    updated: string;
+    edit: string;
+    delete: string;
+    save: string;
+    saving: string;
+    cancel: string;
+    saved: string;
+    deleted: string;
+    deleteConfirmTitle: string;
+    deleteConfirmMessage: string;
+    deleteConfirmOk: string;
+    invalidFiles: string;
+    errors: Record<string, string>;
+    issues: Record<string, string>;
+    secretKinds: Record<string, string>;
+  };
   milestones: {
     title: string;
     subtitle: string;
@@ -946,6 +985,7 @@ export interface TranslationDictionary {
       clear: string;
       empty: string;
       task: string;
+      memory: string;
       rag: string;
       gitnexus: string;
       git: string;

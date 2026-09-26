@@ -3,9 +3,10 @@ id: TASK-76
 title: >-
   Память агента по проекту: файлы памяти, инъекция в contextBuilder, MCP
   memory_write/memory_search, индекс docs-rag
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-09-15 03:12'
+updated_date: '2026-09-26 14:40'
 labels:
   - ai
   - context
@@ -40,10 +41,22 @@ GPT-6 Astra вместо сжатия контекста ведёт «context no
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Формат и место хранения памяти зафиксированы в ADR; парсер/валидатор — чистый модуль с unit-тестами; даты в frontmatter строками (правило 16)
+- [x] #1 Формат и место хранения памяти зафиксированы в ADR; парсер/валидатор — чистый модуль с unit-тестами; даты в frontmatter строками (правило 16)
 - [ ] #2 MCP-инструменты memory_write и memory_search доступны агентам всех движков через встроенный MCP-сервер; запись с секретами отклоняется
-- [ ] #3 contextBuilder подмешивает память проекта с лимитом токенов; секция отключается в ContextAppliedCard
-- [ ] #4 Память индексируется docs-rag; lint:docs и check-index учитывают каталог памяти
-- [ ] #5 По завершении сессии агента по задаче краткая заметка хода попадает в implementationNotes задачи
+- [x] #3 contextBuilder подмешивает память проекта с лимитом токенов; секция отключается в ContextAppliedCard
+- [x] #4 Память индексируется docs-rag; lint:docs и check-index учитывают каталог памяти
+- [x] #5 По завершении сессии агента по задаче краткая заметка хода попадает в implementationNotes задачи
 - [ ] #6 UI просмотра/правки/удаления фактов памяти; i18n; lint/test зелёные, pack:win собран
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Решение — decision-51 (proposed до реализации). Подзадачи по порядку: 76.1 чистые модули (memoryFormat, secretPatterns, поиск похожих) → 76.2 memoryService и инструменты memory_* (MCP для Claude CLI, исполнитель API, аудит, IPC) → 76.3 часть memory в contextBuilder, ContextAppliedCard, ragSearch, DOC_ROOTS, validate-docs, правило 13 → 76.4 заметка хода в Implementation Notes (harness) → 76.5 UI памяти в Docs, i18n → 76.6 живая проверка Claude CLI и API/Ollama, скриншоты exe. Codex/Gemini CLI — только чтение до TASK-85/TASK-77.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Итог сессии 2026-09-26
+<!-- SECTION:NOTES:END -->

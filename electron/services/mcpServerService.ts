@@ -22,6 +22,8 @@ import { secretStorageService } from './secretStorageService.js';
 import type { RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { computerUseService, type ComputerCallContext } from './computerUseService.js';
 import { jsonSchemaToZodShape } from './jsonSchemaToZod.js';
+import { MEMORY_TOOL_DEFINITIONS, callMemoryTool, type MemoryToolContext } from './memoryTools.js';
+import { memoryToolDeps } from './memoryToolDeps.js';
 
 /** Ключ персистентного токена MCP-сервера в safeStorage (TASK-58): переживает перезапуск приложения. */
 const MCP_TOKEN_SECRET_KEY = 'mcp_server_token';
@@ -661,7 +663,48 @@ class McpServerService {
       }
     );
 
+    // ─────────────────────────────────────────────────────────────
+    // 11. Память проекта (TASK-76, decision-51 п. 4)
+    // ─────────────────────────────────────────────────────────────
+    for (const def of MEMORY_TOOL_DEFINITIONS) {
+      const properties = (def.input_schema.properties ?? {}) as Record<string, unknown>;
+      const schema = {
+        ...def.input_schema,
+        properties: {
+          ...properties,
+          projectPath: {
+            type: 'string',
+            description: 'Путь к проекту — только для внешних MCP-клиентов; агенту ProjectHub проект известен из сессии'
+          }
+        }
+      };
+      server.registerTool(
+        def.name,
+        { title: def.name, description: def.description, inputSchema: jsonSchemaToZodShape(schema) },
+        async (args: Record<string, unknown>) => {
+          const ctx = this.memoryCallContext(hitlSessionId, args);
+          if (!ctx) {
+            return { isError: true, content: [{ type: 'text' as const, text: 'ProjectHub: сессия агента завершена или проект не выбран — память недоступна.' }] };
+          }
+          const res = await callMemoryTool(def.name, args, ctx, memoryToolDeps);
+          return { isError: res.isError, content: [{ type: 'text' as const, text: res.text }] };
+        }
+      );
+    }
+
     return server;
+  }
+
+  /**
+   * Контекст инструментов памяти: агент ProjectHub (`phSession`) — из его CLI-сессии; внешний MCP-клиент —
+   * явный `projectPath` или активный проект окна. Корень проекта по реестру находит `memoryTools`.
+   */
+  private memoryCallContext(hitlSessionId: string | undefined, args: Record<string, unknown>): MemoryToolContext | null {
+    if (hitlSessionId) return claudeBridgeService.getMemoryCallContext(hitlSessionId);
+    const explicit = typeof args.projectPath === 'string' ? args.projectPath.trim() : '';
+    const sessionPath = explicit || String(this.currentAppState.activeProject?.path ?? '');
+    if (!sessionPath) return null;
+    return { sessionPath, sessionId: 'external-mcp', origin: 'external' };
   }
 
   /**

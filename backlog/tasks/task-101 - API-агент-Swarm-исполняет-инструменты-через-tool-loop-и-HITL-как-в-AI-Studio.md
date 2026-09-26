@@ -1,10 +1,10 @@
 ---
 id: TASK-101
 title: 'API-агент Swarm исполняет инструменты через tool-loop и HITL, как в AI Studio'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 11:47'
-updated_date: '2026-09-19 13:00'
+updated_date: '2026-09-26 13:22'
 labels:
   - swarm
   - hitl

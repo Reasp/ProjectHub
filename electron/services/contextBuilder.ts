@@ -15,8 +15,11 @@ import { findTaskFile } from './taskFileLookup.js';
 import { searchProjectDocs } from './ragSearch.js';
 import { fetchGitNexusContext } from './gitNexusClient.js';
 import { gitService } from './gitService.js';
+import { readMemory, type MemoryEntry } from './memoryStore.js';
+import { searchMemoryFacts } from './memorySearch.js';
+import { buildMemoryInstructions } from './memoryTools.js';
 
-export type ContextPartKey = 'task' | 'rag' | 'gitnexus' | 'git';
+export type ContextPartKey = 'task' | 'memory' | 'rag' | 'gitnexus' | 'git';
 
 export interface ContextPart {
   key: ContextPartKey;
@@ -32,6 +35,12 @@ export interface AgentContextOptions {
   ragLimit?: number;
   /** Каталог для git-статуса, если агент работает в изолированном worktree, а не в `projectPath`. */
   gitCwd?: string;
+  /**
+   * Префикс инструментов памяти, если агент умеет писать в память (`memory_` у API-агента,
+   * `mcp__projecthub-hitl__memory_` у Claude CLI): тогда в часть памяти добавляется инструкция.
+   * Без него — память только для чтения (Codex, Gemini CLI, предпросмотр).
+   */
+  memoryToolPrefix?: string;
 }
 
 export interface AgentContextResult {
@@ -45,15 +54,23 @@ export interface AgentContextResult {
 }
 
 export const DEFAULT_CONTEXT_MAX_CHARS = 6000;
+/** Своя доля памяти в бюджете контекста (decision-51 п. 6): память не вытесняет RAG. */
+export const MEMORY_CONTEXT_MAX_CHARS = 1500;
+/** Сколько фактов подмешивается целиком (остальные — строкой индекса). */
+export const MEMORY_CONTEXT_RELEVANT = 3;
+const MEMORY_CONTEXT_BODY_MAX = 600;
 const DEFAULT_RAG_LIMIT = 5;
 const PART_LABELS: Record<ContextPartKey, string> = {
   task: 'Текущая задача',
+  memory: 'Память проекта',
   rag: 'Релевантная документация',
   gitnexus: 'Связанный код (GitNexus)',
   git: 'Git-статус'
 };
 /** Порядок приоритета при обрезке — младшие обрезаются первыми. */
-const PART_PRIORITY: ContextPartKey[] = ['task', 'rag', 'gitnexus', 'git'];
+const PART_PRIORITY: ContextPartKey[] = ['task', 'memory', 'rag', 'gitnexus', 'git'];
+/** Потолок отдельных частей независимо от общего бюджета. */
+const PART_MAX_CHARS: Partial<Record<ContextPartKey, number>> = { memory: MEMORY_CONTEXT_MAX_CHARS };
 
 interface RawPart {
   key: ContextPartKey;
@@ -79,7 +96,39 @@ export function buildComputerUseInstructions(toolPrefix = 'computer_'): string {
   ].join('\n');
 }
 
-/** Чистая обрезка по бюджету символов — приоритет `task` > `rag` > `gitnexus` > `git`. */
+/**
+ * Текст части «Память проекта» (decision-51 п. 6): строки индекса — все факты по одной строке, от новых
+ * к старым; тела до `MEMORY_CONTEXT_RELEVANT` фактов, найденных по `query` (заголовок и описание задачи).
+ * Инструкция записи — только если у агента есть инструмент. Пустая память без инструмента — пустая строка.
+ */
+export function buildMemoryContextText(
+  facts: readonly MemoryEntry[],
+  query: string,
+  options: { toolPrefix?: string; relevant?: number; bodyMax?: number } = {}
+): string {
+  const { toolPrefix, relevant = MEMORY_CONTEXT_RELEVANT, bodyMax = MEMORY_CONTEXT_BODY_MAX } = options;
+  const lines: string[] = [];
+  const hits = query.trim() ? searchMemoryFacts(query, facts, relevant).map((h) => h.fact) : [];
+  if (hits.length > 0) {
+    lines.push('Относится к задаче:');
+    for (const f of hits) {
+      const body = f.body.length > bodyMax ? `${f.body.slice(0, bodyMax).trimEnd()}…` : f.body;
+      lines.push(`### ${f.id}: ${f.title}`, body, '');
+    }
+  }
+  const rest = [...facts].reverse().filter((f) => !hits.includes(f));
+  if (rest.length > 0) {
+    lines.push(hits.length > 0 ? 'Остальные факты (полный текст — memory_search или backlog/memory):' : 'Факты (полный текст — memory_search или backlog/memory):');
+    for (const f of rest) lines.push(`- ${f.id}: ${f.title} — ${f.description}`);
+  }
+  if (toolPrefix) {
+    if (facts.length === 0) lines.push('Память проекта пока пуста.');
+    lines.push('', buildMemoryInstructions(toolPrefix));
+  }
+  return lines.join('\n').trim();
+}
+
+/** Чистая обрезка по бюджету символов — приоритет `task` > `memory` > `rag` > `gitnexus` > `git`. */
 export function assembleContext(rawParts: RawPart[], maxChars: number): AgentContextResult {
   const byKey = new Map(rawParts.filter((p) => p.text.trim().length > 0).map((p) => [p.key, p.text.trim()]));
   const parts: ContextPart[] = [];
@@ -101,8 +150,10 @@ export function assembleContext(rawParts: RawPart[], maxChars: number): AgentCon
       continue;
     }
 
-    const fits = text.length <= budget;
-    const finalText = fits ? text : `${text.slice(0, budget).trimEnd()}\n…(обрезано)`;
+    const partCap = PART_MAX_CHARS[key];
+    const cappedBudget = partCap !== undefined ? Math.min(budget, partCap) : budget;
+    const fits = text.length <= cappedBudget;
+    const finalText = fits ? text : `${text.slice(0, cappedBudget).trimEnd()}\n…(обрезано)`;
     if (!fits) truncatedKeys.push(key);
 
     parts.push({ key, label, text: finalText });
@@ -122,22 +173,49 @@ function extractFileReferences(data: Record<string, unknown>): string[] {
     .slice(0, 8);
 }
 
-/** Собирает контекст агента для задачи `taskId` в проекте `projectPath`; без `taskId` возвращает пустой результат. */
+/** Часть памяти: best-effort, как и остальные источники. */
+async function collectMemory(projectPath: string, query: string, toolPrefix: string | undefined): Promise<RawPart | null> {
+  try {
+    const { facts } = await readMemory(projectPath);
+    const text = buildMemoryContextText(facts, query, { toolPrefix });
+    return text ? { key: 'memory', text } : null;
+  } catch (err) {
+    console.warn('[contextBuilder] memory read failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Собирает контекст агента для задачи `taskId` в проекте `projectPath`. Без задачи (или если файл задачи
+ * не найден) остаётся только память проекта — она нужна и свободной сессии (decision-51 п. 6).
+ */
 export async function buildAgentContext(options: AgentContextOptions): Promise<AgentContextResult> {
-  const { projectPath, taskId, enabledParts, maxChars = DEFAULT_CONTEXT_MAX_CHARS, ragLimit = DEFAULT_RAG_LIMIT, gitCwd = projectPath } = options;
+  const { projectPath, taskId, enabledParts, maxChars = DEFAULT_CONTEXT_MAX_CHARS, ragLimit = DEFAULT_RAG_LIMIT, gitCwd = projectPath, memoryToolPrefix } = options;
   const isEnabled = (key: ContextPartKey) => enabledParts?.[key] !== false;
   const rawParts: RawPart[] = [];
 
-  if (!taskId) return assembleContext(rawParts, maxChars);
+  const task = taskId
+    ? await findTaskFile(projectPath, taskId).catch((err) => {
+        console.warn('[contextBuilder] failed to read task file:', err);
+        return null;
+      })
+    : null;
 
-  const task = await findTaskFile(projectPath, taskId).catch((err) => {
-    console.warn('[contextBuilder] failed to read task file:', err);
-    return null;
-  });
-  if (!task) return assembleContext(rawParts, maxChars);
+  if (!task || !taskId) {
+    if (isEnabled('memory')) {
+      const memory = await collectMemory(projectPath, '', memoryToolPrefix);
+      if (memory) rawParts.push(memory);
+    }
+    return assembleContext(rawParts, maxChars);
+  }
 
   const { description, criteria } = parseTaskBody(task.content);
   const title = typeof task.data.title === 'string' ? task.data.title : taskId;
+
+  if (isEnabled('memory')) {
+    const memory = await collectMemory(projectPath, `${title} ${description}`, memoryToolPrefix);
+    if (memory) rawParts.push(memory);
+  }
 
   if (isEnabled('task')) {
     const acLines = criteria.map((c) => `- [${c.completed ? 'x' : ' '}] ${c.text}`).join('\n');

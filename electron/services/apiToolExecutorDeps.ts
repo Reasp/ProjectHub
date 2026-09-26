@@ -8,6 +8,8 @@ import { searchProjectDocs } from './ragSearch.js';
 import { ApiToolExecutor, type ApiToolExecutorDeps } from './apiToolExecutor.js';
 import { processManager } from './processManager.js';
 import type { ComputerOrigin } from './computerPolicy.js';
+import { callMemoryTool as runMemoryTool } from './memoryTools.js';
+import { memoryToolDeps } from './memoryToolDeps.js';
 
 /**
  * Боевые зависимости исполнителя API-инструментов Swarm и AI Studio (decision-46 п. 1, decision-47): единая
@@ -60,6 +62,25 @@ export function createApiToolExecutorDeps(): ApiToolExecutorDeps {
       const text = res.content.map((c) => (c.type === 'text' ? c.text : '')).filter(Boolean).join('\n');
       const images = res.content.flatMap((c) => (c.type === 'image' ? [{ mimeType: c.mimeType, data: c.data }] : []));
       return { content: text, isError: res.isError, images };
+    },
+    callMemoryTool: async (name, args, ctx) => {
+      // Память всегда в основном дереве проекта, даже если агент работает в worktree (decision-51 п. 3)
+      const res = await runMemoryTool(
+        name,
+        args,
+        {
+          sessionPath: ctx.projectPath,
+          sessionId: ctx.sessionId,
+          origin: ctx.origin,
+          engine: ctx.engine ?? 'api',
+          ...(ctx.agentId ? { agentId: ctx.agentId } : {}),
+          ...(ctx.agentName ? { agentName: ctx.agentName } : {}),
+          ...(ctx.role ? { role: ctx.role } : {}),
+          ...(ctx.taskId ? { taskId: ctx.taskId } : {})
+        },
+        memoryToolDeps
+      );
+      return { content: res.text, isError: res.isError };
     }
   };
 }

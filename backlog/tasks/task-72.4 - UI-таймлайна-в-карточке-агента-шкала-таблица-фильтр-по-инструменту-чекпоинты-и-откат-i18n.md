@@ -3,10 +3,10 @@ id: TASK-72.4
 title: >-
   UI таймлайна в карточке агента: шкала, таблица, фильтр по инструменту,
   чекпоинты и откат, i18n
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 11:12'
-updated_date: '2026-09-19 11:47'
+updated_date: '2026-09-26 13:22'
 labels:
   - swarm
   - ui

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import matter from 'gray-matter';
 import { PROJECT_ROOT } from './config.mjs';
+import { validateMemoryDir } from './memory-rules.mjs';
 
 // Документация (полный набор проверок: frontmatter, картинки, таблицы).
 const DOC_ROOTS = ['backlog/docs', 'backlog/decisions'];
@@ -162,6 +163,11 @@ function walkMarkdown(root, options) {
 for (const docRoot of DOC_ROOTS) walkMarkdown(docRoot, {});
 for (const fmRoot of FRONTMATTER_ONLY_ROOTS) walkMarkdown(fmRoot, { frontmatterOnly: true });
 for (const roleRoot of ROLE_ROOTS) walkMarkdown(roleRoot.path, { frontmatterOnly: true, requiredFields: roleRoot.requiredFields });
+// Память проекта (decision-51 п. 7): формат факта, секреты, соответствие индекса MEMORY.md файлам.
+for (const [relPath, errors] of validateMemoryDir(ROOT)) {
+  totalFilesChecked++;
+  reportFileResult(relPath, errors, []);
+}
 
 console.log(
   `\n📊 Проверено файлов: ${totalFilesChecked}, полей frontmatter: ${totalFrontmatterFieldsChecked}, изображений: ${totalImagesChecked}`

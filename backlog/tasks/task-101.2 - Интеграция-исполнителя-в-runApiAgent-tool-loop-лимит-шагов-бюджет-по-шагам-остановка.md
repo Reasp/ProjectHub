@@ -3,10 +3,10 @@ id: TASK-101.2
 title: >-
   Интеграция исполнителя в runApiAgent: tool-loop, лимит шагов, бюджет по шагам,
   остановка
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 12:30'
-updated_date: '2026-09-19 13:00'
+updated_date: '2026-09-26 13:22'
 labels:
   - swarm
   - hitl

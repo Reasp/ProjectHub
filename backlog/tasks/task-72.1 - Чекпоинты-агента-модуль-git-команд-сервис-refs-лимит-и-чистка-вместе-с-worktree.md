@@ -3,10 +3,10 @@ id: TASK-72.1
 title: >-
   Чекпоинты агента: модуль git-команд, сервис, refs, лимит и чистка вместе с
   worktree
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 11:12'
-updated_date: '2026-09-19 11:44'
+updated_date: '2026-09-26 13:22'
 labels:
   - swarm
   - git

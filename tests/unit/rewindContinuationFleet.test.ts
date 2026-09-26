@@ -64,7 +64,7 @@ function mockEngine(
 ): Call[] {
   const calls: Call[] = [];
   vi.spyOn(aiAgentService, 'streamChat').mockImplementation(async (req, onChunk, onComplete, _onError, options?: StreamChatOptions) => {
-    const call: Call = { prompt: String(req.messages[req.messages.length - 1].content), messages: req.messages.length, projectPath: req.projectPath ?? '' };
+    const call: Call = { prompt: String(req.messages[req.messages.length - 1].content), messages: req.messages.length, projectPath: req.workspaceRoot ?? req.projectPath ?? '' };
     calls.push(call);
     const step = plan(calls.length, call);
     options?.onToolBoundary?.({ kind: 'step', step: 0, model: 'm' });

@@ -222,6 +222,11 @@ export interface SwarmSession {
   judge?: JudgeState;
   /** Состояние цикла «до готовности» (режим `done_loop`, TASK-75). */
   doneLoop?: DoneLoopState;
+  /**
+   * Заметка хода в задаче (TASK-76, decision-51 п. 8): `false` — сессия была активна в этом процессе и
+   * заметка ещё не записана; `true` — записана. Без поля (сессии до TASK-76) заметка не пишется.
+   */
+  taskNoteWritten?: boolean;
   /** Продолжения после отката (decision-48 п. 4). */
   continuations?: SwarmContinuation[];
 }

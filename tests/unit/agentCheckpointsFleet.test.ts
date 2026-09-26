@@ -61,7 +61,7 @@ describe('AgentFleetService: чекпоинты по ходам и откат (T
     vi.spyOn(aiAgentService, 'streamChat').mockImplementation(async (req, onChunk, onComplete, _onError, options?: StreamChatOptions) => {
       call++;
       prompts.push(req.messages[req.messages.length - 1].content);
-      const wt = req.projectPath;
+      const wt = req.workspaceRoot ?? req.projectPath;
       const tool = async (id: string, file: string) => {
         await fs.writeFile(path.join(wt, file), file);
         onChunk({ toolCall: { id, name: 'write_file', args: { path: file } } });
@@ -165,7 +165,7 @@ describe('AgentFleetService: чекпоинты по ходам и откат (T
   it('без worktree чекпоинты создаются, а откат запрещён с понятной причиной', async () => {
     const fleet = new AgentFleetService(store, { checkpoints: new CheckpointService() });
     vi.spyOn(aiAgentService, 'streamChat').mockImplementation(async (req, onChunk, onComplete) => {
-      await fs.writeFile(path.join(req.projectPath, 'x.txt'), 'x');
+      await fs.writeFile(path.join(req.workspaceRoot ?? req.projectPath, 'x.txt'), 'x');
       onChunk({ text: 'ok' });
       onComplete({ id: 'm', role: 'assistant', content: 'ok', timestamp: new Date().toISOString() });
     });

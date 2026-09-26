@@ -367,7 +367,8 @@ export interface RagSearchResult {
   snippet: string;
   score: number;
   type: 'vector' | 'text';
-  category: 'doc' | 'decision' | 'task';
+  /** `memory` — факт памяти проекта из backlog/memory (TASK-76). */
+  category: 'doc' | 'decision' | 'task' | 'memory';
 }
 
 export interface LocalWhisperStatusInfo {
@@ -505,6 +506,52 @@ export interface TtsVoiceListItem {
   sizeBytes?: number;
   sampleRate?: number;
 }
+
+/** Память проекта (TASK-76, decision-51): факт из backlog/memory. */
+export type MemoryFactType = 'project' | 'feedback' | 'reference';
+
+export interface MemoryFactInfo {
+  id: string;
+  title: string;
+  description: string;
+  type: MemoryFactType;
+  created: string;
+  updated?: string;
+  source?: string;
+  author?: string;
+  body: string;
+  fileName: string;
+}
+
+export interface MemoryIssueInfo {
+  code: string;
+  field?: string;
+}
+
+export interface MemoryDraftInput {
+  title: string;
+  description: string;
+  body: string;
+  type: MemoryFactType;
+  source?: string;
+  author?: string;
+}
+
+export interface MemoryFailure {
+  ok: false;
+  error: string;
+  /** Код ошибки хранилища, формата или `invalid_project` — переводится в рендерере. */
+  errorCode?: string;
+  details?: { issues?: MemoryIssueInfo[]; secretKinds?: string[]; duplicateOf?: string; duplicateTitle?: string };
+}
+
+export type MemoryListResult =
+  | { ok: true; facts: MemoryFactInfo[]; invalid: Array<{ fileName: string; issues: MemoryIssueInfo[] }> }
+  | MemoryFailure;
+
+export type MemoryWriteResult = { ok: true; fact: MemoryFactInfo; replaced: boolean } | MemoryFailure;
+
+export type MemoryOperationResult = { ok: true } | MemoryFailure;
 
 export interface TtsStatusInfo {
   status: 'unloaded' | 'loading' | 'ready' | 'error' | 'unavailable';
@@ -930,6 +977,11 @@ export interface IElectronAPI {
   dictateVoiceText: (request: VoiceDictateRequest) => Promise<VoiceDictateResponse>;
   onPushToTalk: (callback: (event: PushToTalkEvent) => void) => () => void;
   onPushToTalkStatus: (callback: (status: PushToTalkStatus) => void) => () => void;
+
+  // Память проекта (TASK-76, decision-51)
+  listMemory: (projectPath: string) => Promise<MemoryListResult>;
+  writeMemory: (projectPath: string, draft: MemoryDraftInput, replace?: string) => Promise<MemoryWriteResult>;
+  deleteMemory: (projectPath: string, id: string) => Promise<MemoryOperationResult>;
 
   // Локальный TTS на голосах Piper (TASK-69)
   getTtsStatus: () => Promise<TtsStatusInfo>;
@@ -1560,7 +1612,7 @@ export interface ProviderErrorInfo {
 
 /** Диалог AI Studio; хранится файлом `~/.projecthub/sessions/<hash(projectPath)>/<id>.json` (TASK-35). */
 /** Части контекста агента (TASK-64) — что показывает `ContextAppliedCard` и что можно отключить на сессию. */
-export type ContextPartKey = 'task' | 'rag' | 'gitnexus' | 'git';
+export type ContextPartKey = 'task' | 'memory' | 'rag' | 'gitnexus' | 'git';
 
 /** Результат `contextBuilder.buildAgentContext` (main) — зеркало `AgentContextResult` для превью в AI Studio. */
 export interface AgentContextPreview {

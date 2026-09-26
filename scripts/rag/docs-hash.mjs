@@ -5,7 +5,9 @@ import crypto from 'node:crypto';
 // Где искать документацию для индекса. Код — сюда не входит, это отдельно от GitNexus.
 // Намеренно без отдельной верхнеуровневой docs/ — вся документация живёт внутри backlog/
 // (backlog/docs/, backlog/decisions/), рядом с задачами, а не параллельно им.
-export const DOC_ROOTS = ['backlog/docs', 'backlog/decisions'];
+export const DOC_ROOTS = ['backlog/docs', 'backlog/decisions', 'backlog/memory'];
+// Индекс памяти генерируется из фактов и дублировал бы их в поиске (decision-51 п. 7).
+const SKIP_FILES = new Set(['backlog/memory/MEMORY.md']);
 
 export function collectMarkdownFiles(root) {
   const files = [];
@@ -15,7 +17,8 @@ export function collectMarkdownFiles(root) {
     for (const entry of fs.readdirSync(abs, { recursive: true, withFileTypes: true })) {
       if (entry.isFile() && entry.name.endsWith('.md')) {
         const full = path.join(entry.parentPath ?? entry.path, entry.name);
-        files.push(path.relative(root, full).split(path.sep).join('/'));
+        const rel = path.relative(root, full).split(path.sep).join('/');
+        if (!SKIP_FILES.has(rel)) files.push(rel);
       }
     }
   }

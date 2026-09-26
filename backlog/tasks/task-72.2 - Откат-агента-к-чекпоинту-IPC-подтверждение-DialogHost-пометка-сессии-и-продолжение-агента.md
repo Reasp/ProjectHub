@@ -3,10 +3,10 @@ id: TASK-72.2
 title: >-
   Откат агента к чекпоинту: IPC, подтверждение DialogHost, пометка сессии и
   продолжение агента
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-19 11:12'
-updated_date: '2026-09-19 11:46'
+updated_date: '2026-09-26 13:22'
 labels:
   - swarm
   - git
