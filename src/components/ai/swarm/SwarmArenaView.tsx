@@ -64,6 +64,8 @@ import { chainLinkLabel } from '../../../lib/modelTierEditor';
 import { AdviceText } from '../ProviderErrorCard';
 import { AgentTimelinePanel } from './AgentTimelinePanel';
 import { CheckArtifactsGallery } from './CheckArtifactsGallery';
+import { SlotSecurityPanel } from './SlotSecurityPanel';
+import { useHitlStore } from '../../../store/useHitlStore';
 import { continueDialogText, pendingContinueAgent } from '../../../lib/rewindContinueView';
 
 /** Вкладки карточки кандидата: к выводу/логам/диффу добавлены проверки и ревью судьи (TASK-61), таймлайн (TASK-72). */
@@ -503,6 +505,25 @@ export const SwarmArenaView: React.FC = () => {
               <div className="px-3 py-2 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-lg text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{currentSwarm.error}</span>
+              </div>
+            )}
+
+            {/* Слияние ждёт решения человека: секреты или новые зависимости (TASK-73.4, decision-56 п. 7) */}
+            {currentSwarm.pendingMergeApproval && (
+              <div
+                className="px-3 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded-lg text-xs flex items-center justify-between gap-2"
+                data-testid="merge-approval-pending"
+              >
+                <span className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {t.security.mergeNeedsApproval}
+                </span>
+                <button
+                  onClick={() => useHitlStore.getState().openCenter('queue')}
+                  className="px-2 py-1 rounded-md border border-amber-500/40 hover:bg-amber-500/20 text-amber-200 shrink-0"
+                >
+                  {t.hitl.title}
+                </button>
               </div>
             )}
 
@@ -978,6 +999,8 @@ ${t.swarm.estimatedUsageTooltip}` : '')}
                           )}
                         </div>
                       </div>
+
+                      <SlotSecurityPanel security={agent.security} />
 
                       {/* Tabs Header */}
                       <div className="flex border-b border-border/60 bg-secondary/10 px-4">

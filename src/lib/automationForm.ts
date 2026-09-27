@@ -20,7 +20,9 @@ export const AUTOMATION_EVENTS: AutomationEventTrigger[] = [
 ];
 
 export type AutomationActionType = AutomationAction['type'];
-export const AUTOMATION_ACTIONS: AutomationActionType[] = ['runAgent', 'runChecks', 'reindexDocs', 'notify', 'projectAction', 'reviewPr'];
+export const AUTOMATION_ACTIONS: AutomationActionType[] = ['runAgent', 'runChecks', 'reindexDocs', 'notify', 'projectAction', 'reviewPr', 'auditDependencies'];
+export const AUDIT_MIN_SEVERITIES = ['critical', 'high', 'moderate', 'low', 'info'] as const;
+export type AuditMinSeverity = (typeof AUDIT_MIN_SEVERITIES)[number];
 
 export interface AutomationFormState {
   id: string;
@@ -53,6 +55,8 @@ export interface AutomationFormState {
   verifier: string;
   publish: 'hitl' | 'manual';
   includeDrafts: boolean;
+  /** Аудит зависимостей (TASK-73): порог новых находок для уведомления. */
+  minSeverity: AuditMinSeverity;
   cooldownMin: string;
   maxRunsPerDay: string;
   dailyBudgetUsd: string;
@@ -89,6 +93,7 @@ export function emptyAutomationForm(): AutomationFormState {
     verifier: '',
     publish: 'hitl',
     includeDrafts: false,
+    minSeverity: 'high',
     cooldownMin: '10',
     maxRunsPerDay: '20',
     dailyBudgetUsd: ''
@@ -174,6 +179,8 @@ export function formFromRule(rule: AutomationRule): AutomationFormState {
     form.notifyBody = a.body ?? '';
   } else if (a.type === 'projectAction') {
     form.actionId = a.actionId;
+  } else if (a.type === 'auditDependencies') {
+    form.minSeverity = a.minSeverity;
   } else if (a.type === 'reviewPr') {
     Object.assign(form, {
       reviewers: [...a.reviewers],
@@ -207,6 +214,8 @@ function actionFromForm(form: AutomationFormState): AutomationRuleInput['action'
     }
     case 'reindexDocs':
       return { type: 'reindexDocs' };
+    case 'auditDependencies':
+      return { type: 'auditDependencies', minSeverity: form.minSeverity };
     case 'notify':
       return { type: 'notify', title: form.notifyTitle.trim(), ...(form.notifyBody.trim() ? { body: form.notifyBody.trim() } : {}) };
     case 'projectAction':

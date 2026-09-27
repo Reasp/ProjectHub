@@ -38,6 +38,7 @@ import { useToast, useTimers } from '../../hooks/useTimeoutState';
 import { generateCommitMessage } from '../../services/aiAssistantService';
 import { SplitDiffViewer } from './SplitDiffViewer';
 import { WorktreePanel } from './WorktreePanel';
+import { formatSecretFindings } from '../../utils/securityFormat';
 
 // ─── File Status Badge ────────────────────────────────────────────────────────
 
@@ -238,11 +239,28 @@ export const GitInspector: React.FC = () => {
     const msg = commitMessage.trim();
     if (!msg) return;
     setIsCommitting(true);
-    const ok = await gitCommit(msg, false);
+    let result = await gitCommit(msg, false);
+    // Сканер секретов в main отклонил коммит (decision-56 п. 4): показать находки и спросить человека.
+    if (!result.ok && result.reason === 'secrets') {
+      const confirmed = await dialog.confirm({
+        title: t.security.commitBlockedTitle,
+        message: t.security.commitBlockedMessage.replace('{list}', formatSecretFindings(result.findings, t)),
+        confirmText: t.security.commitAnyway,
+        danger: true
+      });
+      result = confirmed ? await gitCommit(msg, false, result.treeHash) : result;
+      if (!confirmed) {
+        setIsCommitting(false);
+        return;
+      }
+    }
     setIsCommitting(false);
-    if (ok) {
+    if (result.ok) {
       setCommitMessage('');
-      showSuccess(t.git.commitSuccess);
+      showSuccess(result.overridden ? t.security.commitOverridden : t.git.commitSuccess);
+    } else if (result.reason === 'secrets') {
+      // Индекс изменился между отказом и подтверждением — новая проверка нашла находки снова.
+      showError(t.security.commitBlockedTitle);
     } else {
       showError(t.git.commitError);
     }

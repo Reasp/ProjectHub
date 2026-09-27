@@ -17,6 +17,7 @@ import { registerTtsIpc } from './ttsIpc';
 import { registerMemoryIpc } from './memoryIpc';
 import { registerAutomationsIpc } from './automationsIpc';
 import { registerPrReviewIpc } from './prReviewIpc';
+import { registerSecurityIpc } from './securityIpc';
 
 export type { IpcContext } from './types';
 
@@ -39,4 +40,5 @@ export function registerAllIpc(ctx: IpcContext) {
   registerMemoryIpc();
   registerAutomationsIpc(ctx);
   registerPrReviewIpc(ctx);
+  registerSecurityIpc();
 }

@@ -33,6 +33,8 @@ export interface ReviewerPromptInput {
   diffSummary?: { filesChanged: number; insertions: number; deletions: number };
   checks: CheckRunResult[];
   diffMaxChars?: number;
+  /** Секреты и изменения зависимостей по данным ProjectHub (decision-56 п. 6) — без значений секретов. */
+  securitySummary?: string;
 }
 
 function truncateDiff(patch: string, maxChars: number): { text: string; truncated: boolean } {
@@ -77,6 +79,10 @@ export function buildReviewerPrompt(input: ReviewerPromptInput): string {
       .map((c) => `- ${c.name} (${c.kind}${c.blocking ? ', блокирующая' : ''}): ${summarizeCheckResult(c)}`)
       .join('\n');
     sections.push(`## Результаты проверок в worktree кандидата\n${lines}`);
+  }
+
+  if (input.securitySummary) {
+    sections.push(`## Безопасность диффа (проверка ProjectHub)\n${input.securitySummary}`);
   }
 
   const summary = input.diffSummary

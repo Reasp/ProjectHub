@@ -36,6 +36,7 @@ import type {
   TtsErrorPayload,
   MemoryDraftInput,
   AutomationRuleInput,
+  SecuritySettings,
   AutomationsSettings,
   PrReviewStartOptions
 } from '../src/types/electron';
@@ -199,8 +200,8 @@ const api: IElectronAPI = {
     ipcRenderer.invoke('git:unstageFile', projectPath, filePath),
   stageAll: (projectPath: string) =>
     ipcRenderer.invoke('git:stageAll', projectPath),
-  commitChanges: (projectPath: string, message: string, stageAll?: boolean) =>
-    ipcRenderer.invoke('git:commit', projectPath, message, stageAll),
+  commitChanges: (projectPath: string, message: string, stageAll?: boolean, acknowledgeSecrets?: string) =>
+    ipcRenderer.invoke('git:commit', projectPath, message, stageAll, acknowledgeSecrets),
   getFileDiff: (projectPath: string, filePath: string, staged?: boolean) =>
     ipcRenderer.invoke('git:getFileDiff', projectPath, filePath, staged),
   onGitChanged: (callback: (data: { projectPath: string }) => void) => {
@@ -492,6 +493,20 @@ const api: IElectronAPI = {
     ipcRenderer.on('automations:changed', handler);
     return () => {
       ipcRenderer.removeListener('automations:changed', handler);
+    };
+  },
+
+  // Security Health (TASK-73, decision-56): аудит зависимостей, задача из находки, настройки
+  getSecurityReport: (projectPath: string) => ipcRenderer.invoke('security:getReport', projectPath),
+  runSecurityAudit: (projectPath: string) => ipcRenderer.invoke('security:runAudit', projectPath),
+  createSecurityTask: (projectPath: string, ecosystem: string, pkg: string) => ipcRenderer.invoke('security:createTask', projectPath, ecosystem, pkg),
+  getSecuritySettings: () => ipcRenderer.invoke('security:getSettings'),
+  saveSecuritySettings: (patch: Partial<SecuritySettings>) => ipcRenderer.invoke('security:saveSettings', patch),
+  onSecurityReportUpdated: (callback: (projectPath: string) => void) => {
+    const handler = (_event: IpcRendererEvent, projectPath: string) => callback(projectPath);
+    ipcRenderer.on('security:reportUpdated', handler);
+    return () => {
+      ipcRenderer.removeListener('security:reportUpdated', handler);
     };
   },
 

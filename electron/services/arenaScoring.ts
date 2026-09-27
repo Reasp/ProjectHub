@@ -5,6 +5,8 @@
  * у которых нет абсолютной шкалы (размер диффа, стоимость, время), нормализуются относительно
  * когорты: лучший кандидат получает 1, худший — 0. Единственный блокирующий критерий — статус
  * блокирующих проверок: заблокированный кандидат не может быть рекомендован, каким бы ни был балл.
+ * Компонент `security` (decision-56 п. 6) — абсолютный, не когортный: секреты в диффе дают 0, пакет с флагом риска — 0.5;
+ * он не блокирует рекомендацию, но запрещает авто-мердж вместе с любыми изменениями зависимостей.
  *
  * Чистый модуль без Electron и IO — покрыт unit-тестами.
  */
@@ -30,7 +32,8 @@ export const DEFAULT_SCORE_WEIGHTS: ScoreWeights = {
   diffSize: 8,
   locality: 6,
   cost: 4,
-  time: 2
+  time: 2,
+  security: 10
 };
 
 export const SCORE_COMPONENT_KEYS: ScoreComponentKey[] = [
@@ -40,7 +43,8 @@ export const SCORE_COMPONENT_KEYS: ScoreComponentKey[] = [
   'diffSize',
   'locality',
   'cost',
-  'time'
+  'time',
+  'security'
 ];
 
 /** Нейтральная оценка компонента, по которому нет данных: не наказывает и не награждает. */
@@ -77,6 +81,17 @@ export interface CandidateScoreInput {
   };
   costUsd?: number;
   durationMs?: number;
+  /** Безопасность диффа кандидата (decision-56 п. 5); без поля — скана не было. */
+  security?: CandidateSecurityInput;
+}
+
+export interface CandidateSecurityInput {
+  /** Находок секретов в добавленных строках (после исключений). */
+  secrets: number;
+  /** Пакетов с флагом риска registry: not_found, recent, young, deprecated. */
+  riskyDependencies: number;
+  /** Добавленных и изменённых зависимостей — любые требуют человека при слиянии. */
+  dependencyChanges: number;
 }
 
 /** Сводка по когорте: максимумы, относительно которых нормализуются «чем меньше, тем лучше». */
@@ -165,6 +180,30 @@ export function reviewScore(input: CandidateScoreInput): { normalized: number; k
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/** Оценка безопасности: 1 — чисто, 0 — секреты, 0.5 — пакет с флагом риска; без скана — нейтральная. */
+export function securityScore(security: CandidateSecurityInput | undefined): { normalized: number; known: boolean; detail: string } {
+  if (!security) return { normalized: UNKNOWN_NORMALIZED, known: false, detail: 'дифф на секреты и зависимости не проверялся' };
+  if (security.secrets > 0) {
+    return { normalized: 0, known: true, detail: `секретов в диффе: ${security.secrets}` };
+  }
+  if (security.riskyDependencies > 0) {
+    return { normalized: 0.5, known: true, detail: `пакетов с флагом риска: ${security.riskyDependencies}` };
+  }
+  return {
+    normalized: 1,
+    known: true,
+    detail: security.dependencyChanges > 0 ? `секретов нет, изменений зависимостей: ${security.dependencyChanges}` : 'секретов и новых зависимостей нет'
+  };
+}
+
+/** Почему авто-мердж кандидата невозможен по безопасности; `undefined` — препятствий нет. */
+export function securityAutoMergeBlock(security: CandidateSecurityInput | undefined): string | undefined {
+  if (!security) return undefined;
+  if (security.secrets > 0) return `В диффе найдены секреты (${security.secrets}) — нужно решение человека`;
+  if (security.dependencyChanges > 0) return `Изменены зависимости (${security.dependencyChanges}) — нужно решение человека`;
+  return undefined;
 }
 
 /** Сумма весов: балл всегда приводится к шкале 0..100, как бы пользователь ни задал веса. */
@@ -278,6 +317,12 @@ export function computeCandidateScore(
     { raw: hasTime ? (input.durationMs as number) : undefined, unknown: !hasTime }
   );
 
+  const security = securityScore(input.security);
+  push('security', security.normalized, security.detail, {
+    ...(input.security ? { raw: input.security.secrets } : {}),
+    unknown: !security.known
+  });
+
   const weightSum = totalWeight(w);
   const points = components.reduce((acc, c) => acc + c.points, 0);
   const total = weightSum > 0 ? round2((points / weightSum) * 100) : 0;
@@ -336,7 +381,8 @@ export function recommendCandidate(scores: CandidateScore[]): { agentId?: string
 export function autoMergeDecision(
   scores: CandidateScore[],
   checksByAgent: Record<string, CheckRunResult[]>,
-  config: { enabled: boolean; minScore: number }
+  config: { enabled: boolean; minScore: number },
+  securityByAgent: Record<string, CandidateSecurityInput | undefined> = {}
 ): { allowed: boolean; agentId?: string; reason: string } {
   if (!config.enabled) return { allowed: false, reason: 'Авто-мердж выключен в настройках проекта' };
   const { agentId, reason } = recommendCandidate(scores);
@@ -355,5 +401,7 @@ export function autoMergeDecision(
   if (failed.length > 0) {
     return { allowed: false, agentId, reason: `Проверки не зелёные: ${failed.map((c) => c.name).join(', ')}` };
   }
+  const securityBlock = securityAutoMergeBlock(securityByAgent[agentId]);
+  if (securityBlock) return { allowed: false, agentId, reason: securityBlock };
   return { allowed: true, agentId, reason: `Балл ${score.total} ≥ порога ${config.minScore}, все проверки зелёные` };
 }

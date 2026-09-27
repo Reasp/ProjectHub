@@ -10,7 +10,8 @@ export type WorkspaceTabId =
   | 'analytics'
   | 'ai'
   | 'claude-cli'
-  | 'processes';
+  | 'processes'
+  | 'security';
 
 export interface TabConfigItem {
   id: WorkspaceTabId;
@@ -27,7 +28,8 @@ export const ALL_WORKSPACE_TAB_IDS: WorkspaceTabId[] = [
   'analytics',
   'ai',
   'claude-cli',
-  'processes'
+  'processes',
+  'security'
 ];
 
 export const DEFAULT_TABS_CONFIG: TabConfigItem[] = ALL_WORKSPACE_TAB_IDS.map((id) => ({

@@ -373,6 +373,7 @@ export interface TranslationDictionary {
       studio: string;
       claudeCli: string;
       processes: string;
+      security: string;
       code: string;
       folder: string;
       terminal: string;
@@ -449,6 +450,7 @@ export interface TranslationDictionary {
     ai: string;
     claudeCli: string;
     processes: string;
+    security: string;
     more: string;
     customize: string;
     hideTab: string;
@@ -814,6 +816,54 @@ export interface TranslationDictionary {
     createError: string;
     placeholderText: string;
   };
+  /** Security Health (TASK-73, decision-56): вкладка проекта, коммит с секретом, безопасность слота Swarm. */
+  security: {
+    title: string;
+    lastRun: string;
+    neverRun: string;
+    networkNote: string;
+    runAudit: string;
+    running: string;
+    registryLookups: string;
+    registryLookupsHint: string;
+    auditDone: string;
+    taskCreated: string;
+    taskExists: string;
+    emptyHint: string;
+    noManifests: string;
+    dependencies: string;
+    stale: string;
+    transitive: string;
+    direct: string;
+    via: string;
+    fix: string;
+    fixMajor: string;
+    noFix: string;
+    moreAdvisories: string;
+    createTask: string;
+    severity: Record<'critical' | 'high' | 'moderate' | 'low' | 'info' | 'unknown', string>;
+    status: Record<'vulnerable' | 'clean' | 'no_lockfile' | 'not_installed' | 'unsupported' | 'error', string>;
+    envFile: string;
+    commitBlockedTitle: string;
+    commitBlockedMessage: string;
+    commitAnyway: string;
+    commitOverridden: string;
+    slotTitle: string;
+    slotClean: string;
+    slotNotScanned: string;
+    slotSecrets: string;
+    slotSuppressed: string;
+    slotTruncated: string;
+    slotDependencies: string;
+    slotLock: string;
+    slotPublished: string;
+    slotNotQueried: string;
+    slotLookupsOff: string;
+    slotRemoved: string;
+    slotChanged: string;
+    slotFlags: Record<'not_found' | 'recent' | 'young' | 'deprecated', string>;
+    mergeNeedsApproval: string;
+  };
   /** Память проекта (TASK-76, decision-51): раздел во вкладке документов. */
   prReview: {
     tab: string;
@@ -913,7 +963,7 @@ export interface TranslationDictionary {
       | 'device.connected',
       string
     >;
-    actions: Record<'runAgent' | 'runChecks' | 'reindexDocs' | 'notify' | 'projectAction' | 'reviewPr', string>;
+    actions: Record<'runAgent' | 'runChecks' | 'reindexDocs' | 'notify' | 'projectAction' | 'reviewPr' | 'auditDependencies', string>;
     actionRole: string;
     actionDoneLoop: string;
     actionProject: string;
@@ -960,6 +1010,8 @@ export interface TranslationDictionary {
       checkIdsHint: string;
       notifyTitle: string;
       notifyBody: string;
+      minSeverity: string;
+      minSeverityHint: string;
       actionId: string;
       actionIdHint: string;
       reviewers: string;
@@ -1618,6 +1670,7 @@ export interface TranslationDictionary {
     componentLocality: string;
     componentCost: string;
     componentTime: string;
+    componentSecurity: string;
     componentUnknown: string;
     checksTab: string;
     reviewTab: string;
@@ -2282,7 +2335,8 @@ export interface TranslationDictionary {
       | 'deviceConnected'
       | 'modelFallback'
       | 'automation'
-      | 'prReview',
+      | 'prReview'
+      | 'securityFinding',
       string
     >;
     osActionsUnsupported: string;

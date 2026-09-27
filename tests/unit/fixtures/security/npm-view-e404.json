@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "E404",
+    "summary": "Not Found - GET https://registry.npmjs.org/definitely-not-a-real-pkg-ph73zz - Not found",
+    "detail": "'definitely-not-a-real-pkg-ph73zz@1.0.0' is not in this registry.\n\nNote that you can also install from a\ntarball, folder, http url, or git url."
+  }
+}

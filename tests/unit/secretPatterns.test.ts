@@ -17,6 +17,7 @@ describe('detectSecrets — находит', () => {
     ['AWS', 'AKIAIOSFODNN7EXAMPLE', 'aws_key'],
     ['Google API', 'AIzaSyA0123456789abcdefghijklmnopqrstuv', 'google_key'],
     ['Hugging Face', 'hf_abcdefghijklmnopqrstuvwxyz012345', 'huggingface_token'],
+    ['токен Telegram-бота', 'BOT=1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsawQ', 'telegram_token'],
     ['приватный ключ', '-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaA==', 'private_key'],
     ['RSA-ключ', '-----BEGIN RSA PRIVATE KEY-----', 'private_key'],
     ['JWT', 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U', 'jwt'],

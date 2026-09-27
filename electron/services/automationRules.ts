@@ -34,7 +34,7 @@ export type AutomationEventTrigger = (typeof AUTOMATION_EVENT_TRIGGERS)[number];
 /** Внутренний триггер встроенного правила назначенных задач: любое изменение файла задачи. */
 export type AutomationEventKind = AutomationEventTrigger | 'task.updated';
 
-export const AUTOMATION_ACTION_TYPES = ['runAgent', 'runChecks', 'reindexDocs', 'notify', 'projectAction', 'reviewPr'] as const;
+export const AUTOMATION_ACTION_TYPES = ['runAgent', 'runChecks', 'reindexDocs', 'notify', 'projectAction', 'reviewPr', 'auditDependencies'] as const;
 export type AutomationActionType = (typeof AUTOMATION_ACTION_TYPES)[number];
 
 /** Глубже этой цепочки «запуск → событие → запуск» автоматизации не идут. */
@@ -106,6 +106,11 @@ const ActionSchema = z.discriminatedUnion('type', [
     budgetUsd: z.number().positive().optional(),
     publish: z.enum(['hitl', 'manual']).default('hitl'),
     includeDrafts: z.boolean().default(false)
+  }),
+  /** Аудит зависимостей проекта (TASK-73, decision-56 п. 8): новые находки не ниже порога — событие `security:finding`. */
+  z.object({
+    type: z.literal('auditDependencies'),
+    minSeverity: z.enum(['critical', 'high', 'moderate', 'low', 'info']).default('high')
   })
 ]);
 

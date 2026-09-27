@@ -17,7 +17,7 @@ import { ProviderProfileSelect, useLlmProfiles } from '../ProviderProfileSelect'
  * infra-dev (decision-17): иначе `backdrop-filter` предков заперло бы её за интерфейсом.
  */
 
-const WEIGHT_KEYS: ScoreComponentKey[] = ['checks', 'acceptance', 'review', 'diffSize', 'locality', 'cost', 'time'];
+const WEIGHT_KEYS: ScoreComponentKey[] = ['checks', 'acceptance', 'review', 'diffSize', 'locality', 'cost', 'time', 'security'];
 
 /** Дубликат `DEFAULT_SCORE_WEIGHTS` из main для кнопки сброса — рендерер не тянет код main. */
 const DEFAULT_WEIGHTS: ScoreWeights = {
@@ -27,7 +27,8 @@ const DEFAULT_WEIGHTS: ScoreWeights = {
   diffSize: 8,
   locality: 6,
   cost: 4,
-  time: 2
+  time: 2,
+  security: 10
 };
 
 interface ArenaSettingsModalProps {

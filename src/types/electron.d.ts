@@ -804,7 +804,8 @@ export interface IElectronAPI {
   stageFile: (projectPath: string, filePath: string) => Promise<boolean>;
   unstageFile: (projectPath: string, filePath: string) => Promise<boolean>;
   stageAll: (projectPath: string) => Promise<boolean>;
-  commitChanges: (projectPath: string, message: string, stageAll?: boolean) => Promise<boolean>;
+  /** Коммит проверяется сканером секретов (decision-56 п. 4); `acknowledgeSecrets` — хэш индекса из отказа. */
+  commitChanges: (projectPath: string, message: string, stageAll?: boolean, acknowledgeSecrets?: string) => Promise<GitCommitResult>;
   getFileDiff: (projectPath: string, filePath: string, staged?: boolean) => Promise<string>;
   onGitChanged: (callback: (data: { projectPath: string }) => void) => () => void;
   getGitLog: (projectPath: string, maxCount?: number) => Promise<GitCommit[]>;
@@ -1007,6 +1008,14 @@ export interface IElectronAPI {
   getAutomationLog: (limit?: number) => Promise<AutomationLogEntry[]>;
   updateAutomationSettings: (patch: Partial<AutomationsSettings>) => Promise<AutomationsSettings>;
   onAutomationsChanged: (callback: () => void) => () => void;
+
+  // Security Health (TASK-73, decision-56)
+  getSecurityReport: (projectPath: string) => Promise<{ ok: boolean; report: SecurityReport | null; running: boolean; error?: string }>;
+  runSecurityAudit: (projectPath: string) => Promise<{ ok: true; report: SecurityReport; newFindings: number } | { ok: false; error: string }>;
+  createSecurityTask: (projectPath: string, ecosystem: AuditEcosystem, pkg: string) => Promise<{ ok: true; taskId: string; existed: boolean } | { ok: false; error: string }>;
+  getSecuritySettings: () => Promise<SecuritySettings>;
+  saveSecuritySettings: (patch: Partial<SecuritySettings>) => Promise<SecuritySettings>;
+  onSecurityReportUpdated: (callback: (projectPath: string) => void) => () => void;
 
   // Память проекта (TASK-76, decision-51)
   listMemory: (projectPath: string) => Promise<MemoryListResult>;
@@ -1537,6 +1546,22 @@ export type AppBusEvent =
       publish: 'pending' | 'manual' | 'none';
       error?: string;
       at: number;
+    }
+  /** Security Health: новые находки аудита, секреты или рискованные пакеты в слоте Swarm (decision-56 п. 10). */
+  | {
+      type: 'security:finding';
+      projectPath: string;
+      source: 'audit' | 'secrets' | 'dependencies';
+      severity: 'critical' | 'high' | 'moderate' | 'low' | 'info' | 'unknown';
+      title: string;
+      /** Сводка без значений секретов: уровни и пакеты, виды и файлы. */
+      summary: string;
+      count: number;
+      /** Ключ дедупликации: набор advisory или агент и состояние его диффа. */
+      key: string;
+      swarmId?: string;
+      agentId?: string;
+      at: number;
     };
 
 /** Поля PR в событиях опроса (TASK-81). */
@@ -1652,7 +1677,8 @@ export type AutomationAction =
   | { type: 'reindexDocs' }
   | { type: 'notify'; title: string; body?: string }
   | { type: 'projectAction'; actionId: string }
-  | { type: 'reviewPr'; reviewers: string[]; verifier?: string; budgetUsd?: number; publish: 'hitl' | 'manual'; includeDrafts: boolean };
+  | { type: 'reviewPr'; reviewers: string[]; verifier?: string; budgetUsd?: number; publish: 'hitl' | 'manual'; includeDrafts: boolean }
+  | { type: 'auditDependencies'; minSeverity: 'critical' | 'high' | 'moderate' | 'low' | 'info' };
 
 export interface AutomationLimits {
   cooldownMin: number;
@@ -1756,7 +1782,8 @@ export type NotificationKind =
   | 'deviceConnected'
   | 'modelFallback'
   | 'automation'
-  | 'prReview';
+  | 'prReview'
+  | 'securityFinding';
 
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'critical';
 
@@ -1767,6 +1794,7 @@ export type NotificationAction =
   | { type: 'openPrs'; projectPath?: string; url?: string }
   | { type: 'openRemote' }
   | { type: 'openAutomations'; projectPath?: string }
+  | { type: 'openSecurity'; projectPath?: string }
   | { type: 'openApp' };
 
 export interface AppNotification {
@@ -2277,7 +2305,7 @@ export interface CheckRunResult {
   artifactsTruncated?: boolean;
 }
 
-export type ScoreComponentKey = 'checks' | 'acceptance' | 'review' | 'diffSize' | 'locality' | 'cost' | 'time';
+export type ScoreComponentKey = 'checks' | 'acceptance' | 'review' | 'diffSize' | 'locality' | 'cost' | 'time' | 'security';
 export type ScoreWeights = Record<ScoreComponentKey, number>;
 
 export interface ScoreComponent {
@@ -2424,6 +2452,8 @@ export interface AgentSlotState {
   cliSessionId?: string;
   /** Результаты проверок автосудьи (TASK-61). */
   checks?: CheckRunResult[];
+  /** Секреты и изменения зависимостей в диффе кандидата (TASK-73, decision-56 п. 5). */
+  security?: AgentSlotSecurity;
   score?: CandidateScore;
   review?: ReviewerVerdict;
   /** Провайдер, с которым агент реально работал (API-движок, decision-40) — для экспорта и UI. */
@@ -2762,6 +2792,7 @@ export interface SwarmSession {
   handoffStages?: HandoffStageState[];
   currentHandoffStageIndex?: number;
   winnerAgentId?: string;
+  pendingMergeApproval?: { requestId: string; agentIds: string[]; since: number };
   error?: string;
   budgetUsd?: number;
   totalCostUsd?: number;
@@ -2992,10 +3023,115 @@ export interface SwarmTranscript {
 
 export type SwarmExportFormat = 'markdown' | 'json';
 
+// ─────────── Security Health (TASK-73, decision-56) — зеркало electron/services/dependencyAudit.ts, securityHealthService.ts ───────────
 
+export type AuditSeverity = 'critical' | 'high' | 'moderate' | 'low' | 'info' | 'unknown';
+export type AuditEcosystem = 'npm' | 'pip' | 'yarn' | 'pnpm' | 'cargo';
+export type AuditRunStatus = 'done' | 'no_lockfile' | 'not_installed' | 'unsupported' | 'error';
+export type SeverityCounts = Record<AuditSeverity, number>;
 
+export interface AuditAdvisory {
+  id: string;
+  title: string;
+  url?: string;
+  severity: AuditSeverity;
+  range?: string;
+  fixVersions?: string[];
+  aliases?: string[];
+}
 
+export interface AuditFinding {
+  ecosystem: AuditEcosystem;
+  package: string;
+  version?: string;
+  severity: AuditSeverity;
+  direct?: boolean;
+  advisories: AuditAdvisory[];
+  via?: string[];
+  range?: string;
+  fix?: { available: boolean; name?: string; version?: string; major?: boolean };
+}
 
+export interface EcosystemReport {
+  ecosystem: AuditEcosystem;
+  manifest?: string;
+  status: AuditRunStatus;
+  errorKind?: 'network' | 'timeout' | 'format' | 'tool';
+  message?: string;
+  findings: AuditFinding[];
+  counts: SeverityCounts;
+  dependencyCount?: number;
+  ranAt: number;
+  durationMs?: number;
+  stale?: boolean;
+  staleSince?: number;
+}
 
+export interface SecurityReport {
+  version: number;
+  projectPath: string;
+  ranAt?: number;
+  durationMs?: number;
+  ecosystems: EcosystemReport[];
+  counts: SeverityCounts;
+  tasks: Record<string, string>;
+}
 
+export interface SecuritySettings {
+  version: number;
+  registryLookups: boolean;
+}
 
+export type DiffSecretKind =
+  | 'provider_key'
+  | 'github_token'
+  | 'slack_token'
+  | 'aws_key'
+  | 'google_key'
+  | 'huggingface_token'
+  | 'telegram_token'
+  | 'private_key'
+  | 'jwt'
+  | 'url_password'
+  | 'bearer_token'
+  | 'assigned_secret'
+  | 'env_file';
+
+export interface DiffSecretFinding {
+  kind: DiffSecretKind;
+  file: string;
+  line?: number;
+}
+
+export type DependencyRiskFlag = 'not_found' | 'recent' | 'young' | 'deprecated';
+
+export interface DependencyChange {
+  ecosystem: 'npm' | 'pip';
+  manifest: string;
+  name: string;
+  section?: 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies';
+  kind: 'added' | 'changed' | 'removed';
+  from?: string;
+  to?: string;
+  source: 'registry' | 'git' | 'file' | 'url' | 'workspace' | 'alias';
+  resolved?: string;
+  registry?: { publishedAt?: string; createdAt?: string; deprecated?: string; notFound?: boolean; error?: string };
+  flags?: DependencyRiskFlag[];
+}
+
+export interface AgentSlotSecurity {
+  scannedAt: number;
+  headSha?: string;
+  secrets: DiffSecretFinding[];
+  secretsSuppressed: number;
+  secretsTruncated?: boolean;
+  dependencies: DependencyChange[];
+  lockChanges: Array<{ manifest: string; added: number; sample: string[] }>;
+  registry: 'done' | 'partial' | 'disabled' | 'none' | 'pending';
+  notifiedKey?: string;
+}
+
+export type GitCommitResult =
+  | { ok: true; overridden?: boolean }
+  | { ok: false; reason: 'secrets'; findings: DiffSecretFinding[]; suppressed: number; truncated: boolean; treeHash: string }
+  | { ok: false; reason: 'error'; error: string };

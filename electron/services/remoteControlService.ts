@@ -25,6 +25,8 @@ import { projectRegistry } from './projectRegistry.js';
 import { assertWorkspaceRoot } from './projectPathGuard.js';
 import { processManager } from './processManager.js';
 import { gitService } from './gitService.js';
+import { guardedCommit } from './commitSecretGuard.js';
+import { summarizeSecretFindings } from './diffSecretScan.js';
 import { claudeBridgeService } from './claudeBridgeService.js';
 import { agentFleetService } from './agentFleetService.js';
 import { aiAgentService } from './aiAgentService.js';
@@ -1945,7 +1947,17 @@ class RemoteControlService {
 
       case 'git_commit': {
         if (!activePath || !params.message) throw new Error('message and projectPath are required');
-        return await gitService.commitChanges(activePath, params.message, Boolean(params.stageAll));
+        // Сканер секретов (decision-56 п. 4): с телефона дифф не виден, поэтому «закоммитить всё равно» только из окна.
+        const res = await guardedCommit(activePath, params.message, {
+          stageAll: Boolean(params.stageAll),
+          allowOverride: false,
+          source: { kind: 'remote', deviceId: device.id, deviceName: device.name }
+        });
+        if (res.ok) return true;
+        if (res.reason === 'secrets') {
+          throw new Error(`Коммит отклонён: похоже на секреты — ${summarizeSecretFindings(res.findings)}. Проверьте изменения и закоммитьте из окна ProjectHub.`);
+        }
+        throw new Error(res.error);
       }
 
       case 'hitl_decision': {

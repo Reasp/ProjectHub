@@ -3,9 +3,10 @@ id: TASK-73
 title: >-
   Security Health: панель npm audit по проектам и сканер секретов перед
   коммитом/в диффах агентов
-status: To Do
+status: Review
 assignee: []
 created_date: '2026-09-15 03:10'
+updated_date: '2026-09-27 07:28'
 labels:
   - security
   - git
@@ -30,8 +31,14 @@ type: feature
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Панель npm audit с уровнями критичности и созданием задачи из находки
-- [ ] #2 Сканер секретов — чистый модуль с тестами; блокирует коммит из GitInspector и предупреждает при слиянии слота Swarm
-- [ ] #3 Новые зависимости в диффе агента выделены в карточке слота и требуют HITL при слиянии
-- [ ] #4 Уведомление securityFinding проходит через шину и notificationRules; i18n; lint/test зелёные, pack:win собран
+- [x] #1 Панель npm audit с уровнями критичности и созданием задачи из находки
+- [x] #2 Сканер секретов — чистый модуль с тестами; блокирует коммит из GitInspector и предупреждает при слиянии слота Swarm
+- [x] #3 Новые зависимости в диффе агента выделены в карточке слота и требуют HITL при слиянии
+- [x] #4 Уведомление securityFinding проходит через шину и notificationRules; i18n; lint/test зелёные, pack:win собран
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Реализовано по decision-56 (accepted), подзадачи TASK-73.1–73.6 в Review. Состав: аудит npm/pip-audit по кнопке и cron (вкладка «Безопасность», задача из находки, кэш в userData); сканер секретов (один детектор detectSecrets + telegram_token) в коммите из GitInspector (отказ, «закоммитить всё равно» с аудитом), RPC Remote Control и хуке терминала на git commit; безопасность слота Swarm (секреты, зависимости, npm view с флагами not_found/recent/young/deprecated), компонент балла security (вес 10), запрет авто-мерджа и HITL при слиянии и сборке из файлов; маскировка секретов в диффе для LLM-ревьюера; действие Automations auditDependencies; уведомление securityFinding. Проверки: lint 0/494, тесты 174 файла / 1975, check-bundle, lint:docs, index-docs, pack:win шагами (см. TASK-73.6), selfcheck:ui 0,01 %. Не проверено вживую: хук PreToolUse в терминальной сессии (тесты на настоящем git) и pip-audit на машине пользователя (не установлен).
+<!-- SECTION:NOTES:END -->

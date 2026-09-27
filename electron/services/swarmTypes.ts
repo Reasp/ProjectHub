@@ -3,6 +3,7 @@
  * экспорт и расчёт стоимости не тянули за собой сервис с процессами и git.
  * Зеркало для рендерера — `src/types/electron.d.ts`.
  */
+import type { AgentSlotSecurity } from './slotSecurity.js';
 import type { AIProviderConfig } from './aiAgentService.js';
 import type { AgentUsage } from './agentCost.js';
 import type { RolePermissions } from './hitlTypes.js';
@@ -123,6 +124,8 @@ export interface AgentSlotState {
   cliSessionId?: string;
   /** Результаты проверок автосудьи в worktree кандидата (TASK-61, decision-12). */
   checks?: CheckRunResult[];
+  /** Секреты и изменения зависимостей в диффе кандидата (TASK-73, decision-56 п. 5). */
+  security?: AgentSlotSecurity;
   /** Балл кандидата с разложением по компонентам. */
   score?: CandidateScore;
   /** Структурированный отзыв роли `reviewer`. */
@@ -237,6 +240,8 @@ export interface SwarmSession {
   handoffStages?: HandoffStageState[];
   currentHandoffStageIndex?: number;
   winnerAgentId?: string;
+  /** Слияние ждёт решения человека в очереди HITL: секреты или новые зависимости (decision-56 п. 7). */
+  pendingMergeApproval?: { requestId: string; agentIds: string[]; since: number };
   error?: string;
   /** Бюджет всей сессии в USD (сумма по всем агентам). */
   budgetUsd?: number;

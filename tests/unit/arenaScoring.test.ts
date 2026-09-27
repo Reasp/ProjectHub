@@ -138,7 +138,7 @@ describe('normalizeWeights и totalWeight', () => {
   });
 
   it('сумма весов по умолчанию равна 100', () => {
-    expect(totalWeight(DEFAULT_SCORE_WEIGHTS)).toBe(100);
+    expect(totalWeight(DEFAULT_SCORE_WEIGHTS)).toBe(110);
   });
 });
 
@@ -154,7 +154,8 @@ describe('computeCandidateScore', () => {
         reviewOverall: 1,
         diff: { filesChanged: 0, insertions: 0, deletions: 0, modules: 0, dependents: 0 },
         costUsd: 0,
-        durationMs: 1
+        durationMs: 1,
+        security: { secrets: 0, riskyDependencies: 0, dependencyChanges: 0 }
       }),
       cohort,
       DEFAULT_SCORE_WEIGHTS,
@@ -162,6 +163,26 @@ describe('computeCandidateScore', () => {
     );
     expect(score.total).toBeCloseTo(100, 1);
     expect(score.blocked).toBe(false);
+  });
+
+  it('компонент security (decision-56 п. 6): секреты — 0, рискованный пакет — 0.5, без скана — unknown', () => {
+    const base = { agentId: 'a', checks: [check('passed')] };
+    const component = (security?: { secrets: number; riskyDependencies: number; dependencyChanges: number }) =>
+      computeCandidateScore(candidate({ ...base, ...(security ? { security } : {}) }), cohort, DEFAULT_SCORE_WEIGHTS, 1)
+        .components.find((c) => c.key === 'security')!;
+    expect(component({ secrets: 2, riskyDependencies: 1, dependencyChanges: 1 })).toMatchObject({ normalized: 0, points: 0 });
+    expect(component({ secrets: 0, riskyDependencies: 1, dependencyChanges: 1 })).toMatchObject({ normalized: 0.5, points: 5 });
+    expect(component({ secrets: 0, riskyDependencies: 0, dependencyChanges: 3 })).toMatchObject({ normalized: 1, points: 10 });
+    const unknown = component();
+    expect(unknown.unknown).toBe(true);
+    expect(unknown.normalized).toBe(UNKNOWN_NORMALIZED);
+  });
+
+  it('секреты не блокируют кандидата, но снижают балл', () => {
+    const clean = computeCandidateScore(candidate({ agentId: 'a', checks: [check('passed')], security: { secrets: 0, riskyDependencies: 0, dependencyChanges: 0 } }), cohort, DEFAULT_SCORE_WEIGHTS, 1);
+    const leaky = computeCandidateScore(candidate({ agentId: 'b', checks: [check('passed')], security: { secrets: 1, riskyDependencies: 0, dependencyChanges: 0 } }), cohort, DEFAULT_SCORE_WEIGHTS, 1);
+    expect(leaky.blocked).toBe(false);
+    expect(clean.total - leaky.total).toBeCloseTo((10 / 110) * 100, 1);
   });
 
   it('балл считается и для заблокированного кандидата, но он помечен blocked', () => {
@@ -185,7 +206,8 @@ describe('computeCandidateScore', () => {
       'diffSize',
       'locality',
       'cost',
-      'time'
+      'time',
+      'security'
     ]);
     for (const c of score.components) {
       expect(c.points).toBeCloseTo(c.weight * c.normalized, 5);
@@ -313,6 +335,19 @@ describe('autoMergeDecision', () => {
 
   it('без единой запущенной проверки авто-мердж запрещён', () => {
     expect(autoMergeDecision([good], { a: [] }, { enabled: true, minScore: 0 })).toMatchObject({ allowed: false });
+  });
+
+  it('секреты или изменения зависимостей запрещают авто-мердж', () => {
+    const cfg = { enabled: true, minScore: 50 };
+    expect(autoMergeDecision([good], { a: [check('passed')] }, cfg, { a: { secrets: 1, riskyDependencies: 0, dependencyChanges: 0 } })).toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('секреты')
+    });
+    expect(autoMergeDecision([good], { a: [check('passed')] }, cfg, { a: { secrets: 0, riskyDependencies: 0, dependencyChanges: 2 } })).toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('зависимости')
+    });
+    expect(autoMergeDecision([good], { a: [check('passed')] }, cfg, { a: { secrets: 0, riskyDependencies: 0, dependencyChanges: 0 } }).allowed).toBe(true);
   });
 
   it('заблокированный кандидат не сливается даже при высоком балле', () => {

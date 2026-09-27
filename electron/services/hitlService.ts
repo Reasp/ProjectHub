@@ -330,6 +330,25 @@ export class HitlService extends EventEmitter {
   }
 
   /**
+   * Решение человека без карточки в очереди: он уже видел, что подтверждает, в окне или на устройстве
+   * (коммит с находками сканера секретов, decision-56 п. 4). В аудит — как обычное решение с источником.
+   */
+  public recordHumanDecision(
+    info: HitlAutoDecisionInfo,
+    decision: 'allow' | 'deny',
+    source: HitlDecisionSource,
+    rule: string,
+    detail?: string
+  ): string {
+    const id = info.id || this.newRequestId('human');
+    const request: HitlRequest = { ...info, id, createdAt: this.now(), hostId: info.hostId || this.hostId };
+    const src: HitlDecisionSource = { ...source, rule };
+    this.rememberDecided(request, decision === 'allow', src);
+    this.writeDecision(request, decision, src, undefined, undefined, detail);
+    return id;
+  }
+
+  /**
    * Результат выполнения одобренного действия (exit-код команды, ошибка записи, скриншоты до/после,
    * длительность инструмента терминальной сессии — TASK-77).
    */

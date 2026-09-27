@@ -1,5 +1,6 @@
 /**
  * Шаблоны секретов: маскировка для аудита и детектор для отказа записи (decision-51 п. 5, TASK-76).
+ * Тот же детектор сканирует диффы коммитов и слотов Swarm (`diffSecretScan`, decision-56 п. 3).
  *
  * Маскировка (`REDACTION_PATTERNS`) заменяет похожее на секрет в команде или заголовке и может
  * позволить себе широкие шаблоны вроде `password=…`: лишняя звёздочка в аудите безвредна.
@@ -21,6 +22,8 @@ export const REDACTION_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(gh[pousr]_[A-Za-z0-9]{10,})/g, 'gh*_***'],
   [/\b(xox[abpr]-[A-Za-z0-9-]{10,})/g, 'xox*-***'],
   [/\b(AKIA[0-9A-Z]{12,})/g, 'AKIA***'],
+  // Токен Telegram-бота: <id бота>:<35 символов>
+  [/\b(\d{8,10}:)[A-Za-z0-9_-]{35}\b/g, '$1***'],
   // Пароли в URL: https://user:pass@host
   [/((?:https?|ftp|postgres(?:ql)?|mysql|redis|mongodb(?:\+srv)?):\/\/[^\s/@:]+:)[^\s/@]+@/gi, '$1***@'],
   // Переменные окружения вида FOO_TOKEN=... в начале команды
@@ -34,6 +37,7 @@ export const SECRET_KINDS = [
   'aws_key',
   'google_key',
   'huggingface_token',
+  'telegram_token',
   'private_key',
   'jwt',
   'url_password',
@@ -72,6 +76,7 @@ const DETECTORS: readonly Detector[] = [
   { kind: 'aws_key', re: /\bAKIA[0-9A-Z]{16}\b/g },
   { kind: 'google_key', re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
   { kind: 'huggingface_token', re: /\bhf_[A-Za-z0-9]{30,}\b/g },
+  { kind: 'telegram_token', re: /\b\d{8,10}:[A-Za-z0-9_-]{35}\b/g },
   { kind: 'jwt', re: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g },
   {
     kind: 'url_password',
@@ -89,6 +94,34 @@ const DETECTORS: readonly Detector[] = [
     accept: (m) => looksLikeSecretValue(m[2])
   }
 ];
+
+/** Номер группы со значением секрета; без группы маскируется всё совпадение. */
+const VALUE_GROUP: Partial<Record<SecretKind, number>> = { url_password: 1, bearer_token: 1, assigned_secret: 2 };
+
+/**
+ * Заменяет значения, которые нашёл бы `detectSecrets`, на `***` — для текста, уходящего наружу целиком
+ * (дифф кандидата в промпте LLM-ревьюера, decision-56 п. 6). Контекст вокруг сохраняется.
+ */
+export function maskDetectedSecrets(text: string): string {
+  if (!text) return text;
+  let out = text;
+  for (const { kind, re, accept } of DETECTORS) {
+    const pattern = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+    out = out.replace(pattern, (...args: unknown[]) => {
+      const match = args.slice(0, -2) as string[];
+      const whole = match[0];
+      const exec = Object.assign([...match], { index: 0, input: whole }) as unknown as RegExpExecArray;
+      if (accept && !accept(exec)) return whole;
+      const group = VALUE_GROUP[kind];
+      const value = group !== undefined ? match[group] : undefined;
+      // Заголовок PEM не секрет — тело ключа вычищает `maskSecretsInPatch` построчно.
+      if (!value) return kind === 'private_key' ? whole : '***';
+      const at = whole.lastIndexOf(value);
+      return `${whole.slice(0, at)}***${whole.slice(at + value.length)}`;
+    });
+  }
+  return out;
+}
 
 /**
  * Ищет в тексте похожее на секрет. Возвращает по одной находке каждого вида (первое вхождение),

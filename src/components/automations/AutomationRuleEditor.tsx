@@ -4,11 +4,13 @@ import { useTranslation } from '../../i18n/useTranslation';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useRolesStore } from '../../store/useRolesStore';
 import {
+  AUDIT_MIN_SEVERITIES,
   AUTOMATION_ACTIONS,
   AUTOMATION_EVENTS,
   emptyAutomationForm,
   formFromRule,
   ruleFromForm,
+  type AuditMinSeverity,
   type AutomationFormState
 } from '../../lib/automationForm';
 import type { AutomationRule } from '../../types/electron';
@@ -267,6 +269,19 @@ export const AutomationRuleEditor: React.FC<Props> = ({ rule, onSaved, onCancel 
               <label className={labelCls}>{e.notifyBody}</label>
               <input className={inputCls} value={form.notifyBody} onChange={(ev) => set('notifyBody', ev.target.value)} />
             </div>
+          </div>
+        )}
+        {form.actionType === 'auditDependencies' && (
+          <div>
+            <label className={labelCls}>{e.minSeverity}</label>
+            <select className={inputCls} value={form.minSeverity} onChange={(ev) => set('minSeverity', ev.target.value as AuditMinSeverity)}>
+              {AUDIT_MIN_SEVERITIES.map((sev) => (
+                <option key={sev} value={sev}>
+                  {t.security.severity[sev]}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[10px] text-muted-foreground">{e.minSeverityHint}</p>
           </div>
         )}
         {form.actionType === 'projectAction' && (

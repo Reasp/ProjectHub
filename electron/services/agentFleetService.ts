@@ -72,6 +72,19 @@ import { doneLoopService, loadDoneLoopSettings, type DoneLoopRunResult } from '.
 import { visualArtifactService } from './visualArtifactService.js';
 import { findTaskFile } from './taskFileLookup.js';
 import {
+  computeSlotSecurity,
+  enrichSlotSecurityFromRegistry,
+  mergeApprovalText,
+  mergeNeedsApproval,
+  securityForFiles,
+  securityNotifyKey,
+  securitySummaryText,
+  type AgentSlotSecurity,
+  type SlotSecurityDeps
+} from './slotSecurity.js';
+import { summarizeSecretFindings } from './diffSecretScan.js';
+import { riskyChanges } from './dependencyDiff.js';
+import {
   applyRollbackMarks,
   continueModeOf,
   doneLoopContinueBlockReason,
@@ -140,6 +153,34 @@ export type {
 
 /** Файл пользовательских переопределений цен моделей (читает и пишет pricingService, decision-42). */
 export { AGENT_PRICING_FILE } from './pricingService.js';
+
+/** Сколько ждать решения человека о слиянии кандидата с секретами или новыми зависимостями (decision-56 п. 7). */
+export const MERGE_APPROVAL_TIMEOUT_MS = 30 * 60_000;
+
+/** Зависимости отчёта безопасности слота: git основного репозитория, файлы worktree, настройки и registry. */
+function defaultSlotSecurityDeps(): SlotSecurityDeps {
+  return {
+    showBaseFile: async (root, base, rel) => {
+      try {
+        return await simpleGit(root).show([`${base}:${rel}`]);
+      } catch {
+        return null;
+      }
+    },
+    readWorktreeFile: (wt, rel) => fs.readFile(path.join(wt, rel), 'utf8').catch(() => null),
+    headSha: async (wt) => (await simpleGit(wt).revparse(['HEAD'])).trim() || undefined,
+    allowPaths: async (root) => {
+      const [{ actionConfigService }, { secretAllowPathsFromConfig }] = await Promise.all([
+        import('./actionConfigService.js'),
+        import('./commitSecretGuard.js')
+      ]);
+      return secretAllowPathsFromConfig(await actionConfigService.getConfig(root));
+    },
+    registryLookupsEnabled: async () => (await (await import('./securityHealthService.js')).securityHealthService.getSettings()).registryLookups,
+    lookupRegistry: async (cwd, specs) => (await import('./securityHealthService.js')).securityHealthService.lookupRegistry(cwd, specs),
+    now: () => Date.now()
+  };
+}
 
 /** Дополнение к промпту при возобновлении прерванного агента в том же worktree. */
 export const RESUME_PROMPT_SUFFIX =
@@ -318,6 +359,10 @@ export interface AgentTimelineView {
 
 export class AgentFleetService extends EventEmitter {
   private sessions = new Map<string, SwarmSession>();
+  /** Фоновые запросы registry по агентам — шлюз слияния дожидается их (decision-56 п. 5). */
+  private securityLookups = new Map<string, Promise<void>>();
+  /** Зависимости отчёта безопасности слота; открыто для подмены в тестах. */
+  public slotSecurityDeps: SlotSecurityDeps = defaultSlotSecurityDeps();
   private activeProcesses = new Map<string, Set<ChildProcess>>();
   private abortControllers = new Map<string, Set<AbortController>>();
   private agentProcesses = new Map<string, Set<ChildProcess>>();
@@ -665,8 +710,136 @@ export class AgentFleetService extends EventEmitter {
         agentState,
         `[Swarm] Сформирован дифф: ${agentState.diffSummary.filesChanged} файлов, +${agentState.diffSummary.insertions} / -${agentState.diffSummary.deletions}`
       );
+      await this.refreshAgentSecurity(session, agentState, diffRaw);
     } catch (diffErr) {
       console.warn(`[AgentFleetService] Diff computation failed for ${agentState.id}:`, diffErr);
+    }
+  }
+
+  /**
+   * Секреты и зависимости в диффе кандидата (decision-56 п. 5). Локальная часть — сразу; метаданные registry —
+   * в фоне, чтобы сеть не задерживала завершение агента; итог — событием `agent_updated`.
+   */
+  private async refreshAgentSecurity(session: SwarmSession, agent: AgentSlotState, patch: string): Promise<void> {
+    if (!agent.worktreePath || !this.pathExists(agent.worktreePath)) return;
+    const worktreePath = agent.worktreePath;
+    let report: AgentSlotSecurity;
+    try {
+      report = await computeSlotSecurity(
+        { projectPath: session.projectPath, baseBranch: session.baseBranch, worktreePath, patch },
+        this.slotSecurityDeps
+      );
+    } catch (err) {
+      console.warn(`[AgentFleetService] Security scan failed for ${agent.id}:`, err);
+      return;
+    }
+    const notifiedKey = agent.security?.notifiedKey;
+    agent.security = { ...report, ...(notifiedKey ? { notifiedKey } : {}) };
+    this.log(session, agent, `[Безопасность] ${securitySummaryText(report)}`);
+    this.maybeNotifySecurity(session, agent);
+    if (report.registry !== 'pending') return;
+    const pending = enrichSlotSecurityFromRegistry(report, worktreePath, this.slotSecurityDeps)
+      .then((enriched) => {
+        // Пока шли запросы, дифф могли пересчитать — устаревший результат не записываем.
+        if (agent.security?.scannedAt !== report.scannedAt) return;
+        agent.security = { ...enriched, ...(agent.security.notifiedKey ? { notifiedKey: agent.security.notifiedKey } : {}) };
+        const risky = riskyChanges(enriched.dependencies);
+        if (risky.length) {
+          this.log(session, agent, `[Безопасность] Пакеты с флагами риска: ${risky.map((d) => `${d.name} [${(d.flags ?? []).join(', ')}]`).join(', ')}`);
+        }
+        this.maybeNotifySecurity(session, agent);
+        this.persist(session);
+        this.emitSwarmEvent({ type: 'agent_updated', swarmId: session.id, agentId: agent.id, session });
+      })
+      .catch((err) => console.warn(`[AgentFleetService] Registry lookup failed for ${agent.id}:`, err))
+      .finally(() => this.securityLookups.delete(agent.id));
+    this.securityLookups.set(agent.id, pending);
+  }
+
+  /** Одно уведомление `security:finding` на агента и набор находок (decision-56 п. 10). */
+  private maybeNotifySecurity(session: SwarmSession, agent: AgentSlotState): void {
+    const report = agent.security;
+    if (!report) return;
+    const key = securityNotifyKey(agent.id, report);
+    if (!key || key === report.notifiedKey) return;
+    report.notifiedKey = key;
+    const risky = riskyChanges(report.dependencies);
+    const secrets = report.secrets.length;
+    appEventBus.publish({
+      type: 'security:finding',
+      projectPath: session.projectPath,
+      source: secrets ? 'secrets' : 'dependencies',
+      severity: secrets ? 'critical' : risky.some((d) => d.flags?.includes('not_found')) ? 'high' : 'moderate',
+      title: secrets
+        ? `Секреты в диффе агента «${agent.config.name}»: ${secrets}`
+        : `Рискованные пакеты в диффе агента «${agent.config.name}»: ${risky.length}`,
+      summary: secrets
+        ? summarizeSecretFindings(report.secrets, 3)
+        : risky.map((d) => `${d.name} [${(d.flags ?? []).join(', ')}]`).join(', '),
+      count: secrets || risky.length,
+      key,
+      swarmId: session.id,
+      agentId: agent.id,
+      at: Date.now()
+    });
+  }
+
+  /**
+   * Шлюз слияния (decision-56 п. 7): секреты или новые/изменённые зависимости — запрос в общую очередь HITL.
+   * Отчёт пересчитывается, если ветка кандидата сдвинулась после скана. Автоматическое слияние не спрашивает
+   * человека, а отказывает (решение судьи уже запретило авто-мердж, это вторая линия).
+   */
+  private async securityMergeGate(
+    session: SwarmSession,
+    items: Array<{ agent: AgentSlotState; files?: string[] }>,
+    automatic: boolean
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    for (const { agent } of items) {
+      await this.securityLookups.get(agent.id)?.catch(() => undefined);
+      if (!agent.worktreePath || !this.pathExists(agent.worktreePath)) continue;
+      const head = await this.slotSecurityDeps.headSha(agent.worktreePath).catch(() => undefined);
+      if (!agent.security || (head && agent.security.headSha !== head)) {
+        await this.refreshAgentDiff(session, agent);
+        await this.securityLookups.get(agent.id)?.catch(() => undefined);
+      }
+    }
+    const scoped = items
+      .map(({ agent, files }) => ({ agent, report: files ? securityForFiles(agent.security, files) : agent.security }))
+      .filter((x): x is { agent: AgentSlotState; report: AgentSlotSecurity } => mergeNeedsApproval(x.report));
+    if (scoped.length === 0) return { ok: true };
+    if (automatic) return { ok: false, error: 'В диффе секреты или новые зависимости — автоматическое слияние запрещено' };
+
+    const texts = scoped.map(({ agent, report }) => mergeApprovalText(report, agent.config.name, session.baseBranch));
+    const first = scoped[0].agent;
+    const requestId = hitlService.newRequestId('merge');
+    const request = {
+      id: requestId,
+      sessionId: `merge-${session.id}`,
+      projectPath: session.projectPath,
+      type: 'command' as const,
+      title: texts.length === 1 ? texts[0].title : `Собрать результат из ${texts.length} кандидатов в ${session.baseBranch}: нужны решения по безопасности`,
+      details: texts.map((t) => (texts.length === 1 ? t.details : `${t.title}\n${t.details}`)).join('\n\n'),
+      command: first.worktreeBranch ? `git merge --no-ff ${first.worktreeBranch}` : undefined,
+      tool: 'merge',
+      origin: this.hitlOrigin(session),
+      agentId: first.id,
+      agentName: first.config.name,
+      role: first.config.role,
+      createdAt: Date.now()
+    };
+    session.pendingMergeApproval = { requestId, agentIds: scoped.map((s) => s.agent.id), since: request.createdAt };
+    this.persist(session);
+    this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
+    try {
+      const answer = await hitlService.request(request, { timeoutMs: MERGE_APPROVAL_TIMEOUT_MS });
+      if (!answer.approved) return { ok: false, error: `Слияние отклонено${answer.text ? `: ${answer.text}` : ''}` };
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: `Слияние не подтверждено: ${err instanceof Error ? err.message : String(err)}` };
+    } finally {
+      if (session.pendingMergeApproval?.requestId === requestId) session.pendingMergeApproval = undefined;
+      this.persist(session);
+      this.emitSwarmEvent({ type: 'swarm_updated', swarmId: session.id, session });
     }
   }
 
@@ -1654,7 +1827,7 @@ export class AgentFleetService extends EventEmitter {
 
     auto.attempted = true;
     const agent = session.agents.find((a) => a.id === auto.agentId);
-    const result = await this.pickWinner(session.id, auto.agentId, true);
+    const result = await this.pickWinner(session.id, auto.agentId, true, { automatic: true });
     auto.merged = result.success;
     auto.reason = result.success
       ? `${decisionReason}; влито в ${session.baseBranch}`
@@ -1699,6 +1872,13 @@ export class AgentFleetService extends EventEmitter {
   public async composeFromCandidates(swarmId: string, selections: ComposeSelection[]): Promise<ComposeResult> {
     const session = this.sessions.get(swarmId);
     if (!session) return { success: false, error: `Swarm session ${swarmId} not found` };
+
+    // Шлюз безопасности по выбранным файлам (decision-56 п. 7) — до того, как файлы попадут в основное дерево.
+    const gateItems = selections
+      .map((sel) => ({ agent: session.agents.find((a) => a.id === sel.agentId), files: (sel.files ?? []).filter((f) => typeof f === 'string' && f.trim()) }))
+      .filter((x): x is { agent: AgentSlotState; files: string[] } => Boolean(x.agent) && x.files.length > 0);
+    const gate = await this.securityMergeGate(session, gateItems, false);
+    if (!gate.ok) return { success: false, error: gate.error };
 
     const applied: NonNullable<ComposeResult['applied']> = [];
     for (const selection of selections) {
@@ -3542,7 +3722,8 @@ export class AgentFleetService extends EventEmitter {
   public async pickWinner(
     swarmId: string,
     winnerAgentId: string,
-    mergeIntoBase = true
+    mergeIntoBase = true,
+    options: { automatic?: boolean } = {}
   ): Promise<{ success: boolean; error?: string; mergedBranch?: string; conflictedFiles?: string[] }> {
     const session = this.sessions.get(swarmId);
     if (!session) {
@@ -3557,6 +3738,8 @@ export class AgentFleetService extends EventEmitter {
     // 1. Слияние ветки
     let mergedBranch: string | undefined;
     if (mergeIntoBase && winnerAgent.worktreeBranch) {
+      const gate = await this.securityMergeGate(session, [{ agent: winnerAgent }], options.automatic === true);
+      if (!gate.ok) return { success: false, error: gate.error };
       try {
         const mergeResult = await worktreeService.mergeWorktree(
           session.projectPath,

@@ -7,6 +7,7 @@ import {
   GitPullRequest,
   BookOpen,
   Cpu,
+  ShieldCheck,
   Layers,
   Sparkles,
   BarChart2,
@@ -37,6 +38,7 @@ import { ProjectAnalyticsView } from '../analytics/ProjectAnalyticsView';
 import { AIStudioView } from '../ai/AIStudioView';
 import { ClaudeCliView } from '../claude/ClaudeCliView';
 import { ProcessesView } from '../processes/ProcessesView';
+import { SecurityHealthView } from '../security/SecurityHealthView';
 import { useWorkspaceTabs, type WorkspaceTabId } from '../../hooks/useWorkspaceTabs';
 import { WorkspaceTabsConfigModal } from './WorkspaceTabsConfigModal';
 import { NewProjectWizardModal } from './NewProjectWizardModal';
@@ -123,7 +125,8 @@ export const ProjectWorkspace: React.FC = () => {
     analytics: { label: t.tabs.analytics, shortLabel: 'Analytics', hotkey: 'Ctrl+A', icon: BarChart2 },
     ai: { label: t.tabs.ai, shortLabel: 'Claude Studio', hotkey: 'Ctrl+I', icon: Sparkles },
     'claude-cli': { label: t.tabs.claudeCli, shortLabel: 'Claude CLI', hotkey: 'Ctrl+T', icon: Bot },
-    processes: { label: t.tabs.processes, shortLabel: 'Processes', icon: Cpu }
+    processes: { label: t.tabs.processes, shortLabel: 'Processes', icon: Cpu },
+    security: { label: t.tabs.security, shortLabel: t.tabs.security, icon: ShieldCheck }
   };
 
   const voiceCommandMap: Record<WorkspaceTabId, string> = {
@@ -136,7 +139,8 @@ export const ProjectWorkspace: React.FC = () => {
     analytics: t.voice.voiceBadges.analytics,
     ai: t.voice.voiceBadges.studio,
     'claude-cli': t.voice.voiceBadges.claudeCli,
-    processes: t.voice.voiceBadges.processes
+    processes: t.voice.voiceBadges.processes,
+    security: t.voice.voiceBadges.security
   };
 
   if (!selectedProject) {
@@ -507,6 +511,7 @@ export const ProjectWorkspace: React.FC = () => {
           {activeTab === 'claude-cli' && <ClaudeCliView />}
 
           {activeTab === 'processes' && <ProcessesView />}
+          {activeTab === 'security' && <SecurityHealthView />}
         </div>
 
         {/* Пока данные нового проекта не пришли, вместо пустого экрана показываем индикатор. */}

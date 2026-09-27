@@ -3,6 +3,7 @@ import type {
   ProjectInfo,
   BacklogTask,
   GitCommit,
+  GitCommitResult,
   GitRepoDetails,
   ScanOptions,
   TaskCriterion,
@@ -176,7 +177,7 @@ interface ProjectState {
   gitRepoDetails: GitRepoDetails | null;
   gitSelectedFile: string | null;
   gitDiffContent: string;
-  activeTab: 'kanban' | 'milestones' | 'git' | 'files' | 'prs' | 'docs' | 'analytics' | 'ai' | 'claude-cli' | 'processes';
+  activeTab: 'kanban' | 'milestones' | 'git' | 'files' | 'prs' | 'docs' | 'analytics' | 'ai' | 'claude-cli' | 'processes' | 'security';
   taskViewMode: 'kanban' | 'list';
   selectedLabelFilter: string | null;
   selectedMilestoneFilter: string | null;
@@ -274,7 +275,7 @@ interface ProjectState {
   selectProject: (project: ProjectInfo | null) => void;
   setTasks: (tasks: BacklogTask[]) => void;
   setGitLogs: (logs: GitCommit[]) => void;
-  setActiveTab: (tab: 'kanban' | 'milestones' | 'git' | 'files' | 'prs' | 'docs' | 'analytics' | 'ai' | 'claude-cli' | 'processes') => void;
+  setActiveTab: (tab: 'kanban' | 'milestones' | 'git' | 'files' | 'prs' | 'docs' | 'analytics' | 'ai' | 'claude-cli' | 'processes' | 'security') => void;
   setTaskViewMode: (mode: 'kanban' | 'list') => void;
   setSelectedLabelFilter: (label: string | null) => void;
   setIsLoading: (loading: boolean) => void;
@@ -351,7 +352,7 @@ interface ProjectState {
   gitStageFile: (filePath: string) => Promise<boolean>;
   gitUnstageFile: (filePath: string) => Promise<boolean>;
   gitStageAll: () => Promise<boolean>;
-  gitCommit: (message: string, stageAll?: boolean) => Promise<boolean>;
+  gitCommit: (message: string, stageAll?: boolean, acknowledgeSecrets?: string) => Promise<GitCommitResult>;
   gitLoadFileDiff: (filePath: string, staged?: boolean) => Promise<void>;
   setGitSelectedFile: (filePath: string | null) => void;
 
@@ -414,7 +415,8 @@ const VALID_TABS: Set<string> = new Set([
   'analytics',
   'ai',
   'claude-cli',
-  'processes'
+  'processes',
+  'security'
 ]);
 
 const loadInitialActiveTab = (): ProjectState['activeTab'] => {
@@ -1797,13 +1799,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  gitCommit: async (message: string, stageAll = false) => {
+  gitCommit: async (message: string, stageAll = false, acknowledgeSecrets?: string) => {
     const project = get().selectedProject;
     const root = get().workspaceRoot || project?.path || '';
-    if (!window.api || !project) return false;
+    if (!window.api || !project) return { ok: false, reason: 'error', error: 'no project' } as GitCommitResult;
     try {
-      const ok = await window.api.commitChanges(root, message, stageAll);
-      if (ok) {
+      const result = await window.api.commitChanges(root, message, stageAll, acknowledgeSecrets);
+      if (result.ok) {
         get().addTerminalLog(formatLog(getDictionary(get().language).terminalLogs.gitCommitCreated, { message }));
         const [logs, _] = await Promise.all([
           window.api.getGitLog(root, 25),
@@ -1811,10 +1813,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         ]);
         set({ gitLogs: logs, gitDiffContent: '', gitSelectedFile: null });
       }
-      return ok;
+      return result;
     } catch (e) {
       console.error('Failed to commit:', e);
-      return false;
+      return { ok: false, reason: 'error', error: e instanceof Error ? e.message : String(e) } as GitCommitResult;
     }
   },
 

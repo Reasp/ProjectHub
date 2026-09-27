@@ -5,6 +5,7 @@ import type { ActionDefinition, ProjectActionConfig } from './actionConfigServic
 import { isFailedStatus, scriptCommand, type DefaultChecksInput } from './arenaChecks.js';
 import type { RunOnceResult } from './processManager.js';
 import { DEFAULT_TASK_PROMPT, renderTemplate, type AutomationAction, type AutomationEvent } from './automationRules.js';
+import type { AuditSeverity } from './dependencyAudit.js';
 
 /**
  * Исполнение действий Automations (TASK-74, decision-52 п. 1, 6).
@@ -70,6 +71,8 @@ export interface ActionDeps {
   getProjectConfig(projectRoot: string): Promise<ProjectActionConfig>;
   runOnce(command: string, options: { cwd: string; timeoutMs: number; env?: Record<string, string>; portStrategy?: 'fixed' | 'auto'; port?: number }): Promise<RunOnceResult>;
   publish(event: AppBusEvent): void;
+  /** Аудит зависимостей (decision-56 п. 8); сервис сам публикует `security:finding` о новых находках. */
+  auditDependencies?(projectRoot: string, minSeverity: AuditSeverity): Promise<{ ok: boolean; detail: string }>;
 }
 
 export interface ActionContext {
@@ -213,6 +216,12 @@ export async function executeAutomationAction(ctx: ActionContext, deps: ActionDe
       if ('error' in started) return { outcome: 'failed', detail: started.error };
       if ('skipped' in started) return { outcome: 'success', detail: started.skipped };
       return { outcome: 'deferred', completion: started.completion, detail: `ревью PR #${prNumber}` };
+    }
+
+    case 'auditDependencies': {
+      if (!deps.auditDependencies) return { outcome: 'failed', detail: 'Аудит зависимостей недоступен' };
+      const res = await deps.auditDependencies(root, action.minSeverity);
+      return { outcome: res.ok ? 'success' : 'failed', detail: res.detail };
     }
 
     case 'projectAction': {

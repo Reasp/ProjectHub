@@ -8,6 +8,11 @@ import {
 import { worktreeService } from '../../electron/services/worktreeService';
 import { aiAgentService } from '../../electron/services/aiAgentService';
 
+/** Доступ к закрытым полям сервиса в тестах шлюза безопасности без `any`. */
+function internals(service: AgentFleetService): { sessions: Map<string, SwarmSession>; pathExists: (p: string) => boolean } {
+  return service as unknown as { sessions: Map<string, SwarmSession>; pathExists: (p: string) => boolean };
+}
+
 describe('agentFleetService unit tests (TASK-54)', () => {
   describe('parseDiffSummary', () => {
     it('корректно обрабатывает пустой или пустой от пробелов дифф', () => {
@@ -192,6 +197,122 @@ diff --git a/src/utils.ts b/src/utils.ts
       // Сохранен lastCommitHash проигравшего
       expect(mockSession.agents[1].lastCommitHash).toBe('deadbeef2');
       expect(mockSession.status).toBe('completed');
+    });
+
+    it('pickWinner: секреты или новые пакеты — слияние ждёт решения в общей очереди HITL (decision-56 п. 7)', async () => {
+      const { hitlService } = await import('../../electron/services/hitlService');
+      const mergeSpy = vi.spyOn(worktreeService, 'mergeWorktree').mockResolvedValue({ success: true, mergedBranch: 'swarm/s/a' });
+      vi.spyOn(worktreeService, 'removeWorktree').mockResolvedValue(true);
+      vi.spyOn(worktreeService, 'pruneWorktrees').mockResolvedValue(true);
+      vi.spyOn(internals(fleetService), 'pathExists').mockReturnValue(true);
+      fleetService.slotSecurityDeps = { ...fleetService.slotSecurityDeps, headSha: async () => 'head-1' };
+
+      const makeSession = (id: string): SwarmSession => ({
+        id,
+        projectPath: 'F:/ProjectHub',
+        mode: 'fan_out',
+        prompt: 'задача',
+        baseBranch: 'main',
+        useWorktrees: false,
+        status: 'completed',
+        createdAt: Date.now(),
+        agents: [
+          {
+            id: 'a',
+            config: { id: 'a', name: 'Implementer', engine: 'api' },
+            status: 'completed',
+            worktreePath: 'F:/ProjectHub/.worktrees/a',
+            worktreeBranch: 'swarm/s/a',
+            logs: [],
+            liveOutput: '',
+            metrics: { startTime: 1 },
+            security: {
+              scannedAt: 1,
+              headSha: 'head-1',
+              secrets: [{ kind: 'aws_key', file: 'src/app.ts', line: 3 }],
+              secretsSuppressed: 0,
+              dependencies: [
+                { ecosystem: 'npm', manifest: 'package.json', name: 'left-pad', kind: 'added', to: '1.3.0', source: 'registry', flags: ['deprecated'] }
+              ],
+              lockChanges: [],
+              registry: 'done'
+            }
+          }
+        ]
+      });
+
+      // Автоматическое слияние не спрашивает человека — отказывает.
+      const auto = makeSession('swarm-sec-auto');
+      internals(fleetService).sessions.set(auto.id, auto);
+      const autoRes = await fleetService.pickWinner(auto.id, 'a', true, { automatic: true });
+      expect(autoRes).toMatchObject({ success: false });
+      expect(autoRes.error).toContain('автоматическое слияние запрещено');
+      expect(hitlService.listPending({ sessionId: `merge-${auto.id}` })).toHaveLength(0);
+
+      // Отказ человека — слияния нет.
+      const denied = makeSession('swarm-sec-deny');
+      internals(fleetService).sessions.set(denied.id, denied);
+      const pendingDeny = fleetService.pickWinner(denied.id, 'a', true);
+      await vi.waitFor(() => expect(hitlService.listPending({ sessionId: `merge-${denied.id}` })).toHaveLength(1));
+      const req = hitlService.listPending({ sessionId: `merge-${denied.id}` })[0];
+      expect(req.title).toBe('Слить кандидата «Implementer» в main: секретов 1, пакетов 1');
+      expect(req.details).toContain('aws_key (src/app.ts:3)');
+      expect(req.details).toContain('+left-pad 1.3.0 [deprecated]');
+      expect(denied.pendingMergeApproval?.requestId).toBe(req.id);
+      hitlService.decide(req.id, { approved: false, text: 'нет' }, { kind: 'local' });
+      const deniedRes = await pendingDeny;
+      expect(deniedRes).toEqual({ success: false, error: 'Слияние отклонено: нет' });
+      expect(mergeSpy).not.toHaveBeenCalled();
+      expect(denied.pendingMergeApproval).toBeUndefined();
+
+      // Одобрение — слияние выполняется.
+      const approved = makeSession('swarm-sec-ok');
+      internals(fleetService).sessions.set(approved.id, approved);
+      const pendingOk = fleetService.pickWinner(approved.id, 'a', true);
+      await vi.waitFor(() => expect(hitlService.listPending({ sessionId: `merge-${approved.id}` })).toHaveLength(1));
+      hitlService.decide(hitlService.listPending({ sessionId: `merge-${approved.id}` })[0].id, { approved: true }, { kind: 'remote', deviceId: 'phone' });
+      expect(await pendingOk).toMatchObject({ success: true, mergedBranch: 'swarm/s/a' });
+      expect(mergeSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('composeFromCandidates: HITL только если в выбранных файлах есть секреты или манифесты', async () => {
+      const { hitlService } = await import('../../electron/services/hitlService');
+      const checkoutSpy = vi.spyOn(worktreeService, 'checkoutFilesFromBranch').mockResolvedValue({ success: true });
+      vi.spyOn(internals(fleetService), 'pathExists').mockReturnValue(true);
+      fleetService.slotSecurityDeps = { ...fleetService.slotSecurityDeps, headSha: async () => 'h' };
+      const session: SwarmSession = {
+        id: 'swarm-compose-sec',
+        projectPath: 'F:/ProjectHub',
+        mode: 'fan_out',
+        prompt: 'задача',
+        baseBranch: 'main',
+        useWorktrees: false,
+        status: 'completed',
+        createdAt: Date.now(),
+        agents: [
+          {
+            id: 'b',
+            config: { id: 'b', name: 'B', engine: 'api' },
+            status: 'completed',
+            worktreePath: 'F:/ProjectHub/.worktrees/b',
+            worktreeBranch: 'swarm/s/b',
+            logs: [],
+            liveOutput: '',
+            metrics: { startTime: 1 },
+            security: { scannedAt: 1, headSha: 'h', secrets: [{ kind: 'github_token', file: 'src/leak.ts', line: 1 }], secretsSuppressed: 0, dependencies: [], lockChanges: [], registry: 'none' }
+          }
+        ]
+      };
+      internals(fleetService).sessions.set(session.id, session);
+      // Файл без находок — без вопроса.
+      expect(await fleetService.composeFromCandidates(session.id, [{ agentId: 'b', files: ['src/clean.ts'] }])).toMatchObject({ success: true });
+      // Файл с секретом — вопрос; отказ — файлы не выкачиваются.
+      checkoutSpy.mockClear();
+      const pending = fleetService.composeFromCandidates(session.id, [{ agentId: 'b', files: ['src/leak.ts'] }]);
+      await vi.waitFor(() => expect(hitlService.listPending({ sessionId: `merge-${session.id}` })).toHaveLength(1));
+      hitlService.decide(hitlService.listPending({ sessionId: `merge-${session.id}` })[0].id, { approved: false }, { kind: 'local' });
+      expect(await pending).toMatchObject({ success: false, error: 'Слияние отклонено' });
+      expect(checkoutSpy).not.toHaveBeenCalled();
     });
 
     it('materializeAgentResult: фиксирует изменения через git commit при autoCommitAgentResults = true (AC #1)', async () => {

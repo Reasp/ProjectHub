@@ -37,7 +37,9 @@ export type NotificationKind =
   /** Automations: правило приостановлено по лимиту, запуск не удался, действие `notify` (decision-52). */
   | 'automation'
   /** Ревью PR завершено (TASK-81, decision-53 п. 9). */
-  | 'prReview';
+  | 'prReview'
+  /** Security Health: уязвимости, секреты, рискованные пакеты (TASK-73, decision-56 п. 10). */
+  | 'securityFinding';
 
 export const NOTIFICATION_KINDS: NotificationKind[] = [
   'hitl',
@@ -50,7 +52,8 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
   'deviceConnected',
   'modelFallback',
   'automation',
-  'prReview'
+  'prReview',
+  'securityFinding'
 ];
 
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'critical';
@@ -63,6 +66,7 @@ export type NotificationAction =
   | { type: 'openPrs'; projectPath?: string; url?: string }
   | { type: 'openRemote' }
   | { type: 'openAutomations'; projectPath?: string }
+  | { type: 'openSecurity'; projectPath?: string }
   | { type: 'openApp' };
 
 /** Нормализованное уведомление — то, что шина событий превращает в доставку по каналам. */

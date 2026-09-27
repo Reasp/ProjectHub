@@ -358,6 +358,22 @@ export type AppBusEvent =
       publish: 'pending' | 'manual' | 'none';
       error?: string;
       at: number;
+    }
+  /** Security Health: новые находки аудита, секреты или рискованные пакеты в слоте Swarm (decision-56 п. 10). */
+  | {
+      type: 'security:finding';
+      projectPath: string;
+      source: 'audit' | 'secrets' | 'dependencies';
+      severity: 'critical' | 'high' | 'moderate' | 'low' | 'info' | 'unknown';
+      title: string;
+      /** Сводка без значений секретов: уровни и пакеты, виды и файлы. */
+      summary: string;
+      count: number;
+      /** Ключ дедупликации: набор advisory или агент и состояние его диффа. */
+      key: string;
+      swarmId?: string;
+      agentId?: string;
+      at: number;
     };
 
 /** Поля PR в событиях опроса (TASK-81). */

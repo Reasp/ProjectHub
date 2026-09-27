@@ -123,6 +123,32 @@ describe('TerminalHookService', () => {
     expect(JSON.parse(out.stdout).hookSpecificOutput).toMatchObject({ permissionDecision: 'allow', permissionDecisionReason: 'Разрешено в ProjectHub: ок' });
   });
 
+  it('git commit с секретами: allow политики поднимается до ask (secret-scan), без находок — как раньше', async () => {
+    const deps = (h.service as unknown as { deps: { scanCommit?: (w: string, p: string, c: string) => Promise<unknown> } }).deps;
+    const seen: string[] = [];
+    deps.scanCommit = async (_w, _p, command) => {
+      seen.push(command);
+      return command.includes('commit')
+        ? { findings: command.includes('leak') ? [{ kind: 'provider_key', file: 'src/a.ts', line: 3 }] : [], suppressed: 0, filesScanned: 1, truncated: false }
+        : null;
+    };
+    const clean = await h.service.handle(pre('Bash', { command: 'git commit -m clean' }));
+    expect(clean).toEqual({ exitCode: 0, stdout: '', stderr: '' });
+
+    const pending = h.service.handle(pre('Bash', { command: 'git commit -am leak' }));
+    await vi.waitFor(() => expect(h.hitl.listPending()).toHaveLength(1));
+    const req = h.hitl.listPending()[0];
+    expect(req.details).toContain('правило secret-scan');
+    expect(req.details).toContain('provider_key (src/a.ts:3)');
+    h.hitl.decide(req.id, { approved: false }, { kind: 'local' });
+    expect(JSON.parse((await pending).stdout).hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(seen).toEqual(['git commit -m clean', 'git commit -am leak']);
+
+    // Сбой скана — вердикт политики без изменений (fail-open).
+    deps.scanCommit = async () => Promise.reject(new Error('boom'));
+    expect(await h.service.handle(pre('Bash', { command: 'git commit -m x' }))).toEqual({ exitCode: 0, stdout: '', stderr: '' });
+  });
+
   it('ask → отказ человека → deny с комментарием', async () => {
     const pending = h.service.handle(pre('Bash', { command: 'git push' }));
     await vi.waitFor(() => expect(h.hitl.listPending()).toHaveLength(1));

@@ -83,6 +83,8 @@ export function componentLabel(key: ScoreComponentKey, t: TranslationDictionary[
       return t.componentLocality;
     case 'cost':
       return t.componentCost;
+    case 'security':
+      return t.componentSecurity;
     default:
       return t.componentTime;
   }

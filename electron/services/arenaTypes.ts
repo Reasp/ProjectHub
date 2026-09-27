@@ -99,7 +99,7 @@ export interface CheckRunResult {
   artifactsTruncated?: boolean;
 }
 
-export type ScoreComponentKey = 'checks' | 'acceptance' | 'review' | 'diffSize' | 'locality' | 'cost' | 'time';
+export type ScoreComponentKey = 'checks' | 'acceptance' | 'review' | 'diffSize' | 'locality' | 'cost' | 'time' | 'security';
 
 /** Веса компонентов итогового балла. Хранятся в `.projecthub.json` (`arena.weights`). */
 export type ScoreWeights = Record<ScoreComponentKey, number>;

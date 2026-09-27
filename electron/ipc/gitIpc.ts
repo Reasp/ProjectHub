@@ -5,6 +5,7 @@ import { prService } from '../services/prService';
 import { assertRegisteredProject, assertWorkspaceRoot } from '../services/projectPathGuard';
 import { assertInsideProject } from '../services/pathGuard';
 import { runWorktreeInit } from '../services/worktreeInitService';
+import { guardedCommit } from '../services/commitSecretGuard';
 import type { AddWorktreeOptions, PRCreateOptions } from '../../src/types/electron';
 
 export function registerGitIpc() {
@@ -46,8 +47,15 @@ export function registerGitIpc() {
     return await gitService.stageAll(await assertWorkspaceRoot(projectPath));
   });
 
-  ipcMain.handle('git:commit', async (_event, projectPath: string, message: string, stageAll = false) => {
-    return await gitService.commitChanges(await assertWorkspaceRoot(projectPath), message, stageAll);
+  // Коммит из окна проверяется сканером секретов в main (decision-56 п. 4): находки — отказ с видами и файлами,
+  // «закоммитить всё равно» — повтор с хэшем дерева индекса, который видел человек, и запись в аудит.
+  ipcMain.handle('git:commit', async (_event, projectPath: string, message: string, stageAll = false, acknowledgeSecrets?: unknown) => {
+    return await guardedCommit(await assertWorkspaceRoot(projectPath), message, {
+      stageAll: Boolean(stageAll),
+      ...(typeof acknowledgeSecrets === 'string' && /^[0-9a-f]{40,64}$/.test(acknowledgeSecrets) ? { acknowledgeSecrets } : {}),
+      allowOverride: true,
+      source: { kind: 'local' }
+    });
   });
 
   ipcMain.handle('git:getFileDiff', async (_event, projectPath: string, filePath: string, staged = false) => {

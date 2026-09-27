@@ -23,6 +23,7 @@ import { hitlService } from './hitlService.js';
 import { appEventBus } from './eventBus.js';
 import { getUserDataDir } from './appPaths.js';
 import { secretStorageService } from './secretStorageService.js';
+import { summarizeSecretFindings, type DiffSecretScanResult } from './diffSecretScan.js';
 import {
   approvalTimeoutFromBudget,
   DEFAULT_TERMINAL_HOOK_SETTINGS,
@@ -83,6 +84,11 @@ export interface TerminalHookDeps {
   getSecret(key: string): Promise<string | null>;
   setSecret(key: string, value: string): Promise<void>;
   now(): number;
+  /**
+   * Сканер секретов для `git commit` в команде (decision-56 п. 4): `null` — в команде нет коммита.
+   * Необязателен: без него хук работает как раньше.
+   */
+  scanCommit?(workDir: string, projectPath: string, command: string): Promise<DiffSecretScanResult | null>;
 }
 
 function defaultDeps(): TerminalHookDeps {
@@ -116,7 +122,14 @@ function defaultDeps(): TerminalHookDeps {
     userDataDir: () => getUserDataDir(),
     getSecret: (key) => secretStorageService.getSecret(key),
     setSecret: (key, value) => secretStorageService.setSecret(key, value),
-    now: () => Date.now()
+    now: () => Date.now(),
+    scanCommit: async (workDir, projectPath, command) => {
+      const { commitScanScope, scanPendingCommit } = await import('./terminalCommitScan.js');
+      const scope = commitScanScope(command);
+      if (!scope) return null;
+      const [{ actionConfigService }, { secretAllowPathsFromConfig }] = await Promise.all([import('./actionConfigService.js'), import('./commitSecretGuard.js')]);
+      return scanPendingCommit(workDir, scope, secretAllowPathsFromConfig(await actionConfigService.getConfig(projectPath)));
+    }
   };
 }
 
@@ -293,7 +306,18 @@ export class TerminalHookService {
     const calls = policyToolCalls(event);
     // Рабочий каталог сессии — для Playwright MCP: файлы внутри него остаются «внутри браузера» (decision-55 п. 3).
     const workDir = event.cwd?.trim() || projectPath;
-    const verdict = strictest(calls.map((c) => evaluateToolRequest(config, projectPath, c.tool, c.input, { workDir })));
+    let verdict = strictest(calls.map((c) => evaluateToolRequest(config, projectPath, c.tool, c.input, { workDir })));
+    // git commit с секретами в индексе (или в том, что закоммитит `-a`/`git add &&`) — к человеку (decision-56 п. 4).
+    // Отказ роли сильнее; сбой скана оставляет вердикт политики (fail-open, как сами хуки).
+    let secretNote = '';
+    const bashCommand = calls[0]?.tool === 'Bash' ? commandFromInput(calls[0].input) : '';
+    if (verdict.verdict !== 'deny' && bashCommand && this.deps.scanCommit) {
+      const scan = await this.deps.scanCommit(workDir, projectPath, bashCommand).catch(() => null);
+      if (scan && scan.findings.length > 0) {
+        secretNote = summarizeSecretFindings(scan.findings);
+        verdict = { verdict: 'ask', rule: 'secret-scan', reason: `В коммите похоже на секреты: ${secretNote}` };
+      }
+    }
     const meta = this.meta(event, projectPath, role);
     const first = calls[0];
     const policyTool = first?.tool ?? tool;
@@ -317,7 +341,9 @@ export class TerminalHookService {
       id: this.deps.hitl.newRequestId('term'),
       type,
       title: this.askTitle(policyTool, tool, filePath, command, event),
-      details: `${ENGINE_LABEL[event.engine]} в терминале · правило ${verdict.rule}${CLI_READ_TOOLS.includes(policyTool) ? ' (чтение)' : ''}`,
+      details:
+        `${ENGINE_LABEL[event.engine]} в терминале · правило ${verdict.rule}${CLI_READ_TOOLS.includes(policyTool) ? ' (чтение)' : ''}` +
+        (secretNote ? `\nСканер секретов (значения скрыты): ${secretNote}` : ''),
       ...(filePath ? { filePath } : {}),
       ...(command ? { command } : {}),
       createdAt: this.deps.now()

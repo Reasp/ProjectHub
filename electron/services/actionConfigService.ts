@@ -33,7 +33,7 @@ export interface WorktreeInitPolicy {
 
 /** Настройки автосудьи арены (decision-12, TASK-61); полный разбор — в `arenaConfigService`. */
 export interface ArenaSettings {
-  weights?: Partial<Record<'checks' | 'acceptance' | 'review' | 'diffSize' | 'locality' | 'cost' | 'time', number>>;
+  weights?: Partial<Record<'checks' | 'acceptance' | 'review' | 'diffSize' | 'locality' | 'cost' | 'time' | 'security', number>>;
   autoMerge?: { enabled?: boolean; minScore?: number };
   reviewer?: { enabled?: boolean; roleSlug?: string; provider?: string; profile?: string; model?: string };
   maxConcurrentChecks?: number;

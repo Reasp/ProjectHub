@@ -114,6 +114,10 @@ export const App: React.FC = () => {
         case 'openAutomations':
           useAutomationsStore.getState().open(action.projectPath);
           break;
+        case 'openSecurity':
+          focusProject(action.projectPath);
+          setActiveTab('security');
+          break;
         case 'openRemote':
         case 'openApp':
         default:

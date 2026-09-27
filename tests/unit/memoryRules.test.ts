@@ -38,6 +38,7 @@ describe('memory-rules.mjs совпадает с memoryFormat.ts', () => {
       aws_key: 'AKIAIOSFODNN7EXAMPLE',
       google_key: 'AIzaSyA0123456789abcdefghijklmnopqrstuv',
       huggingface_token: 'hf_abcdefghijklmnopqrstuvwxyz012345',
+      telegram_token: '1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsawQ',
       jwt: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U'
     };
     for (const [kind, re] of STRICT_SECRET_PATTERNS) {

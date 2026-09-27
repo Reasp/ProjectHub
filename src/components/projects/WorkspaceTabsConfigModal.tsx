@@ -19,7 +19,8 @@ import {
   BarChart2,
   Sparkles,
   Bot,
-  Cpu
+  Cpu,
+  ShieldCheck
 } from 'lucide-react';
 import type { TabConfigItem, WorkspaceTabId } from '../../hooks/useWorkspaceTabs';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -75,7 +76,8 @@ export const WorkspaceTabsConfigModal: React.FC<WorkspaceTabsConfigModalProps> =
     analytics: { label: t.tabs.analytics, icon: BarChart2, hotkey: 'Ctrl+A' },
     ai: { label: t.tabs.ai, icon: Sparkles, hotkey: 'Ctrl+I' },
     'claude-cli': { label: t.tabs.claudeCli, icon: Bot, hotkey: 'Ctrl+T' },
-    processes: { label: t.tabs.processes, icon: Cpu }
+    processes: { label: t.tabs.processes, icon: Cpu },
+    security: { label: t.tabs.security, icon: ShieldCheck }
   };
 
   const visibleCount = tabsConfig.filter((t) => t.visible).length;

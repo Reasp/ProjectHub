@@ -1,0 +1,50 @@
+diff --git a/.env b/.env
+new file mode 100644
+index 0000000..15985fc
+--- /dev/null
++++ b/.env
+@@ -0,0 +1,2 @@
++OPENAI_API_KEY=abc123def456ghi789
++PORT=3000
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..3c6ecfe
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1 @@
++OPENAI_API_KEY=<your-key>
+diff --git a/README.md b/README.md
+index 587be6b..b77b4eb 100644
+--- a/README.md
++++ b/README.md
+@@ -1 +1,2 @@
+ x
++y
+diff --git a/logo.png b/logo.png
+new file mode 100644
+index 0000000..36b8a98
+Binary files /dev/null and b/logo.png differ
+diff --git a/src/config.ts b/src/config.ts
+index 985bebf..85fac89 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -1,3 +1,4 @@
+ const a = 1;
+-const OLD_KEY = "sk-ant-api03-OldOldOld0123456789xyz";
++export const client = { apiKey: "sk-ant-api03-AbCdEf0123456789xyzXYZ" };
+ export {};
++// ghp_0123456789abcdefABCDEF0123 projecthub:allow-secret
+diff --git "a/src/\320\275\320\260\321\201\321\202\321\200\320\276\320\271\320\272\320\270 \320\261\320\276\321\202\320\260.yml" "b/src/\320\275\320\260\321\201\321\202\321\200\320\276\320\271\320\272\320\270 \320\261\320\276\321\202\320\260.yml"
+new file mode 100644
+index 0000000..cefcfc2
+--- /dev/null
++++ "b/src/\320\275\320\260\321\201\321\202\321\200\320\276\320\271\320\272\320\270 \320\261\320\276\321\202\320\260.yml"	
+@@ -0,0 +1 @@
++bot: 1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsawQ
+diff --git a/tests/fixtures/keys.ts b/tests/fixtures/keys.ts
+new file mode 100644
+index 0000000..4b0bfc0
+--- /dev/null
++++ b/tests/fixtures/keys.ts
+@@ -0,0 +1 @@
++export const FAKE = "AKIAIOSFODNN7EXAMPLE";

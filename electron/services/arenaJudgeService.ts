@@ -26,6 +26,8 @@ import { loadArenaConfig } from './arenaConfig.js';
 import { summarizeCheckResult } from './arenaChecks.js';
 import { autoMergeDecision, recommendCandidate, scoreCandidates, type CandidateScoreInput } from './arenaScoring.js';
 import { buildReviewerPrompt, parseReviewerResponse } from './reviewerPrompt.js';
+import { securityScoreInput, securitySummaryText } from './slotSecurity.js';
+import { maskSecretsInPatch } from './diffSecretScan.js';
 import type { ArenaConfig, CheckDefinition, CheckRunResult, JudgeState, ReviewerVerdict } from './arenaTypes.js';
 import type { AgentSlotState, SwarmSession } from './swarmTypes.js';
 import { ProviderError, providerErrorInfoOf } from './providerErrors.js';
@@ -178,7 +180,8 @@ export class ArenaJudgeService {
 
       const checksByAgent: Record<string, CheckRunResult[]> = {};
       for (const agent of candidates) checksByAgent[agent.id] = agent.checks ?? [];
-      const auto = autoMergeDecision(scores, checksByAgent, config.autoMerge);
+      const securityByAgent = Object.fromEntries(candidates.map((a) => [a.id, securityScoreInput(a.security)]));
+      const auto = autoMergeDecision(scores, checksByAgent, config.autoMerge, securityByAgent);
       judge.autoMerge = {
         enabled: config.autoMerge.enabled,
         attempted: false,
@@ -395,7 +398,9 @@ export class ArenaJudgeService {
         criteria,
         agentName: agent.config.name,
         agentRole: agent.config.role,
-        diffPatch: agent.diffSummary?.patch ?? '',
+        // Значения секретов стороннему LLM не отдаём: сканер уже нашёл их — маскируем (decision-56 п. 6).
+        diffPatch: agent.security?.secrets.length ? maskSecretsInPatch(agent.diffSummary?.patch ?? '') : agent.diffSummary?.patch ?? '',
+        securitySummary: securitySummaryText(agent.security),
         diffSummary: agent.diffSummary
           ? {
               filesChanged: agent.diffSummary.filesChanged,
@@ -554,7 +559,8 @@ export class ArenaJudgeService {
       ...(typeof (agent.metrics.usage?.costUsd ?? agent.metrics.costUsd) === 'number'
         ? { costUsd: agent.metrics.usage?.costUsd ?? agent.metrics.costUsd }
         : {}),
-      ...(typeof agent.metrics.durationMs === 'number' ? { durationMs: agent.metrics.durationMs } : {})
+      ...(typeof agent.metrics.durationMs === 'number' ? { durationMs: agent.metrics.durationMs } : {}),
+      ...(agent.security ? { security: securityScoreInput(agent.security) } : {})
     }));
 
     const scores = scoreCandidates(inputs, config.weights);

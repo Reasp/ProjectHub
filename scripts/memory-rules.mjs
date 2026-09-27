@@ -24,6 +24,7 @@ export const STRICT_SECRET_PATTERNS = [
   ['aws_key', /\bAKIA[0-9A-Z]{16}\b/],
   ['google_key', /\bAIza[0-9A-Za-z_-]{35}\b/],
   ['huggingface_token', /\bhf_[A-Za-z0-9]{30,}\b/],
+  ['telegram_token', /\b\d{8,10}:[A-Za-z0-9_-]{35}\b/],
   ['jwt', /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/]
 ];
 
