@@ -3,10 +3,10 @@ id: TASK-76.1
 title: >-
   Память: чистые модули формата факта, детектора секретов и поиска похожих с
   тестами
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-26 13:27'
-updated_date: '2026-09-26 13:33'
+updated_date: '2026-09-27 00:04'
 labels:
   - memory
   - ai

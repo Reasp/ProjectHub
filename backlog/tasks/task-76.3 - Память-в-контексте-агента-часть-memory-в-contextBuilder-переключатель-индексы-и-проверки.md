@@ -3,10 +3,10 @@ id: TASK-76.3
 title: >-
   Память в контексте агента: часть memory в contextBuilder, переключатель,
   индексы и проверки
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-26 13:28'
-updated_date: '2026-09-26 13:51'
+updated_date: '2026-09-27 00:04'
 labels:
   - memory
   - context

@@ -3,10 +3,10 @@ id: TASK-76.6
 title: >-
   Живая проверка памяти: Claude CLI и API-агент на Ollama, скриншот собранного
   exe
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-09-26 13:28'
-updated_date: '2026-09-26 14:38'
+updated_date: '2026-09-27 00:03'
 labels:
   - memory
   - qa
@@ -26,13 +26,15 @@ priority: medium
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Claude CLI и API-агент пишут и читают память одинаково; отказ на секрет подтверждён вживую
+- [x] #1 Claude CLI и API-агент пишут и читают память одинаково; отказ на секрет подтверждён вживую
 - [x] #2 Заметка хода появилась в задаче после живого прогона
-- [ ] #3 Скриншоты собранного exe; lint, test, check-bundle, lint:docs зелёные, pack:win собран
+- [x] #3 Скриншоты собранного exe; lint, test, check-bundle, lint:docs зелёные, pack:win собран
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 ## Живая проверка 2026-09-26
+
+## Доводка 2026-09-27
 <!-- SECTION:NOTES:END -->

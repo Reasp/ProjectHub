@@ -3,10 +3,10 @@ id: TASK-76.2
 title: >-
   Память: memoryService, инструменты memory_* во встроенном MCP и у API-агента,
   аудит
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-26 13:28'
-updated_date: '2026-09-26 13:44'
+updated_date: '2026-09-27 00:04'
 labels:
   - memory
   - mcp

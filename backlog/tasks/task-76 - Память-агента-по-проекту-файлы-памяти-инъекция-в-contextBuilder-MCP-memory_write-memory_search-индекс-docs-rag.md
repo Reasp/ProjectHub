@@ -3,10 +3,10 @@ id: TASK-76
 title: >-
   Память агента по проекту: файлы памяти, инъекция в contextBuilder, MCP
   memory_write/memory_search, индекс docs-rag
-status: In Progress
+status: Review
 assignee: []
 created_date: '2026-09-15 03:12'
-updated_date: '2026-09-26 14:40'
+updated_date: '2026-09-26 22:55'
 labels:
   - ai
   - context
@@ -46,7 +46,7 @@ GPT-6 Astra вместо сжатия контекста ведёт «context no
 - [x] #3 contextBuilder подмешивает память проекта с лимитом токенов; секция отключается в ContextAppliedCard
 - [x] #4 Память индексируется docs-rag; lint:docs и check-index учитывают каталог памяти
 - [x] #5 По завершении сессии агента по задаче краткая заметка хода попадает в implementationNotes задачи
-- [ ] #6 UI просмотра/правки/удаления фактов памяти; i18n; lint/test зелёные, pack:win собран
+- [x] #6 UI просмотра/правки/удаления фактов памяти; i18n; lint/test зелёные, pack:win собран
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -59,4 +59,6 @@ GPT-6 Astra вместо сжатия контекста ведёт «context no
 
 <!-- SECTION:NOTES:BEGIN -->
 ## Итог сессии 2026-09-26
+
+## Доводка 2026-09-27
 <!-- SECTION:NOTES:END -->

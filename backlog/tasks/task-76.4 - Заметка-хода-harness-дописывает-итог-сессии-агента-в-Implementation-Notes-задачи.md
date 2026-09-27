@@ -3,10 +3,10 @@ id: TASK-76.4
 title: >-
   Заметка хода: harness дописывает итог сессии агента в Implementation Notes
   задачи
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-26 13:28'
-updated_date: '2026-09-26 13:59'
+updated_date: '2026-09-27 00:04'
 labels:
   - memory
   - swarm

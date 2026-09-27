@@ -1,10 +1,10 @@
 ---
 id: TASK-76.5
 title: 'UI памяти проекта во вкладке документов: просмотр, правка, удаление, i18n'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-26 13:28'
-updated_date: '2026-09-26 14:29'
+updated_date: '2026-09-27 00:04'
 labels:
   - memory
   - ui
