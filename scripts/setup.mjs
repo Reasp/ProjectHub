@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
+import { pathToFileURL } from 'node:url';
 import { INFRA_ROOT, CONFIG_PATH_EXPORTED } from './config.mjs';
 
 function parseArgs(argv) {
@@ -14,9 +15,17 @@ function parseArgs(argv) {
   return args;
 }
 
-const ALL_FEATURES = ['docsRag', 'envTools', 'backlogMcp', 'bootstrap', 'gitnexus', 'lightrag', 'computerUse'];
-// lightrag и computerUse — опционально, по умолчанию выключены (decision-27 п. 6: управление компьютером — самый опасный инструмент).
-const DEFAULT_ON = ['docsRag', 'envTools', 'backlogMcp', 'bootstrap', 'gitnexus'];
+export const ALL_FEATURES = ['docsRag', 'envTools', 'backlogMcp', 'bootstrap', 'gitnexus', 'lightrag', 'computerUse', 'playwright'];
+// lightrag, computerUse и playwright — опционально, по умолчанию выключены (decision-27 п. 6: управление компьютером —
+// самый опасный инструмент; decision-55 п. 1: браузер для визуальной проверки включается только по явному запросу).
+export const DEFAULT_ON = ['docsRag', 'envTools', 'backlogMcp', 'bootstrap', 'gitnexus'];
+
+// Playwright MCP: версия закреплена (0.0.x меняется каждые 1–2 недели), браузер headless и с профилем в памяти —
+// окна не мешают человеку, параллельные агенты не делят профиль (decision-55 п. 1).
+export const PLAYWRIGHT_MCP_PACKAGE = '@playwright/mcp@0.0.82';
+// Каталог вывода Playwright MCP по умолчанию: снимки .yml и скриншоты агента. В git не нужен, а авто-коммит
+// worktree иначе унёс бы его в ветку агента.
+export const PLAYWRIGHT_OUTPUT_IGNORE = '.playwright-mcp/';
 
 async function ask(rl, question, fallback) {
   const answer = (await rl.question(`${question} `)).trim();
@@ -55,6 +64,8 @@ async function resolveInteractively(args) {
           lightrag: 'LightRAG — граф технической документации (Python + локальная LLM через Ollama, тяжело)',
           computerUse:
             'Управление компьютером (computer_*) через прокси ProjectHub — HITL, allowlist, kill-switch; нужен запущенный ProjectHub и PROJECTHUB_MCP_TOKEN',
+          playwright:
+            'Playwright MCP — браузер для визуальной проверки UI агентом (headless, профиль в памяти, системный Chrome)',
         }[f];
         const answer = (await ask(rl, `${label}? [${def}]`, defAnswer)).toLowerCase();
         if (answer === 'y' || answer === 'yes' || answer === 'д' || answer === 'да') features.push(f);
@@ -67,9 +78,9 @@ async function resolveInteractively(args) {
   }
 }
 
-const MCP_KEYS = ['docs-rag', 'env-tools', 'backlog', 'docs-graph', 'gitnexus', 'projecthub-computer'];
+export const MCP_KEYS = ['docs-rag', 'env-tools', 'backlog', 'docs-graph', 'gitnexus', 'projecthub-computer', 'playwright'];
 
-function buildDesiredMcpServers(prefix, features) {
+export function buildDesiredMcpServers(prefix, features) {
   const desired = {};
   if (features.includes('docsRag')) {
     desired['docs-rag'] = { command: 'node', args: [`${prefix}scripts/rag/rag-server.mjs`] };
@@ -92,13 +103,34 @@ function buildDesiredMcpServers(prefix, features) {
     // а не движок. Токен берётся из PROJECTHUB_MCP_TOKEN и в коммитящийся конфиг не пишется (TASK-82).
     desired['projecthub-computer'] = { command: 'node', args: [`${prefix}scripts/computer-use/computer-use-bridge.mjs`] };
   }
+  if (features.includes('playwright')) {
+    // Без --extension (реальный браузер пользователя), --allow-unrestricted-file-access и --caps: выход за браузер
+    // (browser_run_code_unsafe, файлы вне рабочего каталога) ProjectHub отправляет человеку (decision-55 п. 3).
+    desired['playwright'] = { command: 'npx', args: ['--yes', PLAYWRIGHT_MCP_PACKAGE, '--headless', '--isolated'] };
+  }
   return desired;
+}
+
+/** Дописывает строку в .gitignore проекта, если её там нет (идемпотентно). true — файл изменён. */
+export function ensureGitignoreEntry(projectRootAbs, entry) {
+  const file = path.join(projectRootAbs, '.gitignore');
+  const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '';
+  const bare = entry.replace(/\/$/, '');
+  const present = text.split(/\r?\n/).some((line) => {
+    const l = line.trim().replace(/^\//, '').replace(/\/$/, '');
+    return l === bare;
+  });
+  if (present) return false;
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const prefix = text.length > 0 && !text.endsWith('\n') ? eol : '';
+  fs.writeFileSync(file, `${text}${prefix}${entry}${eol}`);
+  return true;
 }
 
 // Пишем один и тот же набор mcpServers в оба формата конфига: `.mcp.json` читает Claude
 // Code, `.agents/mcp_config.json` (тот же ключ mcpServers/command/args) — Google Antigravity.
 // Чужие записи mcpServers не трогаем — синхронизируем только свои ключи из MCP_KEYS.
-function writeMcpConfig(configPath, desired) {
+export function writeMcpConfig(configPath, desired) {
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   const existing = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf-8')) : { mcpServers: {} };
   existing.mcpServers ??= {};
@@ -112,7 +144,7 @@ function writeMcpConfig(configPath, desired) {
   return configPath;
 }
 
-function mergeMcpConfig(projectRootAbs, features) {
+export function mergeMcpConfig(projectRootAbs, features) {
   const relInfra = path.relative(projectRootAbs, INFRA_ROOT).split(path.sep).join('/');
   const prefix = relInfra ? `${relInfra}/` : '';
   const desired = buildDesiredMcpServers(prefix, features);
@@ -150,8 +182,16 @@ async function main() {
   const mcpPaths = mergeMcpConfig(projectRootAbs, resolved.features);
   console.log(
     `\nОбновлены ${mcpPaths.map((p) => path.relative(INFRA_ROOT, p)).join(', ')} ` +
-      '(записи docs-rag/env-tools/backlog/docs-graph/gitnexus/projecthub-computer синхронизированы с включёнными фичами).',
+      '(записи docs-rag/env-tools/backlog/docs-graph/gitnexus/projecthub-computer/playwright синхронизированы с включёнными фичами).',
   );
+  if (config.features.playwright) {
+    const added = ensureGitignoreEntry(projectRootAbs, PLAYWRIGHT_OUTPUT_IGNORE);
+    console.log(
+      `\nplaywright: Playwright MCP (${PLAYWRIGHT_MCP_PACKAGE}, headless, профиль в памяти) использует установленный Chrome; ` +
+        'страницы проекта открывайте по http (file: заблокирован). ' +
+        (added ? `В .gitignore добавлен ${PLAYWRIGHT_OUTPUT_IGNORE}.` : `${PLAYWRIGHT_OUTPUT_IGNORE} уже в .gitignore.`),
+    );
+  }
   if (config.features.computerUse) {
     console.log(
       '\ncomputerUse: включите «Управление компьютером» в ProjectHub (бейдж MCP) и задайте PROJECTHUB_MCP_TOKEN ' +
@@ -177,4 +217,5 @@ async function main() {
   console.log('  npm run sync-rules      # разослать infra-dev.md в CLAUDE.md/GEMINI.md/AGENTS.md целевого проекта');
 }
 
-main();
+// Импорт из unit-теста не запускает настройку: main() — только при запуске файла напрямую.
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) main();

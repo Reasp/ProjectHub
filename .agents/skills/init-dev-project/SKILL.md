@@ -41,7 +41,10 @@ description: "Use when the user wants to bootstrap a new software project with t
    Явно предупреди: это Python + локальная LLM через Ollama (несколько ГБ на диск, медленная
    индексация — минуты на документ, а не секунды). Включай, только если пользователь
    осознанно согласился, не предлагай как само собой разумеющееся дополнение.
-5. Если в директории уже есть код — **проиндексировать его GitNexus сейчас же?** (да/нет).
+5. **Нужен ли браузер для визуальной проверки UI** (Playwright MCP, фича `playwright`)? **По умолчанию — нет.**
+   Спрашивай, только если у проекта есть веб-интерфейс. Фича ставит `@playwright/mcp` (headless, профиль в памяти,
+   системный Chrome) в оба MCP-конфига и `.playwright-mcp/` в `.gitignore` (decision-55 ProjectHub).
+6. Если в директории уже есть код — **проиндексировать его GitNexus сейчас же?** (да/нет).
    Для пустого проекта пропусти вопрос.
 
 ## Шаг 2 — git и Backlog.md
@@ -87,13 +90,14 @@ npx --yes backlog.md init "<имя проекта>" --agent-instructions agents 
 
 ```bash
 node scripts/setup.mjs --project-root <путь-от-инфры-до-корня-проекта> \
-  --features docsRag,envTools,backlogMcp,bootstrap,gitnexus[,lightrag] --no-interactive
+  --features docsRag,envTools,backlogMcp,bootstrap,gitnexus[,lightrag][,playwright] --no-interactive
 npm install
 ```
 
 `--project-root` — `.`, если инфраструктура сама является корнем (обычный случай), или
 относительный путь вверх (`..`, `../..`), если она подключена как подпапка. `--features`
-перечисли явно по ответам шага 1 (`lightrag` — только если пользователь согласился).
+перечисли явно по ответам шага 1 (`lightrag` и `playwright` — только если пользователь согласился; `computerUse`
+не включай без отдельной явной просьбы).
 `setup.mjs` сам запишет `infra.config.json` и синхронизирует `.mcp.json` (Claude Code) и
 `.agents/mcp_config.json` (Google Antigravity) **в корне проекта** (не в подпапке с инфрой)
 с правильными относительными путями до скриптов.

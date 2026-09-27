@@ -362,6 +362,8 @@ const api: IElectronAPI = {
   composeSwarmResult: (swarmId: string, selections: Array<{ agentId: string; files: string[] }>) =>
     ipcRenderer.invoke('swarm:compose', swarmId, selections),
   getArenaConfig: (projectPath: string) => ipcRenderer.invoke('arena:getConfig', projectPath),
+  readVisualArtifact: (relPath: string) => ipcRenderer.invoke('visual:readArtifact', relPath),
+  revealVisualArtifact: (relPath: string) => ipcRenderer.invoke('visual:revealArtifact', relPath),
   saveArenaConfig: (projectPath: string, patch: { checks?: CheckDefinition[]; arena?: ArenaSettings }) =>
     ipcRenderer.invoke('arena:saveConfig', projectPath, patch),
   listSwarms: (projectPath?: string) => ipcRenderer.invoke('swarm:list', projectPath),

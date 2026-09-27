@@ -69,6 +69,7 @@ import { exportSwarmSessionJson, exportSwarmSessionMarkdown, summarizeSwarmSessi
 import { pricingService } from './pricingService.js';
 import { arenaJudgeService, judgeableAgents, type RunJudgeOptions } from './arenaJudgeService.js';
 import { doneLoopService, loadDoneLoopSettings, type DoneLoopRunResult } from './doneLoopService.js';
+import { visualArtifactService } from './visualArtifactService.js';
 import { findTaskFile } from './taskFileLookup.js';
 import {
   applyRollbackMarks,
@@ -1173,6 +1174,9 @@ export class AgentFleetService extends EventEmitter {
         console.warn(`[AgentFleetService] Не удалось удалить ref чекпоинтов сессии ${session.id}:`, err);
       }
     }
+
+    // Скриншоты и trace проверок ui-smoke живут вместе с сессией (decision-55 п. 5).
+    await visualArtifactService.removeScope(visualArtifactService.swarmScope(session.id));
 
     this.sessions.delete(swarmId);
     this.activeProcesses.delete(swarmId);

@@ -13,6 +13,7 @@
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { executeCheck } from './checkRunner.js';
+import { visualArtifactService } from './visualArtifactService.js';
 import { aiAgentService, type AIMessage, type AIProviderConfig } from './aiAgentService.js';
 import { loadRoles } from './roleService.js';
 import { llmProfileService } from './llmProfileService.js';
@@ -25,7 +26,7 @@ import { loadArenaConfig } from './arenaConfig.js';
 import { summarizeCheckResult } from './arenaChecks.js';
 import { autoMergeDecision, recommendCandidate, scoreCandidates, type CandidateScoreInput } from './arenaScoring.js';
 import { buildReviewerPrompt, parseReviewerResponse } from './reviewerPrompt.js';
-import type { ArenaConfig, CheckRunResult, JudgeState, ReviewerVerdict } from './arenaTypes.js';
+import type { ArenaConfig, CheckDefinition, CheckRunResult, JudgeState, ReviewerVerdict } from './arenaTypes.js';
 import type { AgentSlotState, SwarmSession } from './swarmTypes.js';
 import { ProviderError, providerErrorInfoOf } from './providerErrors.js';
 
@@ -237,8 +238,12 @@ export class ArenaJudgeService {
       command: string;
       portStrategy?: 'fixed' | 'auto';
       port?: number;
+      artifacts?: CheckDefinition['artifacts'];
     }
     const jobs: Job[] = [];
+    // Артефакты ui-smoke этого прогона судьи — отдельный каталог на кандидата (decision-55 п. 5).
+    const judgeRun = `judge-${Date.now()}`;
+    const scope = visualArtifactService.swarmScope(session.id);
 
     for (const agent of candidates) {
       if (agent.checks && agent.checks.length > 0 && !rerun) continue;
@@ -265,7 +270,8 @@ export class ArenaJudgeService {
           command: enabled[i].command,
           timeoutMs: enabled[i].timeoutMs,
           portStrategy: enabled[i].portStrategy,
-          port: enabled[i].port
+          port: enabled[i].port,
+          artifacts: enabled[i].artifacts
         });
       });
     }
@@ -280,7 +286,9 @@ export class ArenaJudgeService {
           job.result.detail = 'Прогон судьи отменён';
           return;
         }
-        const running = executeCheck(job.result, job, job.workdir!, signal);
+        const running = executeCheck(job.result, job, job.workdir!, signal, {
+          artifacts: { scope, agentId: job.agent.id, run: judgeRun }
+        });
         hooks.onUpdate(job.agent.id);
         hooks.log(job.agent, `[Судья] Проверка «${job.result.name}»: ${job.command}`);
         await running;

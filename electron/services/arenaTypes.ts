@@ -11,7 +11,29 @@
  */
 import type { ProviderErrorInfo } from './providerErrors.js';
 
-export type CheckKind = 'lint' | 'test' | 'build' | 'typecheck' | 'custom';
+/** `ui-smoke` — визуальная проверка: команда оставляет скриншоты/trace в каталоге артефактов (decision-55). */
+export type CheckKind = 'lint' | 'test' | 'build' | 'typecheck' | 'ui-smoke' | 'custom';
+
+/** Вид артефакта проверки: скриншот (evidence) или trace Playwright. */
+export type CheckArtifactKind = 'screenshot' | 'trace';
+
+/** Артефакты проверки `ui-smoke` в `.projecthub.json`. */
+export interface CheckArtifactsConfig {
+  /** Пути относительно рабочего каталога, откуда собрать файлы после прогона (`test-results`). */
+  from?: string[];
+  /** Сколько скриншотов обязано остаться; меньше — проверка `failed`. По умолчанию 1. */
+  minScreenshots?: number;
+}
+
+/** Файл, сохранённый в `<userData>/visual` после прогона проверки. */
+export interface CheckArtifact {
+  /** Путь внутри каталога проверки, с `/` — на него ссылается отчёт агента. */
+  name: string;
+  /** Путь внутри `<userData>/visual` — по нему рендерер читает файл через IPC. */
+  relPath: string;
+  kind: CheckArtifactKind;
+  bytes: number;
+}
 
 export type CheckStatus =
   | 'pending'
@@ -45,6 +67,8 @@ export interface CheckDefinition {
    */
   portStrategy?: 'fixed' | 'auto';
   port?: number;
+  /** Только для `ui-smoke`: откуда собрать артефакты и сколько скриншотов обязательно. */
+  artifacts?: CheckArtifactsConfig;
 }
 
 /** Результат одного прогона проверки в worktree кандидата. */
@@ -69,6 +93,10 @@ export interface CheckRunResult {
   outputTruncated?: boolean;
   /** Человекочитаемая причина для `skipped`/`error`. */
   detail?: string;
+  /** Скриншоты и trace проверки `ui-smoke` (decision-55 п. 5). */
+  artifacts?: CheckArtifact[];
+  /** Часть файлов не сохранена из-за лимитов. */
+  artifactsTruncated?: boolean;
 }
 
 export type ScoreComponentKey = 'checks' | 'acceptance' | 'review' | 'diffSize' | 'locality' | 'cost' | 'time';

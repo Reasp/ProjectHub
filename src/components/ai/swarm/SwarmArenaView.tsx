@@ -63,6 +63,7 @@ import { providerErrorAdvice, providerErrorTitle } from '../../../lib/providerEr
 import { chainLinkLabel } from '../../../lib/modelTierEditor';
 import { AdviceText } from '../ProviderErrorCard';
 import { AgentTimelinePanel } from './AgentTimelinePanel';
+import { CheckArtifactsGallery } from './CheckArtifactsGallery';
 import { continueDialogText, pendingContinueAgent } from '../../../lib/rewindContinueView';
 
 /** Вкладки карточки кандидата: к выводу/логам/диффу добавлены проверки и ревью судьи (TASK-61), таймлайн (TASK-72). */
@@ -1242,6 +1243,7 @@ ${t.swarm.estimatedUsageTooltip}` : '')}
                                     )}
                                   </div>
                                   {check.detail && <div className="text-[10px] text-amber-400/90">{check.detail}</div>}
+                                  <CheckArtifactsGallery artifacts={check.artifacts} truncated={check.artifactsTruncated} />
                                   {check.outputTail && check.status !== 'passed' && (
                                     <details className="text-[10px]">
                                       <summary className="cursor-pointer text-muted-foreground hover:text-foreground">

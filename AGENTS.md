@@ -21,6 +21,7 @@
 | **LightRAG** (`docs-graph`, MCP) — опционально | граф сущностей/связей той же документации (LLM-экстракция через локальную Ollama) | вопросы про связи между понятиями ("как X связано с Y") — `search_docs_graph`; включён, только если `features.lightrag = true` в `infra.config.json` |
 | **env-tools** (`env-tools`, MCP) | старт/стоп/логи локальных процессов (dev-сервер и т.п.), пересборка RAG-индекса | вместо произвольного `Bash`/фоновых процессов, когда нужно, чтобы процесс был виден другим сессиям/агентам |
 | **Управление компьютером** (`projecthub-computer`, MCP) — опционально | инструменты `computer_*` (окна, дерево доступности, мышь, клавиатура) через прокси ProjectHub с HITL, allowlist и kill-switch | только когда задача требует GUI за пределами кода; включён, только если `features.computerUse = true` и в ProjectHub включено «Управление компьютером» (decision-27) |
+| **Браузер для проверки UI** (`playwright`, MCP) — опционально | инструменты `browser_*` Playwright MCP: открыть страницу проекта, снимок дерева, клики, скриншот; headless, профиль в памяти | проверить видимый результат правки UI; включён, только если `features.playwright = true` (decision-55) |
 
 Google Antigravity — второй поддерживаемый агент наравне с Claude Code: те же MCP-серверы
 подключены через `.agents/mcp_config.json`, те же правила — через `.agents/rules/infra-dev.md`,
@@ -211,6 +212,27 @@ Antigravity свой каталог скиллов, `.claude/skills/` он не 
       `PROJECTHUB_HOOK_FAIL_MODE`), в конфиги и файлы проекта не писать. Встроенный терминал ProjectHub получает их сам.
     - Если ProjectHub не запущен, хуки по умолчанию не мешают работе (fail-open с записью в лог).
 
+22. **Визуальная проверка UI: Playwright MCP и чек `ui-smoke` (decision-55, TASK-78)**:
+    - Фича шаблона `playwright` (по умолчанию выключена) добавляет в `.mcp.json` и `.agents/mcp_config.json` сервер
+      `playwright` — `@playwright/mcp` с закреплённой версией, `--headless --isolated` — и `.playwright-mcp/` в `.gitignore`.
+      Не предлагать включать её без явного запроса (как LightRAG и `computerUse`, правила 7 и 20).
+    - **Когда проверять UI обязательно:** фича включена и правка меняет видимый интерфейс (компоненты, стили, разметку
+      страниц). После правки подними dev-сервер через `env-tools`, открой страницу по `http://` (`file:` заблокирован),
+      сначала `browser_snapshot`, затем `browser_take_screenshot` для подтверждения — без `filename` или с `filename` внутри
+      `.playwright-mcp/`, иначе снимок ляжет в рабочий каталог и уйдёт в коммит; или прогони проверку `ui-smoke`.
+      В ответе пользователю скажи, что проверено в браузере и что нет.
+    - Проверка `ui-smoke` в `.projecthub.json` (`kind: "ui-smoke"`) пишет скриншоты в каталог из `PROJECTHUB_ARTIFACTS_DIR`
+      (или `${artifactsDir}` в команде). ProjectHub хранит их в `<userData>/visual`, показывает в Arena и Done-loop.
+      Без скриншотов проверка считается проваленной.
+    - В цикле «до готовности» критерий с меткой `[ui]` засчитывается только со скриншотом проверки `ui-smoke` этой итерации:
+      поле `"screenshots": ["home.png"]` в строке отчёта. Свои снимки из Playwright MCP evidence не являются.
+    - Действия внутри браузера идут без подтверждения. Выход за браузер — `browser_run_code_unsafe`, файлы вне рабочего
+      каталога (`filename`, `paths`), адреса `file:` — только с одобрения человека в ProjectHub, в Automations и автозапуске
+      назначенных задач отклоняется. Отказ не обходить другими инструментами. Не подключать реальный браузер
+      пользователя (`--extension`). Рабочий стол за пределами браузера — только `computer_*` (правило 20).
+    - Для самого ProjectHub: `npm run selfcheck:ui` снимает главное окно собранного exe в отдельном `--user-data-dir` и
+      сравнивает с `tests/visual/baseline/`; базу обновляет только человек флагом `--update-baseline`.
+
 ## Быстрые команды
 
 ```bash
@@ -231,6 +253,7 @@ npm run lightrag-index                # построить граф докуме
 npm run lightrag-server               # MCP-сервер docs-graph (обычно через .mcp.json)
 node scripts/web.mjs start|stop|status  # веб-интерфейсы Backlog.md/GitNexus (или start-web.bat/.sh)
 npm run sync-rules                    # разослать этот файл в CLAUDE.md/GEMINI.md/AGENTS.md
+npm run selfcheck:ui                  # ProjectHub: скриншот главного окна exe и сравнение с базой (decision-55)
 ```
 
 <!-- infra-dev:end -->

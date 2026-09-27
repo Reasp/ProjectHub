@@ -950,6 +950,10 @@ export interface IElectronAPI {
   cancelSwarmJudge: (swarmId: string) => Promise<boolean>;
   composeSwarmResult: (swarmId: string, selections: ComposeSelection[]) => Promise<ComposeResult>;
   getArenaConfig: (projectPath: string) => Promise<ArenaConfig>;
+  /** Скриншот проверки ui-smoke как data URL (только из <userData>/visual). */
+  readVisualArtifact: (relPath: string) => Promise<{ dataUrl: string; bytes: number } | { error: string }>;
+  /** Показать артефакт (скриншот, trace) в папке. */
+  revealVisualArtifact: (relPath: string) => Promise<boolean>;
   saveArenaConfig: (
     projectPath: string,
     patch: { checks?: CheckDefinition[]; arena?: ArenaSettings }
@@ -2221,7 +2225,21 @@ export interface AgentSlotDiffSummary {
 
 // ─── Автосудья Swarm Arena (TASK-61, decision-12); зеркало electron/services/arenaTypes.ts ───
 
-export type CheckKind = 'lint' | 'test' | 'build' | 'typecheck' | 'custom';
+export type CheckKind = 'lint' | 'test' | 'build' | 'typecheck' | 'ui-smoke' | 'custom';
+export type CheckArtifactKind = 'screenshot' | 'trace';
+
+/** Артефакты проверки `ui-smoke` (TASK-78, decision-55). */
+export interface CheckArtifactsConfig {
+  from?: string[];
+  minScreenshots?: number;
+}
+
+export interface CheckArtifact {
+  name: string;
+  relPath: string;
+  kind: CheckArtifactKind;
+  bytes: number;
+}
 export type CheckStatus = 'pending' | 'running' | 'passed' | 'failed' | 'timeout' | 'skipped' | 'error';
 
 export interface CheckDefinition {
@@ -2234,6 +2252,7 @@ export interface CheckDefinition {
   enabled?: boolean;
   portStrategy?: 'fixed' | 'auto';
   port?: number;
+  artifacts?: CheckArtifactsConfig;
 }
 
 export interface CheckRunResult {
@@ -2254,6 +2273,8 @@ export interface CheckRunResult {
   outputTail?: string;
   outputTruncated?: boolean;
   detail?: string;
+  artifacts?: CheckArtifact[];
+  artifactsTruncated?: boolean;
 }
 
 export type ScoreComponentKey = 'checks' | 'acceptance' | 'review' | 'diffSize' | 'locality' | 'cost' | 'time';
@@ -2797,6 +2818,15 @@ export interface CriterionVerification {
   accepted: boolean;
   reason?: string;
   alreadyChecked?: boolean;
+  ui?: boolean;
+  screenshots?: CriterionScreenshot[];
+}
+
+export interface CriterionScreenshot {
+  ref: string;
+  checkId: string;
+  name: string;
+  relPath: string;
 }
 
 export interface DoneLoopIteration {

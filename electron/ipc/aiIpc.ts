@@ -26,6 +26,7 @@ import { planService, type ConflictResolution, type GeneratePlanOptions } from '
 import { assertRegisteredProject } from '../services/projectPathGuard';
 import type { RunJudgeOptions } from '../services/arenaJudgeService';
 import { loadArenaConfig, saveArenaConfig } from '../services/arenaConfig';
+import { visualArtifactService } from '../services/visualArtifactService';
 import type { ArenaSettings } from '../services/actionConfigService';
 import type { CheckDefinition, ComposeSelection } from '../services/arenaTypes';
 import { buildAgentContext, type ContextPartKey } from '../services/contextBuilder';
@@ -426,6 +427,20 @@ export function registerAiIpc(ctx: IpcContext) {
       return { success: ok, config: ok ? await loadArenaConfig(safeProject) : undefined };
     }
   );
+
+  // Артефакты проверок ui-smoke (TASK-78, decision-55 п. 5): только из <userData>/visual, путь проверяет сервис.
+  ipcMain.handle('visual:readArtifact', async (_event, relPath: string) => {
+    if (typeof relPath !== 'string') return { error: 'Invalid path' };
+    return await visualArtifactService.readImage(relPath);
+  });
+
+  ipcMain.handle('visual:revealArtifact', async (_event, relPath: string) => {
+    if (typeof relPath !== 'string') return false;
+    const abs = await visualArtifactService.resolveExisting(relPath);
+    if (!abs) return false;
+    shell.showItemInFolder(abs);
+    return true;
+  });
 
   ipcMain.handle('swarm:list', async (_event, projectPath?: string) => {
     const safeProject = projectPath ? await assertRegisteredProject(projectPath) : undefined;

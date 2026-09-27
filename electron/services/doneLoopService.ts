@@ -26,6 +26,8 @@ import {
 } from './backlogTaskFormat.js';
 import { summarizeCheckResult } from './arenaChecks.js';
 import { executeCheck, pendingCheckResult } from './checkRunner.js';
+import { visualArtifactService } from './visualArtifactService.js';
+import { iterationScreenshots } from './visualArtifacts.js';
 import {
   OUTCOME_LABELS,
   buildDoneLoopFinalSummary,
@@ -188,7 +190,7 @@ export class DoneLoopService {
 
         state.phase = 'checking';
         hooks.onUpdate();
-        iteration.checks = await this.runChecks(session, agent, state.settings.checks, hooks);
+        iteration.checks = await this.runChecks(session, agent, state.settings.checks, hooks, iteration.index);
 
         state.phase = 'verifying';
         const parsed = parseAgentReport(agent.finalOutput || agent.liveOutput);
@@ -198,7 +200,13 @@ export class DoneLoopService {
         } else {
           iteration.reportError = parsed.error;
         }
-        iteration.criteria = verifyCriteria(state.criteriaBaseline, parsed.ok ? parsed.report : null);
+        // Скриншоты из отчёта сверяются с артефактами проверок этой итерации (decision-55 п. 7).
+        iteration.criteria = verifyCriteria(
+          state.criteriaBaseline,
+          parsed.ok ? parsed.report : null,
+          undefined,
+          iterationScreenshots(iteration.checks)
+        );
         const accepted = iteration.criteria.filter((c) => c.accepted).length;
         hooks.log(
           `[Done-loop] Отчёт: ${parsed.ok ? 'разобран' : `не принят (${parsed.error})`}; критериев засчитано ${accepted}/${iteration.criteria.length}`
@@ -302,7 +310,8 @@ export class DoneLoopService {
     session: SwarmSession,
     agent: AgentSlotState,
     checks: CheckDefinition[],
-    hooks: DoneLoopHooks
+    hooks: DoneLoopHooks,
+    iterationIndex: number
   ): Promise<CheckRunResult[]> {
     const workdir = agent.worktreePath || session.projectPath;
     const results = checks.map(pendingCheckResult);
@@ -322,7 +331,9 @@ export class DoneLoopService {
         continue;
       }
       hooks.log(`[Done-loop] Проверка «${result.name}»: ${result.command}`);
-      const running = executeCheck(result, checks[i], workdir, hooks.signal);
+      const running = executeCheck(result, checks[i], workdir, hooks.signal, {
+        artifacts: { scope: visualArtifactService.swarmScope(session.id), agentId: agent.id, run: `iter-${iterationIndex}` }
+      });
       hooks.onUpdate();
       await running;
       hooks.log(`[Done-loop] «${result.name}» → ${summarizeCheckResult(result)}`);

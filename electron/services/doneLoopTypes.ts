@@ -21,6 +21,8 @@ export interface AgentCriterionReport {
   index: number;
   status: CriterionReportStatus;
   evidence: string;
+  /** Имена скриншотов проверок `ui-smoke` этой итерации — evidence для критериев про UI (decision-55 п. 7). */
+  screenshots?: string[];
 }
 
 /** Структурированный отчёт агента в конце хода. */
@@ -42,6 +44,21 @@ export interface CriterionVerification {
   reason?: string;
   /** Критерий был отмечен в задаче ещё до цикла — не пересматривается. */
   alreadyChecked?: boolean;
+  /** Критерий помечен `[ui]`: без скриншота проверки не засчитывается. */
+  ui?: boolean;
+  /** Скриншоты из отчёта, найденные среди артефактов проверок итерации. */
+  screenshots?: CriterionScreenshot[];
+}
+
+/** Скриншот, на который сослался агент и который ProjectHub нашёл среди артефактов итерации. */
+export interface CriterionScreenshot {
+  /** Как агент назвал файл в отчёте. */
+  ref: string;
+  checkId: string;
+  /** Путь внутри каталога проверки. */
+  name: string;
+  /** Путь внутри `<userData>/visual` для просмотра. */
+  relPath: string;
 }
 
 export type DoneLoopDecisionAction = 'finish' | 'retry' | 'fail';

@@ -3,10 +3,10 @@ id: TASK-78
 title: >-
   Визуальная верификация: Playwright MCP как фича шаблона, чек ui-smoke со
   скриншотами, computer use под HITL
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-15 03:13'
-updated_date: '2026-09-15 03:44'
+updated_date: '2026-09-27 05:59'
 labels:
   - ai
   - playwright
@@ -34,15 +34,19 @@ GPT-6 Astra — первая модель с сильным computer use (OSWorl
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Фича playwright в шаблоне: setup.mjs добавляет/убирает Playwright MCP в обоих MCP-конфигах; правило в infra-dev.md и sync-rules
-- [ ] #2 Чек ui-smoke с артефактами (скриншоты/trace) отображается в Arena и учитывается судьёй
-- [ ] #3 Самопроверка ProjectHub: скриншот главного окна собранного exe через Playwright Electron с сравнением с базовым
-- [ ] #4 Скриншоты принимаются как evidence в отчёте Done-loop
-- [ ] #5 Computer use вне проекта требует HITL-одобрения и запрещён в Automations; lint/test зелёные
+- [x] #1 Фича playwright в шаблоне: setup.mjs добавляет/убирает Playwright MCP в обоих MCP-конфигах; правило в infra-dev.md и sync-rules
+- [x] #2 Чек ui-smoke с артефактами (скриншоты/trace) отображается в Arena и учитывается судьёй
+- [x] #3 Самопроверка ProjectHub: скриншот главного окна собранного exe через Playwright Electron с сравнением с базовым
+- [x] #4 Скриншоты принимаются как evidence в отчёте Done-loop
+- [x] #5 Computer use вне проекта требует HITL-одобрения и запрещён в Automations; lint/test зелёные
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-09-15: уточнение границ — эта задача про браузерную/Electron-верификацию через Playwright. Полное управление компьютером (курсор, клавиатура, окна, a11y-дерево) вынесено в TASK-82 (MCP-прокси поверх @zavora-ai/computer-use-mcp, decision-27); пункт 5 об ограничениях computer use применяется через политику TASK-82.
+
+2026-09-27: решения зафиксированы в decision-55 (proposed до реализации): Playwright MCP 0.0.82 напрямую (--headless --isolated), классификация browser_* в общей политике HITL, чек ui-smoke с артефактами в <userData>/visual, скриншоты как evidence Done-loop, самопроверка ProjectHub через playwright-core _electron с отдельным user-data-dir.
+
+2026-09-27: реализовано подзадачами 78.1–78.6 по decision-55 (accepted). Playwright MCP — фича шаблона без прокси; выход за браузер (browser_run_code_unsafe, файлы вне рабочего каталога, file:) — только HITL, в автономных запусках отказ; рабочий стол по-прежнему только computer_* (правило 20). Чек ui-smoke с артефактами в <userData>/visual учитывается судьёй как обычная проверка (без скриншотов — провал), скриншоты — evidence для критериев [ui] в Done-loop. Самопроверка ProjectHub — npm run selfcheck:ui. Живая проверка пройдена; lint 0/494, test 166/1874, check-bundle ok, pack:win собран. Открыто: синхронизация F:\ProjectTemplate (отдельный репозиторий), базу самопроверки должен просмотреть человек.
 <!-- SECTION:NOTES:END -->

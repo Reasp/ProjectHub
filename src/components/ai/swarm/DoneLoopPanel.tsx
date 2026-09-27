@@ -13,7 +13,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { useTranslation } from '../../../i18n/useTranslation';
-import type { SwarmSession } from '../../../types/electron';
+import type { CheckArtifact, CriterionScreenshot, DoneLoopIteration, SwarmSession } from '../../../types/electron';
 import { checkStatusClass, checkStatusLabel } from '../../../utils/arenaFormat';
 import { formatUsd } from '../../../utils/swarmFormat';
 import {
@@ -24,6 +24,14 @@ import {
   iterationTone
 } from '../../../utils/doneLoopFormat';
 import { currentSegmentIterations } from '../../../lib/rewindContinueView';
+import { CheckArtifactsGallery } from './CheckArtifactsGallery';
+
+/** Скриншоты критерия как артефакты проверок итерации (размер и вид берутся оттуда). */
+function criterionArtifacts(it: DoneLoopIteration, shots: CriterionScreenshot[] | undefined): CheckArtifact[] {
+  if (!shots?.length) return [];
+  const all = it.checks.flatMap((c) => c.artifacts ?? []);
+  return shots.map((s) => all.find((a) => a.relPath === s.relPath) ?? { name: s.name, relPath: s.relPath, kind: 'screenshot', bytes: 0 });
+}
 
 const TONE_CLASS: Record<ReturnType<typeof iterationTone>, string> = {
   success: 'bg-emerald-500',
@@ -185,17 +193,29 @@ export const DoneLoopPanel: React.FC<{ session: SwarmSession }> = ({ session }) 
 
                   {it.checks.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
-                      {it.checks.map((c) => (
-                        <span
-                          key={c.id}
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] ${checkStatusClass(c.status)}`}
-                          title={c.outputTail ? c.outputTail.slice(-1500) : c.detail || c.command}
-                        >
-                          {c.name}: {checkStatusLabel(c.status, t.judge)}
-                        </span>
-                      ))}
+                      {it.checks.map((c) => {
+                        const shots = (c.artifacts ?? []).filter((a) => a.kind === 'screenshot').length;
+                        return (
+                          <span
+                            key={c.id}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] ${checkStatusClass(c.status)}`}
+                            title={c.outputTail ? c.outputTail.slice(-1500) : c.detail || c.command}
+                          >
+                            {c.name}: {checkStatusLabel(c.status, t.judge)}
+                            {shots > 0 && <span className="opacity-80">· {t.judge.checkScreenshots.replace('{count}', String(shots))}</span>}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
+                  {it.checks
+                    .filter((c) => (c.artifacts?.length ?? 0) > 0)
+                    .map((c) => (
+                      <div key={`art-${c.id}`} className="space-y-1">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{c.name}</div>
+                        <CheckArtifactsGallery artifacts={c.artifacts} truncated={c.artifactsTruncated} size="sm" />
+                      </div>
+                    ))}
 
                   {it.reportSummary && (
                     <div>
@@ -232,6 +252,12 @@ export const DoneLoopPanel: React.FC<{ session: SwarmSession }> = ({ session }) 
                               <div className="text-rose-400/90">
                                 {c.reason}
                                 {c.evidence ? <span className="text-muted-foreground"> — {c.evidence}</span> : null}
+                              </div>
+                            )}
+                            {c.screenshots && c.screenshots.length > 0 && (
+                              <div className="mt-1 space-y-0.5">
+                                <div className="text-[10px] text-muted-foreground">{d.screenshotsLabel}</div>
+                                <CheckArtifactsGallery artifacts={criterionArtifacts(it, c.screenshots)} size="sm" />
                               </div>
                             )}
                           </div>

@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { isInsideProject } from './pathGuard.js';
+import { evaluateBrowserTool } from './browserToolCatalog.js';
 import type { AIProviderConfig, AutoApproveRules } from './aiAgentService.js';
 import type { HitlDecisionSource, RolePermissions } from './hitlTypes.js';
 
@@ -153,11 +154,19 @@ export function commandFromInput(input: Record<string, unknown>): string {
  * Вердикт политики для запроса инструмента. `ask` означает «показать карточку человеку»,
  * `deny` — отклонить без карточки (вне корня проекта, инструмент вне allow-списка роли).
  */
+export interface ToolRequestContext {
+  /** Запуск без человека (Automations, автозапуск назначенной задачи): `ask` для выхода за браузер становится `deny`. */
+  autonomous?: boolean;
+  /** Рабочий каталог сессии (worktree агента); по умолчанию `projectPath`. */
+  workDir?: string;
+}
+
 export function evaluateToolRequest(
   config: AIProviderConfig,
   projectPath: string,
   tool: string,
-  input: Record<string, unknown>
+  input: Record<string, unknown>,
+  context: ToolRequestContext = {}
 ): PolicyVerdict {
   const rules = config.autoApproveRules;
   const auto = Boolean(config.autoApprove);
@@ -165,6 +174,13 @@ export function evaluateToolRequest(
   if (!isToolAllowed(tool, rules?.allowedTools)) {
     return { verdict: 'deny', rule: 'tool-not-allowed', reason: `Инструмент ${tool} не входит в allow-список роли.` };
   }
+
+  // Playwright MCP (decision-55 п. 3): внутри изолированного браузера — без карточки, выход за него — к человеку.
+  const browser = evaluateBrowserTool(tool, input, {
+    autonomous: context.autonomous,
+    workDir: context.workDir?.trim() || projectPath
+  });
+  if (browser) return browser;
 
   if (tool === 'AskUserQuestion' || tool === 'ask_question') {
     return { verdict: 'ask', rule: 'question' };

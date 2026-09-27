@@ -515,7 +515,9 @@ class ClaudeBridgeService extends EventEmitter {
       role: ctx.role,
       tool: toolName
     } as const;
-    const verdict = evaluateToolRequest(config, projectPath, toolName, input);
+    // Автономный запуск (Automations, назначенные задачи): выход Playwright MCP за браузер — отказ (decision-55 п. 3).
+    const autonomous = ctx.origin === 'automation' || ctx.origin === 'assigned';
+    const verdict = evaluateToolRequest(config, projectPath, toolName, input, { autonomous, workDir });
 
     const allow = (updatedInput: Record<string, any> = input): CliPermissionDecision => ({ behavior: 'allow', updatedInput });
     const deny = (message: string): CliPermissionDecision => ({ behavior: 'deny', message });
@@ -704,10 +706,11 @@ class ClaudeBridgeService extends EventEmitter {
     } catch {
       inputPreview = String(input);
     }
+    const preview = inputPreview.length > 600 ? `${inputPreview.slice(0, 600)}…` : inputPreview;
     const res = await ask({
       id: newId(), sessionId, projectPath, type: 'command',
-      title: `Инструмент Claude Code: ${toolName}`,
-      details: inputPreview.length > 600 ? `${inputPreview.slice(0, 600)}…` : inputPreview,
+      title: verdict.rule === 'browser-host' ? `Браузер Playwright MCP выходит за пределы браузера: ${toolName}` : `Инструмент Claude Code: ${toolName}`,
+      details: verdict.rule === 'browser-host' && verdict.reason ? `${verdict.reason}\n${preview}` : preview,
       createdAt: Date.now()
     });
     return decide(res, `инструмент ${toolName}`);

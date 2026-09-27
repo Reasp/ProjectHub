@@ -43,3 +43,6 @@ release_tmp*/
 # Claude Code runtime (сессионные локи и т.п., не часть проекта)
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+
+# Самопроверка UI (TASK-78): кадры, diff и отчёт локального прогона; база — в tests/visual/baseline
+.visual-output/

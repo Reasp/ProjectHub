@@ -1634,6 +1634,11 @@ export interface TranslationDictionary {
     checkFailedTests: string;
     checkErrors: string;
     checkOutput: string;
+    artifactReveal: string;
+    artifactClose: string;
+    artifactLoadError: string;
+    artifactsTruncated: string;
+    checkScreenshots: string;
     reviewNone: string;
     reviewRunning: string;
     reviewFailed: string;
@@ -1669,6 +1674,11 @@ export interface TranslationDictionary {
     settingsCheckTimeout: string;
     settingsCheckBlocking: string;
     settingsCheckEnabled: string;
+    settingsCheckKind: string;
+    settingsCheckKinds: Record<'lint' | 'test' | 'build' | 'typecheck' | 'ui-smoke' | 'custom', string>;
+    settingsArtifactsFrom: string;
+    settingsMinScreenshots: string;
+    settingsUiSmokeHint: string;
     settingsRemoveCheck: string;
     settingsReviewerEnabled: string;
     settingsReviewerRole: string;
@@ -1901,6 +1911,7 @@ export interface TranslationDictionary {
     reportMissing: string;
     criterionAlready: string;
     evidenceLabel: string;
+    screenshotsLabel: string;
     taskMovedToReview: string;
     taskNotMoved: string;
     taskWriteError: string;

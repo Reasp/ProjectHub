@@ -4,7 +4,7 @@
  * Чистый модуль без Electron и файловой системы — вход это уже прочитанные `scripts` и текст
  * вывода команды, выход это `CheckDefinition[]` и счётчики. Покрыт unit-тестами.
  */
-import type { CheckDefinition, CheckKind, CheckRunResult, CheckStatus } from './arenaTypes.js';
+import type { CheckArtifactsConfig, CheckDefinition, CheckKind, CheckRunResult, CheckStatus } from './arenaTypes.js';
 
 /** Сколько символов вывода команды сохраняется в результате проверки (хвост). */
 export const CHECK_OUTPUT_TAIL_CHARS = 8000;
@@ -24,7 +24,9 @@ const NODE_SCRIPT_KINDS: Array<{ script: string; kind: CheckKind; name: string }
   { script: 'type-check', kind: 'typecheck', name: 'Typecheck' },
   { script: 'lint', kind: 'lint', name: 'Lint' },
   { script: 'test', kind: 'test', name: 'Tests' },
-  { script: 'build', kind: 'build', name: 'Build' }
+  { script: 'build', kind: 'build', name: 'Build' },
+  // Визуальная проверка (decision-55 п. 4): скрипт сам кладёт скриншоты в PROJECTHUB_ARTIFACTS_DIR.
+  { script: 'ui-smoke', kind: 'ui-smoke', name: 'UI smoke' }
 ];
 
 /** Проверки не должны поднимать dev-сервер или вотчер: команда обязана завершаться сама. */
@@ -98,7 +100,9 @@ export function normalizeCheckDefinition(raw: unknown, index: number): CheckDefi
   const command = typeof r.command === 'string' ? r.command.trim() : '';
   if (!command) return null;
   const kind: CheckKind =
-    r.kind === 'lint' || r.kind === 'test' || r.kind === 'build' || r.kind === 'typecheck' ? r.kind : 'custom';
+    r.kind === 'lint' || r.kind === 'test' || r.kind === 'build' || r.kind === 'typecheck' || r.kind === 'ui-smoke'
+      ? r.kind
+      : 'custom';
   const id = typeof r.id === 'string' && r.id.trim() ? r.id.trim() : `${kind}-${index + 1}`;
   const timeoutRaw = typeof r.timeoutMs === 'number' && Number.isFinite(r.timeoutMs) ? r.timeoutMs : undefined;
   return {
@@ -110,8 +114,18 @@ export function normalizeCheckDefinition(raw: unknown, index: number): CheckDefi
     blocking: r.blocking !== false,
     enabled: r.enabled !== false,
     portStrategy: r.portStrategy === 'auto' ? 'auto' : 'fixed',
-    ...(typeof r.port === 'number' && Number.isFinite(r.port) ? { port: r.port } : {})
+    ...(typeof r.port === 'number' && Number.isFinite(r.port) ? { port: r.port } : {}),
+    ...(kind === 'ui-smoke' ? { artifacts: normalizeArtifactsConfig(r.artifacts) } : {})
   };
+}
+
+/** Секция `artifacts` проверки `ui-smoke`: только строки в `from`, `minScreenshots` — целое ≥ 0. */
+export function normalizeArtifactsConfig(raw: unknown): CheckArtifactsConfig {
+  const r = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const fromRaw = Array.isArray(r.from) ? r.from : typeof r.from === 'string' ? [r.from] : [];
+  const from = fromRaw.filter((v): v is string => typeof v === 'string' && v.trim().length > 0).map((v) => v.trim());
+  const min = typeof r.minScreenshots === 'number' && Number.isFinite(r.minScreenshots) ? Math.max(0, Math.trunc(r.minScreenshots)) : undefined;
+  return { ...(from.length > 0 ? { from } : {}), ...(min !== undefined ? { minScreenshots: min } : {}) };
 }
 
 /** Хвост текста с пометкой об усечении. */
@@ -187,6 +201,15 @@ export function parseTestCounters(output: string): ParsedCheckCounters {
     if (failed > 0 || passed > 0) return { failedTests: failed, passedTests: passed, totalTests: failed + passed };
   }
 
+  // Playwright Test: "  3 passed (4.2s)", "  1 failed", "  1 flaky" после "Running N tests using M workers"
+  const pwPassed = lastMatch(text, /^\s*(\d+)\s+passed\s+\([\d.]+(?:ms|s|m|h)\)\s*$/gm);
+  if (pwPassed || /^Running \d+ tests? using \d+ workers?/m.test(text)) {
+    const failed = toInt(lastMatch(text, /^\s*(\d+)\s+failed\s*$/gm)?.[1]) ?? 0;
+    const flaky = toInt(lastMatch(text, /^\s*(\d+)\s+flaky\s*$/gm)?.[1]) ?? 0;
+    const passed = (toInt(pwPassed?.[1]) ?? 0) + flaky;
+    if (failed > 0 || passed > 0) return { failedTests: failed, passedTests: passed, totalTests: failed + passed };
+  }
+
   // mocha: "12 passing" / "3 failing"
   const passing = toInt(lastMatch(text, /^\s*(\d+)\s+passing/gm)?.[1]);
   const failing = toInt(lastMatch(text, /^\s*(\d+)\s+failing/gm)?.[1]);
@@ -228,7 +251,7 @@ export function stripAnsi(text: string): string {
 
 /** Счётчики, подходящие виду проверки: тесты считаем тестами, остальное — ошибками/предупреждениями. */
 export function parseCheckOutput(kind: CheckKind, output: string): ParsedCheckCounters {
-  if (kind === 'test') {
+  if (kind === 'test' || kind === 'ui-smoke') {
     const tests = parseTestCounters(output);
     return Object.keys(tests).length > 0 ? tests : parseLintCounters(output);
   }
@@ -264,6 +287,11 @@ export function summarizeCheckResult(result: CheckRunResult): string {
     parts.push(`ошибок: ${result.errorCount}`);
   }
   if (typeof result.durationMs === 'number') parts.push(`${(result.durationMs / 1000).toFixed(1)} с`);
+  if (result.artifacts && result.artifacts.length > 0) {
+    const shots = result.artifacts.filter((a) => a.kind === 'screenshot').length;
+    const traces = result.artifacts.length - shots;
+    parts.push(`скриншотов: ${shots}${traces > 0 ? `, trace: ${traces}` : ''}${result.artifactsTruncated ? ' (часть не сохранена по лимиту)' : ''}`);
+  }
   if (result.detail) parts.push(result.detail);
   return parts.join(', ');
 }

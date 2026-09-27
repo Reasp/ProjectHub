@@ -291,7 +291,9 @@ export class TerminalHookService {
     const role = roleForAgentType(roles, event.agentType);
     const config = applyRolePermissions(await this.deps.getConfig(), role?.permissions);
     const calls = policyToolCalls(event);
-    const verdict = strictest(calls.map((c) => evaluateToolRequest(config, projectPath, c.tool, c.input)));
+    // Рабочий каталог сессии — для Playwright MCP: файлы внутри него остаются «внутри браузера» (decision-55 п. 3).
+    const workDir = event.cwd?.trim() || projectPath;
+    const verdict = strictest(calls.map((c) => evaluateToolRequest(config, projectPath, c.tool, c.input, { workDir })));
     const meta = this.meta(event, projectPath, role);
     const first = calls[0];
     const policyTool = first?.tool ?? tool;

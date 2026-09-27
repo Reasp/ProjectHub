@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import { X, Plus, Trash2, RotateCcw, Save, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../../../i18n/useTranslation';
 import { useSwarmStore } from '../../../store/useSwarmStore';
-import type { ArenaConfig, CheckDefinition, ScoreComponentKey, ScoreWeights } from '../../../types/electron';
+import type { ArenaConfig, CheckDefinition, CheckKind, ScoreComponentKey, ScoreWeights } from '../../../types/electron';
+
+const CHECK_KINDS: CheckKind[] = ['lint', 'test', 'build', 'typecheck', 'ui-smoke', 'custom'];
 import { componentLabel } from '../../../utils/arenaFormat';
 import { ProviderProfileSelect, useLlmProfiles } from '../ProviderProfileSelect';
 
@@ -215,7 +217,61 @@ export const ArenaSettingsModal: React.FC<ArenaSettingsModalProps> = ({ projectP
                           />
                           PORT auto
                         </label>
+                        <label className="flex items-center gap-1.5">
+                          {j.settingsCheckKind}
+                          <select
+                            value={check.kind}
+                            onChange={(e) => patchCheck(index, { kind: e.target.value as CheckKind })}
+                            className="rounded-lg border border-border bg-background px-2 py-1 text-foreground focus:outline-hidden"
+                          >
+                            {CHECK_KINDS.map((k) => (
+                              <option key={k} value={k}>
+                                {j.settingsCheckKinds[k]}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       </div>
+                      {check.kind === 'ui-smoke' && (
+                        <div className="space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground">
+                            <label className="flex items-center gap-1.5">
+                              {j.settingsArtifactsFrom}
+                              <input
+                                value={(check.artifacts?.from ?? []).join(', ')}
+                                onChange={(e) =>
+                                  patchCheck(index, {
+                                    artifacts: {
+                                      ...check.artifacts,
+                                      from: e.target.value
+                                        .split(',')
+                                        .map((s) => s.trim())
+                                        .filter(Boolean)
+                                    }
+                                  })
+                                }
+                                placeholder="test-results"
+                                className="w-48 font-mono rounded-lg border border-border bg-background px-2 py-1 text-foreground focus:outline-hidden"
+                              />
+                            </label>
+                            <label className="flex items-center gap-1.5">
+                              {j.settingsMinScreenshots}
+                              <input
+                                type="number"
+                                min={0}
+                                value={check.artifacts?.minScreenshots ?? 1}
+                                onChange={(e) =>
+                                  patchCheck(index, {
+                                    artifacts: { ...check.artifacts, minScreenshots: Math.max(0, Math.trunc(Number(e.target.value) || 0)) }
+                                  })
+                                }
+                                className="w-16 rounded-lg border border-border bg-background px-2 py-1 text-foreground focus:outline-hidden"
+                              />
+                            </label>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground leading-relaxed">{j.settingsUiSmokeHint}</p>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

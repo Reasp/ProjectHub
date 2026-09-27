@@ -10,9 +10,11 @@ import { z } from 'zod';
 import { extractJsonObject } from './reviewerPrompt.js';
 import { isFailedStatus, scriptCommand, summarizeCheckResult, DEFAULT_CHECK_TIMEOUT_MS } from './arenaChecks.js';
 import type { CheckDefinition, CheckRunResult } from './arenaTypes.js';
+import { isUiSmokeCheck, iterationScreenshots, resolveScreenshotRef, type IterationArtifact } from './visualArtifacts.js';
 import type {
   AgentReport,
   CriterionReportStatus,
+  CriterionScreenshot,
   CriterionVerification,
   DoneLoopOutcome,
   DoneLoopProjectSettings,
@@ -61,16 +63,22 @@ const CriterionReportSchema = z.preprocess(
     if (!raw || typeof raw !== 'object') return raw;
     const r = raw as Record<string, unknown>;
     const status = typeof r.status === 'string' ? STATUS_ALIASES[r.status.trim().toLowerCase()] ?? r.status : r.status;
+    const shotsRaw = r.screenshots ?? r.screenshot ?? r.artifacts;
+    const shots = (Array.isArray(shotsRaw) ? shotsRaw : typeof shotsRaw === 'string' ? [shotsRaw] : [])
+      .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+      .map((v) => v.trim());
     return {
       index: criterionIndex(r.index ?? r.acId ?? r.id),
       status,
-      evidence: typeof r.evidence === 'string' ? r.evidence.trim() : ''
+      evidence: typeof r.evidence === 'string' ? r.evidence.trim() : '',
+      ...(shots.length > 0 ? { screenshots: shots } : {})
     };
   },
   z.object({
     index: z.number().int().positive(),
     status: z.enum(['done', 'not_done', 'blocked']),
-    evidence: z.string()
+    evidence: z.string(),
+    screenshots: z.array(z.string()).optional()
   })
 );
 
@@ -156,10 +164,17 @@ export interface CriterionInput {
  * короче `MIN_EVIDENCE_CHARS`. Набор и порядок критериев задаёт задача, а не агент: пропущенный
  * в отчёте критерий остаётся незакрытым. Уже отмеченные до цикла критерии не пересматриваются.
  */
+/** Критерий про UI (decision-55 п. 7): метка `[ui]` в тексте требует скриншот проверки. */
+export function isUiCriterion(text: string): boolean {
+  return /\[ui\]/i.test(text ?? '');
+}
+
 export function verifyCriteria(
   criteria: CriterionInput[],
   report: AgentReport | null,
-  minEvidenceChars = MIN_EVIDENCE_CHARS
+  minEvidenceChars = MIN_EVIDENCE_CHARS,
+  /** Скриншоты проверок этой итерации (`iterationScreenshots`) — ссылки отчёта сверяются с ними. */
+  screenshots: readonly IterationArtifact[] = []
 ): CriterionVerification[] {
   const byIndex = new Map<number, AgentReport['criteria'][number]>();
   for (const item of report?.criteria ?? []) {
@@ -169,11 +184,21 @@ export function verifyCriteria(
   return criteria.map((c, i) => {
     const index = i + 1;
     const item = byIndex.get(index);
+    const ui = isUiCriterion(c.text);
+    const resolved: CriterionScreenshot[] = [];
+    const missing: string[] = [];
+    for (const ref of item?.screenshots ?? []) {
+      const r = resolveScreenshotRef(ref, screenshots);
+      if (r.ok) resolved.push({ ref, checkId: r.match.checkId, name: r.match.artifact.name, relPath: r.match.artifact.relPath });
+      else missing.push(r.error === 'ambiguous' ? `«${ref}» неоднозначен (${(r.candidates ?? []).join(', ')})` : `«${ref}»`);
+    }
     const base: CriterionVerification = {
       index,
       text: c.text,
       accepted: false,
-      ...(item ? { reported: item.status, evidence: item.evidence } : {})
+      ...(item ? { reported: item.status, evidence: item.evidence } : {}),
+      ...(ui ? { ui: true } : {}),
+      ...(resolved.length > 0 ? { screenshots: resolved } : {})
     };
     if (c.completed) return { ...base, accepted: true, alreadyChecked: true, reason: 'Отмечен в задаче до запуска цикла' };
     if (!report) return { ...base, reason: 'Нет разобранного отчёта агента' };
@@ -181,7 +206,14 @@ export function verifyCriteria(
     if (item.status !== 'done') {
       return { ...base, reason: item.status === 'blocked' ? 'Агент сообщил о блокере' : 'Агент сообщил, что критерий не выполнен' };
     }
-    if (item.evidence.trim().length < minEvidenceChars) {
+    if (missing.length > 0) {
+      return { ...base, reason: `Скриншот ${missing.join(', ')} не найден среди артефактов проверок итерации` };
+    }
+    if (ui && resolved.length === 0) {
+      return { ...base, reason: 'Критерий [ui] требует скриншот проверки ui-smoke (поле screenshots в отчёте)' };
+    }
+    // Найденный скриншот — evidence наравне с текстом (decision-55 п. 7).
+    if (resolved.length === 0 && item.evidence.trim().length < minEvidenceChars) {
       return { ...base, reason: 'Нет конкретного evidence (файл/тест/вывод команды)' };
     }
     return { ...base, accepted: true };
@@ -273,6 +305,8 @@ export function buildDoneLoopInstructions(input: {
   const checkLines = input.checks.length
     ? input.checks.map((c) => `- ${c.name}: \`${c.command}\`${c.blocking === false ? ' (не блокирует)' : ''}`).join('\n')
     : '- (проверки для проекта не настроены)';
+  const uiSmoke = input.checks.filter(isUiSmokeCheck);
+  const hasUiCriteria = input.criteria.some((c) => !c.completed && isUiCriterion(c.text));
 
   return [
     '# Режим «до готовности» (ProjectHub Done-loop)',
@@ -290,8 +324,28 @@ export function buildDoneLoopInstructions(input: {
       `Последним блоком финального сообщения выведи отчёт в ограде \`\`\`${REPORT_FENCE}:\n` +
       '```' + REPORT_FENCE + '\n' + REPORT_EXAMPLE + '\n```\n' +
       '`index` — номер критерия из списка выше; дай строку по каждому незакрытому критерию. ' +
-      '`status`: `done` | `not_done` | `blocked`.'
+      '`status`: `done` | `not_done` | `blocked`.',
+    ...(uiSmoke.length > 0 ? [buildScreenshotEvidenceSection(uiSmoke)] : []),
+    ...(hasUiCriteria && uiSmoke.length === 0
+      ? [
+          '## Критерии [ui]\nКритерии с меткой `[ui]` засчитываются только со скриншотом проверки `ui-smoke`, а такой проверки в ' +
+            'проекте нет: отчитайся по ним `blocked` и объясни, что нужна проверка `ui-smoke` в `.projecthub.json`.'
+        ]
+      : [])
   ].join('\n\n');
+}
+
+/** Раздел инструкции о скриншотах как evidence — только если среди проверок есть `ui-smoke`. */
+function buildScreenshotEvidenceSection(uiSmoke: CheckDefinition[]): string {
+  const names = uiSmoke.map((c) => `\`${c.id}\``).join(', ');
+  return (
+    '## Скриншоты как evidence\n' +
+    `Проверки ${names} сохраняют скриншоты в каталог из переменной окружения \`PROJECTHUB_ARTIFACTS_DIR\` ` +
+    '(Playwright: `page.screenshot({ path: path.join(process.env.PROJECTHUB_ARTIFACTS_DIR, \'home.png\') })`). ' +
+    'Для критерия про интерфейс добавь в строку отчёта поле `"screenshots": ["home.png"]` — имена файлов, которые создаёт тест. ' +
+    'ProjectHub сверит их с артефактами проверок этой итерации; ненайденное имя — критерий не засчитан. ' +
+    'Критерии с меткой `[ui]` без скриншота не засчитываются. Свои снимки из Playwright MCP evidence не являются.'
+  );
 }
 
 function tail(text: string, max: number): string {
@@ -329,6 +383,12 @@ export function buildRetryPrompt(input: {
   }
 
   if (input.reportError) sections.push(`## Отчёт\nОтчёт не принят: ${input.reportError}.`);
+
+  const shots = iterationScreenshots(input.checks);
+  if (shots.length > 0) {
+    const lines = shots.slice(0, 40).map((s) => `- ${s.checkId}/${s.artifact.name}`);
+    sections.push(`## Скриншоты проверок этой итерации\nНа них можно ссылаться в поле \`screenshots\`:\n${lines.join('\n')}`);
+  }
 
   const open = input.criteria.filter((c) => !c.accepted);
   if (open.length > 0) {
@@ -383,7 +443,9 @@ export function buildDoneLoopFinalSummary(input: {
     for (const c of input.criteria) {
       const mark = c.accepted ? 'x' : ' ';
       const note = c.alreadyChecked ? 'отмечен до запуска' : c.accepted ? c.evidence ?? '' : c.reason ?? '';
-      lines.push(`- [${mark}] #${c.index} ${c.text}${note ? ` — ${note.replace(/\s+/g, ' ').trim()}` : ''}`);
+      // Только имена: пути userData машинозависимы, а файл задачи коммитится (decision-55 п. 7).
+      const shots = c.accepted && c.screenshots?.length ? ` (скриншоты: ${c.screenshots.map((s) => `${s.checkId}/${s.name}`).join(', ')})` : '';
+      lines.push(`- [${mark}] #${c.index} ${c.text}${note ? ` — ${note.replace(/\s+/g, ' ').trim()}` : ''}${shots}`);
     }
   }
 
