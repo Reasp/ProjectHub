@@ -70,8 +70,11 @@ const LIST_PROCESSES_SCRIPT =
   '$t = if ($_.CreationDate) { ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() } else { 0 }; ' +
   '"$($_.ProcessId),$($_.ParentProcessId),$t" }';
 
+/** Предельное время снимка процессов: дольше обход потомков при остановке не ждёт. */
+export const LIST_PROCESSES_TIMEOUT_MS = 15_000;
+
 /** Снимок процессов Windows (pid, ppid, время создания). */
-export function listWindowsProcesses(timeoutMs = 15_000): Promise<ProcessEntry[]> {
+export function listWindowsProcesses(timeoutMs = LIST_PROCESSES_TIMEOUT_MS): Promise<ProcessEntry[]> {
   return new Promise((resolve, reject) => {
     execFile(
       'powershell.exe',

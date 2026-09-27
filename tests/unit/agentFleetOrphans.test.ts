@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { removeTempDir } from '../helpers/removeTempDir';
 
 // TASK-99: то же, что TASK-97 для executeSubprocess, но для CLI-агентов Swarm/Handoff. Процесс
 // агента — cmd.exe (spawn с shell: true), сам движок — его потомок. Гонку со снимком taskkill не
@@ -19,7 +20,7 @@ vi.mock('tree-kill', () => ({
 }));
 
 const { AgentFleetService } = await import('../../electron/services/agentFleetService');
-const { CHILD_CLOSE_GRACE_MS } = await import('../../electron/services/processSweep');
+const { CHILD_CLOSE_GRACE_MS, LIST_PROCESSES_TIMEOUT_MS } = await import('../../electron/services/processSweep');
 type SwarmSession = import('../../electron/services/agentFleetService').SwarmSession;
 type AgentSlotState = SwarmSession['agents'][number];
 
@@ -141,14 +142,18 @@ afterEach(async () => {
   for (const pid of leftovers) {
     try { process.kill(pid, 'SIGKILL'); } catch { /* уже мёртв */ }
   }
-  // Каталог агента — cwd этих процессов: пока они живы, его не удалить (EBUSY).
+  // Каталог агента — cwd этих процессов: пока они живы, его не удалить (EBUSY). «Мёртв» по
+  // kill(pid, 0) ещё не значит, что ОС закрыла дескриптор cwd, — это дожидается removeTempDir.
   for (const pid of leftovers) await waitDead(pid);
   leftovers.clear();
 });
 
-afterAll(() => {
-  fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-});
+afterAll(() => removeTempDir(tmpDir), 60_000);
+
+// Остановка: после выхода оболочки — снимок процессов для добивания потомков (не дольше
+// LIST_PROCESSES_TIMEOUT_MS), затем ожидание 'close'. Под нагрузкой снимок PowerShell идёт секунды,
+// поэтому граница выведена из этих констант, а не из времени на свободной машине.
+const STOP_BOUND_MS = LIST_PROCESSES_TIMEOUT_MS + CHILD_CLOSE_GRACE_MS + 5_000;
 
 describe.runIf(process.platform === 'win32')('agentFleetService: потомок CLI-агента переживает tree-kill (TASK-99)', () => {
   it.each(ENGINES)('%s: остановка завершает ожидание за ограниченное время и добивает потомка', async (engine) => {
@@ -164,12 +169,12 @@ describe.runIf(process.platform === 'win32')('agentFleetService: потомок 
     stop();
     await done;
 
-    expect(Date.now() - started).toBeLessThan(CHILD_CLOSE_GRACE_MS + 10_000);
+    expect(Date.now() - started).toBeLessThan(STOP_BOUND_MS);
     expect(await waitDead(grandchild)).toBe(true);
     expect(apiFallback).not.toHaveBeenCalled();
     // Процесс снимается с учёта сессии только в finish агента.
     expect(internals.activeProcesses.get('swarm-orphans')?.size).toBe(0);
-  }, 30_000);
+  }, STOP_BOUND_MS + 20_000);
 
   it.each(ENGINES)('%s: обычный выход не ждёт close бесконечно, если stdio держит фоновый потомок', async (engine) => {
     const dir = agentDir(`bg-${engine}`, SPAWNER);

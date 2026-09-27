@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { removeTempDir } from '../helpers/removeTempDir';
 import {
   checkpointRef,
   checkpointRefPrefix,
@@ -21,6 +22,12 @@ import { CheckpointService } from '../../electron/services/checkpointService';
  * Чекпоинты на настоящем git (TASK-72, decision-45 п. 1, 4, 5). Репозитории — во временном каталоге,
  * основное дерево проекта не трогается.
  */
+
+// Тест здесь — 25–50 запусков git (beforeEach — ещё ~10): на свободной машине до 1.5 с, в полном
+// прогоне рядом с другими воркерами — до 2.5 с, а под внешней нагрузкой запуск процесса в Windows
+// дорожает в разы. По тайм-ауту vitest переходит к afterEach, пока тело теста ещё гоняет git в
+// каталоге, и очистка падает с EBUSY/ENOTEMPTY (TASK-108, decision-57).
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 let root: string;
 let repo: string;
@@ -54,9 +61,7 @@ beforeEach(async () => {
   await git(repo, 'worktree', 'add', '-q', '-b', 'swarm/x/a', wt, 'main');
 });
 
-afterEach(async () => {
-  await fs.rm(root, { recursive: true, force: true });
-});
+afterEach(() => removeTempDir(root));
 
 /** Агент поработал: изменён, удалён, создан, игнорируемый и staged файлы. */
 async function agentWorks(): Promise<void> {

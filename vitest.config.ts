@@ -15,6 +15,10 @@ const testHome =
     ? inherited
     : fs.mkdtempSync(path.join(os.tmpdir(), 'projecthub-test-home-'));
 process.env.PROJECTHUB_TEST_HOME = testHome;
+// Известные папки Windows (.NET `GetFolderPath`, Shell API) вычисляются от USERPROFILE и, если их нет,
+// дают пустую строку: PowerShell из тестов писал тогда кэш модулей по относительному пути
+// `Microsoft\Windows\PowerShell` в cwd — в корень проекта (TASK-108).
+for (const sub of ['AppData/Local', 'AppData/Roaming']) fs.mkdirSync(path.join(testHome, sub), { recursive: true });
 
 // Отдельный конфиг, чтобы vitest не подхватывал vite.config.ts с плагином vite-plugin-electron.
 export default defineConfig({
