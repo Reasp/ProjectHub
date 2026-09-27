@@ -329,18 +329,30 @@ export class HitlService extends EventEmitter {
     return id;
   }
 
-  /** Результат выполнения одобренного действия (exit-код команды, ошибка записи, скриншоты до/после). */
-  public recordOutcome(requestId: string, outcome: HitlOutcome, detail?: string, extra: { screenshots?: HitlScreenshots } = {}): void {
+  /**
+   * Результат выполнения одобренного действия (exit-код команды, ошибка записи, скриншоты до/после,
+   * длительность инструмента терминальной сессии — TASK-77).
+   */
+  public recordOutcome(
+    requestId: string,
+    outcome: HitlOutcome,
+    detail?: string,
+    extra: { screenshots?: HitlScreenshots; durationMs?: number } = {}
+  ): void {
     const known = this.decided.get(requestId);
     if (!known) return;
     const base = this.auditBase(known.request);
     const screenshots = extra.screenshots && (extra.screenshots.before || extra.screenshots.after) ? extra.screenshots : undefined;
+    const durationMs = typeof extra.durationMs === 'number' && Number.isFinite(extra.durationMs) && extra.durationMs >= 0
+      ? Math.round(extra.durationMs)
+      : undefined;
     void this.audit?.append({
       ...base,
       ts: new Date(this.now()).toISOString(),
       kind: 'outcome',
       outcome,
       detail: detail ? truncateComment(detail, 300) : undefined,
+      ...(durationMs !== undefined ? { durationMs } : {}),
       ...(screenshots ? { screenshots } : {})
     });
   }

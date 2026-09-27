@@ -778,6 +778,16 @@ export interface IElectronAPI {
   saveRole: (scope: 'global' | 'project', role: RoleDefinition, projectPath?: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
   deleteRole: (scope: 'global' | 'project', slug: string, projectPath?: string) => Promise<boolean>;
   copyRoleToProject: (slug: string, projectPath: string) => Promise<RoleDefinition | null>;
+  planRoleSync: (projectPath: string, options: RoleSyncOptionsInput) => Promise<RoleSyncPlan>;
+  applyRoleSync: (
+    projectPath: string,
+    options: RoleSyncOptionsInput,
+    choices: { overwrite?: string[]; deleteOrphans?: string[] }
+  ) => Promise<{ success: true; result: RoleSyncResult } | { success: false; error: string }>;
+  getTerminalHookSettings: () => Promise<TerminalHookSettings>;
+  saveTerminalHookSettings: (settings: TerminalHookSettings) => Promise<TerminalHookSettings>;
+  getTerminalHookConnection: () => Promise<{ url: string | null; token: string; failMode: 'open' | 'closed' }>;
+  regenerateTerminalHookToken: () => Promise<boolean>;
 
   // Git Advanced
   getGitRepoDetails: (projectPath: string) => Promise<GitRepoDetails | null>;
@@ -1252,7 +1262,7 @@ export interface AutoApproveRules {
 
 // ─────────────────── Единый HITL-контур (TASK-57), зеркало electron/services/hitlTypes.ts ───────────────────
 
-export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external' | 'automation';
+export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external' | 'automation' | 'terminal';
 export type HitlEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
 export type HitlDecisionSourceKind = 'local' | 'remote' | 'mcp' | 'auto' | 'timeout' | 'cancelled' | 'shutdown';
 export type HitlOutcome = 'executed' | 'failed' | 'not_executed' | 'session_gone';
@@ -1304,6 +1314,59 @@ export interface RoleDefinition {
   filePath?: string;
 }
 
+// Экспорт ролей в нативные субагенты и хуки терминала (TASK-77). Зеркало `roleSyncService.ts`.
+export type RoleExportTarget = 'claude' | 'codex';
+export type RoleSyncFileAction = 'create' | 'unchanged' | 'update' | 'conflict' | 'foreign' | 'orphan';
+
+export interface RoleSyncOptionsInput {
+  targets: RoleExportTarget[];
+  hooks: boolean;
+}
+
+export interface RoleSyncFile {
+  relPath: string;
+  kind: 'agent' | 'hookScript' | 'hookSettings';
+  target?: RoleExportTarget;
+  roleSlug?: string;
+  action: RoleSyncFileAction;
+  modified?: boolean;
+  desired: string | null;
+  current: string | null;
+  notes: string[];
+  error?: string;
+}
+
+export interface RoleSyncPlan {
+  projectPath: string;
+  options: RoleSyncOptionsInput & { hookTimeoutSec: number };
+  files: RoleSyncFile[];
+  skipped: Array<{ target: RoleExportTarget; roleSlug: string; reason: string }>;
+  summary: {
+    create: number;
+    update: number;
+    conflict: number;
+    orphan: number;
+    foreign: number;
+    unchanged: number;
+    synced: boolean;
+    drift: number;
+  };
+}
+
+export interface RoleSyncResult {
+  written: string[];
+  deleted: string[];
+  skipped: Array<{ relPath: string; reason: string }>;
+  plan: RoleSyncPlan;
+}
+
+export interface TerminalHookSettings {
+  version: 1;
+  failMode: 'open' | 'closed';
+  hookTimeoutSec: number;
+  stopChecks: 'off' | 'notify' | 'block';
+}
+
 export interface HitlAuditEntry {
   ts: string;
   kind: 'decision' | 'outcome' | 'fallback';
@@ -1331,6 +1394,8 @@ export interface HitlAuditEntry {
   waitedMs?: number;
   outcome?: HitlOutcome;
   detail?: string;
+  /** Длительность инструмента терминальной сессии (TASK-77). */
+  durationMs?: number;
   /** Скриншоты до/после для computer_action (TASK-82). */
   screenshots?: { before?: string; after?: string };
 }

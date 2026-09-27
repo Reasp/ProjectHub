@@ -26,6 +26,8 @@ import { trayService } from './services/trayService';
 import { telegramService } from './services/telegramService';
 import { computerUseService, type ComputerOverlayState } from './services/computerUseService';
 import { voiceHotkeyService } from './services/voiceHotkeyService';
+import { terminalHookService } from './services/terminalHookService';
+import { HOOK_SCRIPT_REL_PATH } from './services/roleExport';
 import { registerAllIpc } from './ipc';
 
 // Локальные crash-репорты (TASK-58, decision-14 п.4, decision-7): дампы падений остаются на диске
@@ -756,6 +758,14 @@ app.whenReady().then(() => {
 
   claudeBridgeService.setCliPermissionBroker({
     ensureEndpoint: () => mcpServerService.ensurePermissionEndpoint()
+  });
+
+  // Хуки терминальных сессий (TASK-77, decision-54 п. 4): встроенный терминал проекта с установленными
+  // хуками получает адрес и токен хуков (не основной токен MCP) и режим отказа.
+  ptyService.setExtraEnvProvider(async (projectPath) => {
+    if (!projectPath || !existsSync(path.join(projectPath, HOOK_SCRIPT_REL_PATH))) return {};
+    await mcpServerService.ensurePermissionEndpoint();
+    return terminalHookService.terminalEnv(mcpServerService.getHookBaseUrl());
   });
 
   mcpServerService

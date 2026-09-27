@@ -21,6 +21,15 @@ interface ActivePty {
 
 class PtyService {
   private sessions = new Map<string, ActivePty>();
+  /**
+   * Дополнительные переменные окружения терминала проекта (TASK-77: адрес и токен хуков терминала,
+   * если в проекте установлены хуки ProjectHub). Ошибка провайдера терминал не ломает.
+   */
+  private extraEnvProvider: ((projectPath: string) => Promise<Record<string, string>>) | null = null;
+
+  setExtraEnvProvider(provider: ((projectPath: string) => Promise<Record<string, string>>) | null): void {
+    this.extraEnvProvider = provider;
+  }
   /** TTL завершившейся сессии; настраивается переменной PROJECTHUB_PTY_EXIT_TTL_MS. */
   private exitedTtlMs = resolvePtyExitTtlMs(process.env[PTY_EXIT_TTL_ENV]);
 
@@ -112,12 +121,22 @@ class PtyService {
     const projectName = options.projectName || path.basename(options.projectPath);
     const title = options.title || (options.type === 'claude' ? `Claude: ${projectName}` : `Terminal: ${projectName}`);
 
+    let extraEnv: Record<string, string> = {};
+    if (this.extraEnvProvider) {
+      try {
+        extraEnv = await this.extraEnvProvider(options.projectPath);
+      } catch (err) {
+        console.warn('[PtyService] Не удалось получить переменные окружения хуков терминала:', err);
+      }
+    }
+
     // Create env copy with UTF-8 encoding support and isolated Claude config
     const env = {
       ...process.env,
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
-      CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR
+      CLAUDE_CONFIG_DIR: PROJECT_HUB_CLAUDE_DIR,
+      ...extraEnv
     };
 
     // Fallback — домашний каталог, а не process.cwd(): в упакованном приложении cwd произволен (TASK-43)

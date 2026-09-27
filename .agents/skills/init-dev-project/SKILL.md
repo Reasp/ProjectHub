@@ -162,3 +162,10 @@ node scripts/sync-agent-rules.mjs   # infra-dev.md → CLAUDE.md/GEMINI.md/AGENT
 Backlog.md/GitNexus (`node scripts/web.mjs start` или `start-web.bat`/`start-web.sh` в корне
 инфраструктуры), и что осталось на усмотрение пользователя (например, LightRAG, если он его
 не включил на шаге 1 — можно добавить позже через `node scripts/setup.mjs`).
+
+Роли ProjectHub как нативные субагенты и хуки терминальных сессий (decision-54 ProjectHub) скилл **не
+создаёт**: `.claude/agents/*.md`, `.codex/agents/*.toml`, `.projecthub/hooks/projecthub-hook.mjs` и записи
+хуков в `.claude/settings.json` / `.codex/hooks.json` генерирует ProjectHub (Роли → «Синхронизация в проект»),
+помечая файлы маркером `projecthub:generated`. При повторном запуске скилла в существующем проекте эти файлы
+не затирай и не удаляй, `.claude/settings.json` сливай, а не заменяй; `setup.mjs` и `sync-agent-rules.mjs`
+их не трогают. Токен хуков — только в переменной окружения `PROJECTHUB_HOOK_TOKEN`, в файлы не пишется.

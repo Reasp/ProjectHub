@@ -6,8 +6,8 @@ import type { ComputerActionClass, ComputerToolSpec } from './computerToolCatalo
  * инструмента рантайма; вердикт `ask` превращается в карточку единой HITL-очереди (decision-10).
  */
 
-/** Источник агента: HITL-источники плюс внешний MCP-клиент и автоматизации (TASK-74). */
-export type ComputerOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external' | 'automation';
+/** Источник агента: HITL-источники плюс внешний MCP-клиент, автоматизации (TASK-74) и хуки терминала (TASK-77). */
+export type ComputerOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external' | 'automation' | 'terminal';
 
 /** Цель действия: окно или приложение, к которому применяется allowlist. */
 export interface ComputerTarget {

@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Save, Trash2, Copy, TriangleAlert, Bot } from 'lucide-react';
+import { X, Plus, Save, Trash2, Copy, TriangleAlert, Bot, UploadCloud } from 'lucide-react';
 import { useRolesStore } from '../../../store/useRolesStore';
 import { useProjectStore } from '../../../store/useProjectStore';
 import { useTranslation } from '../../../i18n';
 import { unsupportedRoleFeatures } from '../../../lib/engineCapabilities';
 import { ProviderProfileSelect, useLlmProfiles, useProfileModels } from '../ProviderProfileSelect';
 import { ModelTierSelect } from '../ModelTierSelect';
+import { RoleSyncPanel } from './RoleSyncPanel';
 import type { RoleDefinition, RoleEngine, ToolCategory } from '../../../types/electron';
 
 interface RolesSettingsModalProps {
@@ -77,6 +78,10 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
   const roleModels = useProfileModels(draft.profile, llmProfiles);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Синхронизация ролей в проект (TASK-77): вид правой панели, расхождения файлов, пересчёт после правки ролей.
+  const [view, setView] = useState<'editor' | 'sync'>('editor');
+  const [syncDrift, setSyncDrift] = useState(0);
+  const [syncRefresh, setSyncRefresh] = useState(0);
 
   useEffect(() => {
     if (isOpen) void loadRolesAction(selectedProject?.path);
@@ -98,6 +103,7 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
   const handleNew = () => {
     setSelectedSlug(null);
     setDraft(emptyRole());
+    setView('editor');
   };
 
   const handleSave = async () => {
@@ -112,6 +118,7 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
       const result = await saveRoleAction(targetScope, draft, selectedProject?.path);
       if (result.success) {
         setSelectedSlug(draft.slug);
+        setSyncRefresh((k) => k + 1);
       } else {
         setError(result.error || t.roles.saveFailed);
       }
@@ -123,13 +130,19 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
   const handleDelete = async () => {
     if (!selected || selected.source === 'builtin') return;
     const ok = await deleteRoleAction(selected.source as 'global' | 'project', selected.slug, selectedProject?.path);
-    if (ok) handleNew();
+    if (ok) {
+      handleNew();
+      setSyncRefresh((k) => k + 1);
+    }
   };
 
   const handleCopyToProject = async () => {
     if (!selected || !selectedProject) return;
     const copy = await copyRoleToProjectAction(selected.slug, selectedProject.path);
-    if (copy) setSelectedSlug(copy.slug);
+    if (copy) {
+      setSelectedSlug(copy.slug);
+      setSyncRefresh((k) => k + 1);
+    }
   };
 
   return createPortal(
@@ -155,13 +168,34 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
             >
               <Plus className="w-3.5 h-3.5" /> {t.roles.newRole}
             </button>
+            {selectedProject && (
+              <button
+                type="button"
+                data-testid="role-sync-button"
+                onClick={() => setView('sync')}
+                title={syncDrift > 0 ? t.roles.syncDriftTitle : undefined}
+                className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border mb-2 ${
+                  view === 'sync' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-foreground hover:bg-secondary/50'
+                }`}
+              >
+                <UploadCloud className="w-3.5 h-3.5" /> {t.roles.syncButton}
+                {syncDrift > 0 && (
+                  <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    {syncDrift}
+                  </span>
+                )}
+              </button>
+            )}
             {roles.map((r) => (
               <button
                 key={r.slug}
                 type="button"
-                onClick={() => setSelectedSlug(r.slug)}
+                onClick={() => {
+                  setSelectedSlug(r.slug);
+                  setView('editor');
+                }}
                 className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs border transition ${
-                  selectedSlug === r.slug ? 'border-primary bg-primary/10' : 'border-transparent hover:bg-secondary/50'
+                  view === 'editor' && selectedSlug === r.slug ? 'border-primary bg-primary/10' : 'border-transparent hover:bg-secondary/50'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -173,8 +207,15 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
             ))}
           </div>
 
+          {/* Синхронизация в проект: смонтирована всегда, чтобы индикатор расхождений был виден и из редактора */}
+          {selectedProject && (
+            <div className={view === 'sync' ? 'flex-1 overflow-y-auto p-5' : 'hidden'}>
+              <RoleSyncPanel projectPath={selectedProject.path} refreshKey={syncRefresh} onDriftChange={setSyncDrift} />
+            </div>
+          )}
+
           {/* Редактор */}
-          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          <div className={view === 'editor' ? 'flex-1 overflow-y-auto p-5 space-y-4' : 'hidden'}>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1">{t.roles.slug}</label>
@@ -331,7 +372,7 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
         </div>
 
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-border bg-secondary/20">
-          <div className="flex items-center gap-2">
+          <div className={`flex items-center gap-2 ${view === 'sync' ? 'invisible' : ''}`}>
             {selected && selected.source !== 'builtin' && (
               <button
                 onClick={handleDelete}
@@ -355,7 +396,7 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
             </button>
             <button
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={isSaving || view === 'sync'}
               className="inline-flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               <Save className="w-3.5 h-3.5" /> {t.common.save}

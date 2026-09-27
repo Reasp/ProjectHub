@@ -160,6 +160,13 @@ const api: IElectronAPI = {
   deleteRole: (scope: 'global' | 'project', slug: string, projectPath?: string) =>
     ipcRenderer.invoke('roles:delete', scope, slug, projectPath),
   copyRoleToProject: (slug: string, projectPath: string) => ipcRenderer.invoke('roles:copyToProject', slug, projectPath),
+  // Экспорт ролей в нативные субагенты и хуки терминала (TASK-77, decision-54)
+  planRoleSync: (projectPath: string, options: unknown) => ipcRenderer.invoke('roles:syncPlan', projectPath, options),
+  applyRoleSync: (projectPath: string, options: unknown, choices: unknown) => ipcRenderer.invoke('roles:syncApply', projectPath, options, choices),
+  getTerminalHookSettings: () => ipcRenderer.invoke('terminalHooks:getSettings'),
+  saveTerminalHookSettings: (settings: unknown) => ipcRenderer.invoke('terminalHooks:saveSettings', settings),
+  getTerminalHookConnection: () => ipcRenderer.invoke('terminalHooks:getConnection'),
+  regenerateTerminalHookToken: () => ipcRenderer.invoke('terminalHooks:regenerateToken'),
 
   // Git
   getGitLog: (projectPath: string, maxCount?: number) => ipcRenderer.invoke('git:getLog', projectPath, maxCount),

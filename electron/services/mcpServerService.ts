@@ -26,6 +26,12 @@ import { MEMORY_TOOL_DEFINITIONS, callMemoryTool, type MemoryToolContext } from 
 import { memoryToolDeps } from './memoryToolDeps.js';
 import { automationEngine } from './automationService.js';
 import { automationToolList, automationToolRun } from './automationTools.js';
+import { terminalHookService } from './terminalHookService.js';
+
+/** Маршрут хуков терминальных сессий (TASK-77, decision-54 п. 3–4). */
+export const TERMINAL_HOOK_ROUTE = '/api/hooks/event';
+/** Лимит тела события хука: вход Write может содержать файл целиком. */
+const TERMINAL_HOOK_BODY_LIMIT = 8 * 1024 * 1024;
 
 /** Ключ персистентного токена MCP-сервера в safeStorage (TASK-58): переживает перезапуск приложения. */
 const MCP_TOKEN_SECRET_KEY = 'mcp_server_token';
@@ -115,6 +121,15 @@ class McpServerService {
     } catch (err) {
       console.warn('[MCPServer] Не удалось загрузить персистентный токен, используется временный:', err);
     }
+    // Токен хуков терминала (TASK-77) — отдельный секрет с правом только на маршрут хуков.
+    await terminalHookService.getToken().catch((err) => {
+      console.warn('[MCPServer] Не удалось загрузить токен хуков терминала:', err);
+    });
+  }
+
+  /** Адрес сервера для скрипта хуков (`PROJECTHUB_HOOK_URL`); null — сервер не запущен. */
+  public getHookBaseUrl(): string | null {
+    return this.server && this.server.listening ? `http://127.0.0.1:${this.port}` : null;
   }
 
   public setAppState(state: { activeProject?: any; activeTab?: string }) {
@@ -812,13 +827,64 @@ class McpServerService {
     return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]' || hostname === '::1';
   }
 
+  private bearerToken(req: IncomingMessage): string | null {
+    const header = req.headers.authorization;
+    if (!header || Array.isArray(header)) return null;
+    const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+    return match ? match[1].trim() : null;
+  }
+
+  /**
+   * Событие хука терминальной сессии (TASK-77): токен хуков или основной токен. Ожидание решения человека
+   * отменяется, если скрипт хука оборвал соединение (движок завершил хук).
+   */
+  private handleTerminalHook(req: IncomingMessage, res: ServerResponse) {
+    const presented = this.bearerToken(req);
+    if (!presented || !(this.isAuthorized(req) || terminalHookService.isHookToken(presented))) {
+      this.sendJson(res, 401, { error: 'Unauthorized: hook token required' });
+      return;
+    }
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let tooLarge = false;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > TERMINAL_HOOK_BODY_LIMIT) tooLarge = true;
+      else chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (tooLarge) {
+        this.sendJson(res, 413, { error: 'Hook payload too large' });
+        return;
+      }
+      let body: unknown;
+      try {
+        body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      } catch {
+        this.sendJson(res, 400, { error: 'Invalid JSON' });
+        return;
+      }
+      const controller = new AbortController();
+      res.on('close', () => {
+        if (!res.writableEnded) controller.abort();
+      });
+      terminalHookService
+        .handle(body, { signal: controller.signal })
+        .then((out) => {
+          if (!res.writableEnded && !res.destroyed) this.sendJson(res, 200, out);
+        })
+        .catch((err) => {
+          console.error('[MCPServer] Ошибка хука терминала:', err);
+          if (!res.writableEnded && !res.destroyed) this.sendJson(res, 500, { error: 'Hook handling failed' });
+        });
+    });
+  }
+
   /** Сравнение Bearer-токена за константное время. */
   private isAuthorized(req: IncomingMessage): boolean {
-    const header = req.headers.authorization;
-    if (!header || Array.isArray(header)) return false;
-    const match = /^Bearer\s+(.+)$/i.exec(header.trim());
-    if (!match) return false;
-    const presented = Buffer.from(match[1].trim(), 'utf8');
+    const token = this.bearerToken(req);
+    if (!token) return false;
+    const presented = Buffer.from(token, 'utf8');
     const expected = Buffer.from(this.token, 'utf8');
     if (presented.length !== expected.length) return false;
     return crypto.timingSafeEqual(presented, expected);
@@ -854,6 +920,12 @@ class McpServerService {
     // 1. Status Endpoint: GET /api/status — единственный маршрут без аутентификации, без токена в ответе.
     if (pathname === '/api/status' && req.method === 'GET') {
       this.sendJson(res, 200, this.getPublicStatus());
+      return;
+    }
+
+    // Хуки терминала (TASK-77): свой токен, который не открывает остальные маршруты.
+    if (pathname === TERMINAL_HOOK_ROUTE && req.method === 'POST') {
+      this.handleTerminalHook(req, res);
       return;
     }
 

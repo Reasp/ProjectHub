@@ -60,7 +60,8 @@ const originStyle: Record<string, string> = {
   swarm: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30',
   handoff: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
   assigned: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-  external: 'bg-orange-500/15 text-orange-300 border-orange-500/30'
+  external: 'bg-orange-500/15 text-orange-300 border-orange-500/30',
+  terminal: 'bg-teal-500/15 text-teal-300 border-teal-500/30'
 };
 
 export const HitlCenterModal: React.FC = () => {
@@ -269,7 +270,11 @@ export const HitlCenterModal: React.FC = () => {
             <span className="truncate font-mono text-[11px]" title={action}>{action}</span>
           </div>
           {e.kind === 'outcome' && e.outcome && (
-            <div className="text-[10px] text-slate-400">{t.hitl.outcome[e.outcome]}{e.detail ? `: ${e.detail}` : ''}</div>
+            <div className="text-[10px] text-slate-400">
+              {t.hitl.outcome[e.outcome]}
+              {typeof e.durationMs === 'number' ? ` · ${e.durationMs < 1000 ? `${e.durationMs}ms` : formatDuration(e.durationMs)}` : ''}
+              {e.detail ? `: ${e.detail}` : ''}
+            </div>
           )}
           {e.kind === 'fallback' && e.detail && <div className="text-[10px] text-rose-300/80">{e.detail}</div>}
           {e.comment && <div className="text-[10px] text-slate-400 italic">«{e.comment}»</div>}

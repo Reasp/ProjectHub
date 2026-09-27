@@ -33,7 +33,8 @@ const CLAUDE_TOOLS_BY_CATEGORY: Record<ToolCategory, string[]> = {
   write: ['Write', 'Edit', 'NotebookEdit'],
   command: ['Bash'],
   search: ['WebFetch', 'WebSearch'],
-  subagent: ['Task'],
+  // `Agent` — текущее имя инструмента подагентов Claude Code, `Task` — прежнее (TASK-77).
+  subagent: ['Agent', 'Task'],
   question: ['AskUserQuestion']
 };
 

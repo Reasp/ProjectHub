@@ -159,6 +159,14 @@ async function main() {
     );
   }
 
+  // Роли ProjectHub как субагенты и хуки терминала (TASK-77, decision-54 п. 11): эти файлы генерирует ProjectHub,
+  // setup.mjs их не трогает — .claude/agents, .codex/, .projecthub/hooks и чужие ключи .claude/settings.json.
+  console.log(
+    '\nРоли ProjectHub как субагенты Claude Code/Codex и хуки терминала (HITL, аудит): ProjectHub → Роли → ' +
+      '«Синхронизация в проект». Файлы .claude/agents, .codex/agents, .projecthub/hooks и записи хуков в ' +
+      '.claude/settings.json / .codex/hooks.json генерирует ProjectHub; этот скрипт их не меняет.',
+  );
+
   console.log('\nДальше:');
   if (config.features.docsRag) console.log('  npm run index-docs     # собрать векторный индекс документации');
   if (config.features.bootstrap) console.log('  npm run bootstrap       # поставить git/node/… под текущую ОС');

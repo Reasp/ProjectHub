@@ -85,7 +85,7 @@ export function toCsv(entries: HitlAuditEntry[]): string {
   const columns: Array<keyof HitlAuditEntry> = [
     'ts', 'kind', 'requestId', 'sessionId', 'projectPath', 'hostId', 'origin', 'engine', 'agentId', 'agentName', 'role',
     'tool', 'type', 'title', 'filePath', 'commandHash', 'commandPreview', 'decision', 'decidedBy', 'deviceId', 'deviceName',
-    'rule', 'comment', 'waitedMs', 'outcome', 'detail'
+    'rule', 'comment', 'waitedMs', 'outcome', 'detail', 'durationMs'
   ];
   const escape = (v: unknown) => {
     if (v === undefined || v === null) return '';

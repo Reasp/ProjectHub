@@ -2048,7 +2048,54 @@ export const ru: TranslationDictionary = {
     delete: 'Удалить',
     copyToProject: 'Копировать в проект',
     slugNameRequired: 'Заполните slug и название роли',
-    saveFailed: 'Не удалось сохранить роль'
+    saveFailed: 'Не удалось сохранить роль',
+    syncButton: 'Синхронизация в проект',
+    syncDriftTitle: 'Файлы субагентов или хуков в проекте расходятся с ролями'
+  },
+  roleSync: {
+    title: 'Роли как нативные субагенты и хуки терминала',
+    description:
+      'Роли проекта записываются в .claude/agents и .codex/agents, а хуки PreToolUse/PostToolUse/Stop ведут действия терминальных сессий claude и codex в очередь решений и аудит ProjectHub. Файлы помечены маркером: изменённые вручную и чужие файлы не перезаписываются.',
+    targetClaude: 'Claude Code',
+    targetCodex: 'Codex',
+    unverifiedBadge: 'не проверено вживую',
+    codexUnverified: 'Формат агентов и хуков Codex взят из документации: Codex не установлен на машине разработки',
+    hooks: 'Хуки терминала (HITL и аудит)',
+    refresh: 'Обновить',
+    failMode: 'Если ProjectHub недоступен',
+    failModeHint: 'Для встроенного терминала. Во внешнем терминале режим задаёт переменная PROJECTHUB_HOOK_FAIL_MODE',
+    failOpen: 'Пропускать (fail-open)',
+    failClosed: 'Отклонять (fail-closed)',
+    timeout: 'Тайм-аут хука, с',
+    timeoutHint: 'Сколько хук ждёт решения человека. По тайм-ауту движок выполнил бы инструмент, поэтому ProjectHub отказывает раньше',
+    stopChecks: 'Проверки по Stop',
+    stopChecksHint: 'Stop приходит после каждого ответа модели: проверки проекта могут быть долгими',
+    stopOff: 'Не запускать',
+    stopNotify: 'Запускать и уведомлять',
+    stopBlock: 'Запускать и продолжать работу при провале',
+    action: {
+      create: 'создать',
+      update: 'обновить',
+      conflict: 'изменён вручную',
+      orphan: 'роли нет',
+      foreign: 'чужой файл',
+      unchanged: 'актуален'
+    },
+    modifiedByHand: 'изменён вручную.',
+    overwrite: 'перезаписать',
+    deleteFile: 'удалить',
+    nothing: 'Нет файлов для синхронизации',
+    skippedTitle: 'Не экспортируются',
+    previewDesired: 'будет записано',
+    previewCurrent: 'сейчас в проекте',
+    apply: 'Синхронизировать в проект',
+    applied: 'Записано: {written}, удалено: {deleted}, пропущено: {skipped}',
+    externalTerminal: 'Внешний терминал',
+    externalHint: 'Встроенный терминал ProjectHub получает эти переменные сам. Для другого терминала выполните команду перед запуском claude или codex:',
+    serverStopped: 'Встроенный сервер ProjectHub не запущен — хуки будут пропускать работу (fail-open). Адрес по умолчанию:',
+    copy: 'Копировать',
+    copied: 'Скопировано',
+    rotateToken: 'Сменить токен хуков'
   },
   remote: {
     title: 'Удаленное управление ProjectHub',
@@ -2317,7 +2364,8 @@ export const ru: TranslationDictionary = {
       handoff: 'Handoff',
       assigned: 'Назначенная задача',
       external: 'Внешний MCP-клиент',
-      automation: 'Автоматизация'
+      automation: 'Автоматизация',
+      terminal: 'Терминал'
     },
     by: {
       local: 'Пользователь (окно)',

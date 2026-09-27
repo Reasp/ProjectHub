@@ -2048,7 +2048,54 @@ export const en: TranslationDictionary = {
     delete: 'Delete',
     copyToProject: 'Copy to project',
     slugNameRequired: 'Fill in the role slug and name',
-    saveFailed: 'Failed to save role'
+    saveFailed: 'Failed to save role',
+    syncButton: 'Sync to project',
+    syncDriftTitle: 'Subagent or hook files in the project differ from the roles'
+  },
+  roleSync: {
+    title: 'Roles as native subagents and terminal hooks',
+    description:
+      'Project roles are written to .claude/agents and .codex/agents, and PreToolUse/PostToolUse/Stop hooks route actions of claude and codex terminal sessions to the ProjectHub decision queue and audit log. Files carry a marker: hand-edited and foreign files are never overwritten.',
+    targetClaude: 'Claude Code',
+    targetCodex: 'Codex',
+    unverifiedBadge: 'not verified live',
+    codexUnverified: 'Codex agent and hook formats come from the documentation: Codex is not installed on the development machine',
+    hooks: 'Terminal hooks (HITL and audit)',
+    refresh: 'Refresh',
+    failMode: 'When ProjectHub is unavailable',
+    failModeHint: 'For the built-in terminal. In an external terminal the PROJECTHUB_HOOK_FAIL_MODE variable sets the mode',
+    failOpen: 'Let through (fail-open)',
+    failClosed: 'Deny (fail-closed)',
+    timeout: 'Hook timeout, s',
+    timeoutHint: 'How long the hook waits for a human decision. On timeout the engine would run the tool, so ProjectHub denies earlier',
+    stopChecks: 'Checks on Stop',
+    stopChecksHint: 'Stop fires after every model reply: project checks may take long',
+    stopOff: 'Do not run',
+    stopNotify: 'Run and notify',
+    stopBlock: 'Run and continue work on failure',
+    action: {
+      create: 'create',
+      update: 'update',
+      conflict: 'edited by hand',
+      orphan: 'role removed',
+      foreign: 'foreign file',
+      unchanged: 'up to date'
+    },
+    modifiedByHand: 'edited by hand.',
+    overwrite: 'overwrite',
+    deleteFile: 'delete',
+    nothing: 'No files to sync',
+    skippedTitle: 'Not exported',
+    previewDesired: 'will be written',
+    previewCurrent: 'currently in the project',
+    apply: 'Sync to project',
+    applied: 'Written: {written}, deleted: {deleted}, skipped: {skipped}',
+    externalTerminal: 'External terminal',
+    externalHint: 'The ProjectHub built-in terminal gets these variables automatically. For another terminal run the command before starting claude or codex:',
+    serverStopped: 'The ProjectHub built-in server is not running — hooks will let work through (fail-open). Default address:',
+    copy: 'Copy',
+    copied: 'Copied',
+    rotateToken: 'Rotate hook token'
   },
   remote: {
     title: 'ProjectHub Remote Control',
@@ -2317,7 +2364,8 @@ export const en: TranslationDictionary = {
       handoff: 'Handoff',
       assigned: 'Assigned task',
       external: 'External MCP client',
-      automation: 'Automation'
+      automation: 'Automation',
+      terminal: 'Terminal'
     },
     by: {
       local: 'User (window)',

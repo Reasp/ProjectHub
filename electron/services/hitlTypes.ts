@@ -8,7 +8,8 @@
 
 /** Откуда пришёл агент, запросивший разрешение. */
 /** `external` — внешний MCP-клиент (Claude Code в терминале, Antigravity) через прокси ProjectHub (TASK-82). */
-export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external' | 'automation';
+/** `terminal` — хуки терминальной сессии Claude Code или Codex (TASK-77, decision-54). */
+export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external' | 'automation' | 'terminal';
 
 export type HitlEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
 
@@ -142,6 +143,8 @@ export interface HitlAuditEntry {
   waitedMs?: number;
   outcome?: HitlOutcome;
   detail?: string;
+  /** Длительность инструмента от решения до завершения, без ожидания человека (строка `outcome`, TASK-77). */
+  durationMs?: number;
   /** Скриншоты до/после для `computer_action` (TASK-82). */
   screenshots?: HitlScreenshots;
 }

@@ -318,6 +318,32 @@ export function buildCliPermissionSettings(config: AIProviderConfig): { permissi
   return ask.size > 0 ? { permissions: { ask: Array.from(ask) } } : null;
 }
 
+/**
+ * Диф для карточки одобрения записи Claude Code: Write — файл целиком, Edit — заменяемый фрагмент.
+ * Общий для `--permission-prompt-tool` и хуков терминальных сессий (TASK-77).
+ */
+export async function buildCliWriteDiff(
+  workDir: string,
+  toolName: string,
+  filePath: string,
+  input: Record<string, unknown>
+): Promise<ApprovalRequest['diff'] | undefined> {
+  try {
+    if (toolName === 'Write' && typeof input.content === 'string') {
+      let oldContent = '';
+      const fullPath = path.resolve(workDir, filePath);
+      if (existsSync(fullPath)) oldContent = await fs.readFile(fullPath, 'utf-8');
+      return { filePath, oldContent, newContent: input.content, patch: aiAgentService.generateDiff(oldContent, input.content, filePath) };
+    }
+    if (toolName === 'Edit' && typeof input.old_string === 'string' && typeof input.new_string === 'string') {
+      return { filePath, oldContent: input.old_string, newContent: input.new_string, patch: aiAgentService.generateDiff(input.old_string, input.new_string, filePath) };
+    }
+  } catch {
+    /* диф — только подсказка для пользователя */
+  }
+  return undefined;
+}
+
 /** Аргумент командной строки для spawn с `shell: true` (пути с пробелами). */
 function quoteShellArg(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
@@ -694,27 +720,14 @@ class ClaudeBridgeService extends EventEmitter {
     return m ? m[1].trim() : t || 'Approved';
   }
 
-  /** Диф для карточки одобрения записи: Write — файл целиком, Edit — заменяемый фрагмент. */
+  /** Диф для карточки одобрения записи (общий с хуками терминала — {@link buildCliWriteDiff}). */
   private async buildCliWriteDiff(
     workDir: string,
     toolName: string,
     filePath: string,
     input: Record<string, any>
   ): Promise<ApprovalRequest['diff'] | undefined> {
-    try {
-      if (toolName === 'Write' && typeof input.content === 'string') {
-        let oldContent = '';
-        const fullPath = path.resolve(workDir, filePath);
-        if (existsSync(fullPath)) oldContent = await fs.readFile(fullPath, 'utf-8');
-        return { filePath, oldContent, newContent: input.content, patch: aiAgentService.generateDiff(oldContent, input.content, filePath) };
-      }
-      if (toolName === 'Edit' && typeof input.old_string === 'string' && typeof input.new_string === 'string') {
-        return { filePath, oldContent: input.old_string, newContent: input.new_string, patch: aiAgentService.generateDiff(input.old_string, input.new_string, filePath) };
-      }
-    } catch {
-      /* диф — только подсказка для пользователя */
-    }
-    return undefined;
+    return buildCliWriteDiff(workDir, toolName, filePath, input);
   }
 
   public getProjectStatus(projectPath: string): ProjectAgentStatus {

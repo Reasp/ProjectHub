@@ -3,9 +3,11 @@ id: TASK-77
 title: >-
   Экспорт ролей в нативные субагенты (.claude/agents, .codex/agents) и слой
   хуков PreToolUse/PostToolUse/Stop → HITL и аудит
-status: To Do
-assignee: []
+status: Review
+assignee:
+  - '@claude'
 created_date: '2026-09-15 03:12'
+updated_date: '2026-09-27 04:56'
 labels:
   - roles
   - hooks
@@ -32,10 +34,16 @@ type: feature
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Роли экспортируются в .claude/agents/*.md и .codex/agents/*.toml идемпотентно, с маркером генерации и без перезаписи ручных файлов; маппинг покрыт unit-тестами
+- [x] #1 Роли экспортируются в .claude/agents/*.md и .codex/agents/*.toml идемпотентно, с маркером генерации и без перезаписи ручных файлов; маппинг покрыт unit-тестами
 - [ ] #2 Сгенерированные хуки PreToolUse/PostToolUse/Stop для Claude Code и Codex маршрутизируют решения в HITL-очередь и аудит-лог; при незапущенном ProjectHub хуки не блокируют работу (fail-open с логом, настраиваемо)
 - [ ] #3 Аудит-лог получает записи от терминальных сессий claude/codex с длительностью инструментов
-- [ ] #4 UI менеджера ролей: синхронизация с предпросмотром и индикатор расхождений; i18n
-- [ ] #5 Скилл init-dev-project и setup.mjs шаблона знают про новые файлы (не ломают sync-rules)
-- [ ] #6 ADR о слое хуков и экспорте ролей; lint/test зелёные, pack:win собран
+- [x] #4 UI менеджера ролей: синхронизация с предпросмотром и индикатор расхождений; i18n
+- [x] #5 Скилл init-dev-project и setup.mjs шаблона знают про новые файлы (не ломают sync-rules)
+- [x] #6 ADR о слое хуков и экспорте ролей; lint/test зелёные, pack:win собран
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Итог сессии 2026-09-27
+<!-- SECTION:NOTES:END -->
