@@ -39,8 +39,30 @@ export interface StartedAgentSession {
   agents: { id: string }[];
 }
 
+/** Запрос ревью PR (TASK-81, decision-53); исполняет `prReviewService`. */
+export interface PrReviewRequest {
+  projectPath: string;
+  prNumber: number;
+  headSha?: string;
+  reviewers: string[];
+  verifier?: string;
+  budgetUsd?: number;
+  publish: 'hitl' | 'manual';
+  automation: AutomationRunMeta;
+  /** Сессия флота запущена — движок связывает её события с запуском правила. */
+  onSessionStarted: (swarmId: string, agentIds: string[]) => void;
+}
+
+export interface DeferredCompletion {
+  outcome: 'success' | 'failed';
+  detail?: string;
+  costUsd?: number;
+  swarmIds?: string[];
+}
+
 export interface ActionDeps {
   startRoleAgent(req: StartRoleAgentRequest): Promise<StartedAgentSession | { error: string }>;
+  startPrReview(req: PrReviewRequest): Promise<{ reviewId: string; completion: Promise<DeferredCompletion> } | { skipped: string } | { error: string }>;
   findTaskTitle(projectRoot: string, taskId: string): Promise<string | null>;
   loadChecks(projectRoot: string): Promise<CheckDefinition[]>;
   runCheck(def: CheckDefinition, workdir: string): Promise<CheckRunResult>;
@@ -62,11 +84,15 @@ export interface ActionContext {
   event?: AutomationEvent;
   /** Бюджет запуска агента (остаток дневного бюджета правила). */
   budgetUsd?: number;
+  /** Для действий из нескольких сессий флота: сообщить движку о каждой (причинность цепочек). */
+  onSessionStarted?: (swarmId: string, agentIds: string[]) => void;
 }
 
 export type ActionResult =
   | { outcome: 'success' | 'failed'; detail?: string }
-  | { outcome: 'pending'; swarmId: string; agentIds: string[]; taskId?: string; detail?: string };
+  | { outcome: 'pending'; swarmId: string; agentIds: string[]; taskId?: string; detail?: string }
+  /** Итог придёт позже и не сводится к одной сессии роя (ревью PR: ревьюеры, затем проверяющий). */
+  | { outcome: 'deferred'; completion: Promise<DeferredCompletion>; detail?: string };
 
 export const PROJECT_ACTION_TIMEOUT_MS = 30 * 60 * 1000;
 export const REINDEX_TIMEOUT_MS = 15 * 60 * 1000;
@@ -168,6 +194,25 @@ export async function executeAutomationAction(ctx: ActionContext, deps: ActionDe
       const run = await deps.runOnce(scriptCommand(stack.packageManager ?? 'npm', 'index-docs'), { cwd: root, timeoutMs: REINDEX_TIMEOUT_MS });
       const ok = run.exitCode === 0 && !run.timedOut;
       return { outcome: ok ? 'success' : 'failed', detail: ok ? 'Индекс документации пересобран' : run.error || tail(run.output) };
+    }
+
+    case 'reviewPr': {
+      const prNumber = ctx.event?.prNumber;
+      if (!prNumber) return { outcome: 'failed', detail: 'В событии нет номера PR' };
+      const started = await deps.startPrReview({
+        projectPath: root,
+        prNumber,
+        ...(ctx.event?.headSha ? { headSha: ctx.event.headSha } : {}),
+        reviewers: action.reviewers,
+        ...(action.verifier ? { verifier: action.verifier } : {}),
+        ...(ctx.budgetUsd !== undefined ? { budgetUsd: ctx.budgetUsd } : action.budgetUsd ? { budgetUsd: action.budgetUsd } : {}),
+        publish: action.publish,
+        automation: { ruleKey: ctx.ruleKey, ruleName: ctx.ruleName, runId: ctx.runId, depth: ctx.depth },
+        onSessionStarted: (swarmId, agentIds) => ctx.onSessionStarted?.(swarmId, agentIds)
+      });
+      if ('error' in started) return { outcome: 'failed', detail: started.error };
+      if ('skipped' in started) return { outcome: 'success', detail: started.skipped };
+      return { outcome: 'deferred', completion: started.completion, detail: `ревью PR #${prNumber}` };
     }
 
     case 'projectAction': {

@@ -19,6 +19,7 @@ import {
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { CreatePRModal } from './CreatePRModal';
+import { PrReviewPanel } from './PrReviewPanel';
 import type { PullRequest } from '../../types/electron';
 
 export const PullRequestView: React.FC = () => {
@@ -37,7 +38,7 @@ export const PullRequestView: React.FC = () => {
   } = useProjectStore();
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'diff'>('overview');
+  const [activeSubTab, setActiveSubTab] = useState<'overview' | 'diff' | 'review'>('overview');
 
   useEffect(() => {
     if (selectedProject) {
@@ -306,12 +307,30 @@ export const PullRequestView: React.FC = () => {
                     <FileCode className="w-3.5 h-3.5" />
                     {t.pr.diffTab}
                   </button>
+                  <button
+                    onClick={() => setActiveSubTab('review')}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition ${
+                      activeSubTab === 'review'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    {t.prReview.tab}
+                  </button>
                 </div>
               </div>
 
               {/* PR Detail Body */}
               <div className="flex-1 overflow-y-auto p-6">
-                {activeSubTab === 'overview' ? (
+                {activeSubTab === 'review' && selectedProject ? (
+                  <PrReviewPanel
+                    projectPath={selectedProject.path}
+                    prNumber={selectedPR.number}
+                    prOpen={selectedPR.state === 'OPEN'}
+                    hasCli={Boolean(prProviderInfo?.hasCli && prProviderInfo?.authenticated)}
+                  />
+                ) : activeSubTab === 'overview' ? (
                   <div className="max-w-3xl space-y-6">
                     {/* Description Box */}
                     <div className="bg-[#141722] border border-slate-800 rounded-xl p-5 shadow-inner">

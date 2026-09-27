@@ -14,11 +14,13 @@ export const AUTOMATION_EVENTS: AutomationEventTrigger[] = [
   'process.crashed',
   'pr.created',
   'pr.checksFailed',
+  'pr.opened',
+  'pr.updated',
   'device.connected'
 ];
 
 export type AutomationActionType = AutomationAction['type'];
-export const AUTOMATION_ACTIONS: AutomationActionType[] = ['runAgent', 'runChecks', 'reindexDocs', 'notify', 'projectAction'];
+export const AUTOMATION_ACTIONS: AutomationActionType[] = ['runAgent', 'runChecks', 'reindexDocs', 'notify', 'projectAction', 'reviewPr'];
 
 export interface AutomationFormState {
   id: string;
@@ -46,6 +48,11 @@ export interface AutomationFormState {
   notifyTitle: string;
   notifyBody: string;
   actionId: string;
+  /** Ревью PR (TASK-81): роли ревьюеров, проверяющий, публикация, черновики. */
+  reviewers: string[];
+  verifier: string;
+  publish: 'hitl' | 'manual';
+  includeDrafts: boolean;
   cooldownMin: string;
   maxRunsPerDay: string;
   dailyBudgetUsd: string;
@@ -78,6 +85,10 @@ export function emptyAutomationForm(): AutomationFormState {
     notifyTitle: '',
     notifyBody: '',
     actionId: 'test',
+    reviewers: [],
+    verifier: '',
+    publish: 'hitl',
+    includeDrafts: false,
     cooldownMin: '10',
     maxRunsPerDay: '20',
     dailyBudgetUsd: ''
@@ -163,6 +174,14 @@ export function formFromRule(rule: AutomationRule): AutomationFormState {
     form.notifyBody = a.body ?? '';
   } else if (a.type === 'projectAction') {
     form.actionId = a.actionId;
+  } else if (a.type === 'reviewPr') {
+    Object.assign(form, {
+      reviewers: [...a.reviewers],
+      verifier: a.verifier ?? '',
+      publish: a.publish,
+      includeDrafts: a.includeDrafts,
+      runBudgetUsd: numText(a.budgetUsd)
+    });
   }
   return form;
 }
@@ -192,6 +211,17 @@ function actionFromForm(form: AutomationFormState): AutomationRuleInput['action'
       return { type: 'notify', title: form.notifyTitle.trim(), ...(form.notifyBody.trim() ? { body: form.notifyBody.trim() } : {}) };
     case 'projectAction':
       return { type: 'projectAction', actionId: form.actionId.trim() };
+    case 'reviewPr': {
+      const budget = parseNumber(form.runBudgetUsd);
+      return {
+        type: 'reviewPr',
+        reviewers: [...form.reviewers],
+        ...(form.verifier.trim() ? { verifier: form.verifier.trim() } : {}),
+        ...(budget !== undefined ? { budgetUsd: budget } : {}),
+        publish: form.publish,
+        includeDrafts: form.includeDrafts
+      };
+    }
   }
 }
 

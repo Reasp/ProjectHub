@@ -94,3 +94,18 @@ describe('formFromRule ↔ ruleFromForm', () => {
     expect(ruleFromForm(formFromRule(agent))).toEqual(agent);
   });
 });
+
+describe('ревью PR в форме (TASK-81)', () => {
+  it('reviewPr переживает круг через форму', () => {
+    const rule: AutomationRule = {
+      id: 'review-prs',
+      name: 'Ревью PR',
+      enabled: true,
+      trigger: { kind: 'event', event: 'pr.opened' },
+      conditions: { projects: ['C:/a'] },
+      action: { type: 'reviewPr', reviewers: ['reviewer', 'reviewer-local'], verifier: 'reviewer', budgetUsd: 1.5, publish: 'manual', includeDrafts: true },
+      limits: { cooldownMin: 10, maxRunsPerDay: 5, dailyBudgetUsd: 3 }
+    };
+    expect(ruleFromForm(formFromRule(rule))).toEqual(rule);
+  });
+});

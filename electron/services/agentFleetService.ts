@@ -99,7 +99,7 @@ import {
 } from './agentTrace.js';
 import { AGENT_TRACE_FORMAT, AGENT_TRACE_VERSION, type AgentCheckpoint, type AgentRewindRecord, type AgentTimeline, type CheckpointKind, type TraceEventInput, type TraceUsage } from './agentTraceTypes.js';
 import { redactSecrets } from './hitlAudit.js';
-import type { HitlRequest } from './hitlTypes.js';
+import type { HitlRequest, RolePermissions } from './hitlTypes.js';
 import { superviseChildExit, type ChildExitSupervisor } from './processSweep.js';
 import type { ComposeResult, ComposeSelection, JudgeState } from './arenaTypes.js';
 import type {
@@ -1235,6 +1235,7 @@ export class AgentFleetService extends EventEmitter {
       taskTitle,
       ...(options.origin ? { origin: options.origin } : {}),
       ...(options.automation ? { automation: options.automation } : {}),
+      ...(options.review ? { review: options.review } : {}),
       mode: 'fan_out',
       prompt,
       baseBranch,
@@ -1295,31 +1296,13 @@ export class AgentFleetService extends EventEmitter {
     origin?: SwarmOrigin;
     automation?: SwarmAutomationMeta;
   }): Promise<SwarmSession | { error: string }> {
-    const { roles } = await loadRoles(options.projectPath);
-    const role = roles.find((r) => r.slug === options.roleSlug);
-    if (!role) {
-      return { error: `Роль "${options.roleSlug}" не найдена в реестре ролей.` };
-    }
-
-    let roleProvider: Partial<AIProviderConfig> | undefined;
-    try {
-      roleProvider = providerConfigFromSpec(role);
-    } catch (err) {
-      return { error: `Роль "${role.slug}": ${err instanceof Error ? err.message : String(err)}` };
-    }
-    const slot: AgentSlotConfig = {
-      id: `${options.origin === 'assigned' ? 'assigned' : 'auto'}-${options.taskId || 'run'}-${Date.now().toString(36)}`,
-      name: role.name,
-      engine: role.engine || 'claude-cli',
-      role: role.name,
-      roleSlug: role.slug,
-      budgetUsd: role.budgetUsd,
-      permissions: role.permissions,
-      // Без провайдера и профиля роль наследует настройки AI Studio, а не `anthropic` (decision-40).
-      ...(roleProvider ? { providerConfig: roleProvider } : {}),
-      // Тир роли (decision-44): модель из таблицы тиров для движка слота; явный `model` роли важнее.
-      ...(role.modelTier ? { modelTier: role.modelTier } : {})
-    };
+    const built = await this.buildRoleSlot(
+      options.projectPath,
+      options.roleSlug,
+      `${options.origin === 'assigned' ? 'assigned' : 'auto'}-${options.taskId || 'run'}-${Date.now().toString(36)}`
+    );
+    if ('error' in built) return built;
+    const slot = built;
 
     const budgetUsd = typeof options.budgetUsd === 'number' && options.budgetUsd > 0 ? options.budgetUsd : undefined;
     if (options.mode === 'doneLoop') {
@@ -1353,6 +1336,44 @@ export class AgentFleetService extends EventEmitter {
       ...(budgetUsd ? { budgetUsd } : {}),
       agents: [slot]
     });
+  }
+
+  /**
+   * Слот по роли реестра: движок, провайдер или профиль, тир, бюджет и права роли. `permissions`
+   * сужает права поверх роли (ревьюеры PR работают только на чтение — TASK-81, decision-53 п. 4).
+   */
+  public async buildRoleSlot(
+    projectPath: string,
+    roleSlug: string,
+    slotId: string,
+    overrides: { name?: string; permissions?: RolePermissions } = {}
+  ): Promise<AgentSlotConfig | { error: string }> {
+    const { roles } = await loadRoles(projectPath);
+    const role = roles.find((r) => r.slug === roleSlug);
+    if (!role) {
+      return { error: `Роль "${roleSlug}" не найдена в реестре ролей.` };
+    }
+
+    let roleProvider: Partial<AIProviderConfig> | undefined;
+    try {
+      roleProvider = providerConfigFromSpec(role);
+    } catch (err) {
+      return { error: `Роль "${role.slug}": ${err instanceof Error ? err.message : String(err)}` };
+    }
+    const permissions = overrides.permissions ? { ...(role.permissions ?? {}), ...overrides.permissions } : role.permissions;
+    return {
+      id: slotId,
+      name: overrides.name ?? role.name,
+      engine: role.engine || 'claude-cli',
+      role: role.name,
+      roleSlug: role.slug,
+      budgetUsd: role.budgetUsd,
+      ...(permissions ? { permissions } : {}),
+      // Без провайдера и профиля роль наследует настройки AI Studio, а не `anthropic` (decision-40).
+      ...(roleProvider ? { providerConfig: roleProvider } : {}),
+      // Тир роли (decision-44): модель из таблицы тиров для движка слота; явный `model` роли важнее.
+      ...(role.modelTier ? { modelTier: role.modelTier } : {})
+    };
   }
 
   private async executeFanOut(session: SwarmSession, resume: boolean): Promise<void> {
@@ -1572,7 +1593,7 @@ export class AgentFleetService extends EventEmitter {
    */
   /** Стоит ли запускать судью автоматически: настоящая арена с несколькими кандидатами. */
   private shouldAutoJudge(session: SwarmSession): boolean {
-    if (session.mode !== 'fan_out' || session.origin === 'assigned' || this.isAutonomous(session)) return false;
+    if (session.mode !== 'fan_out' || session.origin === 'assigned' || this.isAutonomous(session) || session.review) return false;
     return judgeableAgents(session).length > 1;
   }
 

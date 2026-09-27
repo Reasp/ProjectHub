@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "b69485452d2b97bfacd8da35eb74267eeeb2d3a92e4e4d063df4804edc07861a",
+  "docsHash": "5ba3321924725906f6d396be4ecd67023707686046fe9be1a3c56b17134b21c5",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -53,6 +53,7 @@
     "backlog/decisions/decision-50 - Второй-движок-TTS-на-Qwen3-TTS-отложен-синтез-в-2.8-раза-медленнее-реального-времени.md",
     "backlog/decisions/decision-51 - Память-агента-по-проекту-backlog-memory-инструменты-memory_write-и-memory_search-заметки-хода.md",
     "backlog/decisions/decision-52 - Automations-триггер-условие-действие-доверие-к-проектным-правилам-и-лимиты.md",
+    "backlog/decisions/decision-53 - Авто-ревью-PR-опрос-PR-ревьюеры-на-чтение-проверка-находок-судьёй-и-публикация-после-HITL.md",
     "backlog/decisions/decision-6 - Git-worktree-как-единица-изоляции-задачи-и-агента.md",
     "backlog/decisions/decision-7 - Local-first-хранение-состояния-и-отсутствие-телеметрии.md",
     "backlog/decisions/decision-8 - Результаты-агентов-материализуются-в-git-авто-коммит-в-worktree-и-безопасное-слияние.md",
@@ -68,6 +69,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 665,
-  "builtAt": "2026-09-26T23:52:25.039Z"
+  "chunks": 679,
+  "builtAt": "2026-09-27T03:25:21.038Z"
 }

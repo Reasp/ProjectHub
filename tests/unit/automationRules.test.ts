@@ -361,3 +361,35 @@ describe('шаблоны', () => {
     expect(renderTemplate('Выполни {{ taskId }}: {{taskTitle}} {{nope}}', { taskId: 'TASK-1', taskTitle: 'Одна' })).toBe('Выполни TASK-1: Одна');
   });
 });
+
+describe('ревью PR (TASK-81)', () => {
+  it('reviewPr — только с триггером PR и с дневным бюджетом; ревьюеров от 1 до 3', () => {
+    const base = { id: 'r', name: 'R', trigger: { kind: 'event', event: 'pr.opened' }, limits: { dailyBudgetUsd: 1 } };
+    const ok = validateRule({ ...base, action: { type: 'reviewPr', reviewers: ['reviewer'] } });
+    expect(ok.ok && ok.rule.action).toEqual({ type: 'reviewPr', reviewers: ['reviewer'], publish: 'hitl', includeDrafts: false });
+    const wrongTrigger = validateRule({ ...base, trigger: { kind: 'cron', expr: '0 3 * * *' }, action: { type: 'reviewPr', reviewers: ['reviewer'] } });
+    expect(!wrongTrigger.ok && wrongTrigger.error).toMatch(/событием PR/);
+    expect(validateRule({ ...base, limits: {}, action: { type: 'reviewPr', reviewers: ['reviewer'] } }).ok).toBe(false);
+    expect(validateRule({ ...base, action: { type: 'reviewPr', reviewers: [] } }).ok).toBe(false);
+    expect(validateRule({ ...base, action: { type: 'reviewPr', reviewers: ['a', 'b', 'c', 'd'] } }).ok).toBe(false);
+  });
+
+  it('события pr:opened / pr:updated несут PR и голову; cooldown — на пару «PR + голова»', () => {
+    const info = { projectPath: ROOT, number: 5, title: 'T', url: 'u', headSha: '0123456789abcdef', headRef: 'f', baseRef: 'main', draft: false, at: 1 };
+    const [openedEv] = automationEventsFromBus({ type: 'pr:opened', ...info });
+    expect(openedEv).toMatchObject({ kind: 'pr.opened', prNumber: 5, headSha: '0123456789abcdef', subject: 'pr:5@0123456789ab' });
+    const [updated] = automationEventsFromBus({ type: 'pr:updated', ...info, reason: 'ready' });
+    expect(updated.summary).toMatch(/готов к ревью/);
+    const r = rule({ trigger: { kind: 'event', event: 'pr.opened' }, action: { type: 'reviewPr', reviewers: ['x'] }, limits: { dailyBudgetUsd: 1 } });
+    expect(matchRuleEvent(r, { kind: 'global' }, openedEv)).toBe(true);
+    expect(matchRuleEvent(r, { kind: 'global' }, { ...openedEv, draft: true })).toBe(false);
+  });
+
+  it('reviewPr считается запуском агента в лимитах', () => {
+    const r = rule({ trigger: { kind: 'event', event: 'pr.opened' }, action: { type: 'reviewPr', reviewers: ['x'], budgetUsd: 0.5 }, limits: { dailyBudgetUsd: 2 } });
+    const NOW = Date.now();
+    const base = { ruleKey: 'k', action: r.action, limits: r.limits, state: emptyRuleState(NOW), now: NOW, subject: 's', maxConcurrentAgentRuns: 1 };
+    expect(gateRun({ ...base, activeAgentRuns: 0 })).toEqual({ allow: true, depth: 0, budgetUsd: 0.5 });
+    expect(gateRun({ ...base, activeAgentRuns: 1 })).toMatchObject({ allow: false, reason: 'concurrency' });
+  });
+});

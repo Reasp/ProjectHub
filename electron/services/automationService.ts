@@ -17,6 +17,7 @@ import { findTaskFile } from './taskFileLookup.js';
 import { taskEventSource } from './taskEventSource.js';
 import { backlogWatcher } from './backlogWatcher.js';
 import { logger } from './logger.js';
+import { prReviewService, prWatcher } from './prReviewApp.js';
 import type { SwarmEventPayload, SwarmSession } from './swarmTypes.js';
 
 /**
@@ -62,6 +63,19 @@ const actions: ActionDeps = {
   readProjectStack: (root) => readProjectStack(root),
   getProjectConfig: (root) => actionConfigService.getConfig(root),
   runOnce: (command, options) => processManager.runOnce(command, options),
+  startPrReview: (req) =>
+    prReviewService.start({
+      projectPath: req.projectPath,
+      prNumber: req.prNumber,
+      ...(req.headSha ? { headSha: req.headSha } : {}),
+      reviewers: req.reviewers,
+      ...(req.verifier ? { verifier: req.verifier } : {}),
+      ...(req.budgetUsd !== undefined ? { budgetUsd: req.budgetUsd } : {}),
+      publish: req.publish,
+      origin: 'automation',
+      automation: req.automation,
+      onSessionStarted: req.onSessionStarted
+    }),
   publish: (event) => appEventBus.publish(event)
 };
 
@@ -110,6 +124,7 @@ export const automationEngine = new AutomationEngine({
   },
   // Лениво: модуль входит в цикл импортов через mcpServerService — значение берётся при вызове.
   taskEvents: { setProjects: (roots) => taskEventSource.setProjects(roots) },
+  prEvents: { setProjects: (roots) => prWatcher.setProjects(roots) },
   getOpenProject: () => backlogWatcher.currentProject(),
   onOpenProjectChange: (listener) => backlogWatcher.onProjectChange(() => listener()),
   now: () => Date.now(),

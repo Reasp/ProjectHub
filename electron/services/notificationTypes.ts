@@ -35,7 +35,9 @@ export type NotificationKind =
   /** Слот переключил модель по fallback-цепочке тира (decision-44). */
   | 'modelFallback'
   /** Automations: правило приостановлено по лимиту, запуск не удался, действие `notify` (decision-52). */
-  | 'automation';
+  | 'automation'
+  /** Ревью PR завершено (TASK-81, decision-53 п. 9). */
+  | 'prReview';
 
 export const NOTIFICATION_KINDS: NotificationKind[] = [
   'hitl',
@@ -47,7 +49,8 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
   'prChecksFailed',
   'deviceConnected',
   'modelFallback',
-  'automation'
+  'automation',
+  'prReview'
 ];
 
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'critical';

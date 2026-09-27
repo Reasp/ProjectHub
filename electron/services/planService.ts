@@ -836,7 +836,6 @@ export class PlanService extends EventEmitter {
   // ─────────────────────────────── Итог плана ───────────────────────────────
 
   private async finalize(plan: PlanState, outcome: PlanOutcome, reason?: string): Promise<void> {
-    plan.phase = outcome === 'failed' ? 'failed' : 'finished';
     plan.outcome = outcome;
     plan.reason = reason;
     plan.completedAt = Date.now();
@@ -846,6 +845,9 @@ export class PlanService extends EventEmitter {
     } catch (err) {
       console.warn(`[PlanService] Не удалось записать итог плана в ${plan.taskId}:`, err);
     }
+    // Фаза «завершён» — только после записи итога в задачу: кто ждёт завершения плана (UI, тесты),
+    // должен видеть задачу уже с итогом.
+    plan.phase = outcome === 'failed' ? 'failed' : 'finished';
 
     const progress = planProgress(plan.nodes);
     appEventBus.publish({

@@ -332,7 +332,44 @@ export type AppBusEvent =
       costUsd?: number;
       swarmId?: string;
       at: number;
+    }
+  // ── Ревью PR (TASK-81, decision-53) ──
+  /** Опрос PR увидел новый открытый PR. */
+  | ({ type: 'pr:opened' } & PrBusInfo)
+  /** В PR новая голова (коммиты, force-push) или черновик стал готовым к ревью. */
+  | ({ type: 'pr:updated'; previousSha?: string; reason: 'commits' | 'ready' } & PrBusInfo)
+  /** Ревью PR завершено. */
+  | {
+      type: 'pr:reviewFinished';
+      projectPath: string;
+      number: number;
+      title: string;
+      url?: string;
+      headSha: string;
+      reviewId: string;
+      status: 'done' | 'failed';
+      confirmed: number;
+      refuted: number;
+      unverified: number;
+      costUsd?: number;
+      publish: 'pending' | 'manual' | 'none';
+      error?: string;
+      at: number;
     };
+
+/** Поля PR в событиях опроса (TASK-81). */
+export interface PrBusInfo {
+  projectPath: string;
+  number: number;
+  title: string;
+  url: string;
+  headSha: string;
+  headRef: string;
+  baseRef: string;
+  draft: boolean;
+  author?: string;
+  at: number;
+}
 
 export interface TaskBusChanges {
   status?: { from: string; to: string };

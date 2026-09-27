@@ -24,6 +24,8 @@ export const AUTOMATION_EVENT_TRIGGERS = [
   'process.crashed',
   'pr.created',
   'pr.checksFailed',
+  'pr.opened',
+  'pr.updated',
   'device.connected'
 ] as const;
 
@@ -32,7 +34,7 @@ export type AutomationEventTrigger = (typeof AUTOMATION_EVENT_TRIGGERS)[number];
 /** Внутренний триггер встроенного правила назначенных задач: любое изменение файла задачи. */
 export type AutomationEventKind = AutomationEventTrigger | 'task.updated';
 
-export const AUTOMATION_ACTION_TYPES = ['runAgent', 'runChecks', 'reindexDocs', 'notify', 'projectAction'] as const;
+export const AUTOMATION_ACTION_TYPES = ['runAgent', 'runChecks', 'reindexDocs', 'notify', 'projectAction', 'reviewPr'] as const;
 export type AutomationActionType = (typeof AUTOMATION_ACTION_TYPES)[number];
 
 /** Глубже этой цепочки «запуск → событие → запуск» автоматизации не идут. */
@@ -45,6 +47,15 @@ export const DEFAULT_MAX_RUNS_PER_DAY = 20;
 export const CHAIN_ATTRIBUTION_WINDOW_MS = 2 * 60 * 1000;
 export const DEFAULT_MAX_CONCURRENT_AGENT_RUNS = 2;
 export const DEFAULT_TASK_PROMPT = 'Выполни задачу {{taskId}}: {{taskTitle}}';
+/** Сколько ревьюеров может быть у одного ревью PR (decision-53 п. 2). */
+export const MAX_PR_REVIEWERS = 3;
+/** Триггеры, событие которых несёт PR, — только с ними действует `reviewPr`. */
+export const PR_TRIGGERS: ReadonlySet<string> = new Set(['pr.opened', 'pr.updated', 'pr.created']);
+
+/** Действия, запускающие агентов: для них обязателен дневной бюджет и действуют лимиты параллельности. */
+export function isAgentAction(type: string): boolean {
+  return type === 'runAgent' || type === 'reviewPr';
+}
 
 // ─────────────────────────── Схема правила ───────────────────────────
 
@@ -86,7 +97,16 @@ const ActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('runChecks'), checkIds: z.array(z.string().min(1)).optional() }),
   z.object({ type: z.literal('reindexDocs') }),
   z.object({ type: z.literal('notify'), title: z.string().trim().min(1).max(200), body: z.string().max(1000).optional() }),
-  z.object({ type: z.literal('projectAction'), actionId: z.string().trim().min(1) })
+  z.object({ type: z.literal('projectAction'), actionId: z.string().trim().min(1) }),
+  /** Ревью PR (TASK-81, decision-53): ревьюеры на чтение, проверяющий, публикация только через человека. */
+  z.object({
+    type: z.literal('reviewPr'),
+    reviewers: z.array(z.string().trim().min(1)).min(1).max(MAX_PR_REVIEWERS),
+    verifier: z.string().trim().min(1).optional(),
+    budgetUsd: z.number().positive().optional(),
+    publish: z.enum(['hitl', 'manual']).default('hitl'),
+    includeDrafts: z.boolean().default(false)
+  })
 ]);
 
 const LimitsSchema = z.object({
@@ -114,7 +134,10 @@ export const AutomationRuleSchema = z
       const error = validateCron(rule.trigger.expr);
       if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['trigger', 'expr'], message: error });
     }
-    if (rule.action.type === 'runAgent') {
+    if (rule.action.type === 'reviewPr' && !(rule.trigger.kind === 'event' && PR_TRIGGERS.has(rule.trigger.event))) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['trigger'], message: 'Ревью PR запускается только событием PR (pr.opened, pr.updated, pr.created)' });
+    }
+    if (isAgentAction(rule.action.type)) {
       if (!rule.limits.dailyBudgetUsd) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -129,6 +152,8 @@ export const AutomationRuleSchema = z
           message: `Cooldown для запуска агента — не меньше ${MIN_AGENT_COOLDOWN_MIN} мин`
         });
       }
+    }
+    if (rule.action.type === 'runAgent') {
       const taskFromEvent = isTaskTrigger(rule.trigger);
       if (rule.action.mode === 'doneLoop' && !taskFromEvent && !rule.action.taskId) {
         ctx.addIssue({
@@ -283,6 +308,12 @@ export interface AutomationEvent {
   assignee?: string[];
   outcome?: 'completed' | 'failed' | 'stopped';
   processName?: string;
+  /** PR события (TASK-81): номер, голова, черновик. */
+  prNumber?: number;
+  prTitle?: string;
+  prUrl?: string;
+  headSha?: string;
+  draft?: boolean;
   swarmId?: string;
   agentId?: string;
   at: number;
@@ -361,6 +392,29 @@ export function automationEventsFromBus(event: AppBusEvent): AutomationEvent[] {
           projectPath: event.projectPath,
           subject: `pr:${event.number}`,
           summary: `PR #${event.number} «${event.title}» создан`,
+          prNumber: event.number,
+          prTitle: event.title,
+          prUrl: event.url,
+          at: event.at
+        }
+      ];
+    case 'pr:opened':
+    case 'pr:updated':
+      return [
+        {
+          kind: event.type === 'pr:opened' ? 'pr.opened' : 'pr.updated',
+          projectPath: event.projectPath,
+          // Cooldown — на пару «PR + голова»: новый коммит в тот же PR ревьюится без ожидания.
+          subject: `pr:${event.number}@${event.headSha.slice(0, 12)}`,
+          summary:
+            event.type === 'pr:opened'
+              ? `PR #${event.number} «${event.title}» открыт`
+              : `PR #${event.number} «${event.title}»: ${event.reason === 'ready' ? 'готов к ревью' : 'новые коммиты'}`,
+          prNumber: event.number,
+          prTitle: event.title,
+          prUrl: event.url,
+          headSha: event.headSha,
+          draft: event.draft,
           at: event.at
         }
       ];
@@ -431,6 +485,8 @@ export function matchRuleEvent(rule: AutomationRule, scope: RuleScope, event: Au
   if (c.assignee && !(event.assignee ?? []).some((a) => wildcardMatch(c.assignee!, a))) return false;
   if (c.outcomes?.length && (!event.outcome || !c.outcomes.includes(event.outcome))) return false;
   if (c.processName && !(event.processName && wildcardMatch(c.processName, event.processName))) return false;
+  // Черновики PR ревьюятся, только если правило это разрешает (decision-53 п. 2).
+  if (rule.action.type === 'reviewPr' && event.draft && !rule.action.includeDrafts) return false;
   return true;
 }
 
@@ -552,13 +608,14 @@ export function gateRun(input: RunGateInput): RunGate {
     return { allow: false, reason: 'runs-limit', log: true, suspend: { reason: 'runs', until } };
   }
 
-  if (action.type !== 'runAgent') return { allow: true, depth };
+  if (!isAgentAction(action.type)) return { allow: true, depth };
 
   const limit = limits.dailyBudgetUsd ?? 0;
   const remaining = limit - state.costTodayUsd;
   if (remaining <= 0) return { allow: false, reason: 'budget', log: true, suspend: { reason: 'budget', until } };
   if (input.activeAgentRuns >= input.maxConcurrentAgentRuns) return { allow: false, reason: 'concurrency', log: true };
-  const budgetUsd = Math.min(action.budgetUsd ?? remaining, remaining);
+  const actionBudget = action.type === 'runAgent' || action.type === 'reviewPr' ? action.budgetUsd : undefined;
+  const budgetUsd = Math.min(actionBudget ?? remaining, remaining);
   return { allow: true, depth, budgetUsd: Math.round(budgetUsd * 10000) / 10000 };
 }
 

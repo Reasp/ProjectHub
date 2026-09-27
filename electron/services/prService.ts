@@ -9,6 +9,22 @@ import type { PullRequest, PRCreateOptions, PRProviderInfo } from '../../src/typ
 import { findTaskFile } from './taskFileLookup.js';
 import { normalizeFrontmatter, withUpdatedDate } from './backlogTaskFormat.js';
 import { appEventBus } from './eventBus.js';
+import os from 'node:os';
+import { parseGhPrList, type PrInfo } from './prSnapshot.js';
+import { ghCommentArgs } from './prReviewFormat.js';
+
+/** PR для ревью (TASK-81): голова, ветки и описание. */
+export interface PrReviewTarget {
+  number: number;
+  title: string;
+  body: string;
+  url: string;
+  headSha: string;
+  headRef: string;
+  baseRef: string;
+  draft: boolean;
+  state: string;
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -255,6 +271,68 @@ class PRService {
     } catch (err: any) {
       console.error(`Failed to create PR in ${projectPath}:`, err);
       throw err;
+    }
+  }
+
+  // ─────────────── Ревью PR (TASK-81, decision-53): эти методы бросают ошибку, а не глотают её ───────────────
+
+  /** Открытые PR с головой для опроса `prWatcher`. Нет `gh`, авторизации или сети — исключение. */
+  async listOpenPrsForWatch(projectPath: string): Promise<PrInfo[]> {
+    const raw = await this.runGh(
+      ['pr', 'list', '--state', 'open', '--json', 'number,title,url,headRefOid,headRefName,baseRefName,isDraft,author', '--limit', '50'],
+      projectPath
+    );
+    return parseGhPrList(raw);
+  }
+
+  async getPrForReview(projectPath: string, prNumber: number): Promise<PrReviewTarget> {
+    const raw = await this.runGh(
+      ['pr', 'view', String(prNumber), '--json', 'number,title,body,url,headRefOid,headRefName,baseRefName,isDraft,state'],
+      projectPath
+    );
+    const r = JSON.parse(raw) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === 'string' ? v : '');
+    if (!str(r.headRefOid)) throw new Error(`gh не вернул голову PR #${prNumber}`);
+    return {
+      number: prNumber,
+      title: str(r.title) || `#${prNumber}`,
+      body: str(r.body),
+      url: str(r.url),
+      headSha: str(r.headRefOid),
+      headRef: str(r.headRefName),
+      baseRef: str(r.baseRefName),
+      draft: r.isDraft === true,
+      state: str(r.state)
+    };
+  }
+
+  async getPrDiffStrict(projectPath: string, prNumber: number): Promise<string> {
+    return this.runGh(['pr', 'diff', String(prNumber)], projectPath);
+  }
+
+  /**
+   * Голова PR в локальную ссылку `refs/projecthub/pr/<N>` — от неё строятся worktree ревьюеров.
+   * Возвращает ссылку и её SHA.
+   */
+  async fetchPrHead(projectPath: string, prNumber: number): Promise<{ ref: string; sha: string }> {
+    const ref = `refs/projecthub/pr/${prNumber}`;
+    const git = simpleGit(projectPath);
+    await git.fetch('origin', `+refs/pull/${prNumber}/head:${ref}`);
+    const sha = (await git.revparse([ref])).trim();
+    return { ref, sha };
+  }
+
+  /**
+   * Сводный комментарий ревью. Единственный путь записи в PR из ревью — `gh pr comment`
+   * (`ghCommentArgs`): approve и request changes невозможны (decision-53 п. 8).
+   */
+  async commentOnPr(projectPath: string, prNumber: number, body: string): Promise<string> {
+    const file = path.join(os.tmpdir(), `projecthub-pr-${prNumber}-${Date.now()}.md`);
+    await fs.writeFile(file, body, 'utf-8');
+    try {
+      return await this.runGh(ghCommentArgs(prNumber, file), projectPath);
+    } finally {
+      await fs.rm(file, { force: true }).catch(() => undefined);
     }
   }
 

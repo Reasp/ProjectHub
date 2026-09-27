@@ -65,6 +65,8 @@ export const AutomationRuleEditor: React.FC<Props> = ({ rule, onSaved, onCancel 
 
   const toggleProject = (path: string) =>
     set('projects', form.projects.includes(path) ? form.projects.filter((p) => p !== path) : [...form.projects, path]);
+  const toggleReviewer = (slug: string) =>
+    set('reviewers', form.reviewers.includes(slug) ? form.reviewers.filter((r) => r !== slug) : [...form.reviewers, slug].slice(0, 3));
   const toggleOutcome = (o: 'completed' | 'failed' | 'stopped') =>
     set('outcomes', form.outcomes.includes(o) ? form.outcomes.filter((x) => x !== o) : [...form.outcomes, o]);
 
@@ -272,6 +274,52 @@ export const AutomationRuleEditor: React.FC<Props> = ({ rule, onSaved, onCancel 
             <label className={labelCls}>{e.actionId}</label>
             <input className={inputCls} value={form.actionId} onChange={(ev) => set('actionId', ev.target.value)} />
             <p className="mt-1 text-[10px] text-muted-foreground">{e.actionIdHint}</p>
+          </div>
+        )}
+        {form.actionType === 'reviewPr' && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className={labelCls}>{e.reviewers}</label>
+              <div className="flex flex-wrap gap-1.5">
+                {roles.map((r) => (
+                  <button
+                    key={r.slug}
+                    type="button"
+                    onClick={() => toggleReviewer(r.slug)}
+                    className={`px-2 py-0.5 rounded border text-[11px] ${form.reviewers.includes(r.slug) ? 'border-indigo-400 bg-indigo-500/25 text-indigo-100' : 'border-border text-muted-foreground'}`}
+                  >
+                    {r.name} ({r.slug})
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[10px] text-muted-foreground">{e.reviewersHint}</p>
+            </div>
+            <div>
+              <label className={labelCls}>{e.verifier}</label>
+              <select className={inputCls} value={form.verifier} onChange={(ev) => set('verifier', ev.target.value)}>
+                <option value="">{e.verifierDefault}</option>
+                {roles.map((r) => (
+                  <option key={r.slug} value={r.slug}>
+                    {r.name} ({r.slug})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>{e.reviewBudget}</label>
+              <input className={inputCls} value={form.runBudgetUsd} onChange={(ev) => set('runBudgetUsd', ev.target.value)} />
+            </div>
+            <div>
+              <label className={labelCls}>{e.publishMode}</label>
+              <select className={inputCls} value={form.publish} onChange={(ev) => set('publish', ev.target.value as 'hitl' | 'manual')}>
+                <option value="hitl">{e.publishHitl}</option>
+                <option value="manual">{e.publishManual}</option>
+              </select>
+            </div>
+            <label className="flex items-center gap-2 text-xs self-end pb-1.5">
+              <input type="checkbox" checked={form.includeDrafts} onChange={(ev) => set('includeDrafts', ev.target.checked)} />
+              {e.includeDrafts}
+            </label>
           </div>
         )}
       </section>

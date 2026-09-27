@@ -776,6 +776,48 @@ export interface TranslationDictionary {
     placeholderText: string;
   };
   /** Память проекта (TASK-76, decision-51): раздел во вкладке документов. */
+  prReview: {
+    tab: string;
+    title: string;
+    readOnlyNote: string;
+    ghMissing: string;
+    reviewers: string;
+    reviewersHint: string;
+    verifier: string;
+    verifierDefault: string;
+    budget: string;
+    publishMode: string;
+    publishHitl: string;
+    publishManual: string;
+    start: string;
+    restart: string;
+    starting: string;
+    started: string;
+    noReviews: string;
+    noRoles: string;
+    head: string;
+    cost: string;
+    stage: Record<'preparing' | 'reviewing' | 'verifying' | 'finished', string>;
+    status: Record<'running' | 'done' | 'failed', string>;
+    reviewerFindings: string;
+    verifierLabel: string;
+    findings: string;
+    verdict: Record<'confirmed' | 'refuted' | 'uncertain' | 'unverified', string>;
+    agreement: string;
+    severity: Record<'critical' | 'major' | 'minor' | 'nit', string>;
+    suggestion: string;
+    evidence: string;
+    publishState: Record<'none' | 'pending' | 'published' | 'declined' | 'blocked' | 'failed', string>;
+    publish: string;
+    published: string;
+    openComment: string;
+    openSession: string;
+    sessionReview: string;
+    sessionVerify: string;
+    verifierStatus: Record<'pending' | 'done' | 'failed' | 'skipped', string>;
+    noConfirmed: string;
+    showComment: string;
+  };
   automations: {
     badgeTooltip: string;
     badgePaused: string;
@@ -820,10 +862,19 @@ export interface TranslationDictionary {
     triggerEvent: string;
     triggerBuiltin: string;
     events: Record<
-      'task.assigned' | 'task.statusChanged' | 'swarm.finished' | 'agent.failed' | 'process.crashed' | 'pr.created' | 'pr.checksFailed' | 'device.connected',
+      | 'task.assigned'
+      | 'task.statusChanged'
+      | 'swarm.finished'
+      | 'agent.failed'
+      | 'process.crashed'
+      | 'pr.created'
+      | 'pr.checksFailed'
+      | 'pr.opened'
+      | 'pr.updated'
+      | 'device.connected',
       string
     >;
-    actions: Record<'runAgent' | 'runChecks' | 'reindexDocs' | 'notify' | 'projectAction', string>;
+    actions: Record<'runAgent' | 'runChecks' | 'reindexDocs' | 'notify' | 'projectAction' | 'reviewPr', string>;
     actionRole: string;
     actionDoneLoop: string;
     actionProject: string;
@@ -872,6 +923,15 @@ export interface TranslationDictionary {
       notifyBody: string;
       actionId: string;
       actionIdHint: string;
+      reviewers: string;
+      reviewersHint: string;
+      verifier: string;
+      verifierDefault: string;
+      reviewBudget: string;
+      publishMode: string;
+      publishHitl: string;
+      publishManual: string;
+      includeDrafts: string;
       limits: string;
       cooldown: string;
       maxRuns: string;
@@ -2171,7 +2231,8 @@ export interface TranslationDictionary {
       | 'prChecksFailed'
       | 'deviceConnected'
       | 'modelFallback'
-      | 'automation',
+      | 'automation'
+      | 'prReview',
       string
     >;
     osActionsUnsupported: string;

@@ -6,6 +6,7 @@ import {
   attributeEvent,
   automationEventsFromBus,
   gateRun,
+  isAgentAction,
   isPathInside,
   matchRuleEvent,
   normalizePathKey,
@@ -74,6 +75,8 @@ export interface AutomationEngineDeps {
     decide(event: AutomationEvent, lastStartedAt: number | undefined, now: number): AutoStartDecision;
   };
   taskEvents: { setProjects(roots: string[]): void };
+  /** Опрос PR для триггеров `pr.opened` / `pr.updated` (TASK-81). */
+  prEvents: { setProjects(roots: string[]): void };
   getOpenProject(): string | null;
   onOpenProjectChange(listener: () => void): () => void;
   now(): number;
@@ -196,6 +199,7 @@ export class AutomationEngine {
     this.timer = null;
     for (const unsubscribe of this.unsubscribers.splice(0)) unsubscribe();
     this.deps.taskEvents.setProjects([]);
+    this.deps.prEvents.setProjects([]);
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
@@ -324,6 +328,21 @@ export class AutomationEngine {
       for (const p of entry.rule.conditions.projects ?? []) roots.add(this.resolveProjectRoot(p) ?? p);
     }
     this.deps.taskEvents.setProjects([...roots]);
+    this.deps.prEvents.setProjects(this.prWatchRoots());
+  }
+
+  /** Проекты, PR которых надо опрашивать: включённые правила с триггерами `pr.opened` / `pr.updated`. */
+  private prWatchRoots(): string[] {
+    const roots = new Set<string>();
+    const open = this.deps.getOpenProject();
+    for (const entry of this.activeEntries()) {
+      const t = entry.rule.trigger;
+      if (t.kind !== 'event' || (t.event !== 'pr.opened' && t.event !== 'pr.updated')) continue;
+      if (entry.scope.kind === 'project' && entry.scope.projectRoot) roots.add(entry.scope.projectRoot);
+      else if (entry.rule.conditions.projects?.length) for (const p of entry.rule.conditions.projects) roots.add(this.resolveProjectRoot(p) ?? p);
+      else if (open) roots.add(open);
+    }
+    return [...roots];
   }
 
   // ─────────────────────────── Состояние ───────────────────────────
@@ -581,7 +600,7 @@ export class AutomationEngine {
       subject,
       ...(ctx.event ? { eventSummary: ctx.event.summary } : {}),
       startedAt: now,
-      isAgent: action.type === 'runAgent'
+      isAgent: isAgentAction(action.type)
     };
     this.runs.push(run);
     this.journal({ ...base, status: 'started', runId, depth: gate.depth });
@@ -607,7 +626,11 @@ export class AutomationEngine {
           depth: run.depth,
           ...(ctx.projectRoot ? { projectRoot: ctx.projectRoot } : {}),
           ...(ctx.event ? { event: ctx.event } : {}),
-          ...(budgetUsd !== undefined ? { budgetUsd } : {})
+          ...(budgetUsd !== undefined ? { budgetUsd } : {}),
+          onSessionStarted: (swarmId, agentIds) => {
+            run.swarmIds.push(swarmId);
+            run.agentIds.push(...agentIds);
+          }
         },
         this.deps.actions
       );
@@ -623,6 +646,20 @@ export class AutomationEngine {
       // Сессия могла завершиться раньше, чем мы начали её ждать (ошибка старта агента).
       const snapshot = this.deps.getSwarm(result.swarmId);
       if (snapshot) this.handleSwarm(snapshot);
+    } else if (result.outcome === 'deferred') {
+      let done: Awaited<typeof result.completion>;
+      try {
+        done = await result.completion;
+      } catch (err) {
+        done = { outcome: 'failed', detail: errorText(err) };
+      }
+      for (const id of done.swarmIds ?? []) if (!run.swarmIds.includes(id)) run.swarmIds.push(id);
+      this.finishRun(run, {
+        outcome: done.outcome,
+        ...(done.detail ? { detail: done.detail } : {}),
+        ...(done.costUsd !== undefined ? { costUsd: done.costUsd } : {}),
+        ...(done.swarmIds?.[0] ? { swarmId: done.swarmIds[0] } : {})
+      });
     } else {
       this.finishRun(run, { outcome: result.outcome, ...(result.detail ? { detail: result.detail } : {}) });
     }

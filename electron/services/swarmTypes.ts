@@ -193,6 +193,14 @@ export interface SwarmContinuation {
 /** Кто запустил сессию: человек (`swarm`) или автономно — назначение задачи и Automations (decision-52). */
 export type SwarmOrigin = 'swarm' | 'assigned' | 'automation';
 
+/** Сессия ревью PR (TASK-81, decision-53 п. 4): ревьюеры или проверяющий на чтение в worktree головы PR. */
+export interface SwarmReviewMeta {
+  reviewId: string;
+  prNumber: number;
+  headSha: string;
+  stage: 'review' | 'verify';
+}
+
 /** Метка запуска правилом Automations (TASK-74, decision-52 п. 5). */
 export interface SwarmAutomationMeta {
   ruleKey: string;
@@ -213,6 +221,8 @@ export interface SwarmSession {
   origin?: SwarmOrigin;
   /** Сессию запустило правило Automations (TASK-74) — по метке сервис подводит итог запуска. */
   automation?: SwarmAutomationMeta;
+  /** Сессия ревью PR (TASK-81): автосудья Arena для неё не запускается. */
+  review?: SwarmReviewMeta;
   mode: SwarmMode;
   prompt: string;
   baseBranch: string;
@@ -260,6 +270,7 @@ export interface StartFanOutOptions {
   /** Источник запуска для HITL/аудита (TASK-60); по умолчанию 'swarm'. */
   origin?: SwarmOrigin;
   automation?: SwarmAutomationMeta;
+  review?: SwarmReviewMeta;
 }
 
 export interface StartHandoffOptions {

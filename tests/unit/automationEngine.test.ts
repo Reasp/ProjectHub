@@ -6,7 +6,7 @@ import type { AppBusEvent } from '../../electron/services/hitlTypes';
 import type { AutoStartDecision } from '../../electron/services/assignedTaskRules';
 import { AutomationEngine, BUILTIN_ASSIGNED_KEY, type AutomationEngineDeps, type SwarmSnapshot } from '../../electron/services/automationEngine';
 import { AutomationStore, type AutomationLogEntry } from '../../electron/services/automationStore';
-import type { ActionDeps, StartRoleAgentRequest } from '../../electron/services/automationActions';
+import type { ActionDeps, DeferredCompletion, PrReviewRequest, StartRoleAgentRequest } from '../../electron/services/automationActions';
 
 /**
  * Движок Automations (TASK-74, decision-52) на поддельных зависимостях: доверие к проектным
@@ -29,6 +29,9 @@ interface Harness {
   builtin: { enabled: boolean; decision: AutoStartDecision };
   activeTasks: Set<string>;
   watched: string[][];
+  prWatched: string[][];
+  prReviews: PrReviewRequest[];
+  finishReview(result: DeferredCompletion): void;
   log(): Promise<AutomationLogEntry[]>;
 }
 
@@ -52,8 +55,11 @@ async function makeHarness(options: { globalRules?: unknown[]; projectRules?: un
     clock: { now: new Date(2026, 8, 27, 12, 0, 0).getTime() },
     builtin: { enabled: false, decision: { start: false, reason: 'disabled' } as AutoStartDecision },
     activeTasks: new Set<string>(),
-    watched: [] as string[][]
+    watched: [] as string[][],
+    prWatched: [] as string[][],
+    prReviews: [] as PrReviewRequest[]
   };
+  let resolveReview: (r: DeferredCompletion) => void = () => undefined;
   let swarmSeq = 0;
   const actions: ActionDeps = {
     startRoleAgent: async (req) => {
@@ -79,6 +85,11 @@ async function makeHarness(options: { globalRules?: unknown[]; projectRules?: un
       deploy: { name: 'Deploy', command: 'npm run deploy', requiresConfirmation: true }
     }),
     runOnce: async (command) => ({ exitCode: 0, output: `ran ${command}`, truncated: false, timedOut: false, durationMs: 5, startedAt: 0 }),
+    startPrReview: async (req) => {
+      h.prReviews.push(req);
+      req.onSessionStarted('review-swarm-1', ['review-agent-1']);
+      return { reviewId: 'prr-1', completion: new Promise<DeferredCompletion>((resolve) => (resolveReview = resolve)) };
+    },
     publish: (event) => {
       h.published.push(event);
       for (const l of busListeners) l(event);
@@ -110,6 +121,7 @@ async function makeHarness(options: { globalRules?: unknown[]; projectRules?: un
       decide: () => h.builtin.decision
     },
     taskEvents: { setProjects: (roots) => h.watched.push(roots) },
+    prEvents: { setProjects: (roots) => h.prWatched.push(roots) },
     getOpenProject: () => (options.openProject === undefined ? ROOT : options.openProject),
     onOpenProjectChange: () => () => undefined,
     now: () => h.clock.now
@@ -126,6 +138,7 @@ async function makeHarness(options: { globalRules?: unknown[]; projectRules?: un
     setProjectRules: (rules) => {
       h.projectRules = rules;
     },
+    finishReview: (result) => resolveReview(result),
     finishSwarm: (snap) => {
       swarms.set(snap.id, snap);
       for (const l of swarmListeners) l(snap);
@@ -416,5 +429,49 @@ describe('состояние и журнал на диске', () => {
     expect(files).toEqual(['automations-log.1.jsonl', 'automations-log.2.jsonl', 'automations-log.jsonl']);
     const read = await store.readLog(4);
     expect(read.map((e) => e.ts)).toEqual(['9', '8', '7', '6']);
+  });
+});
+
+describe('ревью PR (TASK-81)', () => {
+  const reviewRule = {
+    id: 'review-prs',
+    name: 'Ревью PR',
+    enabled: true,
+    trigger: { kind: 'event', event: 'pr.opened' },
+    action: { type: 'reviewPr', reviewers: ['reviewer', 'reviewer-local'], verifier: 'reviewer' },
+    limits: { dailyBudgetUsd: 2 }
+  };
+  const opened = (number: number, draft = false): AppBusEvent => ({
+    type: 'pr:opened', projectPath: ROOT, number, title: `PR ${number}`, url: `u${number}`, headSha: `sha${number}`, headRef: 'feat/x', baseRef: 'main', draft, at: 1
+  });
+
+  it('pr.opened запускает ревью с бюджетом и меткой правила; итог приходит отложенно со стоимостью', async () => {
+    harness = await makeHarness({ globalRules: [reviewRule] });
+    expect(harness.prWatched.at(-1)).toEqual([ROOT]);
+    harness.emit(opened(7));
+    await vi.waitFor(() => expect(harness.prReviews).toHaveLength(1));
+    expect(harness.prReviews[0]).toMatchObject({
+      projectPath: ROOT,
+      prNumber: 7,
+      headSha: 'sha7',
+      reviewers: ['reviewer', 'reviewer-local'],
+      verifier: 'reviewer',
+      budgetUsd: 2,
+      publish: 'hitl',
+      automation: { ruleKey: 'global:review-prs' }
+    });
+    await settle();
+    harness.finishReview({ outcome: 'success', detail: 'PR #7: подтверждено 1', costUsd: 0.4, swarmIds: ['review-swarm-1', 'verify-swarm'] });
+    await vi.waitFor(async () => expect((await harness.log()).some((e) => e.status === 'success')).toBe(true));
+    const [done] = await harness.log();
+    expect(done).toMatchObject({ action: 'reviewPr', costUsd: 0.4, swarmId: 'review-swarm-1', detail: 'PR #7: подтверждено 1' });
+    expect((await harness.engine.list()).find((v) => v.id === 'review-prs')!.state.costTodayUsd).toBeCloseTo(0.4);
+  });
+
+  it('черновики пропускаются, если правило их не разрешает', async () => {
+    harness = await makeHarness({ globalRules: [reviewRule] });
+    harness.emit(opened(8, true));
+    await settle();
+    expect(harness.prReviews).toHaveLength(0);
   });
 });

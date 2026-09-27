@@ -368,3 +368,16 @@ describe('describeBusEvent — Automations (TASK-74, decision-52 п. 6)', () => 
     expect(describeBusEvent({ type: 'task:updated', projectPath: 'p', taskId: 'T', title: 't', status: 's', assignee: [], labels: [], created: false, changes: {}, at: 1 })).toBeNull();
   });
 });
+
+describe('describeBusEvent — ревью PR (TASK-81)', () => {
+  it('итог ревью: подтверждённые находки — предупреждение, клик во вкладку PR; сбой — с причиной', () => {
+    const base = { type: 'pr:reviewFinished' as const, projectPath: 'C:/Work/app', number: 12, title: 'Разбор', url: 'u', headSha: 'abc', reviewId: 'prr-1', refuted: 1, unverified: 0, at: 1 };
+    const n = describeBusEvent({ ...base, status: 'done', confirmed: 2, costUsd: 0.4, publish: 'pending' });
+    expect(n).toMatchObject({ kind: 'prReview', severity: 'warning', title: 'Ревью PR #12 «Разбор»' });
+    expect(n?.body).toContain('подтверждено 2, отброшено 1 · $0.40 · публикация ждёт решения');
+    expect(n?.action).toEqual({ type: 'openPrs', projectPath: 'C:/Work/app', url: 'u' });
+    expect(describeBusEvent({ ...base, status: 'done', confirmed: 0, publish: 'none' })?.severity).toBe('success');
+    expect(describeBusEvent({ ...base, status: 'failed', confirmed: 0, publish: 'none', error: 'gh недоступен' })?.body).toMatch(/не выполнено: gh недоступен/);
+    expect(defaultChannelMatrix().prReview).toEqual(['tray', 'os', 'remote']);
+  });
+});

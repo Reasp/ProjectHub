@@ -36,7 +36,8 @@ import type {
   TtsErrorPayload,
   MemoryDraftInput,
   AutomationRuleInput,
-  AutomationsSettings
+  AutomationsSettings,
+  PrReviewStartOptions
 } from '../src/types/electron';
 
 const api: IElectronAPI = {
@@ -229,6 +230,18 @@ const api: IElectronAPI = {
     ipcRenderer.invoke('pr:list', projectPath, state),
   createPullRequest: (projectPath: string, options: any) =>
     ipcRenderer.invoke('pr:create', projectPath, options),
+  // Ревью PR (TASK-81, decision-53)
+  listPrReviews: (projectPath: string, prNumber?: number) => ipcRenderer.invoke('prReview:list', projectPath, prNumber),
+  startPrReview: (projectPath: string, prNumber: number, options: PrReviewStartOptions) =>
+    ipcRenderer.invoke('prReview:start', projectPath, prNumber, options),
+  publishPrReview: (projectPath: string, reviewId: string) => ipcRenderer.invoke('prReview:publish', projectPath, reviewId),
+  onPrReviewChanged: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('prReview:changed', handler);
+    return () => {
+      ipcRenderer.removeListener('prReview:changed', handler);
+    };
+  },
   getPRDiff: (projectPath: string, prNumber: number) =>
     ipcRenderer.invoke('pr:getDiff', projectPath, prNumber),
 

@@ -816,6 +816,11 @@ export interface IElectronAPI {
   listPullRequests: (projectPath: string, state?: 'all' | 'open' | 'closed' | 'merged') => Promise<PullRequest[]>;
   createPullRequest: (projectPath: string, options: PRCreateOptions) => Promise<PullRequest | null>;
   getPRDiff: (projectPath: string, prNumber: number) => Promise<string>;
+  // Ревью PR (TASK-81, decision-53)
+  listPrReviews: (projectPath: string, prNumber?: number) => Promise<{ ok: boolean; reviews: PrReviewRecord[]; error?: string }>;
+  startPrReview: (projectPath: string, prNumber: number, options: PrReviewStartOptions) => Promise<{ ok: true; reviewId: string } | { ok: false; error: string }>;
+  publishPrReview: (projectPath: string, reviewId: string) => Promise<{ ok: true; url: string } | { ok: false; error: string }>;
+  onPrReviewChanged: (callback: () => void) => () => void;
 
   // Interactive PTY Terminals (Claude Code & Multi-tab Shell)
   createPtySession: (options: CreatePtyOptions) => Promise<PtySession>;
@@ -1440,7 +1445,100 @@ export type AppBusEvent =
       costUsd?: number;
       swarmId?: string;
       at: number;
+    }
+  // Ревью PR (TASK-81, decision-53)
+  /** Опрос PR увидел новый открытый PR. */
+  | ({ type: 'pr:opened' } & PrBusInfo)
+  /** В PR новая голова (коммиты, force-push) или черновик стал готовым к ревью. */
+  | ({ type: 'pr:updated'; previousSha?: string; reason: 'commits' | 'ready' } & PrBusInfo)
+  /** Ревью PR завершено. */
+  | {
+      type: 'pr:reviewFinished';
+      projectPath: string;
+      number: number;
+      title: string;
+      url?: string;
+      headSha: string;
+      reviewId: string;
+      status: 'done' | 'failed';
+      confirmed: number;
+      refuted: number;
+      unverified: number;
+      costUsd?: number;
+      publish: 'pending' | 'manual' | 'none';
+      error?: string;
+      at: number;
     };
+
+/** Поля PR в событиях опроса (TASK-81). */
+export interface PrBusInfo {
+  projectPath: string;
+  number: number;
+  title: string;
+  url: string;
+  headSha: string;
+  headRef: string;
+  baseRef: string;
+  draft: boolean;
+  author?: string;
+  at: number;
+}
+
+// ─────────────────── Ревью PR (TASK-81, decision-53) — зеркало electron/services/prReviewService.ts ───────────────────
+
+export type PrReviewSeverity = 'critical' | 'major' | 'minor' | 'nit';
+
+export interface PrReviewFinding {
+  id: string;
+  file: string;
+  line?: number;
+  endLine?: number;
+  severity: PrReviewSeverity;
+  category?: string;
+  title: string;
+  description: string;
+  suggestion?: string;
+  evidence?: string;
+  reviewers: string[];
+  agreement: number;
+  verdict?: 'confirmed' | 'refuted' | 'uncertain';
+  verdictReason?: string;
+  verdictEvidence?: string;
+}
+
+export interface PrReviewRecord {
+  id: string;
+  projectPath: string;
+  prNumber: number;
+  prTitle: string;
+  prUrl: string;
+  headSha: string;
+  headRef: string;
+  baseRef: string;
+  status: 'running' | 'done' | 'failed';
+  stage: 'preparing' | 'reviewing' | 'verifying' | 'finished';
+  startedAt: number;
+  finishedAt?: number;
+  error?: string;
+  origin: 'manual' | 'automation';
+  taskId?: string;
+  budgetUsd?: number;
+  costUsd?: number;
+  reviewers: { roleSlug: string; name: string; agentId?: string; status: 'pending' | 'done' | 'failed'; findings: number; summary?: string; error?: string }[];
+  verifier?: { roleSlug: string; name?: string; status: 'pending' | 'done' | 'failed' | 'skipped'; error?: string };
+  swarmIds: string[];
+  findings: PrReviewFinding[];
+  comment?: string;
+  publish: { mode: 'hitl' | 'manual'; state: 'none' | 'pending' | 'published' | 'declined' | 'blocked' | 'failed'; requestId?: string; commentUrl?: string; error?: string; at?: number };
+}
+
+export interface PrReviewStartOptions {
+  reviewers: string[];
+  verifier?: string;
+  budgetUsd?: number;
+  publish: 'hitl' | 'manual';
+  force?: boolean;
+}
 
 // ─────────────────── Automations (TASK-74, decision-52) — зеркало electron/services/automationRules.ts и automationEngine.ts ───────────────────
 
@@ -1452,6 +1550,8 @@ export type AutomationEventTrigger =
   | 'process.crashed'
   | 'pr.created'
   | 'pr.checksFailed'
+  | 'pr.opened'
+  | 'pr.updated'
   | 'device.connected';
 
 export type AutomationTrigger =
@@ -1482,7 +1582,8 @@ export type AutomationAction =
   | { type: 'runChecks'; checkIds?: string[] }
   | { type: 'reindexDocs' }
   | { type: 'notify'; title: string; body?: string }
-  | { type: 'projectAction'; actionId: string };
+  | { type: 'projectAction'; actionId: string }
+  | { type: 'reviewPr'; reviewers: string[]; verifier?: string; budgetUsd?: number; publish: 'hitl' | 'manual'; includeDrafts: boolean };
 
 export interface AutomationLimits {
   cooldownMin: number;
@@ -1505,7 +1606,10 @@ export type AutomationRuleInput = Omit<AutomationRule, 'enabled' | 'conditions' 
   enabled?: boolean;
   trigger: AutomationTrigger | { kind: 'cron'; expr: string; catchUp?: 'skip' | 'once' };
   conditions?: AutomationConditions;
-  action: AutomationAction | (Omit<Extract<AutomationAction, { type: 'runAgent' }>, 'mode'> & { mode?: 'single' | 'doneLoop' });
+  action:
+    | AutomationAction
+    | (Omit<Extract<AutomationAction, { type: 'runAgent' }>, 'mode'> & { mode?: 'single' | 'doneLoop' })
+    | (Omit<Extract<AutomationAction, { type: 'reviewPr' }>, 'publish' | 'includeDrafts'> & { publish?: 'hitl' | 'manual'; includeDrafts?: boolean });
   limits?: Partial<AutomationLimits>;
 };
 
@@ -1582,7 +1686,8 @@ export type NotificationKind =
   | 'prChecksFailed'
   | 'deviceConnected'
   | 'modelFallback'
-  | 'automation';
+  | 'automation'
+  | 'prReview';
 
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'critical';
 

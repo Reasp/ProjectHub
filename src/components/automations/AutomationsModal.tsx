@@ -125,6 +125,8 @@ export const AutomationsModal: React.FC = () => {
         return `${a.actions.projectAction}: ${fill(a.actionProject, { action: act.actionId })}`;
       case 'notify':
         return `${a.actions.notify}: ${act.title}`;
+      case 'reviewPr':
+        return `${a.actions.reviewPr}: ${act.reviewers.join(', ')}${act.verifier ? ` → ${act.verifier}` : ''}`;
       default:
         return a.actions[act.type];
     }
