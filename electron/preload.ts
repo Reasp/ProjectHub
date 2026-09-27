@@ -34,7 +34,9 @@ import type {
   TtsDonePayload,
   TtsDownloadProgress,
   TtsErrorPayload,
-  MemoryDraftInput
+  MemoryDraftInput,
+  AutomationRuleInput,
+  AutomationsSettings
 } from '../src/types/electron';
 
 const api: IElectronAPI = {
@@ -451,6 +453,23 @@ const api: IElectronAPI = {
     ipcRenderer.on('voice:push-to-talk-status', handler);
     return () => {
       ipcRenderer.removeListener('voice:push-to-talk-status', handler);
+    };
+  },
+
+  // Automations (TASK-74, decision-52): правила, подтверждение проектных, журнал, запуск сейчас
+  listAutomations: () => ipcRenderer.invoke('automations:list'),
+  saveAutomationRule: (rule: AutomationRuleInput) => ipcRenderer.invoke('automations:saveRule', rule),
+  deleteAutomationRule: (id: string) => ipcRenderer.invoke('automations:deleteRule', id),
+  setAutomationEnabled: (key: string, enabled: boolean, hash?: string) => ipcRenderer.invoke('automations:setEnabled', key, enabled, hash),
+  runAutomationNow: (key: string) => ipcRenderer.invoke('automations:runNow', key),
+  resumeAutomation: (key: string) => ipcRenderer.invoke('automations:resume', key),
+  getAutomationLog: (limit?: number) => ipcRenderer.invoke('automations:getLog', limit),
+  updateAutomationSettings: (patch: Partial<AutomationsSettings>) => ipcRenderer.invoke('automations:updateSettings', patch),
+  onAutomationsChanged: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('automations:changed', handler);
+    return () => {
+      ipcRenderer.removeListener('automations:changed', handler);
     };
   },
 

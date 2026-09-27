@@ -190,13 +190,29 @@ export interface SwarmContinuation {
   note?: string;
 }
 
+/** Кто запустил сессию: человек (`swarm`) или автономно — назначение задачи и Automations (decision-52). */
+export type SwarmOrigin = 'swarm' | 'assigned' | 'automation';
+
+/** Метка запуска правилом Automations (TASK-74, decision-52 п. 5). */
+export interface SwarmAutomationMeta {
+  ruleKey: string;
+  ruleName: string;
+  runId: string;
+  depth: number;
+}
+
 export interface SwarmSession {
   id: string;
   projectPath: string;
   taskId?: string;
   taskTitle?: string;
-  /** Источник запуска для HITL/аудита (decision-9/10, TASK-60): по умолчанию выводится из `mode`. */
-  origin?: 'swarm' | 'assigned';
+  /**
+   * Источник запуска для HITL/аудита (decision-9/10, TASK-60): по умолчанию выводится из `mode`.
+   * `assigned` и `automation` — автономные запуски без нажатия человека (decision-52 п. 6).
+   */
+  origin?: SwarmOrigin;
+  /** Сессию запустило правило Automations (TASK-74) — по метке сервис подводит итог запуска. */
+  automation?: SwarmAutomationMeta;
   mode: SwarmMode;
   prompt: string;
   baseBranch: string;
@@ -242,7 +258,8 @@ export interface StartFanOutOptions {
   budgetUsd?: number;
   agents: AgentSlotConfig[];
   /** Источник запуска для HITL/аудита (TASK-60); по умолчанию 'swarm'. */
-  origin?: 'swarm' | 'assigned';
+  origin?: SwarmOrigin;
+  automation?: SwarmAutomationMeta;
 }
 
 export interface StartHandoffOptions {
@@ -277,6 +294,8 @@ export interface StartDoneLoopOptions {
   /** Подмножество проверок проекта по `id`. */
   checkIds?: string[];
   autoReview?: boolean;
+  origin?: SwarmOrigin;
+  automation?: SwarmAutomationMeta;
 }
 
 export interface SwarmEventPayload {

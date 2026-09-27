@@ -111,8 +111,10 @@ import type {
   StartDoneLoopOptions,
   StartFanOutOptions,
   StartHandoffOptions,
+  SwarmAutomationMeta,
   SwarmEventPayload,
   SwarmExportFormat,
+  SwarmOrigin,
   SwarmSession,
   SwarmTranscript
 } from './swarmTypes.js';
@@ -1232,6 +1234,7 @@ export class AgentFleetService extends EventEmitter {
       taskId,
       taskTitle,
       ...(options.origin ? { origin: options.origin } : {}),
+      ...(options.automation ? { automation: options.automation } : {}),
       mode: 'fan_out',
       prompt,
       baseBranch,
@@ -1271,6 +1274,27 @@ export class AgentFleetService extends EventEmitter {
     if (options.hostId && options.hostId !== hitlService.currentHostId) {
       return { error: `Хост "${options.hostId}" недоступен — федерация между машинами ещё не реализована (TASK-66).` };
     }
+    return this.startRoleAgent({ ...options, origin: 'assigned' });
+  }
+
+  /**
+   * Одиночный агент роли — общий путь назначенной задачи и действия `runAgent` Automations
+   * (decision-52 п. 1, 7): роль из реестра, worktree, одиночный слот или цикл «до готовности».
+   * Метка `automation` делает запуск автономным: только через HITL, без обходных флагов движков.
+   */
+  public async startRoleAgent(options: {
+    projectPath: string;
+    roleSlug: string;
+    prompt: string;
+    taskId?: string;
+    taskTitle?: string;
+    useWorktrees?: boolean;
+    mode?: 'single' | 'doneLoop';
+    budgetUsd?: number;
+    maxIterations?: number;
+    origin?: SwarmOrigin;
+    automation?: SwarmAutomationMeta;
+  }): Promise<SwarmSession | { error: string }> {
     const { roles } = await loadRoles(options.projectPath);
     const role = roles.find((r) => r.slug === options.roleSlug);
     if (!role) {
@@ -1284,7 +1308,7 @@ export class AgentFleetService extends EventEmitter {
       return { error: `Роль "${role.slug}": ${err instanceof Error ? err.message : String(err)}` };
     }
     const slot: AgentSlotConfig = {
-      id: `assigned-${options.taskId}-${Date.now().toString(36)}`,
+      id: `${options.origin === 'assigned' ? 'assigned' : 'auto'}-${options.taskId || 'run'}-${Date.now().toString(36)}`,
       name: role.name,
       engine: role.engine || 'claude-cli',
       role: role.name,
@@ -1297,13 +1321,36 @@ export class AgentFleetService extends EventEmitter {
       ...(role.modelTier ? { modelTier: role.modelTier } : {})
     };
 
+    const budgetUsd = typeof options.budgetUsd === 'number' && options.budgetUsd > 0 ? options.budgetUsd : undefined;
+    if (options.mode === 'doneLoop') {
+      if (!options.taskId) return { error: 'Для режима «до готовности» нужна задача Backlog.md' };
+      try {
+        return await this.startDoneLoop({
+          projectPath: options.projectPath,
+          taskId: options.taskId,
+          taskTitle: options.taskTitle,
+          prompt: options.prompt,
+          agent: slot,
+          useWorktrees: options.useWorktrees,
+          ...(budgetUsd ? { budgetUsd } : {}),
+          ...(options.maxIterations ? { maxIterations: options.maxIterations } : {}),
+          ...(options.origin ? { origin: options.origin } : {}),
+          ...(options.automation ? { automation: options.automation } : {})
+        });
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
     return this.startFanOut({
       projectPath: options.projectPath,
       prompt: options.prompt,
       taskId: options.taskId,
       taskTitle: options.taskTitle,
       useWorktrees: options.useWorktrees,
-      origin: 'assigned',
+      ...(options.origin ? { origin: options.origin } : {}),
+      ...(options.automation ? { automation: options.automation } : {}),
+      ...(budgetUsd ? { budgetUsd } : {}),
       agents: [slot]
     });
   }
@@ -1395,6 +1442,8 @@ export class AgentFleetService extends EventEmitter {
       projectPath,
       taskId,
       taskTitle: options.taskTitle ?? (typeof task.data.title === 'string' ? task.data.title : undefined),
+      ...(options.origin ? { origin: options.origin } : {}),
+      ...(options.automation ? { automation: options.automation } : {}),
       mode: 'done_loop',
       prompt,
       baseBranch,
@@ -1523,7 +1572,7 @@ export class AgentFleetService extends EventEmitter {
    */
   /** Стоит ли запускать судью автоматически: настоящая арена с несколькими кандидатами. */
   private shouldAutoJudge(session: SwarmSession): boolean {
-    if (session.mode !== 'fan_out' || session.origin === 'assigned') return false;
+    if (session.mode !== 'fan_out' || session.origin === 'assigned' || this.isAutonomous(session)) return false;
     return judgeableAgents(session).length > 1;
   }
 
@@ -1939,8 +1988,17 @@ export class AgentFleetService extends EventEmitter {
     return `swarm-${agentState.id}`;
   }
 
+  /**
+   * Запуск без нажатия человека — сессию стартовало правило Automations, включая встроенное правило
+   * назначенных задач (decision-26 п. 7, decision-52 п. 6): только HITL-контур ProjectHub.
+   */
+  private isAutonomous(session: SwarmSession): boolean {
+    return Boolean(session.automation);
+  }
+
   private hitlOrigin(session: SwarmSession): HitlOrigin {
     if (session.origin === 'assigned') return 'assigned';
+    if (session.origin === 'automation') return 'automation';
     return session.mode === 'handoff' ? 'handoff' : 'swarm';
   }
 
@@ -2000,6 +2058,13 @@ export class AgentFleetService extends EventEmitter {
     }
 
     const effective = applyRolePermissions(globalConfig, permissions);
+    if (this.isAutonomous(session)) {
+      // Автономному запуску обход HITL недоступен даже при включённом авто-одобрении (decision-52 п. 6).
+      return {
+        error: 'Встроенный MCP-сервер ProjectHub недоступен, а автономный запуск (Automations) без контура подтверждений '
+          + 'не выполняется. Включите MCP-сервер в настройках или освободите его порт.'
+      };
+    }
     if (effective.autoApprove) {
       const reason = 'Встроенный MCP-сервер недоступен, включено авто-одобрение: запуск с --dangerously-skip-permissions';
       hitlService.recordFallback({ sessionId, projectPath: session.projectPath, ...meta, reason });
@@ -2770,7 +2835,8 @@ export class AgentFleetService extends EventEmitter {
       extraSystemPrompt: await this.buildExtraSystemPrompt(session, agentState, targetPath),
       model: this.effectiveModel(agentState),
       reasoningEffort: normalizeReasoningEffort(agentState.config.providerConfig?.reasoningEffort),
-      autoApprove: effective.autoApprove
+      autoApprove: effective.autoApprove,
+      autonomous: this.isAutonomous(session)
     });
     if (invocation.effortNote) this.log(session, agentState, `[Swarm] ℹ️ ${invocation.effortNote}`);
     const fullPrompt = invocation.promptPrefix ? `${invocation.promptPrefix}\n\n${prompt}` : prompt;

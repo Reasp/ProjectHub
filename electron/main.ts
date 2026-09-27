@@ -15,6 +15,7 @@ import { gitService } from './services/gitService';
 import { windowStateService } from './services/windowStateService';
 import { agentFleetService, isActiveAgentStatus, isActiveSwarmStatus } from './services/agentFleetService';
 import { planService } from './services/planService';
+import { automationEngine } from './services/automationService';
 import { invalidateInspectCache } from './services/projectScanner';
 import { logger, parseLogLevel } from './services/logger';
 import { getUserDataDir } from './services/appPaths';
@@ -550,6 +551,13 @@ async function performGracefulShutdown() {
   }
 
   try {
+    // Automations: остановить планировщик и дописать состояние и журнал (TASK-74)
+    await automationEngine.shutdown();
+  } catch (e) {
+    console.warn('[Main] Error stopping automations:', e);
+  }
+
+  try {
     // Активные swarm-сессии помечаются interrupted и сбрасываются на диск (TASK-56)
     await agentFleetService.shutdown();
     // Состояние планов — на диск: узлы продолжатся после перезапуска (TASK-80)
@@ -693,7 +701,12 @@ app.whenReady().then(() => {
   setupTrayAndNotifications();
 
   // Восстановление swarm-сессий с диска: незавершённые помечаются interrupted (TASK-56)
-  void agentFleetService.init();
+  // Automations (TASK-74, decision-52): планировщик cron, реакция на шину, встроенное правило
+  // назначенных задач — после восстановления сессий, чтобы «нет активного роя» видело их.
+  void agentFleetService
+    .init()
+    .then(() => automationEngine.init())
+    .catch((err) => console.error('[Main] Failed to init automations:', err));
 
   // Планы подзадач с диска: узлы прерванных сессий возвращаются в очередь (TASK-80, decision-49)
   void planService.init().catch((err) => console.error('[Main] Failed to init plan service:', err));

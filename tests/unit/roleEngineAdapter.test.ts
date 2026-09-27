@@ -83,6 +83,18 @@ describe('buildEngineInvocation — gemini-cli', () => {
     const result = buildEngineInvocation({ engine: 'gemini-cli', role: role(), autoApprove: true });
     expect(result.args).toEqual(expect.arrayContaining(['--approval-mode', 'yolo']));
   });
+
+  it('автономный запуск (Automations) не получает yolo даже при autoApprove (decision-52 п. 6)', () => {
+    const result = buildEngineInvocation({ engine: 'gemini-cli', role: role(), autoApprove: true, autonomous: true });
+    expect(result.args).toEqual(expect.arrayContaining(['--approval-mode', 'default']));
+    expect(result.args).not.toContain('yolo');
+  });
+
+  it('codex в автономном запуске остаётся в sandbox workspace-write', () => {
+    const result = buildEngineInvocation({ engine: 'codex-cli', role: role(), autoApprove: true, autonomous: true });
+    expect(result.args).toEqual(expect.arrayContaining(['--sandbox', 'workspace-write']));
+    expect(result.args).not.toContain('danger-full-access');
+  });
 });
 
 describe('buildEngineInvocation — api', () => {

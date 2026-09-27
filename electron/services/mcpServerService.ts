@@ -24,6 +24,8 @@ import { computerUseService, type ComputerCallContext } from './computerUseServi
 import { jsonSchemaToZodShape } from './jsonSchemaToZod.js';
 import { MEMORY_TOOL_DEFINITIONS, callMemoryTool, type MemoryToolContext } from './memoryTools.js';
 import { memoryToolDeps } from './memoryToolDeps.js';
+import { automationEngine } from './automationService.js';
+import { automationToolList, automationToolRun } from './automationTools.js';
 
 /** Ключ персистентного токена MCP-сервера в safeStorage (TASK-58): переживает перезапуск приложения. */
 const MCP_TOKEN_SECRET_KEY = 'mcp_server_token';
@@ -691,6 +693,44 @@ class McpServerService {
         }
       );
     }
+
+    // ─────────────────────────────────────────────────────────────
+    // 12. Automations (TASK-74, decision-52 п. 8)
+    // ─────────────────────────────────────────────────────────────
+    server.registerTool(
+      'automation_list',
+      {
+        title: 'Список автоматизаций ProjectHub',
+        description:
+          'Правила Automations (глобальные, проектные, встроенное правило назначенных задач): триггер, действие, '
+          + 'включено ли и подтверждено ли на этой машине, счётчики дня и пауза; плюс последние запуски из журнала.',
+        inputSchema: {
+          projectPath: z.string().optional().describe('Показать только глобальные правила и правила этого проекта'),
+          recentRuns: z.number().optional().describe('Сколько последних записей журнала вернуть (по умолчанию 20, до 100)')
+        }
+      },
+      async ({ projectPath, recentRuns }) => {
+        const res = await automationToolList(automationEngine, { projectPath, recentRuns });
+        return { content: [{ type: 'text' as const, text: res }] };
+      }
+    );
+
+    server.registerTool(
+      'automation_run',
+      {
+        title: 'Запустить автоматизацию сейчас',
+        description:
+          'Ручной запуск правила Automations по ключу из automation_list (как кнопка «Запустить сейчас»): те же '
+          + 'подтверждение проектного правила, дневные лимиты и журнал, без cooldown. Недоступен агентам ProjectHub.',
+        inputSchema: {
+          ruleKey: z.string().describe('Ключ правила из automation_list, например global:nightly-docs')
+        }
+      },
+      async ({ ruleKey }) => {
+        const res = await automationToolRun(automationEngine, { ruleKey, fromAgentSession: Boolean(hitlSessionId) });
+        return { isError: res.isError, content: [{ type: 'text' as const, text: res.text }] };
+      }
+    );
 
     return server;
   }

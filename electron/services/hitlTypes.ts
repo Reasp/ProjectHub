@@ -8,7 +8,7 @@
 
 /** Откуда пришёл агент, запросивший разрешение. */
 /** `external` — внешний MCP-клиент (Claude Code в терминале, Antigravity) через прокси ProjectHub (TASK-82). */
-export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external';
+export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external' | 'automation';
 
 export type HitlEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
 
@@ -282,6 +282,61 @@ export type AppBusEvent =
       machineName: string;
       event: string;
       at: number;
+    }
+  // ── События задач и автоматизаций (TASK-74, decision-52 п. 2, 6) ──
+  /** Файл задачи добавлен или изменён; `changes` — что изменилось в статусе и исполнителях. */
+  | {
+      type: 'task:updated';
+      projectPath: string;
+      taskId: string;
+      title: string;
+      status: string;
+      assignee: string[];
+      labels: string[];
+      created: boolean;
+      changes: TaskBusChanges;
+      at: number;
+    }
+  /** Действие `notify` правила автоматизации. */
+  | {
+      type: 'automation:notify';
+      ruleId: string;
+      ruleName: string;
+      projectPath?: string;
+      title: string;
+      body?: string;
+      at: number;
+    }
+  /** Правило приостановлено до полуночи: исчерпан дневной бюджет или число запусков. */
+  | {
+      type: 'automation:suspended';
+      ruleId: string;
+      ruleName: string;
+      projectPath?: string;
+      reason: 'budget' | 'runs';
+      until: number;
+      spentUsd?: number;
+      limitUsd?: number;
+      at: number;
+    }
+  /** Запуск правила завершился (успех или ошибка действия). */
+  | {
+      type: 'automation:runFinished';
+      ruleId: string;
+      ruleName: string;
+      runId: string;
+      projectPath?: string;
+      action: string;
+      outcome: 'success' | 'failed';
+      detail?: string;
+      costUsd?: number;
+      swarmId?: string;
+      at: number;
     };
+
+export interface TaskBusChanges {
+  status?: { from: string; to: string };
+  assignee?: { from: string[]; to: string[] };
+}
 
 export type AppBusEventType = AppBusEvent['type'];

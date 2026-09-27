@@ -88,6 +88,22 @@ function isClosedStatus(status: unknown): boolean {
   return typeof status === 'string' && status.trim().toLowerCase() === 'done';
 }
 
+
+/**
+ * Запись файла задачи через временный файл и rename: `writeFile` сначала обнуляет файл, и параллельное
+ * чтение (вотчер задач, UI, тест) видит пустую задачу. Так же пишет заметку хода `taskSessionNote`.
+ */
+async function writeTaskFileAtomic(filePath: string, content: string): Promise<void> {
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await fs.writeFile(tmp, content, 'utf-8');
+  try {
+    await fs.rename(tmp, filePath);
+  } catch (err) {
+    await fs.rm(tmp, { force: true }).catch(() => undefined);
+    throw err;
+  }
+}
+
 export class PlanService extends EventEmitter {
   private plans = new Map<string, PlanState>();
   /** Планы, для которых прямо сейчас крутится диспетчер: решения не должны пересекаться. */
@@ -381,7 +397,7 @@ export class PlanService extends EventEmitter {
       ? file.content.replace(new RegExp(`${marker}[\\s\\S]*?(?=\\n## |$)`), `${marker}\n\n${lines.join('\n')}\n\n`)
       : `${file.content.trimEnd()}\n\n${marker}\n\n${lines.join('\n')}\n`;
     const data = withUpdatedDate(normalizeFrontmatter(file.data));
-    await fs.writeFile(file.filePath, matter.stringify(body, data), 'utf-8');
+    await writeTaskFileAtomic(file.filePath, matter.stringify(body, data));
   }
 
   // ───────────────────────── Утверждение и запуск ─────────────────────────
@@ -884,7 +900,7 @@ export class PlanService extends EventEmitter {
       if (review) data.status = review;
     }
     body = body.endsWith('\n') ? body : `${body}\n`;
-    await fs.writeFile(file.filePath, matter.stringify(body, data), 'utf-8');
+    await writeTaskFileAtomic(file.filePath, matter.stringify(body, data));
   }
 
   private notifyNodeFailed(plan: PlanState, node: PlanNode, blockedCount: number): void {

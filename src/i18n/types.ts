@@ -776,6 +776,129 @@ export interface TranslationDictionary {
     placeholderText: string;
   };
   /** Память проекта (TASK-76, decision-51): раздел во вкладке документов. */
+  automations: {
+    badgeTooltip: string;
+    badgePaused: string;
+    title: string;
+    subtitle: string;
+    autonomyNote: string;
+    tabRules: string;
+    tabLog: string;
+    tabSettings: string;
+    groupBuiltin: string;
+    groupGlobal: string;
+    groupProject: string;
+    empty: string;
+    emptyGlobal: string;
+    newRule: string;
+    edit: string;
+    delete: string;
+    deleteConfirm: string;
+    runNow: string;
+    runStarted: string;
+    runRefused: string;
+    resume: string;
+    enable: string;
+    disable: string;
+    confirmVersion: string;
+    refresh: string;
+    status: Record<'active' | 'off' | 'untrusted' | 'changed' | 'paused' | 'invalid', string>;
+    pauseReason: Record<'budget' | 'runs', string>;
+    untrustedHint: string;
+    changedHint: string;
+    builtinName: string;
+    builtinHint: string;
+    trustTitle: string;
+    trustMessage: string;
+    trustConfirm: string;
+    runsToday: string;
+    spentToday: string;
+    nextRun: string;
+    lastRun: string;
+    triggerCron: string;
+    triggerManual: string;
+    triggerEvent: string;
+    triggerBuiltin: string;
+    events: Record<
+      'task.assigned' | 'task.statusChanged' | 'swarm.finished' | 'agent.failed' | 'process.crashed' | 'pr.created' | 'pr.checksFailed' | 'device.connected',
+      string
+    >;
+    actions: Record<'runAgent' | 'runChecks' | 'reindexDocs' | 'notify' | 'projectAction', string>;
+    actionRole: string;
+    actionDoneLoop: string;
+    actionProject: string;
+    allProjects: string;
+    editor: {
+      titleNew: string;
+      titleEdit: string;
+      name: string;
+      id: string;
+      idHint: string;
+      enabled: string;
+      trigger: string;
+      triggerKinds: Record<'cron' | 'event' | 'manual', string>;
+      cronExpr: string;
+      cronHint: string;
+      catchUp: string;
+      catchUpSkip: string;
+      catchUpOnce: string;
+      event: string;
+      conditions: string;
+      projects: string;
+      projectsHint: string;
+      labels: string;
+      statusTo: string;
+      statusFrom: string;
+      listHint: string;
+      assignee: string;
+      assigneeHint: string;
+      outcomes: string;
+      outcomeNames: Record<'completed' | 'failed' | 'stopped', string>;
+      processName: string;
+      action: string;
+      role: string;
+      rolePlaceholder: string;
+      mode: string;
+      modeSingle: string;
+      modeDoneLoop: string;
+      prompt: string;
+      promptHint: string;
+      taskId: string;
+      runBudget: string;
+      maxIterations: string;
+      checkIds: string;
+      checkIdsHint: string;
+      notifyTitle: string;
+      notifyBody: string;
+      actionId: string;
+      actionIdHint: string;
+      limits: string;
+      cooldown: string;
+      maxRuns: string;
+      dailyBudget: string;
+      dailyBudgetHint: string;
+      save: string;
+      saving: string;
+      cancel: string;
+    };
+    log: {
+      empty: string;
+      time: string;
+      rule: string;
+      result: string;
+      openSwarm: string;
+      depth: string;
+      statuses: Record<'started' | 'success' | 'failed' | 'skipped' | 'suspended' | 'resumed', string>;
+    };
+    settings: {
+      maxConcurrent: string;
+      maxConcurrentHint: string;
+      builtinBudget: string;
+      builtinRuns: string;
+      save: string;
+      saved: string;
+    };
+  };
   memory: {
     tabDocs: string;
     tabMemory: string;
@@ -1989,7 +2112,7 @@ export interface TranslationDictionary {
     orphanedNotice: string;
     expiresIn: string;
     waitingFor: string;
-    origin: Record<'studio' | 'swarm' | 'handoff' | 'assigned' | 'external', string>;
+    origin: Record<'studio' | 'swarm' | 'handoff' | 'assigned' | 'external' | 'automation', string>;
     by: Record<'local' | 'remote' | 'mcp' | 'auto' | 'timeout' | 'cancelled' | 'shutdown', string>;
     outcome: Record<'executed' | 'failed' | 'not_executed' | 'session_gone', string>;
     kind: Record<'decision' | 'outcome' | 'fallback', string>;
@@ -2047,7 +2170,8 @@ export interface TranslationDictionary {
       | 'prCreated'
       | 'prChecksFailed'
       | 'deviceConnected'
-      | 'modelFallback',
+      | 'modelFallback'
+      | 'automation',
       string
     >;
     osActionsUnsupported: string;

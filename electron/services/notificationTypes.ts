@@ -33,7 +33,9 @@ export type NotificationKind =
   | 'prChecksFailed'
   | 'deviceConnected'
   /** Слот переключил модель по fallback-цепочке тира (decision-44). */
-  | 'modelFallback';
+  | 'modelFallback'
+  /** Automations: правило приостановлено по лимиту, запуск не удался, действие `notify` (decision-52). */
+  | 'automation';
 
 export const NOTIFICATION_KINDS: NotificationKind[] = [
   'hitl',
@@ -44,7 +46,8 @@ export const NOTIFICATION_KINDS: NotificationKind[] = [
   'prCreated',
   'prChecksFailed',
   'deviceConnected',
-  'modelFallback'
+  'modelFallback',
+  'automation'
 ];
 
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'critical';
@@ -56,6 +59,7 @@ export type NotificationAction =
   | { type: 'openProcesses'; projectPath?: string }
   | { type: 'openPrs'; projectPath?: string; url?: string }
   | { type: 'openRemote' }
+  | { type: 'openAutomations'; projectPath?: string }
   | { type: 'openApp' };
 
 /** Нормализованное уведомление — то, что шина событий превращает в доставку по каналам. */

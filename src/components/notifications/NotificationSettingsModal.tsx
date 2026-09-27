@@ -22,7 +22,8 @@ const KINDS: NotificationKind[] = [
   'prCreated',
   'prChecksFailed',
   'deviceConnected',
-  'modelFallback'
+  'modelFallback',
+  'automation'
 ];
 
 const CHANNELS: NotificationChannel[] = ['tray', 'os', 'sound', 'telegram', 'remote'];

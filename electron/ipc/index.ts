@@ -15,6 +15,7 @@ import { registerFederationIpc } from './federationIpc';
 import { registerComputerUseIpc } from './computerUseIpc';
 import { registerTtsIpc } from './ttsIpc';
 import { registerMemoryIpc } from './memoryIpc';
+import { registerAutomationsIpc } from './automationsIpc';
 
 export type { IpcContext } from './types';
 
@@ -35,4 +36,5 @@ export function registerAllIpc(ctx: IpcContext) {
   registerFederationIpc();
   registerComputerUseIpc();
   registerMemoryIpc();
+  registerAutomationsIpc(ctx);
 }

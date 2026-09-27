@@ -3,6 +3,7 @@ import {
   DEFAULT_DEDUP_WINDOW_MS,
   NotificationDeduper,
   computeTrayState,
+  defaultChannelMatrix,
   defaultNotificationSettings,
   describeBusEvent,
   formatTelegramMessage,
@@ -331,5 +332,39 @@ describe('formatTelegramMessage', () => {
     const text = formatTelegramMessage(n);
     expect(text.startsWith('🚨 *')).toBe(true);
     expect(text).toContain('\\*важной\\*');
+  });
+});
+
+describe('describeBusEvent — Automations (TASK-74, decision-52 п. 6)', () => {
+  it('пауза по бюджету — предупреждение с тратой и лимитом, клик открывает Automations', () => {
+    const n = describeBusEvent({
+      type: 'automation:suspended',
+      ruleId: 'fix',
+      ruleName: 'Чинить рои',
+      projectPath: 'C:/Work/app',
+      reason: 'budget',
+      until: 1000,
+      spentUsd: 1.2,
+      limitUsd: 1,
+      at: 5
+    });
+    expect(n).toMatchObject({ kind: 'automation', severity: 'warning', title: 'Автоматизация приостановлена до полуночи' });
+    expect(n?.body).toContain('исчерпан дневной бюджет ($1.20 из $1.00)');
+    expect(n?.action).toEqual({ type: 'openAutomations', projectPath: 'C:/Work/app' });
+  });
+
+  it('о запуске уведомляет только сбой; сбой агента ведёт к сессии роя', () => {
+    const base = { type: 'automation:runFinished' as const, ruleId: 'r', ruleName: 'Правило', runId: 'run-1', action: 'runAgent', at: 1 };
+    expect(describeBusEvent({ ...base, outcome: 'success' })).toBeNull();
+    const failed = describeBusEvent({ ...base, outcome: 'failed', detail: 'рой упал', swarmId: 's1', projectPath: 'C:/Work/app' });
+    expect(failed).toMatchObject({ kind: 'automation', title: 'Автоматизация «Правило» не выполнена' });
+    expect(failed?.action).toEqual({ type: 'openSwarm', projectPath: 'C:/Work/app', sessionId: 's1' });
+  });
+
+  it('действие notify и матрица по умолчанию', () => {
+    const n = describeBusEvent({ type: 'automation:notify', ruleId: 'r', ruleName: 'Правило', title: 'Ночная сборка', body: 'готово', at: 7 });
+    expect(n).toMatchObject({ kind: 'automation', severity: 'info', title: 'Ночная сборка', body: 'готово' });
+    expect(defaultChannelMatrix().automation).toEqual(['tray', 'os', 'telegram', 'remote']);
+    expect(describeBusEvent({ type: 'task:updated', projectPath: 'p', taskId: 'T', title: 't', status: 's', assignee: [], labels: [], created: false, changes: {}, at: 1 })).toBeNull();
   });
 });

@@ -2,12 +2,30 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { BrowserWindow } from 'electron';
-import { assignedTaskRunner } from './assignedTaskRunner.js';
 
 class BacklogWatcher {
   private watcher: FSWatcher | null = null;
   private currentPath: string | null = null;
   private debounceTimer: NodeJS.Timeout | null = null;
+  private projectListeners = new Set<(projectPath: string | null) => void>();
+
+  /** Открытый проект, за задачами которого следит окно. */
+  currentProject(): string | null {
+    return this.currentPath;
+  }
+
+  /**
+   * Смена открытого проекта — для источника событий задач Automations (TASK-74): встроенное правило
+   * назначенных задач наблюдает открытый проект, как раньше наблюдал этот вотчер.
+   */
+  onProjectChange(listener: (projectPath: string | null) => void): () => void {
+    this.projectListeners.add(listener);
+    return () => this.projectListeners.delete(listener);
+  }
+
+  private emitProjectChange(): void {
+    for (const listener of this.projectListeners) listener(this.currentPath);
+  }
 
   watch(projectPath: string, win: BrowserWindow | null) {
     if (this.currentPath === projectPath && this.watcher) {
@@ -32,12 +50,6 @@ class BacklogWatcher {
     });
 
     const notify = (event: string, filePath: string) => {
-      // Назначение `agent:<role>@<hostId>` могло приехать с git pull — хост, чьё имя стоит в
-      // задаче, запускает агента сам (TASK-66, decision-11 п.5). По умолчанию выключено.
-      if (event !== 'unlink' && assignedTaskRunner.isEnabled()) {
-        void assignedTaskRunner.handleTaskFile(projectPath, filePath);
-      }
-
       if (!win || win.isDestroyed()) return;
 
       if (this.debounceTimer) {
@@ -57,14 +69,17 @@ class BacklogWatcher {
     this.watcher.on('add', (fp) => notify('add', fp));
     this.watcher.on('change', (fp) => notify('change', fp));
     this.watcher.on('unlink', (fp) => notify('unlink', fp));
+    this.emitProjectChange();
   }
 
   unwatch() {
+    const hadProject = this.currentPath !== null;
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;
     }
     this.currentPath = null;
+    if (hadProject) this.emitProjectChange();
   }
 }
 

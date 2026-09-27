@@ -30,6 +30,7 @@ import { ClaudeUsageButton } from '../ai/ClaudeUsageButton';
 import { VoiceBadge } from '../voice/VoiceBadge';
 import { HitlBadge } from '../hitl/HitlBadge';
 import { NotificationsBadge } from '../notifications/NotificationsBadge';
+import { AutomationsBadge } from '../automations/AutomationsBadge';
 
 export const Header: React.FC = () => {
   const { language, setLanguage, t } = useTranslation();
@@ -77,6 +78,7 @@ export const Header: React.FC = () => {
         <div className="flex items-center gap-2">
           <HitlBadge />
           <NotificationsBadge />
+          <AutomationsBadge />
           <RemoteControlBadge />
           <McpServerStatusBadge />
           <DiagnosticsBadge />
@@ -295,6 +297,9 @@ export const Header: React.FC = () => {
 
         {/* Уведомления: трей, ОС, звук, Telegram (TASK-63) */}
         <NotificationsBadge />
+
+        {/* Automations: правила по расписанию и событиям (TASK-74) */}
+        <AutomationsBadge />
 
         {/* Remote Control Status Badge (TASK-51) */}
         <RemoteControlBadge />

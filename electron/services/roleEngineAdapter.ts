@@ -74,6 +74,11 @@ export interface EngineInvocationInput {
   /** Эффективные (уже суженные глобальными настройками) права — влияют на sandbox/approval. */
   autoApprove?: boolean;
   allowFileWrite?: boolean;
+  /**
+   * Автономный запуск (Automations, decision-52 п. 6): режимы движков, обходящие подтверждения
+   * целиком (`--approval-mode yolo` Gemini), недоступны.
+   */
+  autonomous?: boolean;
 }
 
 export interface EngineInvocation {
@@ -141,7 +146,7 @@ export function buildEngineInvocation(input: EngineInvocationInput): EngineInvoc
   }
 
   if (engine === 'gemini-cli') {
-    const approvalMode = autoApprove ? 'yolo' : 'default';
+    const approvalMode = autoApprove && !input.autonomous ? 'yolo' : 'default';
     args.push('--approval-mode', approvalMode, '--output-format', 'json');
     if (model && model !== 'default') args.push('-m', model);
     return { args, promptPrefix: systemPrompt || undefined, unsupportedFeatures, ...cliEffortIgnored(engine, input.reasoningEffort) };

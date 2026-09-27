@@ -11,6 +11,8 @@ import { DialogHost } from './components/common/DialogHost';
 import { HitlCenterModal } from './components/hitl/HitlCenterModal';
 import { ComputerControlBanner } from './components/computer/ComputerControlBanner';
 import { NotificationSettingsModal } from './components/notifications/NotificationSettingsModal';
+import { AutomationsModal } from './components/automations/AutomationsModal';
+import { useAutomationsStore } from './store/useAutomationsStore';
 import { RemoteHostsModal } from './components/federation/RemoteHostsModal';
 import { useProjectStore } from './store/useProjectStore';
 import { useAIStudioStore } from './store/useAIStudioStore';
@@ -70,6 +72,11 @@ export const App: React.FC = () => {
     useNotificationStore.getState().init();
   }, []);
 
+  // Automations: правила, их состояние и журнал из main (TASK-74)
+  useEffect(() => {
+    useAutomationsStore.getState().init();
+  }, []);
+
   // Федерация: список удалённых хостов и их события в hub-режиме (TASK-66)
   useEffect(() => {
     useFederationStore.getState().init();
@@ -103,6 +110,9 @@ export const App: React.FC = () => {
         case 'openPrs':
           focusProject(action.projectPath);
           setActiveTab('prs');
+          break;
+        case 'openAutomations':
+          useAutomationsStore.getState().open(action.projectPath);
           break;
         case 'openRemote':
         case 'openApp':
@@ -345,6 +355,9 @@ export const App: React.FC = () => {
 
       {/* Настройки уведомлений: каналы, тихие часы, Telegram-бот (TASK-63) */}
       <NotificationSettingsModal />
+
+      {/* Automations: правила, подтверждение проектных, журнал запусков (TASK-74) */}
+      <AutomationsModal />
 
       {/* Удалённые хосты федерации, hub-режим (TASK-66) */}
       <RemoteHostsModal />

@@ -978,6 +978,17 @@ export interface IElectronAPI {
   onPushToTalk: (callback: (event: PushToTalkEvent) => void) => () => void;
   onPushToTalkStatus: (callback: (status: PushToTalkStatus) => void) => () => void;
 
+  // Automations (TASK-74, decision-52): правила, доверие к проектным, журнал, запуск сейчас
+  listAutomations: () => Promise<AutomationListResult>;
+  saveAutomationRule: (rule: AutomationRuleInput) => Promise<{ ok: true; rule: AutomationRule } | { ok: false; error: string }>;
+  deleteAutomationRule: (id: string) => Promise<boolean>;
+  setAutomationEnabled: (key: string, enabled: boolean, hash?: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  runAutomationNow: (key: string) => Promise<AutomationRunNowResult>;
+  resumeAutomation: (key: string) => Promise<boolean>;
+  getAutomationLog: (limit?: number) => Promise<AutomationLogEntry[]>;
+  updateAutomationSettings: (patch: Partial<AutomationsSettings>) => Promise<AutomationsSettings>;
+  onAutomationsChanged: (callback: () => void) => () => void;
+
   // Память проекта (TASK-76, decision-51)
   listMemory: (projectPath: string) => Promise<MemoryListResult>;
   writeMemory: (projectPath: string, draft: MemoryDraftInput, replace?: string) => Promise<MemoryWriteResult>;
@@ -1236,7 +1247,7 @@ export interface AutoApproveRules {
 
 // ─────────────────── Единый HITL-контур (TASK-57), зеркало electron/services/hitlTypes.ts ───────────────────
 
-export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external';
+export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external' | 'automation';
 export type HitlEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
 export type HitlDecisionSourceKind = 'local' | 'remote' | 'mcp' | 'auto' | 'timeout' | 'cancelled' | 'shutdown';
 export type HitlOutcome = 'executed' | 'failed' | 'not_executed' | 'session_gone';
@@ -1403,7 +1414,159 @@ export type AppBusEvent =
       isApproved: boolean;
       hostId?: string;
       at: number;
+    }
+  // События Automations (TASK-74, decision-52)
+  | { type: 'automation:notify'; ruleId: string; ruleName: string; projectPath?: string; title: string; body?: string; at: number }
+  | {
+      type: 'automation:suspended';
+      ruleId: string;
+      ruleName: string;
+      projectPath?: string;
+      reason: 'budget' | 'runs';
+      until: number;
+      spentUsd?: number;
+      limitUsd?: number;
+      at: number;
+    }
+  | {
+      type: 'automation:runFinished';
+      ruleId: string;
+      ruleName: string;
+      runId: string;
+      projectPath?: string;
+      action: string;
+      outcome: 'success' | 'failed';
+      detail?: string;
+      costUsd?: number;
+      swarmId?: string;
+      at: number;
     };
+
+// ─────────────────── Automations (TASK-74, decision-52) — зеркало electron/services/automationRules.ts и automationEngine.ts ───────────────────
+
+export type AutomationEventTrigger =
+  | 'task.assigned'
+  | 'task.statusChanged'
+  | 'swarm.finished'
+  | 'agent.failed'
+  | 'process.crashed'
+  | 'pr.created'
+  | 'pr.checksFailed'
+  | 'device.connected';
+
+export type AutomationTrigger =
+  | { kind: 'cron'; expr: string; catchUp: 'skip' | 'once' }
+  | { kind: 'manual' }
+  | { kind: 'event'; event: AutomationEventTrigger };
+
+export interface AutomationConditions {
+  projects?: string[];
+  labels?: string[];
+  statusTo?: string[];
+  statusFrom?: string[];
+  assignee?: string;
+  outcomes?: ('completed' | 'failed' | 'stopped')[];
+  processName?: string;
+}
+
+export type AutomationAction =
+  | {
+      type: 'runAgent';
+      roleSlug: string;
+      mode: 'single' | 'doneLoop';
+      prompt?: string;
+      taskId?: string;
+      budgetUsd?: number;
+      maxIterations?: number;
+    }
+  | { type: 'runChecks'; checkIds?: string[] }
+  | { type: 'reindexDocs' }
+  | { type: 'notify'; title: string; body?: string }
+  | { type: 'projectAction'; actionId: string };
+
+export interface AutomationLimits {
+  cooldownMin: number;
+  maxRunsPerDay: number;
+  dailyBudgetUsd?: number;
+}
+
+export interface AutomationRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  trigger: AutomationTrigger;
+  conditions: AutomationConditions;
+  action: AutomationAction;
+  limits: AutomationLimits;
+}
+
+/** Правило до разбора схемой: значения по умолчанию подставит main. */
+export type AutomationRuleInput = Omit<AutomationRule, 'enabled' | 'conditions' | 'limits' | 'trigger' | 'action'> & {
+  enabled?: boolean;
+  trigger: AutomationTrigger | { kind: 'cron'; expr: string; catchUp?: 'skip' | 'once' };
+  conditions?: AutomationConditions;
+  action: AutomationAction | (Omit<Extract<AutomationAction, { type: 'runAgent' }>, 'mode'> & { mode?: 'single' | 'doneLoop' });
+  limits?: Partial<AutomationLimits>;
+};
+
+export interface AutomationRuleStateView {
+  runsToday: number;
+  costTodayUsd: number;
+  lastRunAt?: number;
+  pausedUntil?: number;
+  pauseReason?: 'budget' | 'runs';
+  nextRunAt?: number;
+}
+
+export interface AutomationRuleView {
+  key: string;
+  scope: 'global' | 'project' | 'builtin';
+  id: string;
+  name: string;
+  projectRoot?: string;
+  active: boolean;
+  enabled: boolean;
+  trust?: 'trusted' | 'untrusted' | 'changed';
+  hash?: string;
+  rule?: AutomationRule;
+  raw?: unknown;
+  issue?: string;
+  state: AutomationRuleStateView;
+  builtinLimits?: { dailyBudgetUsd: number; maxRunsPerDay: number };
+}
+
+export interface AutomationsSettings {
+  maxConcurrentAgentRuns: number;
+  builtinAssigned: { dailyBudgetUsd: number; maxRunsPerDay: number };
+}
+
+export interface AutomationListResult {
+  rules: AutomationRuleView[];
+  settings: AutomationsSettings;
+}
+
+export type AutomationRunNowResult = { ok: true; runIds: string[] } | { ok: false; reason: string };
+
+export interface AutomationLogEntry {
+  ts: string;
+  ruleKey: string;
+  ruleId: string;
+  ruleName: string;
+  scope: 'global' | 'project' | 'builtin';
+  status: 'started' | 'success' | 'failed' | 'skipped' | 'suspended' | 'resumed';
+  runId?: string;
+  projectPath?: string;
+  trigger: string;
+  subject?: string;
+  eventSummary?: string;
+  action?: string;
+  reason?: string;
+  detail?: string;
+  swarmId?: string;
+  costUsd?: number;
+  durationMs?: number;
+  depth?: number;
+}
 
 // ─────────────────── Уведомления (TASK-63, decision-13) — зеркало electron/services/notificationTypes.ts ───────────────────
 
@@ -1418,7 +1581,8 @@ export type NotificationKind =
   | 'prCreated'
   | 'prChecksFailed'
   | 'deviceConnected'
-  | 'modelFallback';
+  | 'modelFallback'
+  | 'automation';
 
 export type NotificationSeverity = 'info' | 'success' | 'warning' | 'critical';
 
@@ -1428,6 +1592,7 @@ export type NotificationAction =
   | { type: 'openProcesses'; projectPath?: string }
   | { type: 'openPrs'; projectPath?: string; url?: string }
   | { type: 'openRemote' }
+  | { type: 'openAutomations'; projectPath?: string }
   | { type: 'openApp' };
 
 export interface AppNotification {
@@ -2392,7 +2557,7 @@ export interface SwarmSession {
   taskId?: string;
   taskTitle?: string;
   /** Источник запуска для HITL/аудита (TASK-60): по умолчанию выводится из `mode`. */
-  origin?: 'swarm' | 'assigned';
+  origin?: 'swarm' | 'assigned' | 'automation';
   mode: SwarmMode;
   prompt: string;
   baseBranch: string;
@@ -2429,7 +2594,7 @@ export interface StartFanOutOptions {
   budgetUsd?: number;
   agents: AgentSlotConfig[];
   /** Источник запуска для HITL/аудита (TASK-60); по умолчанию 'swarm'. */
-  origin?: 'swarm' | 'assigned';
+  origin?: 'swarm' | 'assigned' | 'automation';
 }
 
 export interface StartHandoffOptions {

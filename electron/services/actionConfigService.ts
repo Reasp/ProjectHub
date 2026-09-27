@@ -53,6 +53,11 @@ export interface ProjectActionConfig {
   arena?: ArenaSettings;
   /** Настройки цикла «до готовности» (TASK-75): лимит итераций, бюджет, набор проверок. */
   doneLoop?: DoneLoopProjectSettings;
+  /**
+   * Проектные правила Automations (TASK-74, decision-52 п. 3). Приходят через git и срабатывают
+   * только после подтверждения человеком на этой машине; разбирает их `automationRules.parseRules`.
+   */
+  automations?: unknown[];
 }
 
 const CONFIG_FILENAME = '.projecthub.json';
