@@ -168,6 +168,11 @@ const api: IElectronAPI = {
   saveTerminalHookSettings: (settings: unknown) => ipcRenderer.invoke('terminalHooks:saveSettings', settings),
   getTerminalHookConnection: () => ipcRenderer.invoke('terminalHooks:getConnection'),
   regenerateTerminalHookToken: () => ipcRenderer.invoke('terminalHooks:regenerateToken'),
+  // Менеджер скиллов проекта (TASK-105, decision-61)
+  listProjectSkills: (projectPath: string) => ipcRenderer.invoke('skills:list', projectPath),
+  listSkillSources: (projectPath: string) => ipcRenderer.invoke('skills:sources', projectPath),
+  listSourceSkills: (projectPath: string, source: unknown) => ipcRenderer.invoke('skills:sourceList', projectPath, source),
+  copySkill: (projectPath: string, request: unknown) => ipcRenderer.invoke('skills:copy', projectPath, request),
 
   // Git
   getGitLog: (projectPath: string, maxCount?: number) => ipcRenderer.invoke('git:getLog', projectPath, maxCount),

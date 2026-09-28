@@ -792,6 +792,13 @@ export interface IElectronAPI {
   saveTerminalHookSettings: (settings: TerminalHookSettings) => Promise<TerminalHookSettings>;
   getTerminalHookConnection: () => Promise<{ url: string | null; token: string; failMode: 'open' | 'closed' }>;
   regenerateTerminalHookToken: () => Promise<boolean>;
+  listProjectSkills: (projectPath: string) => Promise<ProjectSkillListing>;
+  listSkillSources: (projectPath: string) => Promise<SkillSourceInfo[]>;
+  listSourceSkills: (
+    projectPath: string,
+    source: SkillSourceRef
+  ) => Promise<{ success: true; listing: SkillSourceListing } | { success: false; error: string }>;
+  copySkill: (projectPath: string, request: SkillCopyRequest) => Promise<{ success: true; result: SkillCopyResult } | { success: false; error: string }>;
 
   // Git Advanced
   getGitRepoDetails: (projectPath: string) => Promise<GitRepoDetails | null>;
@@ -1375,6 +1382,82 @@ export interface RoleSyncResult {
   deleted: string[];
   skipped: Array<{ relPath: string; reason: string }>;
   plan: RoleSyncPlan;
+}
+
+// Менеджер скиллов проекта (TASK-105, decision-61). Зеркало `skillCatalog.ts` и `skillService.ts`.
+export type SkillRoot = 'claude' | 'agents';
+export type SkillStatus = 'synced' | 'diverged' | 'claudeOnly' | 'agentsOnly';
+export type SkillFileState = 'same' | 'changed' | 'onlyClaude' | 'onlyAgents';
+export type SkillProblem = 'noSkillMd' | 'badFrontmatter' | 'noName' | 'noDescription' | 'nameMismatch' | 'nested' | 'tooLarge' | 'symlinks';
+export type SkillCopyAction = 'create' | 'overwrite' | 'unchanged';
+export type SkillSourceKind = 'template' | 'personal' | 'project';
+
+export interface SkillCopy {
+  root: SkillRoot;
+  id: string;
+  files: Array<{ relPath: string; size: number; hash: string }>;
+  hash: string;
+  totalBytes: number;
+  name?: string;
+  description?: string;
+  problems: SkillProblem[];
+  skillMd: string | null;
+}
+
+export interface SkillEntry {
+  id: string;
+  name?: string;
+  description?: string;
+  status: SkillStatus;
+  copies: Partial<Record<SkillRoot, SkillCopy>>;
+  fileDiff?: Array<{ relPath: string; state: SkillFileState }>;
+}
+
+export interface ProjectSkillListing {
+  projectPath: string;
+  entries: SkillEntry[];
+  summary: { total: number; synced: number; diverged: number; claudeOnly: number; agentsOnly: number; withProblems: number };
+}
+
+export interface SkillSourceRef {
+  kind: SkillSourceKind;
+  path?: string;
+}
+
+export interface SkillSourceInfo {
+  kind: SkillSourceKind;
+  path: string;
+  label: string;
+  available: boolean;
+}
+
+export interface SkillImportItem {
+  id: string;
+  from: SkillRoot;
+  name?: string;
+  description?: string;
+  problems: SkillProblem[];
+  blocker?: string;
+  sourceDiverged: boolean;
+  actions: Record<SkillRoot, SkillCopyAction>;
+}
+
+export interface SkillSourceListing {
+  source: SkillSourceInfo;
+  items: SkillImportItem[];
+}
+
+export interface SkillCopyRequest {
+  source: SkillSourceRef;
+  fromRoot: SkillRoot;
+  id: string;
+  toRoots: SkillRoot[];
+  overwrite: boolean;
+}
+
+export interface SkillCopyResult {
+  results: Array<{ root: SkillRoot; outcome: 'created' | 'overwritten' | 'unchanged' | 'skipped'; reason?: string }>;
+  listing: ProjectSkillListing;
 }
 
 export interface TerminalHookSettings {

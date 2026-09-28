@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Save, Trash2, Copy, TriangleAlert, Bot, UploadCloud } from 'lucide-react';
+import { X, Plus, Save, Trash2, Copy, TriangleAlert, Bot, UploadCloud, Sparkles } from 'lucide-react';
 import { useRolesStore } from '../../../store/useRolesStore';
 import { useProjectStore } from '../../../store/useProjectStore';
 import { useTranslation } from '../../../i18n';
@@ -8,6 +8,7 @@ import { unsupportedRoleFeatures } from '../../../lib/engineCapabilities';
 import { ProviderProfileSelect, useLlmProfiles, useProfileModels } from '../ProviderProfileSelect';
 import { ModelTierSelect } from '../ModelTierSelect';
 import { RoleSyncPanel } from './RoleSyncPanel';
+import { SkillsPanel } from './SkillsPanel';
 import type { RoleDefinition, RoleEngine, ToolCategory } from '../../../types/electron';
 
 interface RolesSettingsModalProps {
@@ -79,8 +80,10 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Синхронизация ролей в проект (TASK-77): вид правой панели, расхождения файлов, пересчёт после правки ролей.
-  const [view, setView] = useState<'editor' | 'sync'>('editor');
+  // Менеджер скиллов проекта (TASK-105): отдельный вид правой панели со своим индикатором расхождений копий.
+  const [view, setView] = useState<'editor' | 'sync' | 'skills'>('editor');
   const [syncDrift, setSyncDrift] = useState(0);
+  const [skillsDrift, setSkillsDrift] = useState(0);
   const [syncRefresh, setSyncRefresh] = useState(0);
 
   useEffect(() => {
@@ -186,6 +189,24 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
                 )}
               </button>
             )}
+            {selectedProject && (
+              <button
+                type="button"
+                data-testid="skills-button"
+                onClick={() => setView('skills')}
+                title={skillsDrift > 0 ? t.skills.driftTitle : undefined}
+                className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border mb-2 ${
+                  view === 'skills' ? 'border-primary bg-primary/10 text-primary' : 'border-border text-foreground hover:bg-secondary/50'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" /> {t.skills.button}
+                {skillsDrift > 0 && (
+                  <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    {skillsDrift}
+                  </span>
+                )}
+              </button>
+            )}
             {roles.map((r) => (
               <button
                 key={r.slug}
@@ -211,6 +232,13 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
           {selectedProject && (
             <div className={view === 'sync' ? 'flex-1 overflow-y-auto p-5' : 'hidden'}>
               <RoleSyncPanel projectPath={selectedProject.path} refreshKey={syncRefresh} onDriftChange={setSyncDrift} />
+            </div>
+          )}
+
+          {/* Скиллы проекта: тоже смонтированы всегда ради индикатора расхождений копий */}
+          {selectedProject && (
+            <div className={view === 'skills' ? 'flex-1 overflow-y-auto p-5' : 'hidden'}>
+              <SkillsPanel projectPath={selectedProject.path} onDriftChange={setSkillsDrift} />
             </div>
           )}
 
@@ -372,7 +400,7 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
         </div>
 
         <div className="flex items-center justify-between px-6 py-3.5 border-t border-border bg-secondary/20">
-          <div className={`flex items-center gap-2 ${view === 'sync' ? 'invisible' : ''}`}>
+          <div className={`flex items-center gap-2 ${view !== 'editor' ? 'invisible' : ''}`}>
             {selected && selected.source !== 'builtin' && (
               <button
                 onClick={handleDelete}
@@ -396,7 +424,7 @@ export const RolesSettingsModal: React.FC<RolesSettingsModalProps> = ({ isOpen, 
             </button>
             <button
               onClick={handleSave}
-              disabled={isSaving || view === 'sync'}
+              disabled={isSaving || view !== 'editor'}
               className="inline-flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               <Save className="w-3.5 h-3.5" /> {t.common.save}

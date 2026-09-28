@@ -9,6 +9,7 @@ import { registerMcpIpc } from './mcpIpc';
 import { registerProcessIpc } from './processIpc';
 import { registerHitlIpc } from './hitlIpc';
 import { registerRolesIpc } from './rolesIpc';
+import { registerSkillsIpc } from './skillsIpc';
 import { registerDiagnosticsIpc } from './diagnosticsIpc';
 import { registerNotificationsIpc } from './notificationsIpc';
 import { registerFederationIpc } from './federationIpc';
@@ -33,6 +34,7 @@ export function registerAllIpc(ctx: IpcContext) {
   registerProcessIpc();
   registerHitlIpc(ctx);
   registerRolesIpc();
+  registerSkillsIpc();
   registerDiagnosticsIpc();
   registerNotificationsIpc();
   registerFederationIpc();
