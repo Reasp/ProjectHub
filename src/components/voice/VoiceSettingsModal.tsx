@@ -111,6 +111,8 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
   const [pttStatus, setPttStatus] = useState<PushToTalkStatus | null>(null);
   const [acceleratorDraft, setAcceleratorDraft] = useState('');
   const [acceleratorRejected, setAcceleratorRejected] = useState(false);
+  /** Выбран пункт «своё сочетание», хотя сохранена ещё клавиша-модификатор (TASK-112). */
+  const [customKeyMode, setCustomKeyMode] = useState(false);
   const [newWakePhrase, setNewWakePhrase] = useState('');
 
   useEffect(() => {
@@ -120,7 +122,8 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
     void window.api?.getPushToTalkStatus?.().then((status) => {
       if (cancelled || !status) return;
       setPttStatus(status);
-      setAcceleratorDraft(status.settings.accelerator);
+      setCustomKeyMode(false);
+      setAcceleratorDraft(status.nativeKeys.includes(status.settings.accelerator) ? '' : status.settings.accelerator);
     });
 
     // Статус приходит из main и когда настройки меняет другое окно, и когда идёт запись.
@@ -359,14 +362,33 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
    * санитайзер, что и при чтении файла, поэтому UI просто сравнивает отправленное с принятым.
    */
   const savePushToTalk = async (patch: Partial<PushToTalkSettings>) => {
+    const previous = pttStatus?.settings.accelerator;
     const status = await window.api?.savePushToTalkSettings?.(patch);
     if (!status) return;
     setPttStatus(status);
-    setAcceleratorDraft(status.settings.accelerator);
-    setAcceleratorRejected(
-      typeof patch.accelerator === 'string' && patch.accelerator.trim() !== status.settings.accelerator
-    );
+
+    const accepted = status.settings.accelerator;
+    const acceptedNative = status.nativeKeys.includes(accepted);
+    if (typeof patch.accelerator === 'string') {
+      // Клавишу-модификатор main записывает каноническим именем, поэтому отказ — это когда
+      // значение осталось прежним, а не когда оно отличается от набранного.
+      setAcceleratorRejected(patch.accelerator.trim() !== accepted && accepted === previous);
+      if (acceptedNative) setCustomKeyMode(false);
+    }
+    if (!acceptedNative) setAcceleratorDraft(accepted);
   };
+
+  const requestPushToTalkPermission = async () => {
+    const status = await window.api?.requestPushToTalkPermission?.();
+    if (status) setPttStatus(status);
+  };
+
+  const pttNativeKeys = pttStatus?.nativeKeys ?? [];
+  const pttKeyChoice =
+    !customKeyMode && pttStatus && pttNativeKeys.includes(pttStatus.settings.accelerator)
+      ? pttStatus.settings.accelerator
+      : 'custom';
+  const pttHookProblem = pttStatus?.problem?.startsWith('hook-') ? pttStatus.problem : null;
 
   const wakePhrases = voiceConfig.wakeWordPhrases ?? [];
 
@@ -1321,27 +1343,67 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                     {t.voice.settingsModal.pttHotkey}
                   </label>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={acceleratorDraft}
+                    <select
+                      value={pttKeyChoice}
                       onChange={(e) => {
-                        setAcceleratorDraft(e.target.value);
                         setAcceleratorRejected(false);
-                      }}
-                      onBlur={() => {
-                        if (acceleratorDraft.trim() && acceleratorDraft.trim() !== pttStatus?.settings.accelerator) {
-                          void savePushToTalk({ accelerator: acceleratorDraft.trim() });
+                        if (e.target.value === 'custom') {
+                          setCustomKeyMode(true);
+                          return;
                         }
+                        setCustomKeyMode(false);
+                        void savePushToTalk({ accelerator: e.target.value });
                       }}
-                      placeholder={t.voice.settingsModal.pttHotkeyHint}
-                      className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                    />
+                      className="w-56 shrink-0 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                    >
+                      {pttNativeKeys.map((key) => (
+                        <option key={key} value={key}>
+                          {t.voice.settingsModal.pttNativeKeys[key] ?? key}
+                        </option>
+                      ))}
+                      <option value="custom">{t.voice.settingsModal.pttKeyCustom}</option>
+                    </select>
+                    {pttKeyChoice === 'custom' && (
+                      <input
+                        type="text"
+                        value={acceleratorDraft}
+                        onChange={(e) => {
+                          setAcceleratorDraft(e.target.value);
+                          setAcceleratorRejected(false);
+                        }}
+                        onBlur={() => {
+                          if (acceleratorDraft.trim() && acceleratorDraft.trim() !== pttStatus?.settings.accelerator) {
+                            void savePushToTalk({ accelerator: acceleratorDraft.trim() });
+                          }
+                        }}
+                        placeholder={t.voice.settingsModal.pttHotkeyHint}
+                        className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                      />
+                    )}
                   </div>
                   <div className="mt-1.5 flex items-center gap-1.5 text-[10px]">
                     {acceleratorRejected ? (
                       <span className="text-rose-400 flex items-center gap-1">
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                         {t.voice.settingsModal.pttHotkeyInvalid}
+                      </span>
+                    ) : pttHookProblem ? (
+                      <span className="text-amber-400 flex items-center gap-1 flex-wrap">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        {t.voice.settingsModal.pttHookProblems[pttHookProblem] ?? pttHookProblem}
+                        {'. '}
+                        {pttStatus?.activeKey
+                          ? t.voice.settingsModal.pttHookFallback.replace('{key}', pttStatus.activeKey)
+                          : t.voice.settingsModal.pttHookNoFallback}
+                        {pttHookProblem === 'hook-permission' && (
+                          <button
+                            type="button"
+                            onClick={() => void requestPushToTalkPermission()}
+                            className="ml-1 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/40 text-amber-300 hover:bg-amber-500/20 transition"
+                          >
+                            {t.voice.settingsModal.pttHookRequestPermission}
+                          </button>
+                        )}
                       </span>
                     ) : pttStatus?.settings.enabled && !pttStatus.registered ? (
                       <span className="text-amber-400 flex items-center gap-1">
@@ -1351,12 +1413,19 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                     ) : pttStatus?.registered ? (
                       <span className="text-emerald-400 flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                        {t.voice.settingsModal.pttHotkeyOk}
+                        {pttStatus.source === 'hook'
+                          ? t.voice.settingsModal.pttHookOk
+                          : t.voice.settingsModal.pttHotkeyOk}
                       </span>
                     ) : (
                       <span className="text-slate-500">{t.voice.settingsModal.pttHotkeyHint}</span>
                     )}
                   </div>
+                  {pttKeyChoice !== 'custom' && (
+                    <div className="mt-1.5 text-[10px] text-slate-500 leading-relaxed">
+                      {t.voice.settingsModal.pttHookNote}
+                    </div>
+                  )}
                 </div>
 
                 <div>

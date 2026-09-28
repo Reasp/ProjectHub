@@ -702,6 +702,8 @@ export const VoiceControlWidget: React.FC = () => {
     const unsubPushToTalk = window.api?.onPushToTalk?.((event) => {
       if (event.active) {
         void voiceService.beginPushToTalk();
+      } else if (event.cancelled) {
+        void voiceService.cancelPushToTalk();
       } else {
         void voiceService.endPushToTalk();
       }

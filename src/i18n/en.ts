@@ -384,15 +384,32 @@ export const en: TranslationDictionary = {
       pttDesc:
         'The hotkey is registered system-wide, so recording starts even when the ProjectHub window is minimized. While the key is held, the whole utterance is captured — the silence detector does not cut the phrase.',
       pttEnable: 'Enable hotkey',
-      pttHotkey: 'Key combination',
+      pttHotkey: 'Key',
       pttHotkeyHint: 'Modifiers plus one regular key, for example Control+Shift+Space',
       pttHotkeyInvalid: 'Combination is not valid — the previous one was kept',
       pttHotkeyTaken: 'Combination is taken by another application',
       pttHotkeyOk: 'Registered with the system',
+      pttNativeKeys: {
+        RightControl: 'Right Ctrl',
+        RightCommand: 'Right Command (⌘)'
+      },
+      pttKeyCustom: 'Custom combination…',
+      pttHookOk: 'Key is being tracked',
+      pttHookNote:
+        'The key is watched by a system keyboard hook: it runs only while push-to-talk is enabled and looks at this key alone. A combination with it (for example, right Ctrl+C) cancels the recording — nothing is sent to recognition.',
+      pttHookProblems: {
+        'hook-module': 'The keyboard hook module failed to load',
+        'hook-permission': 'macOS Accessibility permission is missing',
+        'hook-start': 'The system refused the keyboard hook'
+      },
+      pttHookFallback: 'The fallback combination {key} is active',
+      pttHookNoFallback: 'Push-to-talk is not working',
+      pttHookRequestPermission: 'Request and re-check',
       pttMode: 'Mode',
       pttModeHold: 'Hold the key (records while held)',
       pttModeToggle: 'Press to start, press again to stop',
-      pttModeHoldUnavailable: 'Hold mode is Windows-only: other systems do not auto-repeat hotkeys',
+      pttModeHoldUnavailable:
+        'For key combinations hold mode is Windows-only: other systems do not auto-repeat hotkeys. Right Ctrl and right Command support holding everywhere',
       pttTray: 'Show recording with a tray icon',
       pttRecordingNow: 'Recording',
       wakeWordTitle: 'Wake word',

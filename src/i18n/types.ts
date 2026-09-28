@@ -337,6 +337,15 @@ export interface TranslationDictionary {
       pttHotkeyInvalid: string;
       pttHotkeyTaken: string;
       pttHotkeyOk: string;
+      // Клавиша-модификатор через нативный хук (TASK-112)
+      pttNativeKeys: Record<string, string>;
+      pttKeyCustom: string;
+      pttHookOk: string;
+      pttHookNote: string;
+      pttHookProblems: Record<string, string>;
+      pttHookFallback: string;
+      pttHookNoFallback: string;
+      pttHookRequestPermission: string;
       pttMode: string;
       pttModeHold: string;
       pttModeToggle: string;

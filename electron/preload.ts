@@ -464,6 +464,7 @@ const api: IElectronAPI = {
   getPushToTalkStatus: () => ipcRenderer.invoke('voice:getPushToTalkStatus'),
   savePushToTalkSettings: (patch: Partial<PushToTalkSettings>) =>
     ipcRenderer.invoke('voice:savePushToTalkSettings', patch),
+  requestPushToTalkPermission: () => ipcRenderer.invoke('voice:requestPushToTalkPermission'),
   classifyVoiceCommand: (request: VoiceClassifyRequest) => ipcRenderer.invoke('voice:classifyCommand', request),
   // Голос → компьютер и системная диктовка: HITL и allowlist применяет прокси в main (TASK-82)
   runVoiceComputerTask: (request: VoiceComputerTaskRequest) => ipcRenderer.invoke('voice:runComputerTask', request),

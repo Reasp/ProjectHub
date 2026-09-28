@@ -1433,6 +1433,34 @@ class VoiceService {
     });
   }
 
+  /**
+   * Нажатие оказалось сочетанием клавиш (правый Ctrl+C), а не push-to-talk: записанное
+   * выбрасывается, в распознавание не уходит ничего (TASK-112).
+   */
+  async cancelPushToTalk(): Promise<void> {
+    if (!this.pushToTalkActive) return;
+    this.pushToTalkSeq++;
+    this.pushToTalkActive = false;
+
+    const ownedCapture = this.pushToTalkOwnedCapture;
+    this.pushToTalkOwnedCapture = false;
+
+    if (this.config.engine === 'webspeech') {
+      if (ownedCapture) this.stopListening();
+      this.notifyPushToTalk();
+      return;
+    }
+
+    this.resetVAD();
+    if (ownedCapture) {
+      this.cleanupAudio();
+      this.setState('idle');
+    } else if (this.isListening) {
+      this.setState('listening_handsfree');
+    }
+    this.notifyPushToTalk();
+  }
+
   /** Клавиша отпущена: накопленная фраза немедленно уходит в распознавание. */
   async endPushToTalk(): Promise<void> {
     if (!this.pushToTalkActive) return;

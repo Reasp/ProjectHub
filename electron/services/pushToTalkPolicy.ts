@@ -17,6 +17,10 @@
  * На macOS и Linux автоповтора у горячих клавиш нет (Carbon `RegisterEventHotKey` и X11-grab
  * шлют одно срабатывание), поэтому режим удержания там недоступен и вырождается в toggle.
  *
+ * Клавиши-модификаторы (правый Ctrl, правый Command) в `globalShortcut` невыразимы вовсе, их
+ * обслуживает нативный хук с настоящими нажатием и отпусканием — см. {@link NATIVE_KEYS} и
+ * [[decision-63]]. Автоповтор и дедлайны к ним не относятся.
+ *
  * Чистый модуль без Electron и IO — покрыт unit-тестами (см. [[decision-30]]).
  */
 
@@ -25,7 +29,10 @@ export type PushToTalkMode = 'hold' | 'toggle';
 export interface PushToTalkSettings {
   /** Регистрировать ли глобальную горячую клавишу. */
   enabled: boolean;
-  /** Accelerator Electron, например `Control+Shift+Space`. */
+  /**
+   * Accelerator Electron, например `Control+Shift+Space`, либо клавиша-модификатор из
+   * {@link NATIVE_KEYS} — `RightControl`, `RightCommand`.
+   */
   accelerator: string;
   /** `hold` — запись, пока клавиша удерживается; `toggle` — нажатие включает, следующее выключает. */
   mode: PushToTalkMode;
@@ -37,7 +44,58 @@ export interface PushToTalkSettings {
   repeatGraceMs: number;
 }
 
+/**
+ * Сочетание `globalShortcut`, на которое push-to-talk откатывается, когда нативный хук недоступен
+ * (нет модуля, нет разрешения macOS, Wayland).
+ */
 export const DEFAULT_PTT_ACCELERATOR = 'Control+Shift+Space';
+
+export type NativePushToTalkKey = 'RightControl' | 'RightCommand';
+
+export interface NativeKeySpec {
+  id: NativePushToTalkKey;
+  /** Виртуальный код libuiohook (`VC_CONTROL_R`, `VC_META_R`). */
+  keycode: number;
+  /** Каким флагом модификатора клавиша отмечает сама себя в событии. */
+  modifier: 'ctrl' | 'meta';
+  /** Платформы, где клавиша предлагается; `null` — на всех. */
+  platforms: readonly string[] | null;
+  aliases: readonly string[];
+}
+
+/**
+ * Клавиши-модификаторы, которые слушает нативный хук. Правый Command вне macOS не предлагается:
+ * на Windows это правая Win, и её отпускание открывает меню «Пуск». Правый Alt не входит
+ * намеренно — в раскладках с AltGr он приходит парой «левый Ctrl + правый Alt».
+ */
+export const NATIVE_KEYS: readonly NativeKeySpec[] = [
+  { id: 'RightControl', keycode: 0x0e1d, modifier: 'ctrl', platforms: null, aliases: ['rightcontrol', 'rightctrl'] },
+  {
+    id: 'RightCommand',
+    keycode: 0x0e5c,
+    modifier: 'meta',
+    platforms: ['darwin'],
+    aliases: ['rightcommand', 'rightcmd']
+  }
+];
+
+/** Клавиша-модификатор по значению из настроек; `null` — значение не про нативный хук или не про эту платформу. */
+export function nativeKeyFor(value: unknown, platform: string): NativeKeySpec | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  const spec = NATIVE_KEYS.find((key) => key.aliases.includes(normalized));
+  if (!spec) return null;
+  if (spec.platforms && !spec.platforms.includes(platform)) return null;
+  return spec;
+}
+
+export function nativeKeysForPlatform(platform: string): NativePushToTalkKey[] {
+  return NATIVE_KEYS.filter((key) => !key.platforms || key.platforms.includes(platform)).map((key) => key.id);
+}
+
+export function defaultPushToTalkKey(platform: string): NativePushToTalkKey {
+  return platform === 'darwin' ? 'RightCommand' : 'RightControl';
+}
 
 /** Модификаторы Electron accelerator: сами по себе горячей клавишей быть не могут. */
 const MODIFIERS = new Set([
@@ -66,8 +124,9 @@ const FORBIDDEN_KEYS = new Set(['f12']);
  * текст, поэтому перехват их во всей системе ничего не ломает. Буквы и цифры сюда не входят —
  * глобально перехваченная «A» сделала бы невозможным ввод этой буквы в любом приложении.
  *
- * Правый Ctrl отдельно назначить нельзя: акселераторы Electron не различают левый и правый
- * модификатор, а чистый модификатор не является допустимым акселератором вовсе ([[decision-30]]).
+ * Правый Ctrl через акселератор назначить нельзя: акселераторы Electron не различают левый и
+ * правый модификатор, а чистый модификатор не является допустимым акселератором вовсе
+ * ([[decision-30]]). Для него есть отдельный путь — {@link NATIVE_KEYS}.
  */
 const STANDALONE_KEYS = new Set(['capslock', 'scrolllock', 'pause', 'insert']);
 
@@ -109,16 +168,26 @@ export function isValidAccelerator(value: unknown): boolean {
   return /^[A-Za-z0-9]+$/.test(key);
 }
 
-/** Удержание доступно только там, где у горячих клавиш есть автоповтор. */
-export function supportsHoldMode(platform: string): boolean {
+/** Значение настроек пригодно: клавиша-модификатор этой платформы либо accelerator `globalShortcut`. */
+export function isValidPushToTalkKey(value: unknown, platform: string): boolean {
+  return nativeKeyFor(value, platform) !== null || isValidAccelerator(value);
+}
+
+/**
+ * Удержание доступно там, где отпускание клавиши можно узнать: у клавиши-модификатора его сообщает
+ * нативный хук, у сочетания `globalShortcut` оно восстанавливается по автоповтору — только Windows.
+ * Без `accelerator` отвечает за сочетания `globalShortcut`.
+ */
+export function supportsHoldMode(platform: string, accelerator?: string): boolean {
+  if (accelerator !== undefined && nativeKeyFor(accelerator, platform)) return true;
   return platform === 'win32';
 }
 
 export function defaultPushToTalkSettings(platform: string): PushToTalkSettings {
   return {
     enabled: true,
-    accelerator: DEFAULT_PTT_ACCELERATOR,
-    mode: supportsHoldMode(platform) ? 'hold' : 'toggle',
+    accelerator: defaultPushToTalkKey(platform),
+    mode: 'hold',
     trayIndicator: true,
     firstRepeatMs: 1200,
     repeatGraceMs: 300
@@ -131,19 +200,26 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 }
 
 /**
- * Приводит содержимое `<userData>/voice-hotkey.json` к рабочему виду. Режим `hold` вне Windows
- * понижается до `toggle`: там автоповтора нет, и запись, начавшись, никогда бы не остановилась.
+ * Приводит содержимое `<userData>/voice-hotkey.json` к рабочему виду. Для сочетаний
+ * `globalShortcut` режим `hold` вне Windows понижается до `toggle`: там автоповтора нет, и запись,
+ * начавшись, никогда бы не остановилась. Клавиша-модификатор записывается каноническим именем.
  */
 export function sanitizePushToTalkSettings(raw: unknown, platform: string): PushToTalkSettings {
   const defaults = defaultPushToTalkSettings(platform);
   const obj = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
 
   const requestedMode: PushToTalkMode = obj.mode === 'hold' || obj.mode === 'toggle' ? obj.mode : defaults.mode;
+  const nativeKey = nativeKeyFor(obj.accelerator, platform);
+  const accelerator = nativeKey
+    ? nativeKey.id
+    : isValidAccelerator(obj.accelerator)
+      ? (obj.accelerator as string).trim()
+      : defaults.accelerator;
 
   return {
     enabled: obj.enabled !== false,
-    accelerator: isValidAccelerator(obj.accelerator) ? (obj.accelerator as string).trim() : defaults.accelerator,
-    mode: supportsHoldMode(platform) ? requestedMode : 'toggle',
+    accelerator,
+    mode: supportsHoldMode(platform, accelerator) ? requestedMode : 'toggle',
     trayIndicator: obj.trayIndicator !== false,
     firstRepeatMs: clampNumber(obj.firstRepeatMs, 400, 3000, defaults.firstRepeatMs),
     repeatGraceMs: clampNumber(obj.repeatGraceMs, 150, 1500, defaults.repeatGraceMs)
@@ -243,4 +319,80 @@ export function holdDurationMs(state: HoldState, now: number): number {
 export function nextCheckDelayMs(state: HoldState, now: number): number {
   if (!state.pressed) return 0;
   return Math.max(1, state.lastFireAt + state.deadlineMs - now);
+}
+
+// ───────────────────────────── Клавиша-модификатор (нативный хук) ─────────────────────────────
+
+/** Событие клавиатуры от нативного хука — только то, что нужно политике. */
+export interface KeyHookEvent {
+  keycode: number;
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}
+
+export interface ModifierKeyState {
+  /** Клавиша push-to-talk сейчас зажата. */
+  down: boolean;
+  /**
+   * Нажатие оказалось частью сочетания (правый Ctrl+C) либо снято сторожевым таймером: до
+   * отпускания клавиши оно больше ничего не запускает и не останавливает.
+   */
+  spent: boolean;
+  downAt: number;
+}
+
+/**
+ * `press` — клавиша нажата одна; `release` — отпущена после чистого нажатия; `cancel` — к зажатой
+ * клавише добавилась другая, то есть это было сочетание, а не push-to-talk.
+ */
+export type ModifierKeyAction = 'press' | 'release' | 'cancel';
+
+export function createModifierKeyState(): ModifierKeyState {
+  return { down: false, spent: false, downAt: 0 };
+}
+
+function otherModifierHeld(event: KeyHookEvent, key: NativeKeySpec): boolean {
+  const own = key.modifier === 'ctrl' ? event.ctrlKey : event.metaKey;
+  const held = [event.ctrlKey, event.metaKey, event.altKey, event.shiftKey].filter(Boolean).length;
+  return held > (own ? 1 : 0);
+}
+
+export function registerKeyDown(
+  state: ModifierKeyState,
+  event: KeyHookEvent,
+  key: NativeKeySpec,
+  now: number
+): ModifierKeyAction | null {
+  if (event.keycode !== key.keycode) {
+    if (!state.down || state.spent) return null;
+    state.spent = true;
+    return 'cancel';
+  }
+
+  // Зажатая клавиша шлёт автоповтор нажатия — это то же самое нажатие.
+  if (state.down) return null;
+
+  state.down = true;
+  state.downAt = now;
+  // Shift уже зажат, и к нему добавили правый Ctrl — это набор сочетания, запись не начинаем.
+  state.spent = otherModifierHeld(event, key);
+  return state.spent ? null : 'press';
+}
+
+export function registerKeyUp(state: ModifierKeyState, event: KeyHookEvent, key: NativeKeySpec): ModifierKeyAction | null {
+  if (event.keycode !== key.keycode || !state.down) return null;
+  const spent = state.spent;
+  state.down = false;
+  state.spent = false;
+  return spent ? null : 'release';
+}
+
+/**
+ * Снимает текущее нажатие без отпускания: отпускание могло уйти мимо хука (экран блокировки, UAC),
+ * и запоздавшее не должно ничего переключить.
+ */
+export function abandonKeyHold(state: ModifierKeyState): void {
+  if (state.down) state.spent = true;
 }

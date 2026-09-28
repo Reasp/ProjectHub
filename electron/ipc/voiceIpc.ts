@@ -167,6 +167,9 @@ export function registerVoiceIpc(ctx: IpcContext) {
     return voiceHotkeyService.getStatus();
   });
 
+  // Разрешение macOS на нативный хук клавиши-модификатора (TASK-112); вне macOS — просто перерегистрация.
+  ipcMain.handle('voice:requestPushToTalkPermission', async () => voiceHotkeyService.requestPermission());
+
   // ─────────────── Классификатор свободных команд (TASK-83 п. 2) ───────────────
 
   /**

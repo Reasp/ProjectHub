@@ -392,6 +392,7 @@ export type PushToTalkMode = 'hold' | 'toggle';
 
 export interface PushToTalkSettings {
   enabled: boolean;
+  /** Accelerator Electron либо клавиша-модификатор нативного хука: `RightControl`, `RightCommand`. */
   accelerator: string;
   mode: PushToTalkMode;
   trayIndicator: boolean;
@@ -399,19 +400,33 @@ export interface PushToTalkSettings {
   repeatGraceMs: number;
 }
 
+export type PushToTalkSource = 'hook' | 'shortcut';
+
+/** `taken` — сочетание занято другим приложением; `hook-*` — почему не заработал нативный хук. */
+export type PushToTalkProblem = 'taken' | 'hook-module' | 'hook-permission' | 'hook-start';
+
 export interface PushToTalkStatus {
   settings: PushToTalkSettings;
-  /** `false` — сочетание занято другим приложением. */
+  /** Работает именно выбранная клавиша; `false` — она занята или заменена запасным сочетанием. */
   registered: boolean;
   recording: boolean;
-  /** Режим удержания доступен только там, где у горячих клавиш есть автоповтор (Windows). */
+  /** Удержание: у клавиши-модификатора везде, у сочетания `globalShortcut` — только в Windows. */
   supportsHold: boolean;
+  /** Клавиша, которая работает на самом деле; `null` — не работает никакая. */
+  activeKey: string | null;
+  source: PushToTalkSource | null;
+  activeMode: PushToTalkMode;
+  problem: PushToTalkProblem | null;
+  /** Клавиши-модификаторы, которые можно назначить на этой платформе. */
+  nativeKeys: string[];
 }
 
 export interface PushToTalkEvent {
   active: boolean;
   mode: PushToTalkMode;
   durationMs: number;
+  /** Нажатие оказалось сочетанием клавиш: записанное выбрасывается, а не распознаётся. */
+  cancelled?: boolean;
 }
 
 /**
@@ -1003,6 +1018,7 @@ export interface IElectronAPI {
   // Глобальный push-to-talk и классификатор свободных команд (TASK-83)
   getPushToTalkStatus: () => Promise<PushToTalkStatus>;
   savePushToTalkSettings: (patch: Partial<PushToTalkSettings>) => Promise<PushToTalkStatus>;
+  requestPushToTalkPermission: () => Promise<PushToTalkStatus>;
   classifyVoiceCommand: (request: VoiceClassifyRequest) => Promise<VoiceClassifyResponse>;
   runVoiceComputerTask: (request: VoiceComputerTaskRequest) => Promise<VoiceComputerTaskResponse>;
   dictateVoiceText: (request: VoiceDictateRequest) => Promise<VoiceDictateResponse>;
