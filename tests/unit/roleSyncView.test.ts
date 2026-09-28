@@ -20,6 +20,14 @@ describe('inferSyncOptions', () => {
     ).toEqual({ targets: ['claude', 'codex'], hooks: true });
     expect(inferSyncOptions({ files: [file({ kind: 'hookScript', current: GEN })] })).toEqual({ targets: ['claude'], hooks: true });
   });
+
+  it('Antigravity: по агентам или по нашей группе в .agents/hooks.json (маркера у слитого файла нет)', () => {
+    expect(inferSyncOptions({ files: [file({ target: 'antigravity', current: GEN })] })).toEqual({ targets: ['antigravity'], hooks: false });
+    const hooksJson = file({ kind: 'hookSettings', target: 'antigravity', current: '{"projecthub":{"Stop":[{"command":"node ../.projecthub/hooks/projecthub-hook.mjs antigravity Stop"}]}}' });
+    expect(inferSyncOptions({ files: [file({ kind: 'hookScript', current: GEN }), hooksJson] })).toEqual({ targets: ['antigravity'], hooks: true });
+    const foreignHooks = file({ kind: 'hookSettings', target: 'antigravity', current: '{"probe":{}}' });
+    expect(inferSyncOptions({ files: [file({ target: 'claude', current: GEN }), foreignHooks] })).toEqual({ targets: ['claude'], hooks: false });
+  });
 });
 
 describe('hookEnvSnippets', () => {

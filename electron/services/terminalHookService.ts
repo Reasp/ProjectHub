@@ -1,5 +1,5 @@
 /**
- * Хуки терминальных сессий Claude Code и Codex (TASK-77, decision-54 п. 4–9).
+ * Хуки терминальных сессий Claude Code, Codex и Antigravity (TASK-77, TASK-106, decision-54 п. 4–9, decision-62).
  *
  * Скрипт `.projecthub/hooks/projecthub-hook.mjs` пересылает вход хука встроенному серверу ProjectHub
  * (`POST /api/hooks/event`), сервер вызывает {@link TerminalHookService.handle}, а готовый ответ в формате
@@ -48,8 +48,8 @@ export const TERMINAL_HOOK_TOKEN_SECRET_KEY = 'terminal_hook_token';
 const DECISION_MEMORY_MS = 60 * 60_000;
 const DECISION_MEMORY_LIMIT = 5000;
 
-const ENGINE_LABEL: Record<HookEngine, string> = { claude: 'Claude Code', codex: 'Codex' };
-const HITL_ENGINE: Record<HookEngine, HitlEngine> = { claude: 'claude-cli', codex: 'codex-cli' };
+const ENGINE_LABEL: Record<HookEngine, string> = { claude: 'Claude Code', codex: 'Codex', antigravity: 'Antigravity' };
+const HITL_ENGINE: Record<HookEngine, HitlEngine> = { claude: 'claude-cli', codex: 'codex-cli', antigravity: 'antigravity' };
 
 export interface TerminalHookRequestBody {
   engine: HookEngine;
@@ -58,6 +58,8 @@ export interface TerminalHookRequestBody {
   payload: unknown;
   /** Сколько скрипт готов ждать ответа (мс) — срок решения человека меньше. */
   budgetMs?: number;
+  /** Имя события для Antigravity: во входе его нет, скрипт получает его аргументом команды хука. */
+  event?: string;
 }
 
 export interface StopChecksResult {
@@ -238,7 +240,7 @@ export class TerminalHookService {
     const b = (body && typeof body === 'object' ? body : {}) as Partial<TerminalHookRequestBody>;
     if (!isHookEngine(b.engine)) return formatHookResponse('claude', 'PostToolUse', { kind: 'none', message: 'ProjectHub: неизвестный движок хука' });
     const engine = b.engine;
-    const parsed = parseHookPayload(engine, b.payload);
+    const parsed = parseHookPayload(engine, b.payload, typeof b.event === 'string' ? b.event : undefined);
     if (!parsed.ok) return { exitCode: 0, stdout: '', stderr: `ProjectHub: ${parsed.error}` };
     const event = parsed.event;
     try {
@@ -297,13 +299,13 @@ export class TerminalHookService {
 
   private async preToolUse(event: NormalizedHookEvent, projectPath: string, budgetMs: unknown, signal?: AbortSignal): Promise<HookVerdict> {
     const tool = event.toolName ?? '';
+    const calls = policyToolCalls(event);
     // На вопрос модели отвечает человек в терминале — очередь ProjectHub тут не нужна.
-    if (tool === 'AskUserQuestion') return { kind: 'none' };
+    if (calls[0]?.tool === 'AskUserQuestion') return { kind: 'none' };
 
     const { roles } = await this.deps.loadRoles(projectPath);
     const role = roleForAgentType(roles, event.agentType);
     const config = applyRolePermissions(await this.deps.getConfig(), role?.permissions);
-    const calls = policyToolCalls(event);
     // Рабочий каталог сессии — для Playwright MCP: файлы внутри него остаются «внутри браузера» (decision-55 п. 3).
     const workDir = event.cwd?.trim() || projectPath;
     let verdict = strictest(calls.map((c) => evaluateToolRequest(config, projectPath, c.tool, c.input, { workDir })));
@@ -340,7 +342,7 @@ export class TerminalHookService {
       ...meta,
       id: this.deps.hitl.newRequestId('term'),
       type,
-      title: this.askTitle(policyTool, tool, filePath, command, event),
+      title: this.askTitle(policyTool, tool, filePath, command, event, first?.input ?? event.toolInput),
       details:
         `${ENGINE_LABEL[event.engine]} в терминале · правило ${verdict.rule}${CLI_READ_TOOLS.includes(policyTool) ? ' (чтение)' : ''}` +
         (secretNote ? `\nСканер секретов (значения скрыты): ${secretNote}` : ''),
@@ -351,10 +353,10 @@ export class TerminalHookService {
     if (type === 'file_write') {
       const diff = event.engine === 'codex'
         ? { filePath, oldContent: '', newContent: '', patch: preview(event.toolInput.command ?? event.toolInput.patch ?? '', 50_000) }
-        : await this.deps.buildDiff(projectPath, tool, filePathFromInput(event.toolInput), event.toolInput);
+        : await this.deps.buildDiff(projectPath, policyTool, filePathFromInput(first?.input ?? event.toolInput), first?.input ?? event.toolInput);
       if (diff) request.diff = diff;
     } else if (!command) {
-      request.details = `${request.details}\n${preview(event.toolInput)}`;
+      request.details = `${request.details}\n${preview(first?.input ?? event.toolInput)}`;
     }
 
     const config2 = config.autoApproveRules?.approvalTimeoutMin;
@@ -376,17 +378,17 @@ export class TerminalHookService {
     }
   }
 
-  private askTitle(policyTool: string, tool: string, filePath: string, command: string, event: NormalizedHookEvent): string {
+  private askTitle(policyTool: string, tool: string, filePath: string, command: string, event: NormalizedHookEvent, input: Record<string, unknown>): string {
     const where = `${ENGINE_LABEL[event.engine]}${event.agentType ? ` · ${event.agentType}` : ''}`;
     if (CLI_WRITE_TOOLS.includes(policyTool)) return `${where}: запись файла ${filePath || '(путь не указан)'}`;
     if (command) return `${where}: команда ${preview(command, 160)}`;
     if (CLI_READ_TOOLS.includes(policyTool)) return `${where}: чтение файла ${filePath}`;
-    if (CLI_SUBAGENT_TOOLS.includes(policyTool)) return `${where}: запуск подагента ${preview(event.toolInput.description ?? '', 120)}`;
+    if (CLI_SUBAGENT_TOOLS.includes(policyTool)) return `${where}: запуск подагента ${preview(input.description ?? '', 120)}`;
     return `${where}: инструмент ${tool}`;
   }
 
   private postToolUse(event: NormalizedHookEvent, projectPath: string): HookVerdict {
-    if (event.toolName === 'AskUserQuestion') return { kind: 'none' };
+    if (policyToolCalls(event)[0]?.tool === 'AskUserQuestion') return { kind: 'none' };
     const outcome = event.toolFailed ? 'failed' : 'executed';
     const mark = event.toolUseId ? this.decisions.get(event.toolUseId) : undefined;
     if (mark) {
@@ -402,6 +404,8 @@ export class TerminalHookService {
   }
 
   private async stop(event: NormalizedHookEvent, projectPath: string): Promise<HookVerdict> {
+    // Antigravity: разговор ждёт своих субагентов — это не конец работы, ни уведомления, ни проверок.
+    if (event.stopIdle === false) return { kind: 'none' };
     const settings = await this.getSettings();
     const meta = this.meta(event, projectPath);
     const base = { sessionId: meta.sessionId, projectPath, origin: meta.origin, engine: meta.engine, agentName: meta.agentName, at: this.deps.now() };

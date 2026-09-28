@@ -2190,9 +2190,11 @@ export const ru: TranslationDictionary = {
   roleSync: {
     title: 'Роли как нативные субагенты и хуки терминала',
     description:
-      'Роли проекта записываются в .claude/agents и .codex/agents, а хуки PreToolUse/PostToolUse/Stop ведут действия терминальных сессий claude и codex в очередь решений и аудит ProjectHub. Файлы помечены маркером: изменённые вручную и чужие файлы не перезаписываются.',
+      'Роли проекта записываются в .claude/agents, .codex/agents и .agents/agents (Antigravity), а хуки PreToolUse/PostToolUse/Stop ведут действия терминальных сессий claude, codex и Antigravity в очередь решений и аудит ProjectHub. Файлы помечены маркером: изменённые вручную и чужие файлы не перезаписываются.',
     targetClaude: 'Claude Code',
     targetCodex: 'Codex',
+    targetAntigravity: 'Antigravity',
+    antigravityHint: 'Агенты .agents/agents и хуки .agents/hooks.json (ключ projecthub). Antigravity считает отказом любой сбой хука: без Node.js все вызовы инструментов в проекте будут отклонены. Права роли убирают инструменты, а не спрашивают человека: хук не знает имени субагента',
     unverifiedBadge: 'не проверено вживую',
     codexUnverified: 'Формат агентов и хуков Codex взят из документации: Codex не установлен на машине разработки',
     hooks: 'Хуки терминала (HITL и аудит)',

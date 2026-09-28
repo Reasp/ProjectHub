@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import matter from 'gray-matter';
 import {
+  ANTIGRAVITY_TOOLS_BY_CATEGORY,
+  antigravityModelAlias,
+  antigravityToolsForRole,
+  buildAntigravityAgentFile,
   buildClaudeAgentFile,
   buildCodexAgentFile,
+  resolveAntigravityModel,
   buildRoleExport,
   claudeAgentName,
   codexSandboxMode,
@@ -232,5 +237,96 @@ describe('mergeHookSettings', () => {
     expect(mergeHookSettings('{"hooks": []}', 'claude', { timeoutSec: 600, install: true }).ok).toBe(false);
     expect(mergeHookSettings('[1]', 'claude', { timeoutSec: 600, install: true }).ok).toBe(false);
     expect(hasOurHooks('{oops')).toBe(false);
+  });
+});
+
+/** Google Antigravity (TASK-106, decision-62): имена инструментов и форматы — из живой проверки agy 1.2.12. */
+describe('Antigravity', () => {
+  /** Имена, которые реестр agy 1.2.12 принял в `tools` субагента. Неизвестное имя не даёт субагенту запуститься. */
+  const VERIFIED = new Set([
+    'view_file', 'list_dir', 'grep_search', 'find_by_name', 'write_to_file', 'replace_file_content',
+    'multi_replace_file_content', 'run_command', 'search_web', 'read_url_content', 'invoke_subagent', 'manage_subagents', 'ask_question'
+  ]);
+
+  it('в маппинге только проверенные имена инструментов', () => {
+    for (const tools of Object.values(ANTIGRAVITY_TOOLS_BY_CATEGORY)) for (const t of tools) expect(VERIFIED.has(t)).toBe(true);
+  });
+
+  it('роль без категорий получает все инструменты; права роли убирают категории', () => {
+    expect(antigravityToolsForRole(role()).tools).toEqual(Object.values(ANTIGRAVITY_TOOLS_BY_CATEGORY).flat());
+    const readOnly = antigravityToolsForRole(role({ tools: ['read', 'write', 'command'], permissions: { allowFileWrite: false, allowCommands: false } }));
+    expect(readOnly).toEqual({ tools: ['view_file', 'list_dir', 'grep_search', 'find_by_name'], removed: ['write', 'command'] });
+    expect(antigravityToolsForRole(role({ tools: ['read'], permissions: { allowFileRead: false } })).tools).toEqual([]);
+  });
+
+  it('модель: только inherit | flash | pro', () => {
+    expect(antigravityModelAlias('pro')).toBe('pro');
+    expect(antigravityModelAlias('gemini-3.1-pro-high')).toBe('pro');
+    expect(antigravityModelAlias('gemini-2.5-pro')).toBe('pro');
+    expect(antigravityModelAlias('gemini-3.8-flash-low')).toBe('flash');
+    expect(antigravityModelAlias('opus')).toBeUndefined();
+    expect(antigravityModelAlias('gemini-embedding-001')).toBeUndefined();
+    expect(resolveAntigravityModel(role({ model: 'gemini-3.6-flash-medium' }))).toEqual({ model: 'flash', source: 'explicit' });
+    const t = tiers();
+    t.tiers.frontier = [{ engine: 'gemini-cli', model: 'gemini-3.1-pro-high' }];
+    expect(resolveAntigravityModel(role({ model: 'opus', modelTier: 'frontier' }), t)).toMatchObject({ model: 'pro', source: 'tier' });
+    const inherit = resolveAntigravityModel(role({ modelTier: 'balanced' }), tiers());
+    expect(inherit.model).toBe('inherit');
+    expect(inherit.note).toContain('inherit');
+  });
+
+  it('файл агента: frontmatter разбирается, маркер снимается, tools списком', () => {
+    const file = exported(buildAntigravityAgentFile(role({ slug: 'code_reviewer', tools: ['read', 'search'], model: 'pro' })));
+    expect(file.relPath).toBe('.agents/agents/code-reviewer.md');
+    expect(readMarker(file.content)).toEqual({ hash: contentHash(stripMarker(file.content)), role: 'code_reviewer' });
+    const parsed = matter(file.content);
+    expect(parsed.data).toEqual({
+      name: 'code-reviewer',
+      description: expect.stringContaining('Ревьюер'),
+      tools: ['view_file', 'list_dir', 'grep_search', 'find_by_name', 'search_web', 'read_url_content'],
+      model: 'pro'
+    });
+    expect(parsed.content.trim()).toBe('Проверяй изменения. Не правь файлы.');
+  });
+
+  it('роль с любым engine в Antigravity не экспортируется; заметки о том, что не выражается', () => {
+    const skipped = buildAntigravityAgentFile(role({ engine: 'gemini-cli' }));
+    expect(isSkippedExport(skipped) && skipped.reason).toContain('gemini-cli');
+    const file = exported(buildAntigravityAgentFile(role({ maxTurns: 5, permissions: { allowCommands: false } })));
+    expect(file.notes.some((n) => n.includes('лимит ходов'))).toBe(true);
+    expect(file.notes.some((n) => n.includes('command'))).toBe(true);
+  });
+
+  it('встроенные роли экспортируются во все три движка без пропусков', () => {
+    const { files, skipped } = buildRoleExport(BUILTIN_ROLES, ['claude', 'codex', 'antigravity']);
+    expect(skipped).toEqual([]);
+    expect(files).toHaveLength(BUILTIN_ROLES.length * 3);
+    expect(new Set(files.map((f) => f.relPath)).size).toBe(files.length);
+  });
+
+  it('команда хука: путь от .agents/, событие аргументом', () => {
+    expect(hookCommand('antigravity', 1800, 'Stop')).toBe('node ../.projecthub/hooks/projecthub-hook.mjs antigravity Stop --budget 1800');
+  });
+
+  it('hooks.json: своя группа projecthub, чужие группы не трогаются, Stop — плоский обработчик', () => {
+    const current = JSON.stringify({ probe: { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: 'node probe.mjs' }] }] } });
+    const merged = mergeHookSettings(current, 'antigravity', { timeoutSec: 900, install: true });
+    expect(merged.ok).toBe(true);
+    const root = JSON.parse(merged.ok ? merged.content : '{}');
+    expect(root.probe).toEqual(JSON.parse(current).probe);
+    expect(root.projecthub.PreToolUse).toEqual([
+      { matcher: '*', hooks: [{ type: 'command', command: 'node ../.projecthub/hooks/projecthub-hook.mjs antigravity PreToolUse --budget 900', timeout: 900 }] }
+    ]);
+    expect(root.projecthub.Stop).toEqual([{ type: 'command', command: 'node ../.projecthub/hooks/projecthub-hook.mjs antigravity Stop --budget 900', timeout: 900 }]);
+    expect(Object.keys(root.projecthub)).toEqual(['PreToolUse', 'PostToolUse', 'Stop']);
+    expect(hasOurHooks(merged.ok ? merged.content : null)).toBe(true);
+    expect(hasOurHooks(current)).toBe(false);
+
+    const again = mergeHookSettings(merged.ok ? merged.content : null, 'antigravity', { timeoutSec: 900, install: true });
+    expect(again.ok && again.content).toBe(merged.ok && merged.content);
+    const removed = mergeHookSettings(merged.ok ? merged.content : null, 'antigravity', { timeoutSec: 900, install: false });
+    expect(removed.ok && JSON.parse(removed.content)).toEqual(JSON.parse(current));
+    expect(mergeHookSettings('{ bad', 'antigravity', { timeoutSec: 900, install: true }).ok).toBe(false);
+    expect(mergeHookSettings('[]', 'antigravity', { timeoutSec: 900, install: true }).ok).toBe(false);
   });
 });

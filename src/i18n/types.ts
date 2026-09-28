@@ -574,6 +574,8 @@ export interface TranslationDictionary {
     description: string;
     targetClaude: string;
     targetCodex: string;
+    targetAntigravity: string;
+    antigravityHint: string;
     unverifiedBadge: string;
     codexUnverified: string;
     hooks: string;

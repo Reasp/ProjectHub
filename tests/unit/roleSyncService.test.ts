@@ -118,4 +118,39 @@ describe('roleSyncService', () => {
     expect(res.skipped).toEqual([{ relPath: '.claude/settings.json', reason: expect.stringContaining('невалидный JSON') }]);
     expect(await read(root, '.claude/settings.json')).toBe('{ broken');
   });
+
+  it('Antigravity: агенты в .agents/agents, своя группа в hooks.json, чужие агенты и группы не трогаются (TASK-106)', async () => {
+    const root = await project();
+    await fs.mkdir(path.join(root, '.agents', 'agents'), { recursive: true });
+    await fs.writeFile(path.join(root, '.agents', 'agents', 'mine.md'), '---\nname: mine\n---\nручной агент\n');
+    await fs.writeFile(path.join(root, '.agents', 'hooks.json'), JSON.stringify({ lint: { PostToolUse: [] } }));
+    await fs.writeFile(path.join(root, '.agents', 'mcp_config.json'), '{"mcpServers":{}}');
+    const d = deps([role('architect')]);
+    const opts: RoleSyncOptions = { targets: ['antigravity'], hooks: true, hookTimeoutSec: 600 };
+
+    const plan = await planRoleSync(root, opts, d);
+    expect(plan.files.map((f) => [f.relPath, f.action])).toEqual([
+      ['.agents/agents/architect.md', 'create'],
+      ['.projecthub/hooks/projecthub-hook.mjs', 'create'],
+      ['.agents/hooks.json', 'update']
+    ]);
+    expect(plan.files.find((f) => f.relPath === '.agents/hooks.json')?.notes.join(' ')).toContain('Node.js');
+
+    const res = await applyRoleSync(root, opts, {}, d);
+    expect(res.plan.summary).toMatchObject({ synced: true, drift: 0 });
+    const hooks = JSON.parse(await read(root, '.agents/hooks.json'));
+    expect(Object.keys(hooks)).toEqual(['lint', 'projecthub']);
+    expect(await read(root, '.agents/agents/mine.md')).toContain('ручной агент');
+    expect(await read(root, '.agents/mcp_config.json')).toBe('{"mcpServers":{}}');
+    expect(await read(root, '.agents/agents/architect.md')).toMatch(/^---\n# projecthub:generated role=architect/);
+
+    // Роль удалена — orphan; ручной агент без маркера в план не попадает вовсе.
+    d.roles = [];
+    const orphanPlan = await planRoleSync(root, opts, d);
+    expect(orphanPlan.files.filter((f) => f.kind === 'agent').map((f) => [f.relPath, f.action])).toEqual([['.agents/agents/architect.md', 'orphan']]);
+
+    const off = await applyRoleSync(root, { ...opts, hooks: false }, {}, d);
+    expect(JSON.parse(await read(root, '.agents/hooks.json'))).toEqual({ lint: { PostToolUse: [] } });
+    expect(off.plan.files.some((f) => f.kind === 'hookSettings')).toBe(false);
+  });
 });

@@ -123,3 +123,96 @@ describe('formatHookResponse', () => {
     expect(approvalTimeoutFromBudget(undefined)).toBe(10_000);
   });
 });
+
+/** Формы входа Antigravity — из живой проверки agy 1.2.12 (TASK-106, decision-62). */
+describe('Antigravity', () => {
+  const base = {
+    conversationId: 'conv-1',
+    workspacePaths: ['C:/Temp/ph-106'],
+    transcriptPath: 'C:/x/transcript_full.jsonl',
+    artifactDirectoryPath: 'C:/x',
+    modelName: 'gemini-3.6-flash-low'
+  };
+  const PRE_CMD = { ...base, stepIdx: 3, toolCall: { name: 'run_command', args: { CommandLine: 'echo hi > b.txt', Cwd: 'C:\\Temp\\ph-106', WaitMsBeforeAsync: 5000 } } };
+
+  it('событие берётся из подсказки, сессия — conversationId, toolUseId — conversationId:stepIdx', () => {
+    const res = parseHookPayload('antigravity', PRE_CMD, 'PreToolUse');
+    expect(res).toEqual({
+      ok: true,
+      event: {
+        engine: 'antigravity',
+        event: 'PreToolUse',
+        sessionId: 'conv-1',
+        cwd: 'C:\\Temp\\ph-106',
+        toolName: 'run_command',
+        toolInput: PRE_CMD.toolCall.args,
+        toolUseId: 'conv-1:3',
+        stopHookActive: false,
+        toolFailed: false
+      }
+    });
+  });
+
+  it('без события или conversationId — ошибка; PostToolUseFailure у Antigravity не бывает', () => {
+    expect(parseHookPayload('antigravity', PRE_CMD).ok).toBe(false);
+    expect(parseHookPayload('antigravity', PRE_CMD, 'PostToolUseFailure').ok).toBe(false);
+    expect(parseHookPayload('antigravity', { ...PRE_CMD, conversationId: '' }, 'PreToolUse').ok).toBe(false);
+    expect(parseHookPayload('antigravity', { ...base, stepIdx: 1 }, 'PreToolUse').ok).toBe(false);
+  });
+
+  it('PostToolUse с error — провал; cwd без Cwd — первый workspacePaths', () => {
+    const post = parseHookPayload('antigravity', { ...base, stepIdx: 2, error: 'exit status 1', toolCall: { name: 'view_file', args: { AbsolutePath: 'C:\\Temp\\ph-106\\README.md' } } }, 'PostToolUse');
+    expect(post.ok && post.event).toMatchObject({ toolFailed: true, errorDetail: 'exit status 1', cwd: 'C:/Temp/ph-106', toolUseId: 'conv-1:2' });
+    const ok = parseHookPayload('antigravity', { ...base, stepIdx: 2, error: '', toolCall: { name: 'view_file', args: {} } }, 'PostToolUse');
+    expect(ok.ok && ok.event.toolFailed).toBe(false);
+  });
+
+  it('Stop: fullyIdle и executionNum', () => {
+    const stop = parseHookPayload('antigravity', { ...base, executionNum: 0, fullyIdle: false, terminationReason: 'NO_TOOL_CALL', error: '' }, 'Stop');
+    expect(stop.ok && stop.event).toMatchObject({ event: 'Stop', stopIdle: false, stopHookActive: false });
+    const again = parseHookPayload('antigravity', { ...base, executionNum: 1, fullyIdle: true }, 'Stop');
+    expect(again.ok && again.event).toMatchObject({ stopIdle: true, stopHookActive: true });
+  });
+
+  it('инструменты → имена и вход политики в форме Claude Code', () => {
+    const call = (name: string, args: Record<string, unknown>) => policyToolCalls({ engine: 'antigravity', toolName: name, toolInput: args });
+    expect(call('run_command', { CommandLine: 'npm test', Cwd: 'C:/p' })).toEqual([{ tool: 'Bash', input: { command: 'npm test', cwd: 'C:/p' } }]);
+    expect(call('write_to_file', { TargetFile: 'C:/p/a.txt', CodeContent: 'A', Overwrite: false })).toEqual([{ tool: 'Write', input: { file_path: 'C:/p/a.txt', content: 'A' } }]);
+    expect(call('replace_file_content', { TargetFile: 'C:/p/r.md', TargetContent: 'a', ReplacementContent: 'b' })).toEqual([
+      { tool: 'Edit', input: { file_path: 'C:/p/r.md', old_string: 'a', new_string: 'b' } }
+    ]);
+    expect(
+      call('multi_replace_file_content', {
+        TargetFile: 'C:/p/r.md',
+        ReplacementChunks: [
+          { TargetContent: 'a', ReplacementContent: 'b' },
+          { TargetContent: 'c', ReplacementContent: 'd' }
+        ]
+      })[0]
+    ).toEqual({ tool: 'Edit', input: { file_path: 'C:/p/r.md', old_string: 'a\n…\nc', new_string: 'b\n…\nd' } });
+    expect(call('view_file', { AbsolutePath: 'C:/p/README.md' })).toEqual([{ tool: 'Read', input: { file_path: 'C:/p/README.md' } }]);
+    expect(call('grep_search', { Query: 'x', SearchPath: 'C:/p' })[0].tool).toBe('Grep');
+    expect(call('list_dir', { DirectoryPath: 'C:/p' })[0].tool).toBe('Glob');
+    expect(call('read_url_content', { Url: 'https://e.x' })).toEqual([{ tool: 'WebFetch', input: { url: 'https://e.x' } }]);
+    expect(call('invoke_subagent', { Subagents: [{ TypeName: 'reviewer' }, { TypeName: 'tester' }] })).toEqual([
+      { tool: 'Agent', input: { description: 'reviewer, tester' } }
+    ]);
+    expect(call('ask_question', { Question: '?' })[0].tool).toBe('AskUserQuestion');
+    expect(call('send_message', { Message: 'hi' })).toEqual([{ tool: 'send_message', input: { Message: 'hi' } }]);
+  });
+
+  it('ответ: код выхода всегда 0, без решения — пустой stdout', () => {
+    expect(formatHookResponse('antigravity', 'PreToolUse', { kind: 'none', message: 'm' })).toEqual({ exitCode: 0, stdout: '', stderr: 'm' });
+    expect(formatHookResponse('antigravity', 'PreToolUse', { kind: 'deny', reason: 'нельзя' })).toEqual({
+      exitCode: 0,
+      stdout: '{"decision":"deny","reason":"нельзя"}',
+      stderr: ''
+    });
+    expect(JSON.parse(formatHookResponse('antigravity', 'PreToolUse', { kind: 'allow' }).stdout)).toEqual({ decision: 'allow', reason: 'Разрешено в ProjectHub' });
+    expect(formatHookResponse('antigravity', 'PostToolUse', { kind: 'deny', reason: 'x' })).toEqual({ exitCode: 0, stdout: '', stderr: '' });
+    expect(JSON.parse(formatHookResponse('antigravity', 'Stop', { kind: 'block', reason: 'проверки' }).stdout)).toEqual({ decision: 'continue', reason: 'проверки' });
+    const closed = failModeResponse('antigravity', 'PreToolUse', 'closed', 'ECONNREFUSED');
+    expect(closed.exitCode).toBe(0);
+    expect(JSON.parse(closed.stdout).decision).toBe('deny');
+  });
+});

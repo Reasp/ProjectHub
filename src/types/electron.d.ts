@@ -1287,7 +1287,7 @@ export interface AutoApproveRules {
 // ─────────────────── Единый HITL-контур (TASK-57), зеркало electron/services/hitlTypes.ts ───────────────────
 
 export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external' | 'automation' | 'terminal';
-export type HitlEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
+export type HitlEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api' | 'antigravity';
 export type HitlDecisionSourceKind = 'local' | 'remote' | 'mcp' | 'auto' | 'timeout' | 'cancelled' | 'shutdown';
 export type HitlOutcome = 'executed' | 'failed' | 'not_executed' | 'session_gone';
 
@@ -1339,7 +1339,7 @@ export interface RoleDefinition {
 }
 
 // Экспорт ролей в нативные субагенты и хуки терминала (TASK-77). Зеркало `roleSyncService.ts`.
-export type RoleExportTarget = 'claude' | 'codex';
+export type RoleExportTarget = 'claude' | 'codex' | 'antigravity';
 export type RoleSyncFileAction = 'create' | 'unchanged' | 'update' | 'conflict' | 'foreign' | 'orphan';
 
 export interface RoleSyncOptionsInput {

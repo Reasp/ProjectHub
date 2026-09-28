@@ -200,12 +200,16 @@ Antigravity свой каталог скиллов, `.claude/skills/` он не 
     - В Automations и автозапуске назначенных задач управление компьютером запрещено; в цикле «до готовности» — только
       для задач с label `computer-use`. Не предлагать включать `computerUse` без явного запроса (как LightRAG, правило 7).
 
-21. **Роли ProjectHub как субагенты и хуки терминала (decision-54, TASK-77)**:
-    - `.claude/agents/*.md`, `.codex/agents/*.toml`, `.projecthub/hooks/projecthub-hook.mjs` и записи хуков в
-      `.claude/settings.json` / `.codex/hooks.json` генерирует ProjectHub (Роли → «Синхронизация в проект»); файлы с
-      маркером `projecthub:generated` руками не править — править роль в ProjectHub и синхронизировать заново.
-      Ручные файлы без маркера ProjectHub не трогает.
-    - Хуки ведут вызовы инструментов терминальных сессий `claude`/`codex` в политику роли, очередь решений HITL и
+21. **Роли ProjectHub как субагенты и хуки терминала (decision-54, TASK-77; Antigravity — decision-62, TASK-106)**:
+    - `.claude/agents/*.md`, `.codex/agents/*.toml`, `.agents/agents/*.md`, `.projecthub/hooks/projecthub-hook.mjs` и
+      записи хуков в `.claude/settings.json` / `.codex/hooks.json` / группа `projecthub` в `.agents/hooks.json`
+      генерирует ProjectHub (Роли → «Синхронизация в проект»); файлы с маркером `projecthub:generated` и группу
+      `projecthub` руками не править — править роль в ProjectHub и синхронизировать заново. Ручные файлы без маркера и
+      чужие группы хуков ProjectHub не трогает.
+    - Antigravity считает отказом любой сбой хука (нет Node.js, удалён скрипт, тайм-аут): если все вызовы
+      инструментов в Antigravity отклоняются с `JSON hook "jsonhook__projecthub_…" failed`, чинить хук или снимать
+      его синхронизацией, а не обходить.
+    - Хуки ведут вызовы инструментов терминальных сессий `claude`/`codex`/Antigravity в политику роли, очередь решений HITL и
       аудит ProjectHub. Отказ хука (`deny`, «Отклонено в ProjectHub») не обходить другими инструментами — остановиться
       и сообщить пользователю, как при отказе в правиле 20.
     - Токен хуков — только в переменной окружения `PROJECTHUB_HOOK_TOKEN` (адрес — `PROJECTHUB_HOOK_URL`, режим отказа —

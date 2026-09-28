@@ -9,10 +9,14 @@
  * - Claude Code: PreToolUse → `hookSpecificOutput.permissionDecision` `allow | deny`; Stop → `decision: block`.
  * - Codex: отказ — `exit 2` с причиной в stderr; `allow` и `ask` надёжно не поддержаны, поэтому одобрение — без
  *   решения (Codex применяет свою политику).
+ * - Google Antigravity (agy 1.2.12, проверено вживую, decision-62): вход — `toolCall { name, args }`,
+ *   `conversationId`, `stepIdx`, `workspacePaths`; имени события во входе нет — его передаёт скрипт. PreToolUse:
+ *   пустой stdout с кодом 0 — без решения; `{ decision: deny | allow, reason }`. Любой ненулевой код, тайм-аут и даже
+ *   `{}` движок считает отказом, поэтому код выхода всегда 0. Stop → `decision: continue`.
  */
 
-export type HookEngine = 'claude' | 'codex';
-export const HOOK_ENGINES: readonly HookEngine[] = ['claude', 'codex'];
+export type HookEngine = 'claude' | 'codex' | 'antigravity';
+export const HOOK_ENGINES: readonly HookEngine[] = ['claude', 'codex', 'antigravity'];
 
 export type HookEventName = 'PreToolUse' | 'PostToolUse' | 'PostToolUseFailure' | 'Stop';
 const HOOK_EVENT_NAMES: readonly HookEventName[] = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop'];
@@ -20,16 +24,18 @@ const HOOK_EVENT_NAMES: readonly HookEventName[] = ['PreToolUse', 'PostToolUse',
 export interface NormalizedHookEvent {
   engine: HookEngine;
   event: HookEventName;
-  /** Идентификатор сессии движка (`session_id`). */
+  /** Идентификатор сессии движка (`session_id`; у Antigravity — `conversationId`, у субагента свой). */
   sessionId: string;
   cwd?: string;
   toolName?: string;
   toolInput: Record<string, unknown>;
   toolUseId?: string;
-  /** Имя субагента (Claude Code: `agent_type`), если вызов сделан из субагента. */
+  /** Имя субагента (Claude Code: `agent_type`), если вызов сделан из субагента. Antigravity его не передаёт. */
   agentType?: string;
   /** Stop: хук уже продолжал работу агента в этом ходе (защита от цикла). */
   stopHookActive: boolean;
+  /** Stop Antigravity: `fullyIdle: false` — разговор ещё ждёт своих субагентов, работа не закончена. */
+  stopIdle?: boolean;
   /** Инструмент завершился ошибкой (PostToolUseFailure или признак ошибки в ответе). */
   toolFailed: boolean;
   /** Короткое описание ошибки инструмента без содержимого файлов. */
@@ -61,8 +67,50 @@ function responseFailed(response: unknown): { failed: boolean; detail?: string }
 
 export type ParseHookResult = { ok: true; event: NormalizedHookEvent } | { ok: false; error: string };
 
-export function parseHookPayload(engine: HookEngine, raw: unknown): ParseHookResult {
+/**
+ * Вход хука Antigravity. Событие приходит отдельно (аргумент команды хука). `toolUseId` — `conversationId:stepIdx`:
+ * у PreToolUse и PostToolUse одного вызова один `stepIdx`, так PostToolUse находит момент решения.
+ */
+function parseAntigravityPayload(p: Record<string, unknown>, eventHint: string | undefined): ParseHookResult {
+  const eventName = str(eventHint);
+  if (!eventName || eventName === 'PostToolUseFailure' || !(HOOK_EVENT_NAMES as readonly string[]).includes(eventName)) {
+    return { ok: false, error: `неподдерживаемое событие хука Antigravity: ${eventName ?? 'не передано'}` };
+  }
+  const event = eventName as HookEventName;
+  const sessionId = str(p.conversationId);
+  if (!sessionId) return { ok: false, error: 'во входе хука нет conversationId' };
+  const call = record(p.toolCall);
+  const toolName = str(call.name);
+  if ((event === 'PreToolUse' || event === 'PostToolUse') && !toolName) {
+    return { ok: false, error: `во входе ${event} нет toolCall.name` };
+  }
+  const args = record(call.args);
+  const workspace = Array.isArray(p.workspacePaths) ? str(p.workspacePaths[0]) : undefined;
+  const cwd = str(args.Cwd) ?? workspace;
+  const error = event === 'PostToolUse' ? str(p.error) : undefined;
+  const stepIdx = typeof p.stepIdx === 'number' && Number.isFinite(p.stepIdx) ? p.stepIdx : undefined;
+  return {
+    ok: true,
+    event: {
+      engine: 'antigravity',
+      event,
+      sessionId,
+      ...(cwd ? { cwd } : {}),
+      ...(toolName ? { toolName } : {}),
+      toolInput: args,
+      ...(toolName && stepIdx !== undefined ? { toolUseId: `${sessionId}:${stepIdx}` } : {}),
+      // Номер продолжения после Stop: больше нуля — ход уже продолжали (аналог stop_hook_active).
+      stopHookActive: typeof p.executionNum === 'number' && p.executionNum > 0,
+      ...(event === 'Stop' && typeof p.fullyIdle === 'boolean' ? { stopIdle: p.fullyIdle } : {}),
+      toolFailed: Boolean(error),
+      ...(error ? { errorDetail: error.slice(0, 200) } : {})
+    }
+  };
+}
+
+export function parseHookPayload(engine: HookEngine, raw: unknown, eventHint?: string): ParseHookResult {
   const p = record(raw);
+  if (engine === 'antigravity') return parseAntigravityPayload(p, eventHint);
   const eventName = str(p.hook_event_name);
   if (!eventName || !(HOOK_EVENT_NAMES as readonly string[]).includes(eventName)) {
     return { ok: false, error: `неподдерживаемое событие хука: ${eventName ?? 'нет hook_event_name'}` };
@@ -118,14 +166,66 @@ function commandText(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+function text(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+/** Фрагменты `multi_replace_file_content` одним Edit: для карточки HITL достаточно склеенных «было/стало». */
+function joinedChunks(chunks: unknown, key: 'TargetContent' | 'ReplacementContent'): string {
+  if (!Array.isArray(chunks)) return '';
+  return chunks.map((c) => text(record(c)[key])).join('\n…\n');
+}
+
+/**
+ * Инструменты Antigravity → имена и вход в форме Claude Code, чтобы политика, дифф и карточка HITL были общими.
+ * Служебные инструменты (`send_message`, `manage_task`, `schedule`, MCP) идут под своим именем — правило `auto-other`.
+ */
+function antigravityPolicyCall(tool: string, a: Record<string, unknown>): PolicyToolCall {
+  switch (tool) {
+    case 'run_command':
+      return { tool: 'Bash', input: { command: text(a.CommandLine), ...(text(a.Cwd) ? { cwd: text(a.Cwd) } : {}) } };
+    case 'write_to_file':
+      return { tool: 'Write', input: { file_path: text(a.TargetFile), content: text(a.CodeContent) } };
+    case 'replace_file_content':
+      return { tool: 'Edit', input: { file_path: text(a.TargetFile), old_string: text(a.TargetContent), new_string: text(a.ReplacementContent) } };
+    case 'multi_replace_file_content':
+      return {
+        tool: 'Edit',
+        input: { file_path: text(a.TargetFile), old_string: joinedChunks(a.ReplacementChunks, 'TargetContent'), new_string: joinedChunks(a.ReplacementChunks, 'ReplacementContent') }
+      };
+    case 'view_file':
+      return { tool: 'Read', input: { file_path: text(a.AbsolutePath) } };
+    case 'list_dir':
+      return { tool: 'Glob', input: { path: text(a.DirectoryPath) } };
+    case 'find_by_name':
+      return { tool: 'Glob', input: { path: text(a.SearchDirectory), pattern: text(a.Pattern) } };
+    case 'grep_search':
+      return { tool: 'Grep', input: { path: text(a.SearchPath), pattern: text(a.Query) } };
+    case 'read_url_content':
+      return { tool: 'WebFetch', input: { url: text(a.Url) } };
+    case 'search_web':
+      return { tool: 'WebSearch', input: { query: text(a.query) } };
+    case 'invoke_subagent': {
+      const names = Array.isArray(a.Subagents) ? a.Subagents.map((s) => text(record(s).TypeName)).filter(Boolean) : [];
+      return { tool: 'Agent', input: { description: names.join(', ') } };
+    }
+    case 'ask_question':
+      return { tool: 'AskUserQuestion', input: a };
+    default:
+      return { tool, input: a };
+  }
+}
+
 /**
  * Вызов инструмента движка → вызовы для `evaluateToolRequest`. У Claude Code имена совпадают с политикой. Codex:
- * оболочка (`Bash`, `shell`, `exec_command`) → `Bash`, `apply_patch` → `Edit` на каждый файл патча.
+ * оболочка (`Bash`, `shell`, `exec_command`) → `Bash`, `apply_patch` → `Edit` на каждый файл патча. Antigravity —
+ * `antigravityPolicyCall`.
  */
 export function policyToolCalls(event: Pick<NormalizedHookEvent, 'engine' | 'toolName' | 'toolInput'>): PolicyToolCall[] {
   const tool = event.toolName ?? '';
   const input = event.toolInput;
   if (event.engine === 'claude') return [{ tool, input }];
+  if (event.engine === 'antigravity') return [antigravityPolicyCall(tool, input)];
   if (tool === 'apply_patch') {
     const patch = commandText(input.command ?? input.patch ?? input.input);
     const paths = patchFilePaths(patch);
@@ -157,7 +257,23 @@ export interface HookProcessOutput {
 
 const NONE: HookProcessOutput = { exitCode: 0, stdout: '', stderr: '' };
 
+/**
+ * Ответ Antigravity. Код выхода всегда 0: ненулевой код движок считает отказом. «Без решения» — пустой stdout
+ * (даже `{}` у PreToolUse — отказ с пустой причиной).
+ */
+function formatAntigravityResponse(event: HookEventName, verdict: HookVerdict): HookProcessOutput {
+  if (verdict.kind === 'none') return { ...NONE, ...(verdict.message ? { stderr: verdict.message } : {}) };
+  if (event === 'Stop') {
+    return verdict.kind === 'block' ? { ...NONE, stdout: JSON.stringify({ decision: 'continue', reason: verdict.reason }) } : NONE;
+  }
+  if (event !== 'PreToolUse') return NONE;
+  if (verdict.kind === 'deny') return { ...NONE, stdout: JSON.stringify({ decision: 'deny', reason: verdict.reason }) };
+  if (verdict.kind === 'allow') return { ...NONE, stdout: JSON.stringify({ decision: 'allow', reason: verdict.reason || 'Разрешено в ProjectHub' }) };
+  return NONE;
+}
+
 export function formatHookResponse(engine: HookEngine, event: HookEventName, verdict: HookVerdict): HookProcessOutput {
+  if (engine === 'antigravity') return formatAntigravityResponse(event, verdict);
   if (verdict.kind === 'none') return { ...NONE, ...(verdict.message ? { stderr: verdict.message } : {}) };
 
   if (event === 'Stop') {

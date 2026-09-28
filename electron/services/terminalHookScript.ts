@@ -7,7 +7,7 @@
  */
 import { withMarker } from './roleExport.js';
 
-export const HOOK_SCRIPT_SOURCE = String.raw`// Хук терминальной сессии Claude Code / Codex → ProjectHub (TASK-77, decision-54).
+export const HOOK_SCRIPT_SOURCE = String.raw`// Хук терминальной сессии Claude Code / Codex / Antigravity → ProjectHub (TASK-77, TASK-106, decision-54, decision-62).
 // Пересылает вход хука встроенному серверу ProjectHub и печатает готовый ответ движку. Политики здесь нет:
 // решения принимает ProjectHub (политика роли, очередь HITL, аудит).
 //
@@ -17,13 +17,16 @@ export const HOOK_SCRIPT_SOURCE = String.raw`// Хук терминальной 
 //   PROJECTHUB_HOOK_FAIL_MODE  open (по умолчанию) — при недоступном ProjectHub не мешать работе;
 //                              closed — отклонять вызовы инструментов, пока ProjectHub недоступен
 //   PROJECTHUB_HOOK_LOG        файл лога, по умолчанию <tmp>/projecthub-hook.log (ротация 1 МБ)
-// Нужен Node.js 18+, зависимостей нет. Аргументы: <claude|codex> --budget <тайм-аут хука, с>.
+// Нужен Node.js 18+, зависимостей нет. Аргументы: <claude|codex> --budget <тайм-аут хука, с>
+// или antigravity <событие> --budget <с>: у Antigravity имени события нет во входе хука.
+// Antigravity считает отказом любой ненулевой код выхода, поэтому для него скрипт всегда выходит с кодом 0.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 const argv = process.argv.slice(2);
-const engine = argv[0] === 'codex' ? 'codex' : 'claude';
+const engine = argv[0] === 'codex' || argv[0] === 'antigravity' ? argv[0] : 'claude';
+const antigravityEvent = engine === 'antigravity' && argv[1] && !argv[1].startsWith('--') ? argv[1] : '';
 const budgetIndex = argv.indexOf('--budget');
 const budgetSec = budgetIndex >= 0 ? Number(argv[budgetIndex + 1]) : 600;
 // Ответ — за 15 с до тайм-аута хука: по тайм-ауту движок выполнил бы инструмент без решения.
@@ -55,12 +58,14 @@ function readStdin() {
 function finish(out) {
   if (out && out.stdout) process.stdout.write(String(out.stdout));
   if (out && out.stderr) process.stderr.write(String(out.stderr) + '\n');
-  process.exitCode = out && typeof out.exitCode === 'number' ? out.exitCode : 0;
+  const code = out && typeof out.exitCode === 'number' ? out.exitCode : 0;
+  process.exitCode = engine === 'antigravity' ? 0 : code;
 }
 
 function denyOutput(eventName, reason) {
   if (eventName !== 'PreToolUse') return { exitCode: 0 };
   if (engine === 'codex') return { exitCode: 2, stderr: reason };
+  if (engine === 'antigravity') return { exitCode: 0, stdout: JSON.stringify({ decision: 'deny', reason: reason }) };
   return {
     exitCode: 0,
     stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })
@@ -73,27 +78,42 @@ function unavailable(eventName, reason) {
   return { exitCode: 0 };
 }
 
-const raw = await readStdin();
-let payload = null;
-try {
-  payload = JSON.parse(raw);
-} catch {
-  payload = null;
+// Каталог проекта: Claude Code даёт CLAUDE_PROJECT_DIR; Antigravity — workspacePaths во входе, а сам хук
+// запускает в каталоге .agents/ проекта.
+function projectDirOf(payload) {
+  if (engine === 'antigravity') {
+    const first = Array.isArray(payload.workspacePaths) ? payload.workspacePaths[0] : '';
+    return typeof first === 'string' && first ? first : path.dirname(process.cwd());
+  }
+  return process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
 }
-const eventName = payload && typeof payload.hook_event_name === 'string' ? payload.hook_event_name : '';
 
-if (!payload || typeof payload !== 'object') {
-  log('вход хука не JSON — пропущено');
-  finish({ exitCode: 0 });
-} else if (!token) {
-  finish(unavailable(eventName, 'не задан PROJECTHUB_HOOK_TOKEN'));
-} else {
-  const projectDir = process.env.CLAUDE_PROJECT_DIR || payload.cwd || process.cwd();
+async function main() {
+  const raw = await readStdin();
+  let payload = null;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    payload = null;
+  }
+  const eventName = engine === 'antigravity' ? antigravityEvent : payload && typeof payload.hook_event_name === 'string' ? payload.hook_event_name : '';
+
+  if (!payload || typeof payload !== 'object') {
+    log('вход хука не JSON — пропущено');
+    finish({ exitCode: 0 });
+    return;
+  }
+  if (!token) {
+    finish(unavailable(eventName, 'не задан PROJECTHUB_HOOK_TOKEN'));
+    return;
+  }
+  const body = { engine, projectDir: projectDirOf(payload), payload, budgetMs };
+  if (engine === 'antigravity') body.event = eventName;
   try {
     const res = await fetch(baseUrl + '/api/hooks/event', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-      body: JSON.stringify({ engine, projectDir, payload, budgetMs }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(budgetMs)
     });
     if (res.status === 401) finish(unavailable(eventName, 'токен хуков не подходит (HTTP 401)'));
@@ -109,6 +129,13 @@ if (!payload || typeof payload !== 'object') {
       finish(unavailable(eventName, String(code)));
     }
   }
+}
+
+try {
+  await main();
+} catch (err) {
+  // Непредвиденная ошибка скрипта — как недоступный ProjectHub, а не падение с кодом 1 (для Antigravity это отказ).
+  finish(unavailable(engine === 'antigravity' ? antigravityEvent : '', 'ошибка скрипта: ' + (err && err.message ? err.message : String(err))));
 }
 `;
 

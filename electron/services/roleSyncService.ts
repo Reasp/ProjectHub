@@ -9,6 +9,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {
+  ANTIGRAVITY_AGENTS_DIR,
+  ANTIGRAVITY_HOOKS_REL_PATH,
   buildRoleExport,
   CLAUDE_AGENTS_DIR,
   CLAUDE_SETTINGS_REL_PATH,
@@ -95,9 +97,25 @@ export interface RoleSyncDeps {
 
 const AGENT_DIRS: Record<ExportTarget, { dir: string; ext: string }> = {
   claude: { dir: CLAUDE_AGENTS_DIR, ext: '.md' },
-  codex: { dir: CODEX_AGENTS_DIR, ext: '.toml' }
+  codex: { dir: CODEX_AGENTS_DIR, ext: '.toml' },
+  antigravity: { dir: ANTIGRAVITY_AGENTS_DIR, ext: '.md' }
 };
-const HOOK_SETTINGS_PATH: Record<ExportTarget, string> = { claude: CLAUDE_SETTINGS_REL_PATH, codex: CODEX_HOOKS_REL_PATH };
+const HOOK_SETTINGS_PATH: Record<ExportTarget, string> = {
+  claude: CLAUDE_SETTINGS_REL_PATH,
+  codex: CODEX_HOOKS_REL_PATH,
+  antigravity: ANTIGRAVITY_HOOKS_REL_PATH
+};
+
+/** Что человеку нужно знать о хуках движка до установки (предпросмотр). */
+const HOOK_INSTALL_NOTES: Record<ExportTarget, string[]> = {
+  claude: [],
+  codex: ['Codex загружает хуки только для доверенного .codex/ и после подтверждения в /hooks'],
+  antigravity: [
+    'Antigravity считает отказом сбой хука: без Node.js на машине все вызовы инструментов в проекте будут отклонены',
+    'хуки работают только в доверенном рабочем каталоге Antigravity',
+    'одобрение в ProjectHub не выдаёт разрешение движка в режиме agy -p'
+  ]
+};
 
 function abs(projectPath: string, relPath: string): string {
   return path.join(projectPath, ...relPath.split('/'));
@@ -192,7 +210,7 @@ export async function planRoleSync(projectPath: string, options: RoleSyncOptions
     const current = await readOrNull(abs(projectPath, relPath));
     if (!install && !hasOurHooks(current)) continue;
     const merged = mergeHookSettings(current, target, { timeoutSec: options.hookTimeoutSec, install });
-    const notes = target === 'codex' && install ? ['Codex загружает хуки только для доверенного .codex/ и после подтверждения в /hooks'] : [];
+    const notes = install ? HOOK_INSTALL_NOTES[target] : [];
     if (!merged.ok) {
       files.push({ relPath, kind: 'hookSettings', target, desired: null, current, notes, action: 'conflict', error: merged.error });
       continue;

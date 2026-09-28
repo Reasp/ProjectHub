@@ -2190,9 +2190,11 @@ export const en: TranslationDictionary = {
   roleSync: {
     title: 'Roles as native subagents and terminal hooks',
     description:
-      'Project roles are written to .claude/agents and .codex/agents, and PreToolUse/PostToolUse/Stop hooks route actions of claude and codex terminal sessions to the ProjectHub decision queue and audit log. Files carry a marker: hand-edited and foreign files are never overwritten.',
+      'Project roles are written to .claude/agents, .codex/agents and .agents/agents (Antigravity), and PreToolUse/PostToolUse/Stop hooks route actions of claude, codex and Antigravity terminal sessions to the ProjectHub decision queue and audit log. Files carry a marker: hand-edited and foreign files are never overwritten.',
     targetClaude: 'Claude Code',
     targetCodex: 'Codex',
+    targetAntigravity: 'Antigravity',
+    antigravityHint: 'Agents in .agents/agents and hooks in .agents/hooks.json (key projecthub). Antigravity treats any hook failure as a denial: without Node.js every tool call in the project is rejected. Role permissions remove tools instead of asking a human: the hook does not know the subagent name',
     unverifiedBadge: 'not verified live',
     codexUnverified: 'Codex agent and hook formats come from the documentation: Codex is not installed on the development machine',
     hooks: 'Terminal hooks (HITL and audit)',

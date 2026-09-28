@@ -5,7 +5,8 @@ import type { RoleExportTarget, RoleSyncFile, RoleSyncFileAction, RoleSyncOption
 import { hookEnvSnippets, inferSyncOptions } from './roleSyncView';
 
 /**
- * Экспорт ролей ProjectHub в нативные субагенты Claude Code / Codex и хуки терминала (TASK-77, decision-54):
+ * Экспорт ролей ProjectHub в нативные субагенты Claude Code / Codex / Antigravity и хуки терминала (TASK-77, TASK-106,
+ * decision-54, decision-62):
  * предпросмотр файлов со статусами, синхронизация, перезапись конфликтов и удаление устаревших файлов только
  * по явному выбору, настройки хуков и команда переменных окружения для внешнего терминала.
  */
@@ -56,7 +57,7 @@ export const RoleSyncPanel: React.FC<RoleSyncPanelProps> = ({ projectPath, refre
     setOverwrite([]);
     setDeleteOrphans([]);
     void (async () => {
-      const probe = await window.api.planRoleSync(projectPath, { targets: ['claude', 'codex'], hooks: true });
+      const probe = await window.api.planRoleSync(projectPath, { targets: ['claude', 'codex', 'antigravity'], hooks: true });
       const inferred = inferSyncOptions(probe);
       if (cancelled) return;
       setOptions(inferred);
@@ -132,6 +133,7 @@ export const RoleSyncPanel: React.FC<RoleSyncPanelProps> = ({ projectPath, refre
   const previewWritten = Boolean(selected && selected.desired !== null && ['create', 'update', 'conflict'].includes(selected.action));
   const pending = plan ? plan.summary.create + plan.summary.update + overwrite.length + deleteOrphans.length : 0;
   const snippets = connection ? hookEnvSnippets(connection) : null;
+  const targetLabel: Record<RoleExportTarget, string> = { claude: s.targetClaude, codex: s.targetCodex, antigravity: s.targetAntigravity };
 
   const toggleIn = (list: string[], setList: (v: string[]) => void, relPath: string) =>
     setList(list.includes(relPath) ? list.filter((p) => p !== relPath) : [...list, relPath]);
@@ -192,6 +194,9 @@ export const RoleSyncPanel: React.FC<RoleSyncPanelProps> = ({ projectPath, refre
           <label className="flex items-center gap-1.5" title={s.codexUnverified}>
             <input type="checkbox" checked={options.targets.includes('codex')} onChange={() => toggleTarget('codex')} /> {s.targetCodex}
             <span className="text-[10px] text-amber-400">{s.unverifiedBadge}</span>
+          </label>
+          <label className="flex items-center gap-1.5" title={s.antigravityHint}>
+            <input type="checkbox" checked={options.targets.includes('antigravity')} onChange={() => toggleTarget('antigravity')} /> {s.targetAntigravity}
           </label>
           <label className="flex items-center gap-1.5">
             <input type="checkbox" checked={options.hooks} onChange={() => changeOptions({ ...options, hooks: !options.hooks })} /> {s.hooks}
@@ -271,7 +276,7 @@ export const RoleSyncPanel: React.FC<RoleSyncPanelProps> = ({ projectPath, refre
               <div className="font-semibold">{s.skippedTitle}</div>
               {plan.skipped.map((sk) => (
                 <div key={`${sk.target}-${sk.roleSlug}`}>
-                  {sk.roleSlug} → {sk.target === 'claude' ? s.targetClaude : s.targetCodex}: {sk.reason}
+                  {sk.roleSlug} → {targetLabel[sk.target]}: {sk.reason}
                 </div>
               ))}
             </div>

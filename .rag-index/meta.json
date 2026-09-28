@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "c95183855537755da93b9873db741b245e55e77ab1ab85c8acb3b03e998e5761",
+  "docsHash": "b29c83757cd36ff817795787aaed714103419b0d457b3edefe8f7b9d98b73f41",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -63,6 +63,7 @@
     "backlog/decisions/decision-6 - Git-worktree-как-единица-изоляции-задачи-и-агента.md",
     "backlog/decisions/decision-60 - ProjectHub-сверка-процессов-env-tools-по-времени-старта-статус-unknown-и-общий-снимок-процессов.md",
     "backlog/decisions/decision-61 - Менеджер-скиллов-проекта-копии-в-.claude-skills-и-.agents-skills-атомарная-замена-и-источники-импорта.md",
+    "backlog/decisions/decision-62 - Экспорт-ролей-и-хуков-в-Google-Antigravity-fail-closed-движка-и-инструменты-вместо-прав-роли.md",
     "backlog/decisions/decision-7 - Local-first-хранение-состояния-и-отсутствие-телеметрии.md",
     "backlog/decisions/decision-8 - Результаты-агентов-материализуются-в-git-авто-коммит-в-worktree-и-безопасное-слияние.md",
     "backlog/decisions/decision-9 - Роль-агента-как-first-class-сущность.md",
@@ -77,6 +78,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 799,
-  "builtAt": "2026-09-28T01:52:46.557Z"
+  "chunks": 816,
+  "builtAt": "2026-09-28T04:36:42.595Z"
 }

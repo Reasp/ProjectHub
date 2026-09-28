@@ -11,7 +11,8 @@
 /** `terminal` — хуки терминальной сессии Claude Code или Codex (TASK-77, decision-54). */
 export type HitlOrigin = 'studio' | 'swarm' | 'handoff' | 'assigned' | 'external' | 'automation' | 'terminal';
 
-export type HitlEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api';
+/** `antigravity` — терминальная сессия Google Antigravity через хуки (TASK-106, decision-62). */
+export type HitlEngine = 'claude-cli' | 'codex-cli' | 'gemini-cli' | 'api' | 'antigravity';
 
 /** `computer_action` — действие управления компьютером через прокси `computer_*` (TASK-82, decision-27). */
 export type HitlRequestType = 'command' | 'file_write' | 'question' | 'subagent_dispatch' | 'computer_action';

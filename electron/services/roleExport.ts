@@ -7,16 +7,18 @@
  *
  * - Claude Code: `.claude/agents/<name>.md` (frontmatter `name`, `description`, `tools`, `model`, `maxTurns`).
  * - Codex: `.codex/agents/<slug>.toml` (`name`, `description`, `developer_instructions`, `model`, `sandbox_mode`).
+ * - Google Antigravity: `.agents/agents/<name>.md` (`name`, `description`, `tools`, `model`), хуки — ключ `projecthub`
+ *   в `.agents/hooks.json` (TASK-106, decision-62).
  * - Сгенерированный файл помечен комментарием-маркером с хэшем содержимого: так отличаются «устарел»
  *   (роль изменилась), «изменён вручную» и чужие файлы без маркера.
  */
 import crypto from 'node:crypto';
 import { claudeToolNamesForCategories } from './roleEngineAdapter.js';
 import { CLAUDE_CLI_MODEL_ALIASES, buildModelChain, type ModelTierSettings, type TierEngine } from './modelTiers.js';
-import type { RoleDefinition, RoleEngine, ToolCategory } from './roleTypes.js';
+import { ALL_TOOL_CATEGORIES, type RoleDefinition, type RoleEngine, type ToolCategory } from './roleTypes.js';
 
-export type ExportTarget = 'claude' | 'codex';
-export const EXPORT_TARGETS: readonly ExportTarget[] = ['claude', 'codex'];
+export type ExportTarget = 'claude' | 'codex' | 'antigravity';
+export const EXPORT_TARGETS: readonly ExportTarget[] = ['claude', 'codex', 'antigravity'];
 
 export const EXPORT_MARKER = 'projecthub:generated';
 /** Скрипт хуков терминальных сессий относительно корня проекта. */
@@ -24,10 +26,15 @@ export const HOOK_SCRIPT_REL_PATH = '.projecthub/hooks/projecthub-hook.mjs';
 export const HOOK_SCRIPT_NAME = 'projecthub-hook.mjs';
 export const CLAUDE_AGENTS_DIR = '.claude/agents';
 export const CODEX_AGENTS_DIR = '.codex/agents';
+export const ANTIGRAVITY_AGENTS_DIR = '.agents/agents';
 export const CLAUDE_SETTINGS_REL_PATH = '.claude/settings.json';
 export const CODEX_HOOKS_REL_PATH = '.codex/hooks.json';
+export const ANTIGRAVITY_HOOKS_REL_PATH = '.agents/hooks.json';
+/** Ключ группы хуков ProjectHub в `.agents/hooks.json`: корень файла — именованные группы, чужие не трогаются. */
+export const ANTIGRAVITY_HOOK_GROUP = 'projecthub';
 
-const TARGET_ENGINE: Record<ExportTarget, RoleEngine & TierEngine> = { claude: 'claude-cli', codex: 'codex-cli' };
+/** Движок ролей, соответствующий цели; у Antigravity своего движка в ролях нет. */
+const TARGET_ENGINE: Record<ExportTarget, (RoleEngine & TierEngine) | null> = { claude: 'claude-cli', codex: 'codex-cli', antigravity: null };
 const DESCRIPTION_LIMIT = 600;
 const HASH_LENGTH = 16;
 
@@ -217,6 +224,12 @@ function engineSkip(role: RoleDefinition, target: ExportTarget): SkippedRoleExpo
   return { target, roleSlug: role.slug, reason: `роль привязана к движку ${role.engine}` };
 }
 
+function buildAgentFile(target: ExportTarget, role: RoleDefinition, ctx: RoleExportContext): ExportedRoleFile | SkippedRoleExport {
+  if (target === 'claude') return buildClaudeAgentFile(role, ctx);
+  if (target === 'codex') return buildCodexAgentFile(role, ctx);
+  return buildAntigravityAgentFile(role, ctx);
+}
+
 /** Имена инструментов Claude Code для субагента. `Task` — прежнее имя `Agent`, в файл не пишется. */
 function claudeAgentTools(categories: ToolCategory[]): string[] {
   return claudeToolNamesForCategories(categories).filter((t) => t !== 'Task');
@@ -284,6 +297,112 @@ export function buildCodexAgentFile(role: RoleDefinition, ctx: RoleExportContext
   };
 }
 
+// ─────────────────────────────── Antigravity ───────────────────────────────
+
+/**
+ * Инструменты Antigravity по категориям ролей (decision-62 п. 2). Только имена, которые реестр agy 1.2.12 принял в
+ * `tools` субагента: неизвестное имя не даёт субагенту запуститься («tool not found in registry»). `send_message` и
+ * `manage_task` движок выдаёт субагенту всегда; `define_subagent` (создать нового агента на лету) не выдаётся.
+ */
+export const ANTIGRAVITY_TOOLS_BY_CATEGORY: Record<ToolCategory, readonly string[]> = {
+  read: ['view_file', 'list_dir', 'grep_search', 'find_by_name'],
+  write: ['write_to_file', 'replace_file_content', 'multi_replace_file_content'],
+  command: ['run_command'],
+  search: ['search_web', 'read_url_content'],
+  subagent: ['invoke_subagent', 'manage_subagents'],
+  question: ['ask_question']
+};
+
+/** Категория, которую права роли запрещают целиком (`allowX: false`). */
+const PERMISSION_OF_CATEGORY: Partial<Record<ToolCategory, 'allowFileRead' | 'allowFileWrite' | 'allowCommands' | 'allowSubagents'>> = {
+  read: 'allowFileRead',
+  write: 'allowFileWrite',
+  command: 'allowCommands',
+  subagent: 'allowSubagents'
+};
+
+/**
+ * Инструменты субагента Antigravity. Роль без категорий получает все: без поля `tools` движок выдаёт урезанный набор
+ * по умолчанию (без записи и команд), а не «все инструменты». Хук не знает, какой субагент вызвал инструмент, поэтому
+ * запрет категории в правах роли здесь убирает инструменты, а не отправляет вызов человеку (decision-62 п. 3).
+ */
+export function antigravityToolsForRole(role: RoleDefinition): { tools: string[]; removed: ToolCategory[] } {
+  const categories = role.tools?.length ? role.tools : ALL_TOOL_CATEGORIES;
+  const removed: ToolCategory[] = [];
+  const tools: string[] = [];
+  for (const category of ALL_TOOL_CATEGORIES) {
+    if (!categories.includes(category)) continue;
+    const permission = PERMISSION_OF_CATEGORY[category];
+    if (permission && role.permissions?.[permission] === false) {
+      removed.push(category);
+      continue;
+    }
+    for (const tool of ANTIGRAVITY_TOOLS_BY_CATEGORY[category]) if (!tools.includes(tool)) tools.push(tool);
+  }
+  return { tools, removed };
+}
+
+export const ANTIGRAVITY_MODEL_ALIASES = ['inherit', 'flash', 'pro'] as const;
+
+/** Модель Gemini (алиас или id) → алиас Antigravity `flash | pro`; остальное не выражается. */
+export function antigravityModelAlias(model: string): 'flash' | 'pro' | 'inherit' | undefined {
+  const m = model.trim().toLowerCase();
+  if ((ANTIGRAVITY_MODEL_ALIASES as readonly string[]).includes(m)) return m as 'flash' | 'pro' | 'inherit';
+  if (!/^gemini-/.test(m)) return undefined;
+  if (/-pro(\b|-)/.test(m)) return 'pro';
+  if (/-flash(\b|-)/.test(m)) return 'flash';
+  return undefined;
+}
+
+/**
+ * Модель субагента Antigravity: движок принимает только `inherit | flash | pro`. Явная модель роли, если она
+ * выражается алиасом, затем первое звено тира для `gemini-cli`, иначе `inherit` (вендорских дефолтов нет).
+ */
+export function resolveAntigravityModel(role: RoleDefinition, tiers?: ModelTierSettings): ResolvedExportModel {
+  const explicit = explicitModel(role);
+  const fromExplicit = explicit ? antigravityModelAlias(explicit) : undefined;
+  if (fromExplicit) return { model: fromExplicit, source: 'explicit' };
+  const tier = tierModel(role, 'gemini-cli', tiers);
+  const fromTier = tier ? antigravityModelAlias(tier) : undefined;
+  const foreign = explicit ? `модель роли «${explicit}» не выражается в Antigravity (inherit | flash | pro)` : undefined;
+  if (fromTier) return { model: fromTier, source: 'tier', ...(foreign ? { note: `${foreign}, взят тир ${role.modelTier}` } : {}) };
+  const why = role.modelTier ? `тир ${role.modelTier} не даёт модели Gemini flash/pro` : undefined;
+  const note = [foreign, why].filter(Boolean).join('; ');
+  return { model: 'inherit', source: 'inherit', ...(note ? { note: `${note} — модель основной сессии (inherit)` } : {}) };
+}
+
+export function buildAntigravityAgentFile(role: RoleDefinition, ctx: RoleExportContext = {}): ExportedRoleFile | SkippedRoleExport {
+  // У Antigravity нет движка в ролях: роль, привязанная к любому движку, туда не экспортируется.
+  const skip = engineSkip(role, 'antigravity');
+  if (skip) return skip;
+  const name = claudeAgentName(role.slug);
+  const notes: string[] = [];
+  const { tools, removed } = antigravityToolsForRole(role);
+  if (removed.length) notes.push(`права роли запрещают ${removed.join(', ')} — инструменты убраны (хук не знает имени субагента)`);
+  if (!tools.length) notes.push('у субагента не остаётся инструментов');
+  const model = resolveAntigravityModel(role, ctx.tiers);
+  if (model.note) notes.push(model.note);
+  if (typeof role.maxTurns === 'number') notes.push('лимит ходов роли Antigravity не передаётся');
+  if (typeof role.budgetUsd === 'number') notes.push('бюджет роли субагенту не передаётся');
+  const lines = [
+    '---',
+    `name: ${yamlString(name)}`,
+    `description: ${yamlString(roleDescription(role))}`,
+    `tools: [${tools.map(yamlString).join(', ')}]`,
+    `model: ${yamlString(model.model ?? 'inherit')}`,
+    '---',
+    '',
+    role.systemPrompt.trim() || `Ты работаешь в роли «${role.name}».`
+  ];
+  return {
+    target: 'antigravity',
+    roleSlug: role.slug,
+    relPath: `${ANTIGRAVITY_AGENTS_DIR}/${name}.md`,
+    content: withMarker(lines.join('\n'), '#', role.slug),
+    notes
+  };
+}
+
 export function buildRoleExport(
   roles: RoleDefinition[],
   targets: readonly ExportTarget[],
@@ -293,7 +412,7 @@ export function buildRoleExport(
   const skipped: SkippedRoleExport[] = [];
   for (const target of targets) {
     for (const role of roles) {
-      const result = target === 'claude' ? buildClaudeAgentFile(role, ctx) : buildCodexAgentFile(role, ctx);
+      const result = buildAgentFile(target, role, ctx);
       if (isSkippedExport(result)) skipped.push(result);
       else files.push(result);
     }
@@ -313,7 +432,8 @@ export function roleForAgentType(roles: RoleDefinition[], agentType: string | un
 /** События хуков по движку (decision-54 п. 3). */
 export const HOOK_EVENTS: Record<ExportTarget, readonly string[]> = {
   claude: ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop'],
-  codex: ['PreToolUse', 'PostToolUse', 'Stop']
+  codex: ['PreToolUse', 'PostToolUse', 'Stop'],
+  antigravity: ['PreToolUse', 'PostToolUse', 'Stop']
 };
 
 export const DEFAULT_HOOK_TIMEOUT_SEC = 1800;
@@ -325,12 +445,16 @@ export function clampHookTimeoutSec(value: unknown): number {
   return Math.min(Math.max(n, MIN_HOOK_TIMEOUT_SEC), MAX_HOOK_TIMEOUT_SEC);
 }
 
-export function hookCommand(target: ExportTarget, timeoutSec: number): string {
+/**
+ * Команда хука. `event` нужен только Antigravity: имени события нет во входе хука, оно передаётся аргументом.
+ */
+export function hookCommand(target: ExportTarget, timeoutSec: number, event?: string): string {
   const budget = `--budget ${clampHookTimeoutSec(timeoutSec)}`;
   // Claude Code раскрывает $CLAUDE_PROJECT_DIR у command-хуков; у Codex такой переменной нет — путь от корня.
-  return target === 'claude'
-    ? `node "$CLAUDE_PROJECT_DIR/${HOOK_SCRIPT_REL_PATH}" claude ${budget}`
-    : `node ${HOOK_SCRIPT_REL_PATH} codex ${budget}`;
+  if (target === 'claude') return `node "$CLAUDE_PROJECT_DIR/${HOOK_SCRIPT_REL_PATH}" claude ${budget}`;
+  if (target === 'codex') return `node ${HOOK_SCRIPT_REL_PATH} codex ${budget}`;
+  // Antigravity запускает хук через cmd /C в каталоге `.agents/` (проверено вживую): путь от него, без кавычек.
+  return `node ../${HOOK_SCRIPT_REL_PATH} antigravity ${event ?? 'PreToolUse'} ${budget}`;
 }
 
 interface HookHandler {
@@ -369,21 +493,47 @@ function withoutOurHandlers(groups: unknown): HookGroup[] {
 
 export type MergeHookResult = { ok: true; content: string } | { ok: false; error: string };
 
+function parseSettingsRoot(current: string | null): { ok: true; root: Record<string, unknown> } | { ok: false; error: string } {
+  if (current === null || !current.trim()) return { ok: true, root: {} };
+  try {
+    const parsed = JSON.parse(current);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ok: false, error: 'файл настроек не является JSON-объектом' };
+    return { ok: true, root: parsed as Record<string, unknown> };
+  } catch (err) {
+    return { ok: false, error: `невалидный JSON: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
 /**
- * Сливает записи хуков ProjectHub в настройки движка (`.claude/settings.json`, `.codex/hooks.json`): чужие ключи,
- * события и обработчики сохраняются, наши заменяются. `install: false` — только убрать наши.
+ * `.agents/hooks.json` Antigravity: корень — именованные группы хуков, ProjectHub владеет только группой
+ * `projecthub`. У PreToolUse/PostToolUse обработчики вложены в `{ matcher, hooks }`, у Stop — плоские: вложенный
+ * Stop agy 1.2.12 читает без команды (проверено вживую).
+ */
+function mergeAntigravityHooks(root: Record<string, unknown>, options: { timeoutSec: number; install: boolean }): MergeHookResult {
+  const next: Record<string, unknown> = { ...root };
+  delete next[ANTIGRAVITY_HOOK_GROUP];
+  if (options.install) {
+    const timeout = clampHookTimeoutSec(options.timeoutSec);
+    const handler = (event: string): HookHandler => ({ type: 'command', command: hookCommand('antigravity', timeout, event), timeout });
+    const group: Record<string, unknown> = {};
+    for (const event of HOOK_EVENTS.antigravity) {
+      group[event] = event === 'Stop' ? [handler(event)] : [{ matcher: '*', hooks: [handler(event)] }];
+    }
+    next[ANTIGRAVITY_HOOK_GROUP] = group;
+  }
+  return { ok: true, content: `${JSON.stringify(next, null, 2)}\n` };
+}
+
+/**
+ * Сливает записи хуков ProjectHub в настройки движка (`.claude/settings.json`, `.codex/hooks.json`,
+ * `.agents/hooks.json`): чужие ключи, события и обработчики сохраняются, наши заменяются. `install: false` — только
+ * убрать наши.
  */
 export function mergeHookSettings(current: string | null, target: ExportTarget, options: { timeoutSec: number; install: boolean }): MergeHookResult {
-  let root: Record<string, unknown> = {};
-  if (current !== null && current.trim()) {
-    try {
-      const parsed = JSON.parse(current);
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ok: false, error: 'файл настроек не является JSON-объектом' };
-      root = parsed as Record<string, unknown>;
-    } catch (err) {
-      return { ok: false, error: `невалидный JSON: ${err instanceof Error ? err.message : String(err)}` };
-    }
-  }
+  const parsedRoot = parseSettingsRoot(current);
+  if (!parsedRoot.ok) return parsedRoot;
+  const root = parsedRoot.root;
+  if (target === 'antigravity') return mergeAntigravityHooks(root, options);
   const rawHooks = root.hooks;
   if (rawHooks !== undefined && (!rawHooks || typeof rawHooks !== 'object' || Array.isArray(rawHooks))) {
     return { ok: false, error: 'поле hooks не является объектом' };
@@ -409,14 +559,22 @@ export function mergeHookSettings(current: string | null, target: ExportTarget, 
   return { ok: true, content: `${JSON.stringify(next, null, 2)}\n` };
 }
 
+/** Есть ли где-либо в JSON обработчик с нашим скриптом (формы Claude/Codex и Antigravity, вложенные и плоские). */
+function containsOurHandler(value: unknown, depth = 0): boolean {
+  if (depth > 6 || !value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some((v) => containsOurHandler(v, depth + 1));
+  if (isOurHandler(value)) return true;
+  return Object.values(value as Record<string, unknown>).some((v) => containsOurHandler(v, depth + 1));
+}
+
 /** Установлены ли наши хуки в настройках движка (для индикатора; невалидный JSON — нет). */
 export function hasOurHooks(current: string | null): boolean {
   if (!current) return false;
   try {
-    const parsed = JSON.parse(current) as { hooks?: Record<string, unknown> };
-    return Object.values(parsed?.hooks ?? {}).some(
-      (groups) => Array.isArray(groups) && groups.some((g) => Array.isArray((g as HookGroup)?.hooks) && (g as HookGroup).hooks!.some(isOurHandler))
-    );
+    const parsed = JSON.parse(current) as Record<string, unknown> | null;
+    if (!parsed || typeof parsed !== 'object') return false;
+    // Claude/Codex — объект `hooks`; Antigravity — именованные группы в корне файла.
+    return containsOurHandler(parsed.hooks) || containsOurHandler(parsed[ANTIGRAVITY_HOOK_GROUP]);
   } catch {
     return false;
   }

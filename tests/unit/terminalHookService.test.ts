@@ -238,3 +238,90 @@ describe('TerminalHookService', () => {
     expect((await h.service.handle({ engine: 'claude', payload: { hook_event_name: 'Nope' } })).stderr).toContain('неподдерживаемое');
   });
 });
+
+/** Хуки Google Antigravity: формы входа — из живой проверки agy 1.2.12 (TASK-106, decision-62). */
+describe('TerminalHookService · Antigravity', () => {
+  let h: Harness;
+  beforeEach(async () => {
+    h = await harness();
+  });
+
+  function ag(event: string, payload: Record<string, unknown>) {
+    return { engine: 'antigravity', event, projectDir: PROJECT, budgetMs: 600_000, payload: { conversationId: 'conv-1', workspacePaths: [PROJECT], ...payload } };
+  }
+  const agPre = (name: string, args: Record<string, unknown>, stepIdx = 3) => ag('PreToolUse', { stepIdx, toolCall: { name, args } });
+
+  it('allow политики → пустой ответ; PostToolUse по conversationId:stepIdx пишет длительность', async () => {
+    const out = await h.service.handle(agPre('run_command', { CommandLine: 'npm test', Cwd: PROJECT }));
+    expect(out).toEqual({ exitCode: 0, stdout: '', stderr: '' });
+    h.now.value += 777;
+    await h.service.handle(ag('PostToolUse', { stepIdx: 3, error: '', toolCall: { name: 'run_command', args: { CommandLine: 'npm test' } } }));
+    await h.hitl.flush();
+    const audit = await h.hitl.listAudit({});
+    const decision = audit.find((e) => e.kind === 'decision');
+    expect(decision).toMatchObject({ origin: 'terminal', engine: 'antigravity', agentName: 'Antigravity', rule: 'auto-command', sessionId: 'terminal-antigravity-conv-1' });
+    expect(audit.find((e) => e.kind === 'outcome')).toMatchObject({ outcome: 'executed', durationMs: 777, requestId: decision!.requestId });
+  });
+
+  it('deny политики → decision deny с причиной, код 0', async () => {
+    const out = await h.service.handle(agPre('write_to_file', { TargetFile: path.join(os.tmpdir(), 'outside.txt'), CodeContent: 'x' }));
+    expect(out.exitCode).toBe(0);
+    const parsed = JSON.parse(out.stdout);
+    expect(parsed.decision).toBe('deny');
+    expect(parsed.reason).toContain('вне корня проекта');
+  });
+
+  it('ask → HITL с командой; одобрение → decision allow', async () => {
+    const pending = h.service.handle(agPre('run_command', { CommandLine: 'git push origin main', Cwd: PROJECT }));
+    await vi.waitFor(() => expect(h.hitl.listPending()).toHaveLength(1));
+    const req = h.hitl.listPending()[0];
+    expect(req).toMatchObject({ engine: 'antigravity', type: 'command', command: 'git push origin main', tool: 'run_command', agentName: 'Antigravity' });
+    expect(req.title).toContain('Antigravity: команда git push');
+    h.hitl.decide(req.id, { approved: true }, { kind: 'local' });
+    expect(JSON.parse((await pending).stdout)).toEqual({ decision: 'allow', reason: 'Разрешено в ProjectHub' });
+  });
+
+  it('запись файла идёт в дифф как Write с содержимым', async () => {
+    const h2 = await harness(false);
+    const calls: Array<[string, string, Record<string, unknown>]> = [];
+    (h2.service as unknown as { deps: { buildDiff: (w: string, t: string, f: string, i: Record<string, unknown>) => Promise<unknown> } }).deps.buildDiff = async (_w, t, f, i) => {
+      calls.push([t, f, i]);
+      return { filePath: f, oldContent: '', newContent: 'A', patch: '+A' };
+    };
+    const target = path.join(PROJECT, 'a.txt');
+    const pending = h2.service.handle(agPre('write_to_file', { TargetFile: target, CodeContent: 'A', Overwrite: false }));
+    await vi.waitFor(() => expect(h2.hitl.listPending()).toHaveLength(1));
+    const req = h2.hitl.listPending()[0];
+    expect(req).toMatchObject({ type: 'file_write', filePath: target });
+    expect(req.diff?.patch).toBe('+A');
+    expect(calls).toEqual([['Write', target, { file_path: target, content: 'A' }]]);
+    h2.hitl.decide(req.id, { approved: false, text: 'нет' }, { kind: 'local' });
+    expect(JSON.parse((await pending).stdout)).toEqual({ decision: 'deny', reason: 'Отклонено в ProjectHub: нет' });
+  });
+
+  it('ask_question — без решения, в очередь не идёт', async () => {
+    const h2 = await harness(false);
+    expect(await h2.service.handle(agPre('ask_question', { Question: '?' }))).toEqual({ exitCode: 0, stdout: '', stderr: '' });
+    expect(h2.hitl.listPending()).toHaveLength(0);
+  });
+
+  it('Stop: fullyIdle=false пропускается, fullyIdle=true — agent:finished', async () => {
+    await h.service.handle(ag('Stop', { executionNum: 0, fullyIdle: false, terminationReason: 'NO_TOOL_CALL' }));
+    expect(h.events).toHaveLength(0);
+    await h.service.handle(ag('Stop', { executionNum: 0, fullyIdle: true }));
+    expect(h.events.at(-1)).toMatchObject({ type: 'agent:finished', origin: 'terminal', sessionId: 'terminal-antigravity-conv-1' });
+    await h.service.saveSettings({ stopChecks: 'block' });
+    h.checks.failed = ['unit'];
+    const blocked = await h.service.handle(ag('Stop', { executionNum: 0, fullyIdle: true }));
+    expect(JSON.parse(blocked.stdout)).toMatchObject({ decision: 'continue' });
+    expect((await h.service.handle(ag('Stop', { executionNum: 1, fullyIdle: true }))).stdout).toBe('');
+  });
+
+  it('без события в теле — без решения с сообщением', async () => {
+    const noEvent: Record<string, unknown> = agPre('run_command', { CommandLine: 'ls' });
+    delete noEvent.event;
+    const out = await h.service.handle(noEvent);
+    expect(out).toMatchObject({ exitCode: 0, stdout: '' });
+    expect(out.stderr).toContain('Antigravity');
+  });
+});

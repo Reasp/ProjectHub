@@ -22,10 +22,11 @@ interface ReceivedBody {
   engine?: string;
   projectDir?: string;
   budgetMs?: number;
+  event?: string;
   payload?: { tool_name?: string };
 }
 const received: Array<{ auth?: string; body: ReceivedBody }> = [];
-let mode: 'answer' | 'hang' | '401' = 'answer';
+let mode: 'answer' | 'hang' | '401' | 'exit2' = 'answer';
 
 function run(args: string[], stdin: string, env: Record<string, string>): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
@@ -58,6 +59,10 @@ beforeAll(async () => {
         return;
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
+      if (mode === 'exit2') {
+        res.end(JSON.stringify({ exitCode: 2, stdout: '{"decision":"deny","reason":"r"}', stderr: '' }));
+        return;
+      }
       res.end(JSON.stringify({ exitCode: 0, stdout: '{"hookSpecificOutput":{"permissionDecision":"allow"}}', stderr: 'note' }));
     });
   });
@@ -121,4 +126,53 @@ describe('projecthub-hook.mjs', () => {
   it('вход не JSON — пропуск', async () => {
     expect(await run(['claude'], 'not json', { PROJECTHUB_HOOK_URL: baseUrl, PROJECTHUB_HOOK_TOKEN: 't' })).toEqual({ code: 0, stdout: '', stderr: '' });
   });
+});
+
+describe('projecthub-hook.mjs · Antigravity (TASK-106, decision-62)', () => {
+  const AG_PRE = JSON.stringify({ conversationId: 'c1', stepIdx: 3, workspacePaths: ['C:/work/proj'], toolCall: { name: 'run_command', args: { CommandLine: 'ls' } } });
+
+  it('событие из аргумента, проект из workspacePaths; код выхода всегда 0', async () => {
+    mode = 'exit2';
+    received.length = 0;
+    const res = await run(['antigravity', 'PreToolUse', '--budget', '600'], AG_PRE, { PROJECTHUB_HOOK_URL: baseUrl, PROJECTHUB_HOOK_TOKEN: 't' });
+    // Сервер вернул exitCode 2 — для Antigravity это был бы отказ движка, скрипт выходит с 0 и печатает решение.
+    expect(res).toEqual({ code: 0, stdout: '{"decision":"deny","reason":"r"}', stderr: '' });
+    expect(received[0].body).toMatchObject({ engine: 'antigravity', event: 'PreToolUse', projectDir: 'C:/work/proj', budgetMs: 585_000 });
+  });
+
+  it('без workspacePaths проект — родитель рабочего каталога (.agents/)', async () => {
+    mode = 'answer';
+    received.length = 0;
+    const agents = path.join(dir, '.agents');
+    await fs.mkdir(agents, { recursive: true });
+    const child = spawn(process.execPath, [script, 'antigravity', 'Stop'], {
+      cwd: agents,
+      env: { PATH: process.env.PATH ?? '', SystemRoot: process.env.SystemRoot ?? '', PROJECTHUB_HOOK_LOG: logFile, PROJECTHUB_HOOK_URL: baseUrl, PROJECTHUB_HOOK_TOKEN: 't' },
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    const code = await new Promise((resolve) => {
+      child.on('close', resolve);
+      child.stdin.end(JSON.stringify({ conversationId: 'c1', fullyIdle: true }));
+    });
+    expect(code).toBe(0);
+    expect(received[0].body).toMatchObject({ engine: 'antigravity', event: 'Stop', projectDir: dir });
+  });
+
+  it('fail-closed без ProjectHub — отказ JSON с кодом 0; PostToolUse — пусто', async () => {
+    const env = { PROJECTHUB_HOOK_URL: 'http://127.0.0.1:1', PROJECTHUB_HOOK_TOKEN: 't', PROJECTHUB_HOOK_FAIL_MODE: 'closed' };
+    const pre = await run(['antigravity', 'PreToolUse'], AG_PRE, env);
+    expect(pre.code).toBe(0);
+    expect(JSON.parse(pre.stdout)).toMatchObject({ decision: 'deny' });
+    expect(JSON.parse(pre.stdout).reason).toContain('fail-closed');
+    expect(await run(['antigravity', 'PostToolUse'], AG_PRE, env)).toEqual({ code: 0, stdout: '', stderr: '' });
+    // fail-open: ни вывода, ни ненулевого кода — Antigravity выполнит вызов по своим правилам.
+    expect(await run(['antigravity', 'PreToolUse'], AG_PRE, { ...env, PROJECTHUB_HOOK_FAIL_MODE: 'open' })).toEqual({ code: 0, stdout: '', stderr: '' });
+  });
+
+  it('нет решения в бюджет — отказ JSON с кодом 0', async () => {
+    mode = 'hang';
+    const res = await run(['antigravity', 'PreToolUse', '--budget', '1'], AG_PRE, { PROJECTHUB_HOOK_URL: baseUrl, PROJECTHUB_HOOK_TOKEN: 't' });
+    expect(res.code).toBe(0);
+    expect(JSON.parse(res.stdout).reason).toContain('нет решения');
+  }, 15_000);
 });
