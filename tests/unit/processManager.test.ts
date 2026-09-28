@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import type { ManagedProcess } from '../../src/types/electron';
+import { listProcesses, processSnapshotCache } from '../../electron/services/processSweep';
+import { removeTempDir } from '../helpers/removeTempDir';
 
 // processManager шлёт статусы через BrowserWindow — подменяем electron фиктивным окном,
 // которое накапливает отправленные события.
@@ -45,16 +47,25 @@ function isAlive(pid: number | undefined): boolean {
   }
 }
 
-/** Временный «проект» с реестром env-tools и живым процессом в нём. */
-function makeEnvToolsProject(name: string, extra: Record<string, unknown> = {}) {
+/** Время создания процесса по данным ОС — то, что env-tools пишет в pidCreatedAt (decision-59). */
+async function osCreatedAt(pid: number): Promise<number> {
+  const entry = (await listProcesses()).find((e) => e.pid === pid);
+  if (!entry?.createdAt) throw new Error(`Нет времени создания процесса ${pid} в снимке`);
+  return entry.createdAt;
+}
+
+/** Временный «проект» с реестром env-tools и живым процессом в нём (запись с pidCreatedAt, как у env-tools). */
+async function makeEnvToolsProject(name: string, extra: Record<string, unknown> = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-envstate-'));
   const child = spawn(process.execPath, ['-e', 'setTimeout(function(){}, 60000)'], { stdio: 'ignore' });
   child.unref();
+  const pidCreatedAt = await osCreatedAt(child.pid!);
   const registryFile = path.join(dir, '.env-state', 'processes.json');
   fs.mkdirSync(path.dirname(registryFile), { recursive: true });
   const registry = {
     [name]: {
       pid: child.pid,
+      pidCreatedAt,
       command: longRunningCommand(60000),
       cwd: dir,
       startedAt: new Date().toISOString(),
@@ -62,7 +73,7 @@ function makeEnvToolsProject(name: string, extra: Record<string, unknown> = {}) 
     }
   };
   fs.writeFileSync(registryFile, JSON.stringify(registry, null, 2));
-  return { dir, pid: child.pid!, registryFile, child };
+  return { dir, pid: child.pid!, pidCreatedAt, registryFile, child };
 }
 
 const CWD = process.cwd();
@@ -128,9 +139,11 @@ describe('удаление завершённых процессов из active
 
     await waitFor(() => finished(info.id));
     // Сразу после завершения запись ещё на месте: вкладка Processes видит статус и хвост лога.
+    // Лог — до списка: список сверяет записи реестра env-tools проекта со снимком процессов
+    // (TASK-111), это дольше TTL в 200 мс; hub-процессы в него попадают в момент вызова.
+    expect(processManager.getLogs(info.id).join('')).toContain('ttl-test');
     const listed = await processManager.listProcessesForProject(CWD);
     expect(listed.find((p) => p.id === info.id)?.status).toBe('stopped');
-    expect(processManager.getLogs(info.id).join('')).toContain('ttl-test');
 
     await waitFor(() => !processManager.getLogs(info.id).length, 5000);
     const after = await processManager.listProcessesForProject(CWD);
@@ -309,7 +322,7 @@ describe('autoOpenUrl (TASK-45, AC #3)', () => {
 
 describe('остановка и перезапуск процессов env-tools по реестру .env-state (TASK-45, AC #4)', () => {
   it('stopProcess убивает процесс по pid из processes.json и удаляет запись из реестра', async () => {
-    const { dir, pid, registryFile } = makeEnvToolsProject('env-web');
+    const { dir, pid, registryFile } = await makeEnvToolsProject('env-web');
     expect(isAlive(pid)).toBe(true);
 
     const listed = await processManager.listProcessesForProject(dir);
@@ -340,7 +353,7 @@ describe('остановка и перезапуск процессов env-tool
 
   it('restartProcess останавливает процесс env-tools и запускает ту же команду под управлением Hub', async () => {
     processManager.configureRetention({ finishedTtlMs: 60000, maxFinished: 50 });
-    const { dir, pid, registryFile } = makeEnvToolsProject('env-api');
+    const { dir, pid, registryFile } = await makeEnvToolsProject('env-api');
     const id = `${path.normalize(dir)}::env-api`;
 
     const restarted = await processManager.restartProcess(id);
@@ -359,6 +372,62 @@ describe('остановка и перезапуск процессов env-tool
     await waitFor(() => finished(id));
     fs.rmSync(dir, { recursive: true, force: true });
   }, 20000);
+
+  it('PID переиспользован или идентичность не подтверждена: процесс не показывается работающим и не убивается (TASK-111)', async () => {
+    // Живой процесс записи `real` — «посторонний» для остальных записей, которым ОС будто бы отдала его pid.
+    const { dir, pid, pidCreatedAt, registryFile } = await makeEnvToolsProject('real');
+    const iso = (ms: number) => new Date(ms).toISOString();
+    const base = { pid, command: longRunningCommand(60000), cwd: dir };
+    const registry = JSON.parse(fs.readFileSync(registryFile, 'utf-8'));
+    Object.assign(registry, {
+      // Время старта записано и не совпадает с временем создания процесса, занявшего pid.
+      reused: { ...base, pidCreatedAt: pidCreatedAt - 3_600_000, startedAt: iso(pidCreatedAt - 3_600_000) },
+      // Старая запись без pidCreatedAt, процесс создан позже записи — точно чужой.
+      legacyReused: { ...base, startedAt: iso(pidCreatedAt - 60_000) },
+      // Старая запись без pidCreatedAt, процесс создан раньше записи — сопоставить нельзя.
+      legacyUnknown: { ...base, startedAt: iso(pidCreatedAt + 60_000) }
+    });
+    fs.writeFileSync(registryFile, JSON.stringify(registry, null, 2));
+    const idOf = (name: string) => `${path.normalize(dir)}::${name}`;
+
+    try {
+      const listed = await processManager.listProcessesForProject(dir);
+      expect(Object.fromEntries(listed.map((p) => [p.name, p.status]))).toEqual({
+        real: 'running',
+        reused: 'stopped',
+        legacyReused: 'stopped',
+        legacyUnknown: 'unknown'
+      });
+
+      // Перезапуск записи с неподтверждённой идентичностью запустил бы копию рядом с возможным оригиналом.
+      await expect(processManager.restartProcess(idOf('legacyUnknown'))).rejects.toThrow(/идентичность не подтверждена/);
+      expect(JSON.parse(fs.readFileSync(registryFile, 'utf-8')).legacyUnknown).toBeDefined();
+
+      for (const name of ['reused', 'legacyReused', 'legacyUnknown']) {
+        expect(await processManager.stopProcess(idOf(name))).toBe(true);
+        expect(lastStatusOf(idOf(name))?.status).toBe('stopped');
+      }
+      await sleep(500);
+      expect(isAlive(pid)).toBe(true);
+      expect(Object.keys(JSON.parse(fs.readFileSync(registryFile, 'utf-8')))).toEqual(['real']);
+
+      // Снимок процессов не удался: не убиваем и запись не забываем.
+      const spy = vi.spyOn(processSnapshotCache, 'get').mockRejectedValue(new Error('powershell недоступен'));
+      try {
+        await expect(processManager.stopProcess(idOf('real'))).rejects.toThrow(/Не удалось проверить время старта/);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(isAlive(pid)).toBe(true);
+      expect(JSON.parse(fs.readFileSync(registryFile, 'utf-8')).real).toBeDefined();
+
+      expect(await processManager.stopProcess(idOf('real'))).toBe(true);
+      await waitFor(() => !isAlive(pid), 5000);
+    } finally {
+      if (isAlive(pid)) process.kill(pid);
+      await removeTempDir(dir);
+    }
+  }, 30000);
 });
 
 describe('перезапуск hub-процесса (TASK-45, AC #2)', () => {

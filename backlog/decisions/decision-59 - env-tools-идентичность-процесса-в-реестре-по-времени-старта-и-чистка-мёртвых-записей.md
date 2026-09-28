@@ -53,6 +53,6 @@ status: accepted
 - Формат ответа `listProcesses()` изменился: `{ processes, pruned }` вместо массива; `stopProcess()` возвращает `{ name, pid, status, killed }`. Модули используются только `env-server.mjs` и тестом.
 - `list_processes` теперь меняет реестр (чистка) — это осознанно, см. Context.
 - Старые записи, чей pid занят процессом, созданным раньше записи, остаются `unknown`, пока pid не освободится. После этого они получают статус `dead` и через 7 дней удаляются.
-- Тот же паттерн есть в самом приложении: `electron/services/processManager.ts` (`stopEnvToolsProcess`, `listProcessesForProject`) и `electron/services/projectScanner.ts` читают этот реестр и проверяют pid только через `kill(pid, 0)`. Исправление — TASK-111, поле `pidCreatedAt` для этого подходит напрямую.
+- Тот же паттерн есть в самом приложении: `electron/services/processManager.ts` (`stopEnvToolsProcess`, `listProcessesForProject`) и `electron/services/projectScanner.ts` читают этот реестр и проверяют pid только через `kill(pid, 0)`. Исправление — TASK-111, поле `pidCreatedAt` для этого подходит напрямую; решение — [[decision-60]].
 - ProjectTemplate получает тот же код; проекты, развёрнутые из шаблона, — только после повторной синхронизации `scripts/env/`.
 - Реализация — TASK-110. Связано: [[decision-58]], [[decision-37]], [[decision-57]].

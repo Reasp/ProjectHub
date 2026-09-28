@@ -5,6 +5,7 @@ import matter from 'gray-matter';
 import { simpleGit } from 'simple-git';
 import type { ProjectInfo, RagStatus, ProcessStatus, RunningProcess, GitLastCommit } from '../../src/types/electron';
 import { projectRegistry } from './projectRegistry';
+import { envToolsEntryStatuses } from './processSweep';
 import { isFilesystemRoot } from './appPaths';
 import { readBacklogConfig } from './backlogConfigService';
 import {
@@ -318,27 +319,18 @@ export async function inspectProject(folderPath: string, options: InspectProject
       try {
         const rawEnv = await fs.readFile(envStatePath, 'utf-8');
         const procMap: Record<string, any> = JSON.parse(rawEnv);
-        const running: RunningProcess[] = [];
-
-        for (const [name, info] of Object.entries(procMap)) {
-          if (info && info.pid) {
-            let alive = false;
-            try {
-              process.kill(info.pid, 0);
-              alive = true;
-            } catch {
-              alive = false;
-            }
-            if (alive) {
-              running.push({
-                name,
-                pid: info.pid,
-                command: info.command,
-                startedAt: info.startedAt
-              });
-            }
-          }
-        }
+        const entries = Object.entries(procMap).filter(([, info]) => info && info.pid);
+        // Работающим считается только процесс с подтверждённой идентичностью: pid из старой записи
+        // мог достаться чужому процессу (TASK-111, decision-60). Снимок общий для всех проектов.
+        const statuses = await envToolsEntryStatuses(entries.map(([, info]) => info));
+        const running: RunningProcess[] = entries
+          .filter((_, i) => statuses[i] === 'running')
+          .map(([name, info]) => ({
+            name,
+            pid: info.pid,
+            command: info.command,
+            startedAt: info.startedAt
+          }));
         processStatus = {
           runningCount: running.length,
           processes: running

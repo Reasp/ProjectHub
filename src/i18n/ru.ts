@@ -1279,6 +1279,8 @@ export const ru: TranslationDictionary = {
     statusRunning: 'Работает',
     statusStopped: 'Остановлен',
     statusFailed: 'Ошибка',
+    statusUnknown: 'Не подтверждён',
+    unknownHint: 'PID из записи env-tools занят, но это может быть чужой процесс: запись создана до сверки времени старта. ProjectHub его не останавливает и не перезапускает — можно только удалить запись.',
     exitCode: 'код {code}',
     sourceHub: 'ProjectHub',
     sourceEnvTools: 'env-tools',
@@ -1288,9 +1290,10 @@ export const ru: TranslationDictionary = {
     restarting: 'Перезапуск…',
     stop: 'Остановить',
     stopping: 'Остановка…',
+    forgetEntry: 'Удалить запись из реестра env-tools (процесс не завершается)',
     openUrl: 'Открыть {url}',
     autoOpenHint: 'URL откроется автоматически после появления адреса в логе или через {seconds} с',
-    envToolsHint: 'Процесс env-tools: остановка по pid из .env-state/processes.json, перезапуск — той же командой под управлением ProjectHub',
+    envToolsHint: 'Процесс env-tools из .env-state/processes.json: останавливается, только если PID и время старта совпадают с записью; перезапуск — той же командой под управлением ProjectHub',
     runningCount: 'Работает: {count}'
   },
   claudeCli: {

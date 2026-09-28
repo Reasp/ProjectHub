@@ -1279,6 +1279,8 @@ export const en: TranslationDictionary = {
     statusRunning: 'Running',
     statusStopped: 'Stopped',
     statusFailed: 'Failed',
+    statusUnknown: 'Unconfirmed',
+    unknownHint: 'The env-tools entry PID is in use, but it may belong to another process: the entry predates start-time checks. ProjectHub neither stops nor restarts it; you can only remove the entry.',
     exitCode: 'code {code}',
     sourceHub: 'ProjectHub',
     sourceEnvTools: 'env-tools',
@@ -1288,9 +1290,10 @@ export const en: TranslationDictionary = {
     restarting: 'Restarting…',
     stop: 'Stop',
     stopping: 'Stopping…',
+    forgetEntry: 'Remove the entry from the env-tools registry (the process keeps running)',
     openUrl: 'Open {url}',
     autoOpenHint: 'URL opens automatically once an address appears in the log, or after {seconds}s',
-    envToolsHint: 'env-tools process: stopped by pid from .env-state/processes.json, restarted with the same command under ProjectHub',
+    envToolsHint: 'env-tools process from .env-state/processes.json: stopped only if its PID and start time match the entry; restarted with the same command under ProjectHub',
     runningCount: 'Running: {count}'
   },
   claudeCli: {

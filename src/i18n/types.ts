@@ -1202,6 +1202,8 @@ export interface TranslationDictionary {
     statusRunning: string;
     statusStopped: string;
     statusFailed: string;
+    statusUnknown: string;
+    unknownHint: string;
     exitCode: string;
     sourceHub: string;
     sourceEnvTools: string;
@@ -1211,6 +1213,7 @@ export interface TranslationDictionary {
     restarting: string;
     stop: string;
     stopping: string;
+    forgetEntry: string;
     openUrl: string;
     autoOpenHint: string;
     envToolsHint: string;

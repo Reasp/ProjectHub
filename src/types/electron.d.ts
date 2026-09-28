@@ -326,7 +326,11 @@ export interface ManagedProcess {
   port?: number;
   pid?: number;
   startedAt: string;
-  status: 'running' | 'stopped' | 'failed';
+  /**
+   * `unknown` — только env-tools: pid из реестра занят, но идентичность процесса не подтверждена
+   * (запись до сверки времени старта, decision-60). Остановка лишь удаляет запись.
+   */
+  status: 'running' | 'stopped' | 'failed' | 'unknown';
   exitCode?: number;
   source: 'hub' | 'env-tools';
   /** URL, который открывается после старта (только для hub-процессов из ActionDefinition). */

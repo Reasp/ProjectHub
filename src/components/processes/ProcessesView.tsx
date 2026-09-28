@@ -13,7 +13,8 @@ import {
   Server,
   Wrench,
   FolderGit2,
-  Unplug
+  Unplug,
+  Eraser
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -181,6 +182,17 @@ export const ProcessesView: React.FC = () => {
         </span>
       );
     }
+    if (proc.status === 'unknown') {
+      return (
+        <span
+          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-950/50 border border-amber-700/50 text-amber-300 text-[11px] font-medium cursor-help"
+          title={t.processes.unknownHint}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+          {t.processes.statusUnknown}
+        </span>
+      );
+    }
     if (proc.status === 'failed') {
       return (
         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-rose-950/60 border border-rose-700/50 text-rose-300 text-[11px] font-medium">
@@ -292,6 +304,7 @@ export const ProcessesView: React.FC = () => {
             <tbody>
               {projectProcesses.map((proc) => {
                 const isRunning = proc.status === 'running';
+                const isUnknown = proc.status === 'unknown';
                 const state = busy[proc.id];
                 const autoOpenSeconds = Math.round(DEFAULT_AUTO_OPEN_DELAY_MS / 1000);
                 return (
@@ -365,8 +378,8 @@ export const ProcessesView: React.FC = () => {
                         </button>
                         <button
                           onClick={() => void handleRestart(proc)}
-                          disabled={state !== undefined || (proc.source === 'env-tools' && !proc.command)}
-                          title={state === 'restart' ? t.processes.restarting : t.processes.restart}
+                          disabled={state !== undefined || isUnknown || (proc.source === 'env-tools' && !proc.command)}
+                          title={state === 'restart' ? t.processes.restarting : isUnknown ? t.processes.unknownHint : t.processes.restart}
                           className="p-1.5 rounded-md hover:bg-indigo-950/60 text-indigo-400 hover:text-indigo-200 transition disabled:opacity-40"
                         >
                           <RotateCcw className={`w-3.5 h-3.5 ${state === 'restart' ? 'animate-spin' : ''}`} />
@@ -379,6 +392,16 @@ export const ProcessesView: React.FC = () => {
                             className="p-1.5 rounded-md hover:bg-rose-950/60 text-rose-400 hover:text-rose-200 transition disabled:opacity-40"
                           >
                             {state === 'stop' ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Square className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                        {isUnknown && (
+                          <button
+                            onClick={() => void handleStop(proc)}
+                            disabled={state !== undefined}
+                            title={t.processes.forgetEntry}
+                            className="p-1.5 rounded-md hover:bg-amber-950/60 text-amber-400 hover:text-amber-200 transition disabled:opacity-40"
+                          >
+                            {state === 'stop' ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Eraser className="w-3.5 h-3.5" />}
                           </button>
                         )}
                       </div>

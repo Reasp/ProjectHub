@@ -1,5 +1,12 @@
 import { execFile, type ChildProcess } from 'node:child_process';
 import treeKill from 'tree-kill';
+import {
+  createSnapshotCache,
+  DISPLAY_SNAPSHOT_MAX_AGE_MS,
+  resolveEntryStatuses,
+  type EnvEntryStatus,
+  type EnvIdentityEntry
+} from './envRegistryIdentity';
 
 /**
  * Добивание потомков оболочки, переживших tree-kill (TASK-97, decision-37).
@@ -82,6 +89,59 @@ export function listWindowsProcesses(timeoutMs = LIST_PROCESSES_TIMEOUT_MS): Pro
       { timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
       (err, stdout) => (err ? reject(err) : resolve(parseProcessList(String(stdout))))
     );
+  });
+}
+
+/**
+ * Разбирает вывод `ps -A -o pid=,ppid=,lstart=` (LC_ALL=C): `pid ppid Mon Sep 28 01:05:00 2026`.
+ * Время — локальное, секундная точность; нечитаемое время даёт createdAt 0.
+ */
+export function parsePsProcessList(text: string): ProcessEntry[] {
+  const out: ProcessEntry[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(\S.*\S)\s*$/.exec(line);
+    if (!m) continue;
+    const ms = Date.parse(m[3]);
+    out.push({ pid: Number(m[1]), ppid: Number(m[2]), createdAt: Number.isFinite(ms) ? ms : 0 });
+  }
+  return out;
+}
+
+/** Снимок процессов POSIX (pid, ppid, время создания) — источник тот же, что у env-tools (`ps lstart`). */
+export function listPosixProcesses(timeoutMs = LIST_PROCESSES_TIMEOUT_MS): Promise<ProcessEntry[]> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'ps',
+      ['-A', '-o', 'pid=,ppid=,lstart='],
+      { timeout: timeoutMs, env: { ...process.env, LC_ALL: 'C' }, maxBuffer: 16 * 1024 * 1024 },
+      (err, stdout) => (err ? reject(err) : resolve(parsePsProcessList(String(stdout))))
+    );
+  });
+}
+
+/** Снимок процессов текущей ОС. */
+export function listProcesses(): Promise<ProcessEntry[]> {
+  return process.platform === 'win32' ? listWindowsProcesses() : listPosixProcesses();
+}
+
+/**
+ * Общий кэш снимка для сверки записей реестра env-tools (TASK-111, decision-60): вкладка процессов
+ * и сканер проектов берут снимок не старше `DISPLAY_SNAPSHOT_MAX_AGE_MS`, остановка — всегда свежий.
+ */
+export const processSnapshotCache = createSnapshotCache(listProcesses);
+
+/**
+ * Статусы записей реестра env-tools одним снимком процессов (TASK-111, decision-60).
+ * `fresh` — для остановки: снимок не из кэша, при ошибке снимка — исключение.
+ */
+export function envToolsEntryStatuses(
+  entries: EnvIdentityEntry[],
+  { fresh = false }: { fresh?: boolean } = {}
+): Promise<EnvEntryStatus[]> {
+  return resolveEntryStatuses(entries, {
+    fresh,
+    strict: fresh,
+    snapshot: ({ fresh: f }) => processSnapshotCache.get(f ? 0 : DISPLAY_SNAPSHOT_MAX_AGE_MS)
   });
 }
 

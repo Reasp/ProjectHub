@@ -2,6 +2,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { listProcesses } from '../../electron/services/processSweep';
+import { removeTempDir } from '../helpers/removeTempDir';
 
 // projectScanner → projectRegistry → appPaths: нужен частичный мок electron.app с userData
 // во временном каталоге, чтобы тест не трогал реальный реестр проектов.
@@ -101,6 +104,40 @@ describe('inspectProject: счётчики по статусам из backlog/co
     // Testing вообще не описан в конфиге — оба идут в other, done матчится без учёта регистра.
     expect(info!.taskCounts).toEqual({ total: 4, todo: 1, inProgress: 0, review: 0, done: 1, other: 2 });
   });
+});
+
+describe('inspectProject: процессы env-tools (TASK-111, decision-60)', () => {
+  it('работающими считаются только записи с подтверждённой идентичностью процесса', async () => {
+    await fs.mkdir(USER_DATA, { recursive: true });
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'projecthub-scanner-envstate-'));
+    const child = spawn(process.execPath, ['-e', 'setTimeout(function(){}, 60000)'], { stdio: 'ignore' });
+    try {
+      const pid = child.pid!;
+      const createdAt = (await listProcesses()).find((e) => e.pid === pid)?.createdAt;
+      expect(createdAt).toBeGreaterThan(0);
+      const iso = (ms: number) => new Date(ms).toISOString();
+      await fs.mkdir(path.join(dir, 'backlog', 'tasks'), { recursive: true });
+      await fs.mkdir(path.join(dir, '.env-state'), { recursive: true });
+      await fs.writeFile(
+        path.join(dir, '.env-state', 'processes.json'),
+        JSON.stringify({
+          real: { pid, pidCreatedAt: createdAt, command: 'node a.js', startedAt: iso(createdAt!) },
+          // Тот же pid под чужой идентичностью и старая запись без pidCreatedAt — не работающие.
+          reused: { pid, pidCreatedAt: createdAt! - 3_600_000, command: 'node b.js', startedAt: iso(createdAt! - 3_600_000) },
+          legacy: { pid, command: 'node c.js', startedAt: iso(createdAt! + 60_000) }
+        })
+      );
+      invalidateInspectCache();
+      const info = await inspectProject(dir, { skipGit: true });
+      expect(info!.processStatus).toEqual({
+        runningCount: 1,
+        processes: [{ name: 'real', pid, command: 'node a.js', startedAt: iso(createdAt!) }]
+      });
+    } finally {
+      child.kill();
+      await removeTempDir(dir);
+    }
+  }, 30000);
 });
 
 describe('inspectProject: кэш по mtime (аудит 3.4)', () => {

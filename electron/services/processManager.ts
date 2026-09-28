@@ -6,6 +6,8 @@ import treeKill from 'tree-kill';
 import { BrowserWindow, shell } from 'electron';
 import type { ManagedProcess } from '../../src/types/electron';
 import { appEventBus } from './eventBus.js';
+import { isPidAlive, type EnvEntryStatus } from './envRegistryIdentity';
+import { envToolsEntryStatuses } from './processSweep';
 import {
   findFreePort,
   findPortOwners,
@@ -103,19 +105,16 @@ export function parseProcessId(id: string): { projectPath: string; name: string 
 /** Запись реестра env-tools (`.env-state/processes.json`). */
 interface EnvToolsRegistryEntry {
   pid?: number;
+  /** Время создания процесса по данным ОС, мс Unix (decision-59); у записей до TASK-110 нет. */
+  pidCreatedAt?: number;
   command?: string;
   cwd?: string;
   startedAt?: string;
 }
 
-function isPidAlive(pid: number | undefined): boolean {
-  if (!pid) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
+/** Статус записи env-tools для UI: `dead` — остановлен, `unknown` — pid занят, но идентичность не подтверждена. */
+function envToolsDisplayStatus(status: EnvEntryStatus): ManagedProcess['status'] {
+  return status === 'dead' ? 'stopped' : status;
 }
 
 function envStateRegistryPath(projectPath: string): string {
@@ -566,8 +565,10 @@ class HubProcessManager {
   /**
    * Остановка процесса. Hub-процесс — tree-kill по pid и ожидание фактического закрытия
    * (до `STOP_WAIT_MS`), чтобы перезапуск не упёрся в занятый порт. Процесс env-tools
-   * (не из этой сессии) — по pid из `.env-state/processes.json`; запись из реестра удаляется,
-   * как это делает `stop_process` самого env-tools (аудит 6.1).
+   * (не из этой сессии) — по записи `.env-state/processes.json`: дерево убивается, только если
+   * идентичность процесса подтверждена (decision-59, decision-60); запись из реестра удаляется,
+   * как это делает `stop_process` самого env-tools (аудит 6.1). Если снимок процессов не удался —
+   * исключение: без проверки не убиваем и запись не забываем.
    */
   async stopProcess(id: string): Promise<boolean> {
     const item = this.activeProcesses.get(id);
@@ -605,7 +606,7 @@ class HubProcessManager {
     return true;
   }
 
-  private async stopEnvToolsProcess(id: string): Promise<boolean> {
+  private async stopEnvToolsProcess(id: string, { keepUnknown = false }: { keepUnknown?: boolean } = {}): Promise<boolean> {
     const parsed = parseProcessId(id);
     if (!parsed) return false;
     const { projectPath, name } = parsed;
@@ -622,7 +623,15 @@ class HubProcessManager {
     const entry = registry[name];
     if (!entry) return false;
 
-    if (entry.pid && isPidAlive(entry.pid)) {
+    // Свежий снимок: по устаревшей записи pid может принадлежать чужому процессу.
+    const [status] = await envToolsEntryStatuses([entry], { fresh: true });
+    if (status === 'unknown' && keepUnknown) {
+      throw new Error(
+        `Процесс ${name} (pid ${entry.pid}): идентичность не подтверждена — запись создана до сверки времени старта. ` +
+          'Остановите процесс вручную или удалите запись.'
+      );
+    }
+    if (status === 'running' && entry.pid) {
       try {
         await treeKillAsync(entry.pid, 'SIGKILL');
       } catch (err) {
@@ -631,11 +640,15 @@ class HubProcessManager {
           return false;
         }
       }
+    } else if (status !== 'dead') {
+      console.warn(`env-tools process ${name} (pid ${entry.pid}): identity not confirmed, entry removed without kill`);
     }
 
-    delete registry[name];
+    // Перечитать реестр прямо перед записью: пока шёл снимок процессов, env-tools мог его изменить.
+    const latest = await readEnvToolsRegistry(projectPath).catch(() => registry);
+    delete latest[name];
     try {
-      await fs.writeFile(registryFile, JSON.stringify(registry, null, 2), 'utf-8');
+      await fs.writeFile(registryFile, JSON.stringify(latest, null, 2), 'utf-8');
     } catch (err) {
       console.error(`Failed to update env-tools registry ${registryFile}:`, err);
     }
@@ -683,7 +696,8 @@ class HubProcessManager {
     );
     const entry = registry[parsed.name];
     if (!entry?.command) throw new Error(`Процесс ${parsed.name} не найден в реестре env-tools`);
-    await this.stopEnvToolsProcess(id);
+    // Процесс с неподтверждённой идентичностью, возможно, ещё работает: запуск копии упёрся бы в тот же порт.
+    await this.stopEnvToolsProcess(id, { keepUnknown: true });
     return this.startProcess(parsed.projectPath, entry.command, parsed.name, { cwd: entry.cwd });
   }
 
@@ -944,27 +958,26 @@ class HubProcessManager {
       try {
         const raw = await fs.readFile(envStateFile, 'utf-8');
         const reg = JSON.parse(raw);
-        for (const [name, entry] of Object.entries<EnvToolsRegistryEntry>(reg)) {
-          const envId = `${normalized}::${name}`;
-          // If already in hub processes, skip
-          if (!this.activeProcesses.has(envId)) {
-            const isAlive = isPidAlive(entry.pid);
-
-            const entryCwd = entry.cwd ? path.normalize(entry.cwd) : undefined;
-            result.push({
-              id: envId,
-              name,
-              command: entry.command || '',
-              // cwd — корень проекта (как у hub-процессов), фактический каталог — workingDir.
-              cwd: normalized,
-              workingDir: entryCwd && entryCwd !== normalized ? entryCwd : undefined,
-              pid: entry.pid,
-              startedAt: entry.startedAt || new Date().toISOString(),
-              status: isAlive ? 'running' : 'stopped',
-              source: 'env-tools'
-            });
-          }
-        }
+        // Hub-процесс с тем же id уже в списке — запись реестра пропускается.
+        const envEntries = Object.entries<EnvToolsRegistryEntry>(reg).filter(
+          ([name]) => !this.activeProcesses.has(`${normalized}::${name}`)
+        );
+        const statuses = await envToolsEntryStatuses(envEntries.map(([, entry]) => entry));
+        envEntries.forEach(([name, entry], i) => {
+          const entryCwd = entry.cwd ? path.normalize(entry.cwd) : undefined;
+          result.push({
+            id: `${normalized}::${name}`,
+            name,
+            command: entry.command || '',
+            // cwd — корень проекта (как у hub-процессов), фактический каталог — workingDir.
+            cwd: normalized,
+            workingDir: entryCwd && entryCwd !== normalized ? entryCwd : undefined,
+            pid: entry.pid,
+            startedAt: entry.startedAt || new Date().toISOString(),
+            status: envToolsDisplayStatus(statuses[i]),
+            source: 'env-tools'
+          });
+        });
       } catch (err) {
         console.error(`Failed to read env-tools state for ${projectPath}:`, err);
       }
