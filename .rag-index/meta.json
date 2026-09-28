@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "c70fe2f4d54312aee9d8e43dd970b93a36284876ccbf500fa1730281095d0815",
+  "docsHash": "3bd1fb734de3c461702371f19b36433843db54a4c7cd0120f66225e824d0809a",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -58,6 +58,7 @@
     "backlog/decisions/decision-55 - Визуальная-верификация-Playwright-MCP-без-прокси-чек-ui-smoke-скриншоты-как-evidence-и-самопроверка-ProjectHub.md",
     "backlog/decisions/decision-56 - Security-Health-аудит-зависимостей-сканер-секретов-в-диффах-и-коммитах-зависимости-агента-и-HITL-при-слиянии.md",
     "backlog/decisions/decision-57 - Тесты-с-реальными-процессами-тайм-ауты-по-числу-запусков-и-очистка-каталогов-до-дедлайна.md",
+    "backlog/decisions/decision-58 - env-tools-на-Windows-PowerShell-обёртка-через-cmd-start-b-а-не-прямой-detached-spawn.md",
     "backlog/decisions/decision-6 - Git-worktree-как-единица-изоляции-задачи-и-агента.md",
     "backlog/decisions/decision-7 - Local-first-хранение-состояния-и-отсутствие-телеметрии.md",
     "backlog/decisions/decision-8 - Результаты-агентов-материализуются-в-git-авто-коммит-в-worktree-и-безопасное-слияние.md",
@@ -73,6 +74,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 767,
-  "builtAt": "2026-09-27T23:48:56.099Z"
+  "chunks": 774,
+  "builtAt": "2026-09-28T00:25:18.797Z"
 }

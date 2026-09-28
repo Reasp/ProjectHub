@@ -12,6 +12,14 @@ const WRAPPER_DIR = path.join(STATE_DIR, 'wrappers');
 // через "> file" в самой команде). Поэтому на Windows используем PowerShell-обёртку,
 // запущенную через `cmd /c start /b`, которая переживает завершение родителя, сама
 // записывает свой $PID в файл и делает редирект средствами самого PowerShell.
+//
+// Прямой `spawn('powershell.exe', ..., { detached: true })` (вариант ProjectTemplate/ProxiHorror)
+// не использовать (decision-58, TASK-109): Windows PowerShell 5.1 с DETACHED_PROCESS (без консоли)
+// завершается с кодом 0, не выполнив скрипт, — pid-файл не появляется, start_process падает по
+// тайм-ауту. Кроме того, родителем обёртки стал бы сам env-server, и `taskkill /T` по нему убил бы
+// dev-сервер; здесь родитель — уже завершившийся cmd.exe. windowsHide + stdio 'ignore' дают cmd.exe
+// (а через start /b — и PowerShell с её потомками) собственную консоль без окна (CREATE_NO_WINDOW):
+// окна не всплывают, закрытие терминала родителя обёртку не задевает.
 function startWindows({ name, command, cwd }) {
   fs.mkdirSync(WRAPPER_DIR, { recursive: true });
   const wrapperPath = path.join(WRAPPER_DIR, `${name}.ps1`);
