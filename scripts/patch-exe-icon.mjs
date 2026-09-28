@@ -32,6 +32,10 @@ if (exeTargets.length === 0) {
   process.exit(0);
 }
 
+// Упакованные exe (portable, установщик) могут не поддаваться патчу — это допустимо. Распакованный
+// обязан получить иконку: без неё окно, панель задач и уведомления показывают логотип Electron.
+let unpackedFailed = false;
+
 for (const targetPath of exeTargets) {
   try {
     const exeBuf = fs.readFileSync(targetPath);
@@ -52,5 +56,11 @@ for (const targetPath of exeTargets) {
     console.log(`✅ Иконка успешно вшита напрямую в PE-ресурсы: ${path.basename(targetPath)}`);
   } catch (err) {
     console.warn(`⚠️ Не удалось пропатчить иконку для ${targetPath} (возможно, файл упакован как SFX):`, err.message);
+    if (targetPath === unpackedExe) unpackedFailed = true;
   }
+}
+
+if (unpackedFailed) {
+  console.error('❌ В release/win-unpacked/ProjectHub.exe осталась иконка Electron: файл занят. Закройте ProjectHub и повторите.');
+  process.exit(1);
 }

@@ -25,6 +25,7 @@ if (fs.existsSync(srcWorkers)) {
 
 // 2. Try packaging directly first, or use unique tempOutputDir on EBUSY
 let usedTemp = false;
+const problems = [];
 const uniqueTempOutputDir = path.join(rootDir, `release_tmp_${Date.now()}`);
 const uniqueTempUnpackedDir = path.join(uniqueTempOutputDir, 'win-unpacked');
 
@@ -50,6 +51,7 @@ if (usedTemp && fs.existsSync(uniqueTempUnpackedDir)) {
     fs.cpSync(uniqueTempUnpackedDir, targetUnpackedDir, { recursive: true, force: true });
   } catch (copyErr) {
     console.warn('⚠️ Некоторые файлы заблокированы запущенным процессом (ProjectHub.exe). Для полного обновления перезапустите приложение.', copyErr.message);
+    problems.push('release/win-unpacked обновлён не полностью: файлы заняты запущенным ProjectHub.exe');
   }
   try {
     fs.rmSync(uniqueTempOutputDir, { recursive: true, force: true });
@@ -62,6 +64,16 @@ try {
   execSync('node scripts/patch-exe-icon.mjs', { stdio: 'inherit', cwd: rootDir });
 } catch (e) {
   console.warn('Предупреждение при пропатчивании иконки:', e.message);
+  problems.push('иконка в ProjectHub.exe не вшита: в exe осталась иконка Electron');
+}
+
+// Сборка, которая не дошла до release/win-unpacked, успехом не считается: иначе в каталоге
+// остаётся старый exe, а вывод говорит, что всё собрано (TASK-113).
+if (problems.length > 0) {
+  console.error('❌ release/win-unpacked/ProjectHub.exe НЕ обновлён полностью:');
+  for (const problem of problems) console.error(`   - ${problem}`);
+  console.error('   Закройте ProjectHub и повторите npm run pack:win.');
+  process.exit(1);
 }
 
 console.log('✨ Распакованное приложение успешно собрано в release/win-unpacked/ProjectHub.exe');

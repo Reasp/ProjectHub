@@ -1,158 +1,61 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import zlib from 'node:zlib';
 
 /**
- * Генератор иконок системного трея (TASK-63): рисует четыре PNG 32x32 и перезаписывает
- * electron/services/trayIcons.ts, где они вшиты как base64. Запускается вручную при смене
- * палитры состояний (idle / working / attention / recording), в сборку не входит.
+ * Генератор иконок системного трея (TASK-63, TASK-113): вшивает куб ProjectHub из build/sizes/
+ * в electron/services/trayIcons.ts как base64 — по одному PNG на масштаб экрана. Метку состояния
+ * поверх куба рисует само приложение (trayIconBadge.ts). Запускается вручную при смене логотипа,
+ * в сборку не входит.
  */
 
-const SIZE = 32;
+const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-function crc32(buf) {
-  let c;
-  const table = [];
-  for (let n = 0; n < 256; n++) {
-    c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[n] = c >>> 0;
-  }
-  let crc = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) crc = table[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8);
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-function chunk(type, data) {
-  const len = Buffer.alloc(4);
-  len.writeUInt32BE(data.length, 0);
-  const typeBuf = Buffer.from(type, 'ascii');
-  const body = Buffer.concat([typeBuf, data]);
-  const crc = Buffer.alloc(4);
-  crc.writeUInt32BE(crc32(body), 0);
-  return Buffer.concat([len, body, crc]);
-}
-
-function encodePng(pixels) {
-  const raw = Buffer.alloc((SIZE * 4 + 1) * SIZE);
-  let o = 0;
-  for (let y = 0; y < SIZE; y++) {
-    raw[o++] = 0;
-    for (let x = 0; x < SIZE; x++) {
-      const i = (y * SIZE + x) * 4;
-      raw[o++] = pixels[i];
-      raw[o++] = pixels[i + 1];
-      raw[o++] = pixels[i + 2];
-      raw[o++] = pixels[i + 3];
-    }
-  }
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(SIZE, 0);
-  ihdr.writeUInt32BE(SIZE, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 6;
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', zlib.deflateSync(raw, { level: 9 })),
-    chunk('IEND', Buffer.alloc(0))
-  ]);
-}
-
-function hex(c) {
-  return [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
-}
-
-/** Кольцо (обод) + заполненный центр: читаемо и в светлой, и в тёмной панели задач. */
-function draw(ringColor, coreColor, dot) {
-  const px = Buffer.alloc(SIZE * SIZE * 4);
-  const [rr, rg, rb] = hex(ringColor);
-  const [cr, cg, cb] = hex(coreColor);
-  const cx = 15.5;
-  const cy = 15.5;
-  const outer = 14.5;
-  const inner = 10.0;
-  const core = 6.0;
-  const put = (x, y, r, g, b, a) => {
-    const i = (y * SIZE + x) * 4;
-    const na = a / 255;
-    const oa = px[i + 3] / 255;
-    const out = na + oa * (1 - na);
-    if (out <= 0) return;
-    px[i] = Math.round((r * na + px[i] * oa * (1 - na)) / out);
-    px[i + 1] = Math.round((g * na + px[i + 1] * oa * (1 - na)) / out);
-    px[i + 2] = Math.round((b * na + px[i + 2] * oa * (1 - na)) / out);
-    px[i + 3] = Math.round(out * 255);
-  };
-  const cov = (d, edge) => {
-    const t = edge - d;
-    if (t >= 0.5) return 1;
-    if (t <= -0.5) return 0;
-    return t + 0.5;
-  };
-  for (let y = 0; y < SIZE; y++) {
-    for (let x = 0; x < SIZE; x++) {
-      const d = Math.hypot(x - cx, y - cy);
-      const ring = Math.min(cov(d, outer), 1 - cov(d, inner));
-      if (ring > 0) put(x, y, rr, rg, rb, Math.round(255 * ring));
-      const c = cov(d, core);
-      if (c > 0) put(x, y, cr, cg, cb, Math.round(255 * c));
-    }
-  }
-  if (dot) {
-    const [dr, dg, db] = hex(dot);
-    const dx = 24.5;
-    const dy = 7.5;
-    for (let y = 0; y < SIZE; y++) {
-      for (let x = 0; x < SIZE; x++) {
-        const d = Math.hypot(x - dx, y - dy);
-        const a = cov(d, 6.5);
-        if (a > 0) put(x, y, dr, dg, db, Math.round(255 * a));
-      }
-    }
-  }
-  return encodePng(px);
-}
-
-const map = {
-  idle: draw('#94a3b8', '#64748b', null).toString('base64'),
-  working: draw('#60a5fa', '#3b82f6', null).toString('base64'),
-  attention: draw('#fbbf24', '#f59e0b', '#ef4444').toString('base64'),
-  // Запись голоса (TASK-83): красный, как привычная индикация записи.
-  recording: draw('#fca5a5', '#ef4444', null).toString('base64')
-};
+/** Сторона иконки трея в Windows — 16 пикселей на масштабе 100%. */
+const SIZES = [
+  { scaleFactor: 1, size: 16 },
+  { scaleFactor: 2, size: 32 },
+  { scaleFactor: 3, size: 48 }
+];
 
 const wrap = (b) => {
   const chunks = [];
-  for (let i = 0; i < b.length; i += 100) chunks.push('    ' + JSON.stringify(b.slice(i, i + 100)));
+  for (let i = 0; i < b.length; i += 100) chunks.push('      ' + JSON.stringify(b.slice(i, i + 100)));
   return chunks.join(' +\n');
 };
+
+const entries = SIZES.map(({ scaleFactor, size }) => {
+  const file = path.join(rootDir, 'build', 'sizes', `icon-${size}.png`);
+  const png = fs.readFileSync(file);
+  if (png.readUInt32BE(16) !== size || png.readUInt32BE(20) !== size) {
+    throw new Error(`${file}: ожидался PNG ${size}×${size}`);
+  }
+  return `  {
+    scaleFactor: ${scaleFactor},
+    size: ${size},
+    png:
+${wrap(png.toString('base64'))}
+  }`;
+});
 
 const BT = String.fromCharCode(96);
 const out = `import { nativeImage, type NativeImage } from 'electron';
 import type { TrayState } from './notificationTypes.js';
+import { TRAY_BADGE_COLORS, drawBadge } from './trayIconBadge.js';
 
 /**
- * Иконки системного трея (TASK-63, decision-13 п.2).
+ * Иконки системного трея (TASK-63, decision-13 п.5; TASK-113).
  *
- * PNG 32×32 вшиты в код как data URI, а не лежат файлами: трей поднимается до загрузки окна и
+ * Куб ProjectHub вшит в код как base64-PNG, а не лежит файлом: трей поднимается до загрузки окна и
  * одинаково работает в dev и в упакованном приложении, где public/ уже внутри app.asar.
- * Кольцо с заливкой: idle — серый, working — синий, attention — жёлтый с красной точкой,
- * recording — красный (идёт запись голоса, TASK-83).
- * Генератор изображений — scripts/gen-tray-icons.mjs (запускается вручную при смене палитры).
+ * Состояние показывает цветная метка в правом нижнем углу: working — синяя, attention — жёлтая,
+ * recording — красная (идёт запись голоса, TASK-83), idle — без метки.
+ * Файл пишет scripts/gen-tray-icons.mjs (запускается вручную при смене логотипа) — руками не править.
  */
 
-const PNG_BASE64: Record<TrayState, string> = {
-  idle:
-${wrap(map.idle)},
-  working:
-${wrap(map.working)},
-  attention:
-${wrap(map.attention)},
-  recording:
-${wrap(map.recording)}
-};
+const BASE_ICONS: ReadonlyArray<{ scaleFactor: number; size: number; png: string }> = [
+${entries.join(',\n')}
+];
 
 const cache = new Map<TrayState, NativeImage>();
 
@@ -160,13 +63,21 @@ const cache = new Map<TrayState, NativeImage>();
 export function getTrayIcon(state: TrayState): NativeImage {
   const cached = cache.get(state);
   if (cached) return cached;
-  const image = nativeImage.createFromDataURL(${BT}data:image/png;base64,\${PNG_BASE64[state]}${BT});
+
+  const badge = TRAY_BADGE_COLORS[state];
+  const image = nativeImage.createEmpty();
+  for (const { scaleFactor, size, png } of BASE_ICONS) {
+    const base = nativeImage.createFromDataURL(${BT}data:image/png;base64,\${png}${BT});
+    const pixels = base.toBitmap();
+    if (badge) drawBadge(pixels, size, badge);
+    image.addRepresentation({ scaleFactor, width: size, height: size, buffer: pixels });
+  }
+
   cache.set(state, image);
   return image;
 }
 `;
 
-const target = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'electron', 'services', 'trayIcons.ts');
+const target = path.join(rootDir, 'electron', 'services', 'trayIcons.ts');
 fs.writeFileSync(target, out, 'utf8');
 console.log('Иконки трея записаны в', target);
-

@@ -187,9 +187,11 @@ function createWindow() {
   const preloadJs = path.join(__dirname, 'preload.js');
   const preloadPath = existsSync(preloadCjs) ? preloadCjs : preloadJs;
 
-  const iconPng = path.join(__dirname, '../public/icon.png');
-  const iconBuild = path.join(__dirname, '../build/icon.png');
-  const appIcon = existsSync(iconPng) ? iconPng : iconBuild;
+  // В упакованном приложении есть только dist/ (vite кладёт туда public/), в dev — public/ и build/.
+  const iconCandidates = ['../dist/icon.png', '../public/icon.png', '../build/icon.png'].map((rel) =>
+    path.join(__dirname, rel)
+  );
+  const appIcon = iconCandidates.find((file) => existsSync(file)) ?? iconCandidates[0];
 
   const windowState = windowStateService.getInitialState();
 
