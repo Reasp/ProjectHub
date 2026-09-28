@@ -3,10 +3,10 @@ id: TASK-111
 title: >-
   ProjectHub: остановка процессов env-tools по реестру без сверки идентичности
   PID
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-28 00:43'
-updated_date: '2026-09-28 01:22'
+updated_date: '2026-09-28 04:53'
 labels:
   - env-tools
   - processes

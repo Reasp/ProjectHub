@@ -1,10 +1,10 @@
 ---
 id: TASK-77.3
 title: 'Скрипт хука, маршрут хуков во встроенном сервере, аудит длительности'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 04:17'
-updated_date: '2026-09-27 04:54'
+updated_date: '2026-09-28 05:00'
 labels:
   - hooks
   - hitl

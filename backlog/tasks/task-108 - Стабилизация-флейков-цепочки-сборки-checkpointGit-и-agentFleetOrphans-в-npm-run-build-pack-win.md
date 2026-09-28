@@ -3,10 +3,10 @@ id: TASK-108
 title: >-
   Стабилизация флейков цепочки сборки: checkpointGit и agentFleetOrphans в npm
   run build / pack:win
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 22:47'
-updated_date: '2026-09-27 23:52'
+updated_date: '2026-09-28 04:53'
 labels:
   - tests
   - build

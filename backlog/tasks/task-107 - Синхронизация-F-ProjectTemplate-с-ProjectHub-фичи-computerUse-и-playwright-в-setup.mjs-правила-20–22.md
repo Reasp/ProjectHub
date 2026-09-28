@@ -3,10 +3,10 @@ id: TASK-107
 title: >-
   Синхронизация F:\ProjectTemplate с ProjectHub: фичи computerUse и playwright в
   setup.mjs, правила 20–22
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 06:06'
-updated_date: '2026-09-27 23:47'
+updated_date: '2026-09-28 04:53'
 labels: []
 dependencies: []
 ---
@@ -59,4 +59,6 @@ F:\ProjectTemplate — отдельный репозиторий, источни
 Проверки: npm test шаблона — 26/26 (включая тесты git-хуков); npm run lint:docs — зелёный, индекс актуален. Живой прогон на временной копии C:\Temp\ph-107 (с junction node_modules, снят перед удалением): setup.mjs --features ...,playwright,computerUse записал оба MCP-конфига, добавил .playwright-mcp/ в .gitignore, подключил git-хуки; мост computer-use на SDK шаблона отвечает на initialize, при недоступном ProjectHub пишет понятную ошибку и отдаёт пустой список инструментов, без токена — подсказку; validate-docs ловит незакавыченную дату, секрет и отсутствие MEMORY.md, корректный факт проходит; check-index видит новый факт и пропускает MEMORY.md.
 
 Обратное расхождение (не в скоупе): scripts/env/process-manager.mjs шаблона новее хаба — прямой detached-запуск PowerShell вместо cmd /c start /b (TASK-1 шаблона).
+
+2026-09-28: закрыта по решению пользователя с неотмеченными критериями приёмки (6/7).
 <!-- SECTION:NOTES:END -->

@@ -3,10 +3,10 @@ id: TASK-110
 title: >-
   env-tools: isAlive не отличает переиспользованный PID — старые записи реестра
   видны как работающие
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-28 00:20'
-updated_date: '2026-09-28 00:53'
+updated_date: '2026-09-28 04:53'
 labels:
   - infra
   - env-tools

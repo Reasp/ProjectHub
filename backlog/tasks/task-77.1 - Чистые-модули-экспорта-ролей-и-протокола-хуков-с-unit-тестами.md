@@ -1,10 +1,10 @@
 ---
 id: TASK-77.1
 title: Чистые модули экспорта ролей и протокола хуков с unit-тестами
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 04:17'
-updated_date: '2026-09-27 04:54'
+updated_date: '2026-09-28 04:53'
 labels:
   - roles
   - hooks

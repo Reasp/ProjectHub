@@ -3,10 +3,10 @@ id: TASK-106
 title: >-
   Экспорт ролей и хуков в Google Antigravity (.agents/agents,
   .agents/hooks.json)
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 04:18'
-updated_date: '2026-09-28 04:45'
+updated_date: '2026-09-28 04:53'
 labels:
   - roles
   - hooks

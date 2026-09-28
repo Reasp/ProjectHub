@@ -1,10 +1,10 @@
 ---
 id: TASK-81.4
 title: 'Ревью PR: действие reviewPr в Automations и публикация комментария после HITL'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 00:11'
-updated_date: '2026-09-27 00:30'
+updated_date: '2026-09-28 04:53'
 labels:
   - review
   - automation

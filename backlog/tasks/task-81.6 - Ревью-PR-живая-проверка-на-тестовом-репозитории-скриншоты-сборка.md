@@ -1,10 +1,10 @@
 ---
 id: TASK-81.6
 title: 'Ревью PR: живая проверка на тестовом репозитории, скриншоты, сборка'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 00:11'
-updated_date: '2026-09-27 03:28'
+updated_date: '2026-09-28 04:53'
 labels:
   - review
 dependencies:
@@ -30,4 +30,6 @@ priority: low
 
 <!-- SECTION:NOTES:BEGIN -->
 ## Живая проверка 2026-09-27
+
+2026-09-28: закрыта по решению пользователя с неотмеченными критериями приёмки (2/3).
 <!-- SECTION:NOTES:END -->

@@ -3,10 +3,10 @@ id: TASK-73.2
 title: >-
   TASK-73.2 сервис Security Health: аудит по кнопке, кэш в userData, создание
   задачи из находки, вкладка проекта
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 06:12'
-updated_date: '2026-09-27 07:03'
+updated_date: '2026-09-28 04:53'
 labels:
   - security
 dependencies: []

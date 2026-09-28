@@ -3,10 +3,10 @@ id: TASK-76
 title: >-
   Память агента по проекту: файлы памяти, инъекция в contextBuilder, MCP
   memory_write/memory_search, индекс docs-rag
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-15 03:12'
-updated_date: '2026-09-26 22:55'
+updated_date: '2026-09-28 04:53'
 labels:
   - ai
   - context
@@ -61,4 +61,6 @@ GPT-6 Astra вместо сжатия контекста ведёт «context no
 ## Итог сессии 2026-09-26
 
 ## Доводка 2026-09-27
+
+2026-09-28: закрыта по решению пользователя с неотмеченными критериями приёмки (5/6).
 <!-- SECTION:NOTES:END -->

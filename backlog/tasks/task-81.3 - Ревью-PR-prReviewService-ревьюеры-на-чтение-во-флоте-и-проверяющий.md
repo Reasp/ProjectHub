@@ -1,10 +1,10 @@
 ---
 id: TASK-81.3
 title: 'Ревью PR: prReviewService, ревьюеры на чтение во флоте и проверяющий'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 00:11'
-updated_date: '2026-09-27 00:30'
+updated_date: '2026-09-28 04:53'
 labels:
   - review
   - swarm

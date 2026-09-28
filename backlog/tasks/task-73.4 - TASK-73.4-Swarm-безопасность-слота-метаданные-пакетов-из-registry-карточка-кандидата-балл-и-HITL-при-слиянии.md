@@ -3,10 +3,10 @@ id: TASK-73.4
 title: >-
   TASK-73.4 Swarm: безопасность слота, метаданные пакетов из registry, карточка
   кандидата, балл и HITL при слиянии
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 06:12'
-updated_date: '2026-09-27 07:03'
+updated_date: '2026-09-28 04:53'
 labels:
   - security
   - swarm

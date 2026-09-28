@@ -3,10 +3,10 @@ id: TASK-73.3
 title: >-
   TASK-73.3 секреты в коммите: проверка в git:commit, «закоммитить всё равно» с
   аудитом, Remote RPC и хук терминала
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 06:12'
-updated_date: '2026-09-27 07:03'
+updated_date: '2026-09-28 04:53'
 labels:
   - security
   - git

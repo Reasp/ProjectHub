@@ -1,10 +1,10 @@
 ---
 id: TASK-73.5
 title: TASK-73.5 действие Automations auditDependencies и уведомление securityFinding
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 06:13'
-updated_date: '2026-09-27 07:03'
+updated_date: '2026-09-28 04:53'
 labels:
   - security
   - automations

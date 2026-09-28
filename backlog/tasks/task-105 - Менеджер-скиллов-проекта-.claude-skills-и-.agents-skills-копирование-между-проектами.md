@@ -3,10 +3,10 @@ id: TASK-105
 title: >-
   Менеджер скиллов проекта: .claude/skills и .agents/skills, копирование между
   проектами
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 04:18'
-updated_date: '2026-09-28 02:05'
+updated_date: '2026-09-28 04:53'
 labels:
   - skills
   - ui

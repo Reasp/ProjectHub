@@ -3,10 +3,10 @@ id: TASK-73
 title: >-
   Security Health: панель npm audit по проектам и сканер секретов перед
   коммитом/в диффах агентов
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-15 03:10'
-updated_date: '2026-09-27 07:28'
+updated_date: '2026-09-28 04:53'
 labels:
   - security
   - git

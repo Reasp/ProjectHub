@@ -3,10 +3,10 @@ id: TASK-73.1
 title: >-
   TASK-73.1 чистые модули: разбор npm audit и pip-audit, скан секретов в диффе,
   изменения зависимостей, компонент security
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 06:12'
-updated_date: '2026-09-27 07:03'
+updated_date: '2026-09-28 04:53'
 labels:
   - security
 dependencies: []

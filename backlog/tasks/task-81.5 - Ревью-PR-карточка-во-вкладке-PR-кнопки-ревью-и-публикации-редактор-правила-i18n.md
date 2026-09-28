@@ -3,10 +3,10 @@ id: TASK-81.5
 title: >-
   Ревью PR: карточка во вкладке PR, кнопки ревью и публикации, редактор правила,
   i18n
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 00:11'
-updated_date: '2026-09-27 00:30'
+updated_date: '2026-09-28 04:53'
 labels:
   - review
   - ui

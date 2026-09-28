@@ -3,10 +3,10 @@ id: TASK-73.6
 title: >-
   TASK-73.6 живая проверка Security Health: временный проект, коммит, слот
   Swarm, cron, скриншоты, pack:win
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 06:13'
-updated_date: '2026-09-27 07:28'
+updated_date: '2026-09-28 04:53'
 labels:
   - security
 dependencies: []

@@ -1,10 +1,10 @@
 ---
 id: TASK-77.4
 title: 'UI менеджера ролей: синхронизация в проект, предпросмотр, расхождения, i18n'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 04:17'
-updated_date: '2026-09-27 04:54'
+updated_date: '2026-09-28 04:53'
 labels:
   - roles
   - ui

@@ -3,11 +3,11 @@ id: TASK-77
 title: >-
   Экспорт ролей в нативные субагенты (.claude/agents, .codex/agents) и слой
   хуков PreToolUse/PostToolUse/Stop → HITL и аудит
-status: Review
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-09-15 03:12'
-updated_date: '2026-09-27 04:56'
+updated_date: '2026-09-28 04:53'
 labels:
   - roles
   - hooks
@@ -46,4 +46,6 @@ type: feature
 
 <!-- SECTION:NOTES:BEGIN -->
 ## Итог сессии 2026-09-27
+
+2026-09-28: закрыта по решению пользователя с неотмеченными критериями приёмки (4/6).
 <!-- SECTION:NOTES:END -->

@@ -1,10 +1,10 @@
 ---
 id: TASK-81.1
 title: 'Ревью PR: чистые модули снимка PR, формата находок, дедупликации и комментария'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 00:11'
-updated_date: '2026-09-27 00:15'
+updated_date: '2026-09-28 04:53'
 labels:
   - review
   - pr

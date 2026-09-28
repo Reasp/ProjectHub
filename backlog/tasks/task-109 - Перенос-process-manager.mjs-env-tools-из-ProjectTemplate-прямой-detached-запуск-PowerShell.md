@@ -3,10 +3,10 @@ id: TASK-109
 title: >-
   Перенос process-manager.mjs env-tools из ProjectTemplate: прямой
   detached-запуск PowerShell
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 23:49'
-updated_date: '2026-09-28 00:25'
+updated_date: '2026-09-28 04:53'
 labels:
   - infra
   - template-sync

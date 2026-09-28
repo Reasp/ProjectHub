@@ -1,10 +1,10 @@
 ---
 id: TASK-77.6
 title: 'Живая проверка экспорта ролей и хуков с Claude Code, скриншоты, pack:win'
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-27 04:18'
-updated_date: '2026-09-27 04:54'
+updated_date: '2026-09-28 04:53'
 labels:
   - hooks
   - verification

@@ -3,10 +3,10 @@ id: TASK-81
 title: >-
   Автоматическое ревью PR: роль reviewer по событию pr.opened, мульти-агентное
   ревью с судьёй, публикация комментария через gh/glab
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-15 03:15'
-updated_date: '2026-09-27 03:28'
+updated_date: '2026-09-28 04:53'
 labels:
   - pr
   - review
@@ -44,4 +44,6 @@ Claude Code `/ultrareview`, Cursor BugBot, Codex `review/start` и Copilot де�
 
 <!-- SECTION:NOTES:BEGIN -->
 ## Итог сессии 2026-09-27
+
+2026-09-28: закрыта по решению пользователя с неотмеченными критериями приёмки (3/4).
 <!-- SECTION:NOTES:END -->
