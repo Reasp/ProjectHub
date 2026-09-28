@@ -40,12 +40,22 @@ server.registerTool(
   'stop_process',
   {
     title: 'Остановить фоновый процесс проекта',
-    description: 'Останавливает процесс, ранее запущенный через start_process, по имени.',
+    description:
+      'Останавливает процесс, ранее запущенный через start_process, по имени, и удаляет запись из реестра. ' +
+      'Процесс убивается, только если его pid подтверждённо принадлежит этой записи (сверка времени старта); ' +
+      'запись с переиспользованным или непроверяемым pid просто удаляется.',
     inputSchema: { name: z.string().describe('Имя процесса, как при запуске') },
   },
   async ({ name }) => {
-    stopProcess({ name });
-    return { content: [{ type: 'text', text: `Остановлен: ${name}` }] };
+    const { pid, status } = stopProcess({ name });
+    const text = {
+      running: `Остановлен: ${name} (pid ${pid})`,
+      dead: `Процесс "${name}" уже не работал (pid ${pid} свободен или занят другим процессом); запись удалена.`,
+      unknown:
+        `Запись "${name}" удалена, процесс не останавливался: pid ${pid} занят, но запись без времени старта ` +
+        `(создана до сверки идентичности) — это может быть чужой процесс. Если он ваш, остановите его вручную.`,
+    }[status];
+    return { content: [{ type: 'text', text }] };
   },
 );
 
@@ -53,18 +63,25 @@ server.registerTool(
   'list_processes',
   {
     title: 'Список фоновых процессов проекта',
-    description: 'Показывает все процессы, запущенные через start_process, и живы ли они сейчас.',
+    description:
+      'Показывает все процессы, запущенные через start_process, и живы ли они сейчас. ' +
+      'Попутно удаляет из реестра записи, мёртвые без активности больше 7 дней.',
     inputSchema: {},
   },
   async () => {
-    const procs = listProcesses();
-    if (procs.length === 0) {
-      return { content: [{ type: 'text', text: 'Нет отслеживаемых процессов.' }] };
+    const { processes, pruned } = listProcesses();
+    const label = {
+      running: 'работает',
+      dead: 'НЕ работает',
+      unknown: 'неизвестно (pid занят, запись без времени старта — возможно, чужой процесс)',
+    };
+    const lines = processes.map((p) => `${p.name} — pid ${p.pid}, ${label[p.status]}, команда: ${p.command}`);
+    if (lines.length === 0) lines.push('Нет отслеживаемых процессов.');
+    if (pruned.length > 0) {
+      const shown = pruned.slice(0, 10).join(', ') + (pruned.length > 10 ? ', …' : '');
+      lines.push(`Удалены мёртвые записи старше 7 дней (${pruned.length}): ${shown}`);
     }
-    const text = procs
-      .map((p) => `${p.name} — pid ${p.pid}, ${p.alive ? 'работает' : 'НЕ работает'}, команда: ${p.command}`)
-      .join('\n');
-    return { content: [{ type: 'text', text }] };
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
   },
 );
 
