@@ -3,10 +3,10 @@ id: TASK-115
 title: >-
   Карточка результата push-to-talk: распознанный текст остаётся на экране до
   закрытия
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-29 08:27'
-updated_date: '2026-09-29 08:52'
+updated_date: '2026-09-29 11:08'
 labels:
   - voice
   - push-to-talk

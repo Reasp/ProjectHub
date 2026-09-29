@@ -1,10 +1,10 @@
 ---
 id: TASK-113
 title: Иконка в трее — куб ProjectHub с меткой состояния вместо абстрактного кольца
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-28 07:54'
-updated_date: '2026-09-28 08:02'
+updated_date: '2026-09-29 11:08'
 labels:
   - ui
   - tray

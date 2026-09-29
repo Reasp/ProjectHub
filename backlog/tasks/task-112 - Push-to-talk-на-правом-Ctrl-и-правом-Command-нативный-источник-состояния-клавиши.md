@@ -3,10 +3,10 @@ id: TASK-112
 title: >-
   Push-to-talk на правом Ctrl и правом Command: нативный источник состояния
   клавиши
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-28 07:10'
-updated_date: '2026-09-28 07:37'
+updated_date: '2026-09-29 11:08'
 labels:
   - voice
   - push-to-talk

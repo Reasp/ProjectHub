@@ -3,10 +3,10 @@ id: TASK-104
 title: >-
   Второй движок TTS: Qwen3-TTS 1.7B (CustomVoice и VoiceDesign) через
   Python-сайдкар и выбор движка
-status: Review
+status: Done
 assignee: []
 created_date: '2026-09-21 04:23'
-updated_date: '2026-09-29 03:56'
+updated_date: '2026-09-29 11:08'
 labels:
   - voice
   - tts
