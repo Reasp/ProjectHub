@@ -138,12 +138,13 @@ export function registerTtsIpc(ctx: IpcContext) {
     }
   });
 
-  ipcMain.handle('tts:warmup', async (_event, voiceId: string) => {
+  ipcMain.handle('tts:warmup', async (_event, voiceId: string, opts?: { auto?: boolean }) => {
     // Голос знает свой движок (TASK-104): прогревается тот процесс, которым он звучит
     if (resolveVoiceEngine(voiceId) === 'qwen') {
-      // Прогрев недоступного движка запускает только человек (выбор голоса в настройках):
-      // реплики его пропускают, поэтому это осознанная повторная попытка
-      qwenTtsService.resetAvailability();
+      // Недоступность после серии падений снимает только человек (выбор голоса в настройках).
+      // Прогрев по реплике или при старте (`auto`, TASK-119) её не трогает: иначе сайдкар, падающий
+      // на загрузке, перезапускался бы каждой репликой
+      if (!opts?.auto) qwenTtsService.resetAvailability();
       const state = await qwenTtsService.warmup(voiceId);
       return { ...state, voiceId, workerActive: state.processActive, available: state.status !== 'unavailable' };
     }
@@ -236,6 +237,9 @@ export function registerTtsIpc(ctx: IpcContext) {
   ipcMain.handle('tts:qwen:cancelInstall', async () => qwenTtsInstaller.cancel());
 
   ipcMain.handle('tts:qwen:unload', async () => qwenTtsService.unload());
+
+  // Пока Qwen выбран движком реплик, модель не выгружается по простою (TASK-119, decision-66)
+  ipcMain.handle('tts:qwen:setKeepLoaded', async (_event, keep: unknown) => qwenTtsService.setKeepLoaded(keep === true));
 
   ipcMain.handle('tts:qwen:saveVoice', async (_event, input: { label?: unknown; instruct?: unknown; seed?: unknown }) => {
     try {

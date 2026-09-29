@@ -19,6 +19,7 @@ export type VoiceResultCallback = (transcript: string, isFinal: boolean, meta?: 
 
 export type VoiceEngine = 'whisper' | 'webspeech';
 export type { TtsEngine } from './ttsEngineChain';
+export type { TtsAttemptFailure, TtsNotice } from './ttsReplyPolicy';
 export type WhisperProvider = 'local' | 'groq' | 'openai';
 
 import { getDefaultCommandPhrases } from './voiceCommandPhrases';
@@ -45,11 +46,26 @@ import {
   DEFAULT_QWEN_VOICE_ID,
   QWEN_DRAFT_VOICE_ID,
   QWEN_REBUFFER_SEC,
-  qwenReadiness,
   ttsEngineChain,
   type TtsEngine
 } from './ttsEngineChain';
+import {
+  decideAfterQwenWarmup,
+  decideQwenReply,
+  isSystemSpeechFailure,
+  replyOutcomeNotice,
+  shouldPrewarmQwen,
+  speaksWithQwen,
+  SYSTEM_TTS_FAILED,
+  SYSTEM_TTS_START_TIMEOUT_MS,
+  type QwenReplyDecision,
+  type TtsAttemptFailure,
+  type TtsNotice
+} from './ttsReplyPolicy';
 import type { LocalWhisperStatusInfo, TtsSpeakRequest } from '../types/electron';
+
+/** Итог прогрева голоса Qwen3-TTS: состояние движка из main или причина сбоя вызова. */
+type QwenWarmupState = { status?: string; modelKind?: string | null; error?: string; errorCode?: string };
 
 export interface AudioDeviceInfo {
   deviceId: string;
@@ -254,7 +270,13 @@ class VoiceService {
   }
 
   saveConfig(newConfig: Partial<VoiceConfig>) {
+    const prev = this.config;
     this.config = { ...this.config, ...newConfig };
+    // Включили Qwen3-TTS или саму озвучку — модель голоса грузится сразу и держится в памяти;
+    // выключили — main возвращает выгрузку по простою (TASK-119). Смену голоса прогревают настройки
+    if (prev.ttsEngine !== this.config.ttsEngine || prev.ttsEnabled !== this.config.ttsEnabled) {
+      void this.prewarmTts();
+    }
     if (typeof window !== 'undefined') {
       try {
         if (newConfig.whisperApiKey !== undefined && window.api?.saveEncryptedSecret) {
@@ -1552,10 +1574,95 @@ class VoiceService {
     rebufferSec: number;
   } | null = null;
   private lastTtsError: string | null = null;
+  /** Поколение реплик: новая реплика или остановка озвучки снимают ожидание и попытки прежней. */
+  private speechSeq = 0;
+  /** Снимает ожидание загрузки голоса текущей реплики, когда её перебили. */
+  private abortReplyWait: (() => void) | null = null;
+  /** Идущий прогрев голоса Qwen3-TTS: реплики и прогрев при старте ждут один и тот же вызов. */
+  private qwenWarmup: { voiceId: string; promise: Promise<QwenWarmupState> } | null = null;
+  private ttsNoticeCallbacks = new Set<(notice: TtsNotice | null) => void>();
 
   /** Последняя причина, по которой локальный движок не сработал (показывается в настройках). */
   getLastTtsError(): string | null {
     return this.lastTtsError;
+  }
+
+  /**
+   * Что показать пользователю об озвучке: ждём загрузки голоса, ответил запасной движок, прогрев
+   * не удался, реплика не прозвучала вовсе (TASK-119). `null` — снять уведомление.
+   */
+  onTtsNotice(callback: (notice: TtsNotice | null) => void) {
+    this.ttsNoticeCallbacks.add(callback);
+    return () => {
+      this.ttsNoticeCallbacks.delete(callback);
+    };
+  }
+
+  private emitTtsNotice(notice: TtsNotice | null) {
+    this.ttsNoticeCallbacks.forEach((cb) => {
+      try {
+        cb(notice);
+      } catch (e) {
+        console.warn('[VoiceService] TTS notice callback failed:', e);
+      }
+    });
+  }
+
+  private qwenVoiceId(): string {
+    return this.config.ttsQwenVoiceId || DEFAULT_QWEN_VOICE_ID;
+  }
+
+  /**
+   * Прогрев модели голоса Qwen3-TTS. Параллельные вызовы для того же голоса получают один промис.
+   * Неудача не бросает исключение, а возвращается состоянием с кодом причины — и показывается.
+   */
+  private startQwenWarmup(voiceId: string): Promise<QwenWarmupState> {
+    if (this.qwenWarmup?.voiceId === voiceId) return this.qwenWarmup.promise;
+    const api = typeof window !== 'undefined' ? window.api : undefined;
+    const request: Promise<QwenWarmupState> = api?.warmupTts
+      ? api.warmupTts(voiceId, { auto: true })
+      : Promise.resolve({ status: 'error', errorCode: 'qwen_not_installed' });
+    const promise = request
+      .catch((err): QwenWarmupState => ({ status: 'error', error: err instanceof Error ? err.message : String(err) }))
+      .then((state) => {
+        if (state?.status !== 'ready') {
+          const reason = state?.errorCode || state?.error || 'qwen_load_failed';
+          console.warn(`[VoiceService] Прогрев голоса Qwen3-TTS не удался: ${reason}`);
+          this.emitTtsNotice({ kind: 'warmupFailed', reason });
+        }
+        return state;
+      })
+      .finally(() => {
+        if (this.qwenWarmup?.promise === promise) this.qwenWarmup = null;
+      });
+    this.qwenWarmup = { voiceId, promise };
+    return promise;
+  }
+
+  /**
+   * Пока реплики звучат голосом Qwen3-TTS, модель держится в памяти без выгрузки по простою и
+   * грузится заранее: при старте приложения и при включении движка. Выбрали другой движок —
+   * main возвращает выгрузку по простою (TASK-119, decision-66).
+   */
+  async prewarmTts(): Promise<void> {
+    if (typeof window === 'undefined' || !window.api?.getQwenTtsStatus) return;
+    const keep = speaksWithQwen(this.config);
+    try {
+      await window.api.setQwenTtsKeepLoaded?.(keep);
+    } catch (err) {
+      console.warn('[VoiceService] setQwenTtsKeepLoaded failed:', err);
+    }
+    // Другой движок или озвучка выключена — статус Qwen не нужен
+    if (!keep) return;
+    const voiceId = this.qwenVoiceId();
+    try {
+      const status = await window.api.getQwenTtsStatus();
+      if (!shouldPrewarmQwen(this.config, status, voiceId)) return;
+      console.log('[VoiceService] Прогреваю голос Qwen3-TTS заранее');
+      void this.startQwenWarmup(voiceId);
+    } catch (err) {
+      console.warn('[VoiceService] prewarmTts failed:', err);
+    }
   }
 
   private setTtsMuted(muted: boolean) {
@@ -1636,20 +1743,42 @@ class VoiceService {
   /**
    * Озвучивает текст выбранным движком. Если движок недоступен или не успел выдать ни одного
    * чанка, фраза уходит следующему по цепочке (Qwen3-TTS → Piper → системный голос) — без краха
-   * (TASK-69 AC#7, TASK-104).
+   * (TASK-69 AC#7, TASK-104). Ответил запасной движок или не ответил никто — пользователь видит
+   * причину (TASK-119).
    */
   async speak(text: string, lang?: 'ru' | 'en'): Promise<void> {
     if (typeof window === 'undefined' || !this.config.ttsEnabled) return;
     const language = lang || this.config.language;
+    // Новая реплика перебивает прежнюю, даже если та ещё ждёт загрузки голоса
+    this.abortReplyWait?.();
+    const seq = ++this.speechSeq;
 
-    for (const engine of ttsEngineChain(this.config.ttsEngine)) {
-      if (engine === 'system') break;
-      const handled =
-        engine === 'qwen' ? await this.speakWithQwen(text, language) : await this.speakWithPiper(text, language);
-      if (handled) return;
+    const chain = ttsEngineChain(this.config.ttsEngine);
+    const failures: TtsAttemptFailure[] = [];
+    let playedBy: TtsEngine | null = null;
+    for (const engine of chain) {
+      this.lastTtsError = null;
+      const played =
+        engine === 'qwen'
+          ? await this.speakWithQwen(text, language, seq)
+          : engine === 'piper'
+            ? await this.speakWithPiper(text, language)
+            : await this.speakWithSystem(text, language);
+      // Реплику перебили — её судьба больше никого не интересует
+      if (seq !== this.speechSeq) return;
+      if (played) {
+        playedBy = engine;
+        break;
+      }
+      failures.push({ engine, reason: this.lastTtsError || 'unknown' });
     }
 
-    return this.speakWithSystem(text, language);
+    const notice = replyOutcomeNotice(chain, failures, playedBy);
+    if (notice?.kind === 'failed') {
+      console.warn(`[VoiceService] Реплика не озвучена: ${failures.map((f) => `${f.engine}: ${f.reason}`).join('; ')}`);
+    }
+    // Реплика выбранным голосом снимает прежнее уведомление, в том числе «Загружаю голос…»
+    this.emitTtsNotice(notice);
   }
 
   /**
@@ -1674,32 +1803,56 @@ class VoiceService {
   }
 
   /**
-   * Qwen3-TTS в сайдкаре. Пока модель не загружена, реплика не ждёт: загрузка запускается в фоне,
-   * а фразу озвучивает следующий движок.
-   * @returns true, если озвучка состоялась; false — нужен следующий движок
+   * Готов ли голос Qwen3-TTS к реплике. Модель не в памяти — реплика ждёт прогрева с уведомлением
+   * «Загружаю голос…», сколько бы он ни длился: предел задают тайм-ауты main (TASK-119, decision-66).
+   * @returns true — можно озвучивать; false — Qwen не смог, причина в `lastTtsError`
    */
-  private async speakWithQwen(text: string, lang: 'ru' | 'en'): Promise<boolean> {
-    const api = window.api;
-    if (!api?.speakTts || !api.getQwenTtsStatus) return false;
-    const voiceId = this.config.ttsQwenVoiceId || DEFAULT_QWEN_VOICE_ID;
-
-    let readiness: ReturnType<typeof qwenReadiness>;
+  private async prepareQwenVoice(voiceId: string, seq: number): Promise<boolean> {
+    let decision: QwenReplyDecision;
     try {
-      const status = await api.getQwenTtsStatus();
-      readiness = qwenReadiness(status, voiceId);
-      if (readiness === 'skip') {
-        this.lastTtsError = status?.errorCode || (status?.install?.runtimeReady ? 'qwen_model_missing' : 'qwen_not_installed');
-      }
+      decision = decideQwenReply(await window.api!.getQwenTtsStatus(), voiceId);
     } catch (err) {
       this.lastTtsError = err instanceof Error ? err.message : String(err);
       return false;
     }
 
-    if (readiness === 'warmup') {
-      void api.warmupTts?.(voiceId).catch(() => {});
+    if (decision.action === 'wait') {
+      this.emitTtsNotice({ kind: 'loading' });
+      const startedAt = Date.now();
+      let abort: (() => void) | undefined;
+      // null — реплику перебили новой или остановкой озвучки; загрузка при этом продолжается
+      const warmed = await new Promise<QwenWarmupState | null>((resolve) => {
+        abort = () => resolve(null);
+        this.abortReplyWait = abort;
+        void this.startQwenWarmup(voiceId).then(resolve);
+      });
+      if (this.abortReplyWait === abort) this.abortReplyWait = null;
+      if (!warmed || seq !== this.speechSeq) return false;
+      decision = decideAfterQwenWarmup(warmed, voiceId);
+      const waitedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
+      console.log(
+        `[VoiceService] Реплика ждала голос Qwen3-TTS ${waitedSec} с: ` +
+          (decision.action === 'fail' ? decision.reason : 'загружен')
+      );
+    }
+
+    if (decision.action === 'fail') {
+      this.lastTtsError = decision.reason;
       return false;
     }
-    if (readiness === 'skip') return false;
+    return true;
+  }
+
+  /**
+   * Qwen3-TTS в сайдкаре: реплика звучит выбранным голосом — сразу или после загрузки модели.
+   * @returns true, если озвучка состоялась; false — не смог, причина в `lastTtsError`
+   */
+  private async speakWithQwen(text: string, lang: 'ru' | 'en', seq: number): Promise<boolean> {
+    const api = window.api;
+    if (!api?.speakTts || !api.getQwenTtsStatus) return false;
+    const voiceId = this.qwenVoiceId();
+    if (!(await this.prepareQwenVoice(voiceId, seq))) return false;
+    if (seq !== this.speechSeq) return false;
 
     return this.playLocalJob(
       (jobId) => ({
@@ -1791,26 +1944,59 @@ class VoiceService {
     return played;
   }
 
-  private speakWithSystem(text: string, lang: 'ru' | 'en'): Promise<void> {
-    return new Promise<void>((resolve) => {
-      if (typeof window === 'undefined' || !window.speechSynthesis) {
-        resolve();
-        return;
-      }
+  /**
+   * Системный голос — последний движок цепочки. Раньше его отказ (нет голосов, нет устройства
+   * вывода, RDP) проглатывался, и реплика пропадала молча; теперь он возвращает false с причиной
+   * (TASK-119). Отмена новой репликой отказом не считается.
+   * @returns true, если голос прозвучал или его перебили; false — отказ, причина в `lastTtsError`
+   */
+  private speakWithSystem(text: string, lang: 'ru' | 'en'): Promise<boolean> {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      this.lastTtsError = SYSTEM_TTS_FAILED;
+      return Promise.resolve(false);
+    }
+    const synth = window.speechSynthesis;
 
-      window.speechSynthesis.cancel();
+    return new Promise<boolean>((resolve) => {
+      synth.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = lang === 'en' ? 'en-US' : 'ru-RU';
       utterance.rate = 1.1;
       utterance.pitch = 1.0;
 
-      utterance.onend = () => resolve();
-      utterance.onerror = () => resolve();
+      let started = false;
+      let settled = false;
+      const finish = (played: boolean, reason?: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(watchdog);
+        if (!played) {
+          this.lastTtsError = SYSTEM_TTS_FAILED;
+          console.warn(`[VoiceService] Системный голос не прозвучал: ${reason}`);
+        }
+        resolve(played);
+      };
+      // Без голосов или устройства вывода speechSynthesis иногда молчит, не присылая даже ошибки
+      const watchdog = setTimeout(() => {
+        if (started) return;
+        finish(false, 'no start event');
+        synth.cancel();
+      }, SYSTEM_TTS_START_TIMEOUT_MS);
+
+      utterance.onstart = () => {
+        started = true;
+      };
+      utterance.onend = () => finish(true);
+      utterance.onerror = (event) => {
+        const error = (event as SpeechSynthesisErrorEvent | undefined)?.error;
+        finish(!isSystemSpeechFailure(error), error);
+      };
 
       this.setTtsMuted(true);
-      window.speechSynthesis.speak(utterance);
-    }).then(() => {
+      synth.speak(utterance);
+    }).then((played) => {
       this.setTtsMuted(false);
+      return played;
     });
   }
 
@@ -1831,6 +2017,13 @@ class VoiceService {
 
   /** Останавливает озвучку обоими движками: и генерацию по jobId, и воспроизведение. */
   async stopSpeaking(): Promise<void> {
+    // Реплика, ждущая загрузки голоса, тоже снимается — и её «Загружаю голос…» вместе с ней
+    this.speechSeq++;
+    if (this.abortReplyWait) {
+      this.abortReplyWait();
+      this.abortReplyWait = null;
+      this.emitTtsNotice(null);
+    }
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }

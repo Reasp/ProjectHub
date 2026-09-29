@@ -13,7 +13,8 @@ import * as registry from '../../electron/services/qwenTtsRegistry';
 
 describe('цепочка движков озвучки (TASK-104, AC#1, AC#2)', () => {
   it('каждый следующий движок — деградация предыдущего, системный голос всегда последний', () => {
-    expect(ttsEngineChain('qwen')).toEqual(['qwen', 'piper', 'system']);
+    // у Qwen запасных движков нет (TASK-119, decision-66)
+    expect(ttsEngineChain('qwen')).toEqual(['qwen']);
     expect(ttsEngineChain('piper')).toEqual(['piper', 'system']);
     expect(ttsEngineChain('system')).toEqual(['system']);
   });

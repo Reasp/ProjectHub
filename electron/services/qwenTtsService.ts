@@ -58,6 +58,8 @@ export interface QwenTtsState {
   /** Текущий размер чанка потоковой генерации, кадров кодека. */
   chunkSize: number;
   idleUnloadMs: number;
+  /** Модель держится в памяти без выгрузки по простою: Qwen выбран движком реплик (TASK-119). */
+  keepLoaded: boolean;
   error?: string;
   errorCode?: QwenTtsErrorCode;
 }
@@ -195,6 +197,11 @@ export class QwenTtsService {
   private idleTimer: NodeJS.Timeout | null = null;
   /** Кадров кодека на чанк звука; подбирается по скорости генерации (`qwenChunkPolicy`). */
   private chunkSize: number = DEFAULT_QWEN_CHUNK_SIZE;
+  /**
+   * Не выгружать модель по простою. Включает рендерер, пока Qwen выбран движком реплик: иначе
+   * первая реплика после простоя ждала бы загрузки модели (TASK-119, decision-66).
+   */
+  private keepLoaded = false;
   /** Последняя прослушанная целиком проба черновика — эталон голоса при сохранении. */
   private lastDraft: (QwenReferenceAudio & { key: string }) | null = null;
 
@@ -215,6 +222,7 @@ export class QwenTtsService {
       respawnAttempts: this.respawnAttempts,
       chunkSize: this.chunkSize,
       idleUnloadMs: this.deps.idleUnloadMs(),
+      keepLoaded: this.keepLoaded,
       error: this.errorMessage,
       errorCode: this.errorCode
     };
@@ -229,7 +237,7 @@ export class QwenTtsService {
 
   private touchIdleTimer() {
     if (this.idleTimer) clearTimeout(this.idleTimer);
-    if (!this.child) return;
+    if (!this.child || this.keepLoaded) return;
     this.idleTimer = setTimeout(() => {
       if (this.jobs.size > 0 || this.pending.size > 0) {
         this.touchIdleTimer();
@@ -634,6 +642,19 @@ export class QwenTtsService {
       this.status = 'unloaded';
       this.errorCode = undefined;
       this.errorMessage = undefined;
+    }
+    return this.getState();
+  }
+
+  /**
+   * Держать модель в памяти, пока Qwen выбран движком реплик, или вернуть выгрузку по простою.
+   * Выключение заводит таймер простоя заново: модель освободит видеопамять через обычный срок.
+   */
+  setKeepLoaded(keep: boolean): QwenTtsState {
+    if (this.keepLoaded !== keep) {
+      this.keepLoaded = keep;
+      console.log(`[QwenTTS] Keep model loaded: ${keep ? 'on' : 'off'}`);
+      this.touchIdleTimer();
     }
     return this.getState();
   }

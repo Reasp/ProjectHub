@@ -3,12 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { ALL_TTS_ERROR_CODES, isNativeModuleMissingError } from '../../electron/services/ttsErrorCodes';
 import { en } from '../../src/i18n/en';
 import { ru } from '../../src/i18n/ru';
+import { RENDERER_TTS_ERROR_CODES } from '../../src/services/ttsReplyPolicy';
 
 /**
  * Контракт decision-25 п. 3: main отдаёт код ошибки, а текст живёт в i18n рендерера. Цена ошибки —
  * сырой `already_installed` в интерфейсе вместо сообщения (TASK-87, дефект 2), и заметить это
  * без теста нельзя: TypeScript словарь кодов не проверяет (`ttsErrors: Record<string, string>`).
  */
+/** Коды main и коды рендерера (цепочка движков озвучки, TASK-119). */
+const KNOWN_CODES: readonly string[] = [...ALL_TTS_ERROR_CODES, ...RENDERER_TTS_ERROR_CODES];
+
 const dictionaries = {
   ru: ru.voice.settingsModal.ttsErrors,
   en: en.voice.settingsModal.ttsErrors
@@ -17,7 +21,7 @@ const dictionaries = {
 describe('коды ошибок TTS переведены целиком (TASK-87, AC#2)', () => {
   for (const [language, dictionary] of Object.entries(dictionaries)) {
     it(`каждый код имеет непустой перевод в ${language}`, () => {
-      const missing = ALL_TTS_ERROR_CODES.filter((code) => {
+      const missing = KNOWN_CODES.filter((code) => {
         const text = dictionary[code];
         return typeof text !== 'string' || text.trim().length === 0;
       });
@@ -26,7 +30,7 @@ describe('коды ошибок TTS переведены целиком (TASK-87
     });
 
     it(`в словаре ${language} нет кодов, которых больше нет в main`, () => {
-      const orphans = Object.keys(dictionary).filter((code) => !ALL_TTS_ERROR_CODES.includes(code));
+      const orphans = Object.keys(dictionary).filter((code) => !KNOWN_CODES.includes(code));
 
       expect(orphans, `осиротевшие ключи: ${orphans.join(', ')}`).toEqual([]);
     });

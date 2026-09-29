@@ -532,7 +532,7 @@ const api: IElectronAPI = {
   cancelTtsVoiceDownload: (voiceId: string) => ipcRenderer.invoke('tts:cancelDownload', voiceId),
   deleteTtsVoice: (voiceId: string) => ipcRenderer.invoke('tts:deleteVoice', voiceId),
   importTtsVoice: () => ipcRenderer.invoke('tts:importVoice'),
-  warmupTts: (voiceId: string) => ipcRenderer.invoke('tts:warmup', voiceId),
+  warmupTts: (voiceId: string, opts?: { auto?: boolean }) => ipcRenderer.invoke('tts:warmup', voiceId, opts),
   speakTts: (req: TtsSpeakRequest) => ipcRenderer.invoke('tts:speak', req),
   cancelTts: (jobId: string) => ipcRenderer.invoke('tts:cancel', jobId),
   cancelAllTts: () => ipcRenderer.invoke('tts:cancelAll'),
@@ -572,6 +572,7 @@ const api: IElectronAPI = {
   installQwenTts: (req: { models: string[]; hfEndpoint?: string }) => ipcRenderer.invoke('tts:qwen:install', req),
   cancelQwenTtsInstall: () => ipcRenderer.invoke('tts:qwen:cancelInstall'),
   unloadQwenTts: () => ipcRenderer.invoke('tts:qwen:unload'),
+  setQwenTtsKeepLoaded: (keep: boolean) => ipcRenderer.invoke('tts:qwen:setKeepLoaded', keep),
   saveQwenTtsVoice: (input: { label: string; instruct: string; seed: number }) =>
     ipcRenderer.invoke('tts:qwen:saveVoice', input),
   deleteQwenTtsVoice: (voiceId: string) => ipcRenderer.invoke('tts:qwen:deleteVoice', voiceId),

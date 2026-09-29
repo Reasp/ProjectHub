@@ -195,6 +195,17 @@ export interface TranslationDictionary {
     stopVoiceControl: string;
     voiceUnavailable: string;
     rdpHint: string;
+    /**
+     * Уведомление об озвучке реплики (TASK-119): ожидание загрузки голоса, запасной движок, отказ.
+     * `{engine}`, `{reason}`, `{reasons}` подставляются.
+     */
+    ttsNotice: {
+      loading: string;
+      fallback: string;
+      warmupFailed: string;
+      failed: string;
+      engines: { qwen: string; piper: string; system: string };
+    };
     /** Карточка результата push-to-talk в системном оверлее (TASK-115). */
     resultCard: {
       title: string;
@@ -374,6 +385,8 @@ export interface TranslationDictionary {
         designHint: string;
         designLanguageHint: string;
         previewFailed: string;
+        /** Выбранный голос не загрузился (TASK-119). */
+        warmupFailed: string;
         speedNote: string;
       };
       /** Коды ошибок main-процесса переводятся здесь: main не хранит строки интерфейса. */

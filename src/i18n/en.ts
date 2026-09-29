@@ -195,6 +195,13 @@ export const en: TranslationDictionary = {
     stopVoiceControl: 'Stop voice control',
     voiceUnavailable: 'Voice control unavailable',
     rdpHint: '💡 <b>RDP / Remote Desktop:</b> open <code>mstsc.exe</code> → <i>Options</i> → <i>Local Resources</i> → <i>Remote audio</i> → <i>Settings...</i> → <i>Audio recording: "Record from this computer"</i>.',
+    ttsNotice: {
+      loading: 'Loading the voice…',
+      fallback: 'A fallback voice answered ({engine}): {reason}',
+      warmupFailed: 'The Qwen3-TTS voice failed to load: {reason}',
+      failed: 'The reply was not spoken. {reasons}',
+      engines: { qwen: 'Qwen3-TTS', piper: 'Piper', system: 'system voice' }
+    },
     resultCard: {
       title: 'Recognized',
       hint: 'Close: ✕, click outside the card, Esc or press the key again',
@@ -325,9 +332,9 @@ export const en: TranslationDictionary = {
         sizeWarning:
           'Installation takes about 19 GB: PyTorch with dependencies is 5.5 GB plus three models of 4.5 GB each (preset voices, designing a voice from a description, speaking with a designed voice). Requires Python 3.10–3.13 and an NVIDIA GPU with at least 6 GB of memory.',
         delayWarning:
-          'The first reply after idle is delayed by 10–40 s while the model loads; until then the fallback engine speaks. After {minutes} min of idle the model is unloaded and frees about 4.5 GB of GPU memory.',
+          'While Qwen3-TTS is the selected speech engine, the model stays loaded and takes about 4.5 GB of GPU memory; it loads in 10–40 s when the app starts, and a reply waits for it. If another engine is selected, the model is unloaded after {minutes} min of idle.',
         vramWarning:
-          'The model needs about 4.5 GB of free GPU memory: if games or 3D editors occupy it, the model will not load and the fallback engine will speak.',
+          'The model needs about 4.5 GB of free GPU memory: if games or 3D editors occupy it, the model will not load, replies will not be spoken, and a notice will show the reason.',
         vramUsed: '{size} GB of GPU memory',
         gigabytes: 'GB',
         runtimeLabel: 'Python environment',
@@ -360,9 +367,9 @@ export const en: TranslationDictionary = {
         statusStarting: 'Starting the synthesis process…',
         statusLoading: 'Loading the model…',
         statusUnloaded: 'Model is not loaded — it loads when a voice is selected or on the first reply',
-        statusNotInstalled: 'Not installed — replies are spoken by the fallback engine',
-        statusError: 'Error, the fallback engine is used',
-        statusUnavailable: 'Engine is unavailable, the fallback is used',
+        statusNotInstalled: 'Not installed — replies are not spoken',
+        statusError: 'Error',
+        statusUnavailable: 'Engine is unavailable',
         unload: 'Unload',
         presetsLabel: 'Preset voices',
         presetsHint:
@@ -388,6 +395,7 @@ export const en: TranslationDictionary = {
         designLanguageHint:
           'Write the description in English: descriptions in other languages are followed less precisely and may yield a voice of the wrong gender. This does not affect the language of speech.',
         previewFailed: 'The voice did not play',
+        warmupFailed: 'The voice failed to load',
         speedNote: 'Qwen3-TTS tempo is set by the delivery instruction or the voice description — there is no speed slider.'
       },
       ttsErrors: {
@@ -443,7 +451,8 @@ export const en: TranslationDictionary = {
         qwen_venv_failed: 'Could not create the Python environment',
         qwen_pip_failed: 'Could not install Python packages — check the network connection',
         qwen_download_failed: 'Could not download model weights — check the network or set a Hugging Face mirror',
-        qwen_checksum_mismatch: 'Weights checksum mismatch — the source serves a different file'
+        qwen_checksum_mismatch: 'Weights checksum mismatch — the source serves a different file',
+        system_tts_failed: 'The system voice did not play: Windows has no voices, no audio output device, or speech synthesis is unavailable (RDP)'
       },
       apiKeyLabel: 'API Key',
       apiKeyPlaceholder: 'Enter provider API key',

@@ -358,6 +358,19 @@ describe('qwenTtsService — выгрузка модели (TASK-104, AC#2)', ()
     expect(spawned).toHaveLength(2);
   });
 
+  it('пока Qwen выбран движком реплик, модель не выгружается по простою (TASK-119)', async () => {
+    const { service } = createService('ok', { idleUnloadMs: () => 120 });
+    expect(service.setKeepLoaded(true).keepLoaded).toBe(true);
+    await service.warmup('qwen:custom:serena');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(service.getState()).toMatchObject({ status: 'ready', processActive: true });
+
+    // выбрали другой движок — таймер простоя заводится заново
+    service.setKeepLoaded(false);
+    await waitFor(() => !service.getState().processActive);
+    expect(service.getState()).toMatchObject({ status: 'unloaded', keepLoaded: false });
+  });
+
   it('прогрев загружает модель голоса без синтеза', async () => {
     const { service } = createService('ok');
     const state = await service.warmup('qwen:design:warm');

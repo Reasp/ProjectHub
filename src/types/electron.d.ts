@@ -705,6 +705,8 @@ export interface QwenTtsStatusInfo {
   respawnAttempts: number;
   chunkSize: number;
   idleUnloadMs: number;
+  /** Модель держится в памяти без выгрузки по простою (TASK-119). */
+  keepLoaded: boolean;
   error?: string;
   errorCode?: string;
   install: QwenInstallStatusInfo;
@@ -1162,7 +1164,11 @@ export interface IElectronAPI {
   cancelTtsVoiceDownload: (voiceId: string) => Promise<boolean>;
   deleteTtsVoice: (voiceId: string) => Promise<TtsOperationResult>;
   importTtsVoice: () => Promise<TtsOperationResult>;
-  warmupTts: (voiceId: string) => Promise<TtsStatusInfo>;
+  /**
+   * Прогрев голоса. `auto` — прогрев не по действию пользователя (реплика, старт приложения): он не
+   * снимает признак недоступности движка после серии падений (TASK-119).
+   */
+  warmupTts: (voiceId: string, opts?: { auto?: boolean }) => Promise<TtsStatusInfo & { modelKind?: QwenModelKind | null }>;
   speakTts: (req: TtsSpeakRequest) => Promise<{ ok: boolean; error?: string; errorCode?: string }>;
   cancelTts: (jobId: string) => Promise<boolean>;
   cancelAllTts: () => Promise<boolean>;
@@ -1177,6 +1183,8 @@ export interface IElectronAPI {
   installQwenTts: (req: { models: QwenModelKind[]; hfEndpoint?: string }) => Promise<TtsOperationResult>;
   cancelQwenTtsInstall: () => Promise<boolean>;
   unloadQwenTts: () => Promise<QwenTtsStatusInfo>;
+  /** Не выгружать модель Qwen3-TTS по простою, пока Qwen выбран движком реплик (TASK-119). */
+  setQwenTtsKeepLoaded: (keep: boolean) => Promise<QwenTtsStatusInfo>;
   saveQwenTtsVoice: (input: { label: string; instruct: string; seed: number }) => Promise<QwenVoiceOperationResult>;
   deleteQwenTtsVoice: (voiceId: string) => Promise<QwenVoiceOperationResult>;
   onQwenTtsInstallProgress: (callback: (progress: QwenInstallProgressInfo) => void) => () => void;

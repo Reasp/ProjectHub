@@ -148,10 +148,14 @@ export const QwenTtsSettings: React.FC<QwenTtsSettingsProps> = ({ voiceConfig, o
 
   const handleSelectVoice = (voiceId: string) => {
     onConfigChange({ ttsQwenVoiceId: voiceId });
-    // Модель выбранного голоса грузится заранее, чтобы первая реплика прозвучала им
+    // Модель выбранного голоса грузится заранее, чтобы первая реплика прозвучала им. Неудачу
+    // показываем: иначе голос молча не звучал бы, а причина осталась бы только в строке статуса
     void window.api
       ?.warmupTts?.(voiceId)
-      .catch(() => null)
+      .then((state) => {
+        if (state && state.status !== 'ready') notify(`${q.warmupFailed}: ${translateError(state.errorCode, state.error)}`);
+      })
+      .catch((err: unknown) => notify(`${q.warmupFailed}: ${err instanceof Error ? err.message : String(err)}`))
       .then(() => refresh());
     void refresh();
   };

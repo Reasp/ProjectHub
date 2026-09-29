@@ -1,15 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Radio,
   Zap,
   CheckCircle2,
   AlertTriangle,
+  RefreshCw,
+  Volume2,
   X
 } from 'lucide-react';
 import {
   voiceService,
+  type TtsNotice,
   type VoiceState
 } from '../../services/voiceService';
+import { ttsNoticeView } from '../../services/ttsReplyPolicy';
 import { parseVoiceCommand, type ParsedVoiceCommand } from '../../services/voiceCommandParser';
 import { isFuzzyDictationStop } from '../../services/dictationStopMatch';
 import { applyWakeGate, createWakeWindow } from '../../services/wakeWord';
@@ -48,6 +53,8 @@ export const VoiceControlWidget: React.FC = () => {
   // Сообщение об ошибке гаснет само; таймеры компонента снимаются при размонтировании (TASK-50)
   const [errorMessage, showErrorMessage, clearErrorMessage] = useToast<string>(10000);
   const { setTimer } = useTimers();
+  /** Уведомление об озвучке: ждём загрузки голоса, ответил запасной движок, реплика не прозвучала. */
+  const [ttsNotice, setTtsNotice] = useState<TtsNotice | null>(null);
 
   const transcriptRef = useRef(transcript);
   /** Оверлей показывает итог последней команды крупно; подписки живут вне рендера, отсюда ref. */
@@ -808,6 +815,18 @@ export const VoiceControlWidget: React.FC = () => {
       void voiceService.speak(dict.voice.feedback.hitlSpokenPrefix.replace('{title}', title));
     });
 
+    // Озвучка сообщает о себе сама (TASK-119): ожидание загрузки голоса, запасной движок, отказ.
+    // Самогаснущие уведомления снимаются по таймеру, только если их ещё не сменило следующее
+    const unsubTtsNotice = voiceService.onTtsNotice((notice) => {
+      setTtsNotice(notice);
+      if (!notice) return;
+      const { autoHideMs } = ttsNoticeView(notice, getDictionary(useProjectStore.getState().language).voice.ttsNotice, String);
+      if (autoHideMs !== null) setTimer(() => setTtsNotice((prev) => (prev === notice ? null : prev)), autoHideMs);
+    });
+    // Модель выбранного голоса Qwen3-TTS грузится заранее, чтобы первая реплика прозвучала им.
+    // Небольшая пауза — не спорить за диск и процессор с запуском самого приложения
+    setTimer(() => void voiceService.prewarmTts(), 3000);
+
     // Уведомления об устройстве к распознанной фразе не относятся — только полоса, не карточка.
     const unsubDeviceNotice = voiceService.onDeviceNotice((notice) => {
       setLastFeedbackState(notice.message);
@@ -840,6 +859,7 @@ export const VoiceControlWidget: React.FC = () => {
       unsubDictation();
       unsubHitl();
       unsubDeviceNotice();
+      unsubTtsNotice();
       window.removeEventListener('projecthub:agent-answer', handleAgentAnswer);
       window.removeEventListener('keydown', handleKeyDown);
     };
@@ -852,8 +872,52 @@ export const VoiceControlWidget: React.FC = () => {
   // Only display the floating Top HUD when speech, transcribing, transcript, or active feedback occurs
   const shouldShowTopHud = isHandsFreeActive && (isSpeech || isTranscribing || Boolean(transcript) || Boolean(lastFeedback));
 
+  const ttsNoticeContent = ttsNotice
+    ? ttsNoticeView(ttsNotice, t.voice.ttsNotice, (reason) => t.voice.settingsModal.ttsErrors[reason] || reason)
+    : null;
+
   return (
     <>
+      {/* Уведомление об озвучке — вне зависимости от hands-free: реплики звучат и без него */}
+      {ttsNoticeContent &&
+        createPortal(
+          <div
+            data-testid="tts-notice"
+            data-kind={ttsNotice?.kind}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10000] pointer-events-auto select-none max-w-xl px-4 animate-in slide-in-from-bottom-2 fade-in duration-150"
+          >
+            <div
+              className={`flex items-center gap-2.5 px-4 py-2 rounded-xl border shadow-2xl backdrop-blur-xl text-xs text-white ${
+                ttsNoticeContent.tone === 'error'
+                  ? 'bg-[#16131d]/95 border-rose-500/70'
+                  : ttsNoticeContent.tone === 'warn'
+                    ? 'bg-slate-900/95 border-amber-500/60'
+                    : 'bg-slate-900/95 border-indigo-500/50'
+              }`}
+            >
+              {ttsNoticeContent.tone === 'info' ? (
+                <RefreshCw className="w-4 h-4 text-indigo-400 animate-spin shrink-0" />
+              ) : ttsNoticeContent.tone === 'warn' ? (
+                <Volume2 className="w-4 h-4 text-amber-400 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+              )}
+              <span className="leading-snug">{ttsNoticeContent.text}</span>
+              {ttsNoticeContent.tone !== 'info' && (
+                <button
+                  type="button"
+                  onClick={() => setTtsNotice(null)}
+                  className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0"
+                  title={t.common.close}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>,
+          document.body
+        )}
+
       {/* Voice Error Modal / Notification Banner */}
       {errorMessage && (
         <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[9999] pointer-events-auto select-none max-w-lg w-full px-4 animate-in slide-in-from-top-3 fade-in duration-200">
