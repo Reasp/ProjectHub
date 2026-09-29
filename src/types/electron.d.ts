@@ -435,6 +435,17 @@ export interface PushToTalkEvent {
  */
 export type VoiceOverlayMode = 'compact' | 'wide' | 'full';
 
+/** Действия из системного оверлея; `dismiss-result` закрывает карточку результата (TASK-115). */
+export type VoiceOverlayAction = 'toggle-pause' | 'stop' | 'dismiss-result';
+
+/** Карточка результата push-to-talk, зеркало `src/utils/voiceResultCard.ts`. */
+export interface VoiceOverlayResultCard {
+  id: number;
+  transcript: string;
+  feedback: string | null;
+  status: 'classifying' | 'done';
+}
+
 export interface VoiceOverlayPayload {
   isListening: boolean;
   isPaused: boolean;
@@ -444,6 +455,8 @@ export interface VoiceOverlayPayload {
   mode?: VoiceOverlayMode;
   /** Итог последней команды: «Открываю доску задач», «Напечатано: …». */
   feedback?: string;
+  /** Закреплённая карточка результата push-to-talk; `null` — карточки нет (TASK-115). */
+  resultCard?: VoiceOverlayResultCard | null;
 }
 
 export type VoiceIntentType = 'navigation' | 'action' | 'ai_control' | 'computer' | 'dictation' | 'unknown';
@@ -1202,7 +1215,8 @@ export interface IElectronAPI {
   // System Voice Overlay
   syncVoiceOverlay: (state: VoiceOverlayPayload) => void;
   onVoiceOverlayUpdate: (callback: (state: VoiceOverlayPayload) => void) => () => void;
-  sendVoiceOverlayAction: (action: 'toggle-pause' | 'stop') => void;
+  sendVoiceOverlayAction: (action: VoiceOverlayAction) => void;
+  onVoiceResultCardDismissed: (callback: (event: { id: number }) => void) => () => void;
   onVoiceExternalControl: (callback: (action: 'toggle-pause' | 'stop') => void) => () => void;
 
   // Внешние ссылки (http/https/mailto) — открываются в системном браузере, а не в окне Electron

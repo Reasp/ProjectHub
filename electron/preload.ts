@@ -29,6 +29,7 @@ import type {
   VoiceClassifyRequest,
   VoiceComputerTaskRequest,
   VoiceDictateRequest,
+  VoiceOverlayAction,
   VoiceOverlayPayload,
   TtsChunkPayload,
   TtsDonePayload,
@@ -649,8 +650,16 @@ const api: IElectronAPI = {
       ipcRenderer.removeListener('voice:overlay-update', handler);
     };
   },
-  sendVoiceOverlayAction: (action: 'toggle-pause' | 'stop') =>
+  sendVoiceOverlayAction: (action: VoiceOverlayAction) =>
     ipcRenderer.send('voice:overlay-action', action),
+  // Карточку результата push-to-talk закрыли в main: крестиком, кликом мимо или Esc (TASK-115).
+  onVoiceResultCardDismissed: (callback: (event: { id: number }) => void) => {
+    const handler = (_event: IpcRendererEvent, payload: { id: number }) => callback(payload);
+    ipcRenderer.on('voice:result-card-dismissed', handler);
+    return () => {
+      ipcRenderer.removeListener('voice:result-card-dismissed', handler);
+    };
+  },
   onVoiceExternalControl: (callback: (action: 'toggle-pause' | 'stop') => void) => {
     const handler = (_event: any, action: any) => callback(action);
     ipcRenderer.on('voice:external-control', handler);

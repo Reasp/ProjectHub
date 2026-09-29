@@ -21,6 +21,14 @@ import { getDictionary } from '../../i18n';
 import { toExecutableVoiceCommand } from '../../services/voiceClassifiedCommand';
 import { useDialog } from '../../hooks/useDialog';
 import { useTimers, useToast } from '../../hooks/useTimeoutState';
+import {
+  applyCardFeedback,
+  completeCard,
+  dismissCard,
+  pinResult,
+  shouldPinResult,
+  type VoiceResultCard
+} from '../../utils/voiceResultCard';
 
 export const VoiceControlWidget: React.FC = () => {
   const dialog = useDialog();
@@ -36,7 +44,7 @@ export const VoiceControlWidget: React.FC = () => {
   const [audioLevel, setAudioLevel] = useState<number>(0);
   const [isSpeakingDetected, setIsSpeakingDetected] = useState<boolean>(false);
   const [transcript, setTranscript] = useState('');
-  const [lastFeedback, setLastFeedback] = useState<string | null>(null);
+  const [lastFeedback, setLastFeedbackState] = useState<string | null>(null);
   // Сообщение об ошибке гаснет само; таймеры компонента снимаются при размонтировании (TASK-50)
   const [errorMessage, showErrorMessage, clearErrorMessage] = useToast<string>(10000);
   const { setTimer } = useTimers();
@@ -48,6 +56,13 @@ export const VoiceControlWidget: React.FC = () => {
   const lastAudioSyncRef = useRef<number>(0);
   /** Окно ожидания команды после ключевого слова (TASK-83). */
   const wakeWindowRef = useRef(createWakeWindow());
+  /**
+   * Закреплённая карточка результата push-to-talk (TASK-115). Живёт в ref: она нужна только
+   * системному оверлею, перерисовывать виджет ради неё незачем. Поколения начинаются со времени
+   * запуска — после перезагрузки окна id не совпадёт с карточкой, закрытой в main раньше.
+   */
+  const resultCardRef = useRef<VoiceResultCard | null>(null);
+  const cardSeqRef = useRef<number>(Date.now());
 
   useEffect(() => {
     transcriptRef.current = transcript;
@@ -60,6 +75,45 @@ export const VoiceControlWidget: React.FC = () => {
   useEffect(() => {
     audioLevelRef.current = audioLevel;
   }, [audioLevel]);
+
+  const syncToOverlay = useCallback((partial?: Partial<{ state: string; transcript: string; audioLevel: number }>) => {
+    if (window.api?.syncVoiceOverlay) {
+      window.api.syncVoiceOverlay({
+        isListening: voiceService.isListening,
+        isPaused: voiceService.isPausedActive,
+        state: partial?.state ?? voiceService.currentState,
+        transcript: partial?.transcript ?? transcriptRef.current,
+        audioLevel: partial?.audioLevel ?? audioLevelRef.current,
+        // Диктовку показываем крупно на весь экран, запись по клавише — широкой полосой.
+        mode: voiceService.isDictationActive ? 'full' : voiceService.isPushToTalkActive ? 'wide' : 'compact',
+        feedback: feedbackRef.current ?? undefined,
+        resultCard: resultCardRef.current
+      });
+    }
+  }, []);
+
+  /** Меняет карточку и сразу отправляет её оверлею; одинаковое значение не шлётся повторно. */
+  const updateResultCard = useCallback(
+    (next: VoiceResultCard | null) => {
+      if (next === resultCardRef.current) return;
+      resultCardRef.current = next;
+      syncToOverlay();
+    },
+    [syncToOverlay]
+  );
+
+  /**
+   * Итог команды: полоса в окне приложения и карточка результата. Пустой итог (сброс по таймеру)
+   * карточку не очищает — она висит, пока её не закроют.
+   */
+  const setLastFeedback = useCallback(
+    (text: string | null) => {
+      setLastFeedbackState(text);
+      feedbackRef.current = text;
+      updateResultCard(applyCardFeedback(resultCardRef.current, text));
+    },
+    [updateResultCard]
+  );
 
   // Язык voiceService синхронизируется только при фактическом изменении language
   useEffect(() => {
@@ -491,7 +545,7 @@ export const VoiceControlWidget: React.FC = () => {
       setTranscript('');
       setLastFeedback(null);
     }, 4500);
-  }, [setTimer]);
+  }, [setTimer, setLastFeedback]);
 
   /**
    * Путь распознанной фразы до команды (TASK-83).
@@ -634,27 +688,12 @@ export const VoiceControlWidget: React.FC = () => {
     // Ответ модели приводится к форме парсера регулярок: вкладка в payload, меню проектов и
     // диктовка — в ветке действий (иначе распознанная команда ничего не делала).
     await executeCommand(toExecutableVoiceCommand(result, dict.voice.feedback.classified.replace('{command}', title)));
-  }, [executeCommand]);
+  }, [executeCommand, setLastFeedback]);
 
   // Подписки на voiceService и внешние события создаются один раз при монтировании.
   // executeCommand стабилен (все данные читаются через getState()), поэтому эффект
   // не пересоздаётся при изменении сторов.
   useEffect(() => {
-    const syncToOverlay = (partial?: Partial<{ state: string; transcript: string; audioLevel: number }>) => {
-      if (window.api?.syncVoiceOverlay) {
-        window.api.syncVoiceOverlay({
-          isListening: voiceService.isListening,
-          isPaused: voiceService.isPausedActive,
-          state: partial?.state ?? voiceService.currentState,
-          transcript: partial?.transcript ?? transcriptRef.current,
-          audioLevel: partial?.audioLevel ?? audioLevelRef.current,
-          // Диктовку показываем крупно на весь экран, запись по клавише — широкой полосой.
-          mode: voiceService.isDictationActive ? 'full' : voiceService.isPushToTalkActive ? 'wide' : 'compact',
-          feedback: feedbackRef.current ?? undefined
-        });
-      }
-    };
-
     const unsubState = voiceService.onStateChange((state: VoiceState) => {
       setVoiceState(state);
       syncToOverlay({ state });
@@ -675,13 +714,32 @@ export const VoiceControlWidget: React.FC = () => {
       }
     });
 
-    const unsubResult = voiceService.onResult((text: string, isFinal: boolean) => {
+    const unsubResult = voiceService.onResult((text, isFinal, meta) => {
       setTranscript(text);
+      transcriptRef.current = text;
+
+      // Фраза, записанная удержанием клавиши, закрепляется карточкой до закрытия (TASK-115).
+      let cardId: number | null = null;
+      if (shouldPinResult({ text, isFinal, fromPushToTalk: meta?.pushToTalk === true })) {
+        cardId = ++cardSeqRef.current;
+        resultCardRef.current = pinResult(cardId, text);
+      }
       syncToOverlay({ transcript: text });
 
       if (isFinal && text.trim()) {
-        void handleTranscript(text.trim());
+        const handled = handleTranscript(text.trim());
+        if (cardId !== null) {
+          const id = cardId;
+          void handled.finally(() => updateResultCard(completeCard(resultCardRef.current, id)));
+        } else {
+          void handled;
+        }
       }
+    });
+
+    // Карточку закрыли в main — крестиком, кликом мимо или Esc.
+    const unsubCardDismissed = window.api?.onVoiceResultCardDismissed?.(({ id }) => {
+      updateResultCard(dismissCard(resultCardRef.current, id));
     });
 
     const unsubError = voiceService.onError((msg: string) => {
@@ -711,7 +769,9 @@ export const VoiceControlWidget: React.FC = () => {
 
     const unsubPushToTalkState = voiceService.onPushToTalkChange((active) => {
       if (active) {
-        setLastFeedback(getDictionary(useProjectStore.getState().language).voice.feedback.pushToTalkRecording);
+        // Новое нажатие заменяет карточку прошлой фразы (TASK-115); статус записи в карточку не идёт.
+        resultCardRef.current = dismissCard(resultCardRef.current);
+        setLastFeedbackState(getDictionary(useProjectStore.getState().language).voice.feedback.pushToTalkRecording);
       }
       syncToOverlay();
     });
@@ -748,10 +808,11 @@ export const VoiceControlWidget: React.FC = () => {
       void voiceService.speak(dict.voice.feedback.hitlSpokenPrefix.replace('{title}', title));
     });
 
+    // Уведомления об устройстве к распознанной фразе не относятся — только полоса, не карточка.
     const unsubDeviceNotice = voiceService.onDeviceNotice((notice) => {
-      setLastFeedback(notice.message);
+      setLastFeedbackState(notice.message);
       setTimer(() => {
-        setLastFeedback((prev) => (prev === notice.message ? null : prev));
+        setLastFeedbackState((prev) => (prev === notice.message ? null : prev));
       }, 5000);
     });
 
@@ -771,6 +832,7 @@ export const VoiceControlWidget: React.FC = () => {
       unsubPause();
       unsubAudio();
       unsubResult();
+      unsubCardDismissed?.();
       unsubError();
       unsubExternal?.();
       unsubPushToTalk?.();
@@ -781,7 +843,7 @@ export const VoiceControlWidget: React.FC = () => {
       window.removeEventListener('projecthub:agent-answer', handleAgentAnswer);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleTranscript, setTimer]);
+  }, [handleTranscript, setTimer, syncToOverlay, updateResultCard]);
 
   const isHandsFreeActive = voiceService.isListening;
   const isSpeech = voiceState === 'speech_detected' || isSpeakingDetected;

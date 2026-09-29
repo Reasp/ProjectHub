@@ -195,6 +195,12 @@ export const en: TranslationDictionary = {
     stopVoiceControl: 'Stop voice control',
     voiceUnavailable: 'Voice control unavailable',
     rdpHint: '💡 <b>RDP / Remote Desktop:</b> open <code>mstsc.exe</code> → <i>Options</i> → <i>Local Resources</i> → <i>Remote audio</i> → <i>Settings...</i> → <i>Audio recording: "Record from this computer"</i>.',
+    resultCard: {
+      title: 'Recognized',
+      hint: 'Close: ✕, click outside the card, Esc or press the key again',
+      classifying: 'Recognizing the command…',
+      close: 'Close the card (Esc)'
+    },
     feedback: {
       chatCreated: 'Created new chat session',
       chatClosed: 'Chat session closed',

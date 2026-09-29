@@ -28,6 +28,7 @@ import { trayService } from './services/trayService';
 import { telegramService } from './services/telegramService';
 import { computerUseService, type ComputerOverlayState } from './services/computerUseService';
 import { voiceHotkeyService } from './services/voiceHotkeyService';
+import { voiceResultCardWatch } from './services/voiceResultCardWatch';
 import { terminalHookService } from './services/terminalHookService';
 import { HOOK_SCRIPT_REL_PATH } from './services/roleExport';
 import { registerAllIpc } from './ipc';
@@ -608,6 +609,8 @@ async function performGracefulShutdown() {
   try {
     // Глобальная горячая клавиша push-to-talk снимается до выхода (TASK-83).
     voiceHotkeyService.shutdown();
+    // Карточка результата push-to-talk держит глобальные Esc и хук мыши (TASK-115).
+    voiceResultCardWatch.disarm();
   } catch (e) {
     console.warn('[Main] Error stopping voice hotkey service:', e);
   }

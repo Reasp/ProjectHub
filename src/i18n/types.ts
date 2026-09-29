@@ -195,6 +195,13 @@ export interface TranslationDictionary {
     stopVoiceControl: string;
     voiceUnavailable: string;
     rdpHint: string;
+    /** Карточка результата push-to-talk в системном оверлее (TASK-115). */
+    resultCard: {
+      title: string;
+      hint: string;
+      classifying: string;
+      close: string;
+    };
     feedback: {
       chatCreated: string;
       chatClosed: string;

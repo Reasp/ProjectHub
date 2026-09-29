@@ -1,5 +1,6 @@
 import { ipcMain, screen, type BrowserWindow } from 'electron';
 import { localWhisperService } from '../services/localWhisperService';
+import { logger } from '../services/logger';
 import { voiceHotkeyService } from '../services/voiceHotkeyService';
 import { aiAgentService, type AIMessage } from '../services/aiAgentService';
 import { computerUseService } from '../services/computerUseService';
@@ -11,6 +12,13 @@ import {
   isConfident,
   parseVoiceClassifierResponse
 } from '../services/voiceCommandClassifier';
+import { voiceResultCardWatch, type CardDismissReason } from '../services/voiceResultCardWatch';
+import {
+  estimateCardHeight,
+  isCardVisible,
+  toResultCard,
+  type VoiceResultCard
+} from '../../src/utils/voiceResultCard.js';
 import type { IpcContext } from './types';
 
 /**
@@ -26,17 +34,40 @@ const CLASSIFY_TIMEOUT_MS = 12_000;
 /**
  * Режим голосового оверлея (TASK-83): обычная полоса внизу экрана, широкая полоса на время записи
  * по горячей клавише и крупное окно по центру в режиме диктовки — распознанный текст должен быть
- * читаем, не заглядывая в окно приложения.
+ * читаем, не заглядывая в окно приложения. `card` — закреплённая карточка результата push-to-talk
+ * (TASK-115): высота под многострочный текст, окно висит до закрытия.
  */
-type VoiceOverlayMode = 'compact' | 'wide' | 'full';
+type VoiceOverlayMode = 'compact' | 'wide' | 'full' | 'card';
 
 const OVERLAY_BOTTOM_MARGIN = 48;
 
-/** Последний применённый размер: синхронизация приходит десятки раз в секунду, дёргать setBounds на каждую — лишнее. */
-let lastOverlayMode: VoiceOverlayMode | null = null;
+/** Последняя применённая геометрия: синхронизация приходит десятки раз в секунду, дёргать setBounds на каждую — лишнее. */
+let lastOverlayGeometry: string | null = null;
 
-function overlayBounds(mode: VoiceOverlayMode) {
+/** Карточка результата, которую сейчас показывает оверлей, и последняя закрытая в main (TASK-115). */
+let shownCard: VoiceResultCard | null = null;
+let dismissedCardId: number | null = null;
+/** Идёт ли запись: после закрытия карточки окно прячется, только если нет. */
+let lastSyncListening = false;
+
+function overlayBounds(mode: VoiceOverlayMode, card: VoiceResultCard | null) {
   const area = screen.getPrimaryDisplay().workArea;
+
+  if (mode === 'card') {
+    const width = Math.min(900, Math.round(area.width * 0.6));
+    const height = estimateCardHeight({
+      transcriptLength: card?.transcript.length ?? 0,
+      feedbackLength: card?.feedback?.length ?? 0,
+      width,
+      maxHeight: area.height * 0.6
+    });
+    return {
+      width,
+      height,
+      x: Math.round(area.x + (area.width - width) / 2),
+      y: area.y + area.height - height - OVERLAY_BOTTOM_MARGIN
+    };
+  }
 
   if (mode === 'full') {
     const width = Math.round(area.width * 0.86);
@@ -59,11 +90,14 @@ function overlayBounds(mode: VoiceOverlayMode) {
   };
 }
 
-function applyOverlayGeometry(win: BrowserWindow, mode: VoiceOverlayMode): void {
-  if (mode === lastOverlayMode) return;
-  lastOverlayMode = mode;
+function applyOverlayGeometry(win: BrowserWindow, mode: VoiceOverlayMode, card: VoiceResultCard | null): void {
+  const bounds = overlayBounds(mode, card);
+  // Для карточки ключ — её размер: пока он не меняется, перетащенное пользователем окно не прыгает.
+  const key = mode === 'card' ? `card:${bounds.width}x${bounds.height}` : mode;
+  if (key === lastOverlayGeometry) return;
+  lastOverlayGeometry = key;
   try {
-    win.setBounds(overlayBounds(mode));
+    win.setBounds(bounds);
   } catch {
     // Окно могло быть уничтожено между проверкой и вызовом — не повод падать.
   }
@@ -101,9 +135,45 @@ function computerResultToText(content: Array<{ type: string; text?: string }>): 
 }
 
 export function registerVoiceIpc(ctx: IpcContext) {
+  const sendToOverlay = (win: BrowserWindow, state: unknown) => {
+    if (!win.webContents.isLoading()) {
+      win.webContents.send('voice:overlay-update', state);
+    } else {
+      win.webContents.once('did-finish-load', () => {
+        if (!win.isDestroyed()) win.webContents.send('voice:overlay-update', state);
+      });
+    }
+  };
+
+  /**
+   * Закрытие карточки в main (TASK-115): крестик, клик мимо, Esc. Окно прячется сразу, не дожидаясь
+   * рендерера; рендереру уходит id закрытой карточки — новую, пришедшую за время IPC, он не снимет.
+   */
+  const dismissShownCard = (reason: CardDismissReason | 'close-button') => {
+    const card = shownCard;
+    voiceResultCardWatch.disarm();
+    if (!card) return;
+    dismissedCardId = card.id;
+    shownCard = null;
+    logger.info(`[VoiceCard] Карточка закрыта: ${reason}`);
+
+    const overlay = ctx.getVoiceOverlayWindow();
+    if (overlay && !overlay.isDestroyed()) {
+      if (!lastSyncListening && overlay.isVisible()) overlay.hide();
+      sendToOverlay(overlay, { resultCard: null });
+    }
+    const main = ctx.getMainWindow();
+    if (main && !main.isDestroyed()) {
+      main.webContents.send('voice:result-card-dismissed', { id: card.id });
+    }
+  };
+
   // Voice Overlay Sync & Action
   ipcMain.on('voice:overlay-sync', (_event, state) => {
-    const shouldBeVisible = Boolean(state?.isListening || state?.isPaused);
+    const incomingCard = toResultCard(state?.resultCard);
+    const card = isCardVisible(incomingCard, dismissedCardId) ? incomingCard : null;
+    lastSyncListening = Boolean(state?.isListening || state?.isPaused);
+    const shouldBeVisible = lastSyncListening || card !== null;
     let voiceOverlayWin = ctx.getVoiceOverlayWindow();
 
     if (shouldBeVisible) {
@@ -114,10 +184,14 @@ export function registerVoiceIpc(ctx: IpcContext) {
 
     if (voiceOverlayWin && !voiceOverlayWin.isDestroyed()) {
       if (shouldBeVisible) {
-        const mode: VoiceOverlayMode =
-          state?.mode === 'full' || state?.mode === 'wide' || state?.mode === 'compact' ? state.mode : 'compact';
-        applyOverlayGeometry(voiceOverlayWin, mode);
+        const mode: VoiceOverlayMode = card
+          ? 'card'
+          : state?.mode === 'full' || state?.mode === 'wide' || state?.mode === 'compact'
+            ? state.mode
+            : 'compact';
+        applyOverlayGeometry(voiceOverlayWin, mode, card);
         if (!voiceOverlayWin.isVisible()) {
+          // Без фокуса: диктовка должна печатать в активное окно, а не в карточку.
           voiceOverlayWin.showInactive();
         }
       } else {
@@ -126,17 +200,27 @@ export function registerVoiceIpc(ctx: IpcContext) {
         }
       }
 
-      if (!voiceOverlayWin.webContents.isLoading()) {
-        voiceOverlayWin.webContents.send('voice:overlay-update', state);
-      } else {
-        voiceOverlayWin.webContents.once('did-finish-load', () => {
-          voiceOverlayWin?.webContents.send('voice:overlay-update', state);
-        });
-      }
+      sendToOverlay(voiceOverlayWin, { ...state, resultCard: card });
+    }
+
+    // Глобальные клик и Esc — только пока карточка на экране (TASK-115, AC #4).
+    const overlay = voiceOverlayWin && !voiceOverlayWin.isDestroyed() ? voiceOverlayWin : null;
+    shownCard = overlay ? card : null;
+    if (overlay && shownCard) {
+      voiceResultCardWatch.arm({
+        getBounds: () => (!overlay.isDestroyed() && overlay.isVisible() ? overlay.getBounds() : null),
+        onDismiss: (reason) => dismissShownCard(reason)
+      });
+    } else {
+      voiceResultCardWatch.disarm();
     }
   });
 
   ipcMain.on('voice:overlay-action', (_event, action) => {
+    if (action === 'dismiss-result') {
+      dismissShownCard('close-button');
+      return;
+    }
     const win = ctx.getMainWindow();
     if (win && !win.isDestroyed()) {
       win.webContents.send('voice:external-control', action);

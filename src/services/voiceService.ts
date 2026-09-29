@@ -10,6 +10,13 @@ export type VoiceState =
   | 'speaking'
   | 'error';
 
+/** Откуда фраза: записанная удержанием клавиши закрепляется карточкой результата (TASK-115). */
+export interface VoiceResultMeta {
+  pushToTalk: boolean;
+}
+
+export type VoiceResultCallback = (transcript: string, isFinal: boolean, meta?: VoiceResultMeta) => void;
+
 export type VoiceEngine = 'whisper' | 'webspeech';
 export type { TtsEngine } from './ttsEngineChain';
 export type WhisperProvider = 'local' | 'groq' | 'openai';
@@ -176,6 +183,11 @@ class VoiceService {
    * запуск, вместо того чтобы включить запись после отпускания и залипнуть в ней.
    */
   private pushToTalkSeq = 0;
+  /**
+   * Когда отпустили клавишу при Web Speech API: финальный результат он присылает уже после
+   * остановки, и без этой метки фраза не узналась бы как записанная по push-to-talk (TASK-115).
+   */
+  private webSpeechPushToTalkReleasedAt = 0;
   /** Состояние детектора перебивания: судит только громкость во время собственной речи. */
   private bargeInState = createBargeInState();
   /** Звук во время озвучки: из него начинается фраза, прервавшая чтение (TASK-95). */
@@ -186,6 +198,8 @@ class VoiceService {
   private currentPhraseRms: number[] = [];
   /** Страховка от «залипшей» клавиши: дольше этого одна фраза не пишется. */
   private static readonly PUSH_TO_TALK_MAX_SAMPLES = 16000 * 60;
+  /** Сколько после отпускания клавиши ждать финальный результат Web Speech API. */
+  private static readonly WEBSPEECH_PTT_TAIL_MS = 5000;
   private onPushToTalkCallbacks: Set<(active: boolean) => void> = new Set();
 
   /** Режим системной диктовки (TASK-83 п. 5): распознанное печатается в активное окно. */
@@ -203,7 +217,7 @@ class VoiceService {
   private webSpeechRestartTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Callbacks
-  private onResultCallbacks: Set<(transcript: string, isFinal: boolean) => void> = new Set();
+  private onResultCallbacks: Set<VoiceResultCallback> = new Set();
   private onStateChangeCallbacks: Set<(state: VoiceState) => void> = new Set();
   private onAudioLevelCallbacks: Set<(level: number, isSpeaking: boolean) => void> = new Set();
   private onPauseChangeCallbacks: Set<(isPaused: boolean) => void> = new Set();
@@ -321,7 +335,7 @@ class VoiceService {
     );
   }
 
-  onResult(callback: (transcript: string, isFinal: boolean) => void) {
+  onResult(callback: VoiceResultCallback) {
     this.onResultCallbacks.add(callback);
     return () => {
       this.onResultCallbacks.delete(callback);
@@ -680,8 +694,9 @@ class VoiceService {
 
           if (finalTranscript) {
             const cleanFinal = finalTranscript.trim();
+            const meta: VoiceResultMeta = { pushToTalk: this.consumeWebSpeechPushToTalk() };
             this.onResultCallbacks.forEach((cb) => {
-              try { cb(cleanFinal, true); } catch (e) {}
+              try { cb(cleanFinal, true, meta); } catch (e) {}
             });
           } else if (interimTranscript) {
             const cleanInterim = interimTranscript.trim();
@@ -1115,7 +1130,7 @@ class VoiceService {
    * Finalizes phrase, sends it to the background Whisper thread,
    * while keeping the audio capture thread running uninterrupted!
    */
-  private finalizeAndDispatchPhrase(): Promise<void> {
+  private finalizeAndDispatchPhrase(meta: VoiceResultMeta = { pushToTalk: false }): Promise<void> {
     this.isSpeaking = false;
     this.setState('transcribing');
 
@@ -1153,7 +1168,7 @@ class VoiceService {
           const clean = text.trim();
           console.log(`[VoiceService] ✓ Hands-Free transcript: "${clean}"`);
           this.onResultCallbacks.forEach((cb) => {
-            try { cb(clean, true); } catch (e) {}
+            try { cb(clean, true, meta); } catch (e) {}
           });
         }
       })
@@ -1383,6 +1398,7 @@ class VoiceService {
     // поднятым навсегда.
     const seq = ++this.pushToTalkSeq;
     this.pushToTalkActive = true;
+    this.webSpeechPushToTalkReleasedAt = 0;
     this.notifyPushToTalk();
 
     const wasListening = this.isListening;
@@ -1457,6 +1473,7 @@ class VoiceService {
     if (!this.pushToTalkActive) return;
     this.pushToTalkSeq++;
     this.pushToTalkActive = false;
+    this.webSpeechPushToTalkReleasedAt = 0;
 
     const ownedCapture = this.pushToTalkOwnedCapture;
     this.pushToTalkOwnedCapture = false;
@@ -1477,6 +1494,17 @@ class VoiceService {
     this.notifyPushToTalk();
   }
 
+  /**
+   * Финальный результат Web Speech API относится к push-to-talk, если клавиша ещё зажата или её
+   * отпустили только что. Метка одноразовая: следующая фраза hands-free карточку не закрепит.
+   */
+  private consumeWebSpeechPushToTalk(): boolean {
+    if (this.pushToTalkActive) return true;
+    const releasedAt = this.webSpeechPushToTalkReleasedAt;
+    this.webSpeechPushToTalkReleasedAt = 0;
+    return releasedAt > 0 && Date.now() - releasedAt <= VoiceService.WEBSPEECH_PTT_TAIL_MS;
+  }
+
   /** Клавиша отпущена: накопленная фраза немедленно уходит в распознавание. */
   async endPushToTalk(): Promise<void> {
     if (!this.pushToTalkActive) return;
@@ -1489,11 +1517,14 @@ class VoiceService {
     this.pushToTalkOwnedCapture = false;
 
     if (this.config.engine === 'webspeech') {
+      this.webSpeechPushToTalkReleasedAt = Date.now();
       if (ownedCapture) this.stopListening();
       return;
     }
 
-    const pending = this.currentPhraseChunks.length > 0 ? this.finalizeAndDispatchPhrase() : Promise.resolve();
+    // Фраза помечается как записанная клавишей: её результат закрепляется карточкой (TASK-115).
+    const pending =
+      this.currentPhraseChunks.length > 0 ? this.finalizeAndDispatchPhrase({ pushToTalk: true }) : Promise.resolve();
 
     if (!ownedCapture) {
       await pending;

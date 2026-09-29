@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Pause, Play, Square, Zap, Radio, Keyboard } from 'lucide-react';
+import { Pause, Play, Square, Zap, Radio, Keyboard, X, CheckCircle2, Loader2 } from 'lucide-react';
 import { useI18n } from '../../i18n';
+import { CARD_LAYOUT, toResultCard, type VoiceResultCard } from '../../utils/voiceResultCard';
 
 /**
  * Системный оверлей голоса (TASK-83).
@@ -9,6 +10,9 @@ import { useI18n } from '../../i18n';
  * ProjectHub свёрнуто или пользователь работает в чужой программе. Размер и положение окна задаёт
  * main по полю `mode` (полоса внизу экрана, широкая полоса на время записи, крупное окно по центру
  * в режиме диктовки) — здесь только типографика под каждый режим.
+ *
+ * Поверх режимов — карточка результата push-to-talk (TASK-115): распознанный текст целиком и итог
+ * команды, висит до закрытия. Окно фокус не берёт, поэтому закрытие кликом мимо и Esc ловит main.
  */
 
 type OverlayMode = 'compact' | 'wide' | 'full';
@@ -22,6 +26,7 @@ interface OverlayState {
   mode?: OverlayMode;
   /** Итог последней команды: «Открываю доску задач», «Напечатано: …». */
   feedback?: string;
+  resultCard?: VoiceResultCard | null;
 }
 
 /** Размер текста распознанной фразы по режимам: в диктовке его читают через всю комнату. */
@@ -72,6 +77,17 @@ export const SystemVoiceOverlay: React.FC = () => {
     e.stopPropagation();
     window.api?.sendVoiceOverlayAction?.('stop');
   };
+
+  const card = toResultCard(overlayState.resultCard);
+  if (card) {
+    return (
+      <ResultCard
+        card={card}
+        labels={t.voice.resultCard}
+        onClose={() => window.api?.sendVoiceOverlayAction?.('dismiss-result')}
+      />
+    );
+  }
 
   const { isPaused, state, transcript, audioLevel, feedback } = overlayState;
   const mode: OverlayMode = overlayState.mode ?? 'compact';
@@ -189,6 +205,77 @@ export const SystemVoiceOverlay: React.FC = () => {
             </p>
           )}
         </div>
+      </div>
+    </div>
+  );
+};
+
+interface ResultCardProps {
+  card: VoiceResultCard;
+  labels: { title: string; hint: string; classifying: string; close: string };
+  onClose: () => void;
+}
+
+/**
+ * Карточка результата: текст переносится целиком, без обрезки по ширине; если он выше окна (main
+ * ограничивает высоту долей экрана), появляется прокрутка. Кегли — из `CARD_LAYOUT`, по ним же main
+ * оценивает высоту окна.
+ */
+const ResultCard: React.FC<ResultCardProps> = ({ card, labels, onClose }) => {
+  const classifying = card.status === 'classifying';
+  const feedback = card.feedback ?? (classifying ? labels.classifying : null);
+
+  return (
+    <div style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} className="w-full h-full p-1 select-none cursor-move">
+      <div className="w-full h-full flex flex-col gap-2 rounded-2xl bg-[#0e111bf2] border border-indigo-500/50 shadow-2xl backdrop-blur-2xl text-white px-6 py-4">
+        <div className="flex items-center justify-between gap-3 shrink-0">
+          <span className="flex items-center gap-1.5 text-[13px] font-semibold text-indigo-300">
+            <Radio className="w-4 h-4 text-indigo-400 shrink-0" />
+            {labels.title}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            className="p-1.5 rounded-lg bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700 border border-slate-700/80 transition"
+            title={labels.close}
+            aria-label={labels.close}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          className="flex-1 min-h-0 overflow-y-auto cursor-default select-text pr-1"
+        >
+          <p
+            className="font-medium text-white whitespace-pre-wrap break-words"
+            style={{ fontSize: CARD_LAYOUT.transcriptFont, lineHeight: CARD_LAYOUT.transcriptLineHeight }}
+          >
+            «{card.transcript}»
+          </p>
+          {feedback && (
+            <p
+              className={`mt-2 flex items-start gap-1.5 whitespace-pre-wrap break-words ${
+                classifying ? 'text-amber-300' : 'text-indigo-200'
+              }`}
+              style={{ fontSize: CARD_LAYOUT.feedbackFont, lineHeight: CARD_LAYOUT.feedbackLineHeight }}
+            >
+              {classifying ? (
+                <Loader2 className="w-4 h-4 mt-0.5 animate-spin shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+              )}
+              <span>{feedback}</span>
+            </p>
+          )}
+        </div>
+
+        <p className="shrink-0 text-[11px] text-slate-500 truncate">{labels.hint}</p>
       </div>
     </div>
   );
