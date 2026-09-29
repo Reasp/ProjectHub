@@ -41,6 +41,7 @@ import {
 import { ArchiveExtractError, extractTarBz2 } from './archiveExtract';
 import { parseContentLength, resolveTotalBytes } from './ttsDownloadProgress';
 import type { TtsVoiceStoreErrorCode } from './ttsErrorCodes';
+import type { TtsEngineId } from './qwenTtsRegistry';
 
 /** Хвост ONNX, в котором ищем metadata: она пишется в конец файла. */
 const METADATA_TAIL_BYTES = 64 * 1024;
@@ -65,6 +66,8 @@ export interface InstalledVoice {
 export interface TtsVoiceListItem {
   id: string;
   label: string;
+  /** Движок, которым звучит голос: по нему сервис озвучки выбирает процесс синтеза (TASK-104). */
+  engine: TtsEngineId;
   language: TtsVoiceLanguage;
   source: TtsVoiceSource;
   installed: boolean;
@@ -174,6 +177,7 @@ export async function listVoices(): Promise<TtsVoiceListItem[]> {
     items.push({
       id: voice.id,
       label: voice.label,
+      engine: 'piper',
       language: voice.language,
       source: 'builtin',
       installed: Boolean(installed),
@@ -193,6 +197,7 @@ export async function listVoices(): Promise<TtsVoiceListItem[]> {
     items.push({
       id: installed.id,
       label: installed.label,
+      engine: 'piper',
       language: installed.language,
       source: 'imported',
       installed: true,

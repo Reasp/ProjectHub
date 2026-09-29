@@ -11,8 +11,7 @@ export type VoiceState =
   | 'error';
 
 export type VoiceEngine = 'whisper' | 'webspeech';
-/** Движок озвучки: системный speechSynthesis или локальный Piper в воркере main (TASK-69). */
-export type TtsEngine = 'system' | 'piper';
+export type { TtsEngine } from './ttsEngineChain';
 export type WhisperProvider = 'local' | 'groq' | 'openai';
 
 import { getDefaultCommandPhrases } from './voiceCommandPhrases';
@@ -35,7 +34,15 @@ import {
   type BargeInSeed
 } from './bargeInPreRoll';
 import { ttsPlayer } from './ttsPlayer';
-import type { LocalWhisperStatusInfo } from '../types/electron';
+import {
+  DEFAULT_QWEN_VOICE_ID,
+  QWEN_DRAFT_VOICE_ID,
+  QWEN_REBUFFER_SEC,
+  qwenReadiness,
+  ttsEngineChain,
+  type TtsEngine
+} from './ttsEngineChain';
+import type { LocalWhisperStatusInfo, TtsSpeakRequest } from '../types/electron';
 
 export interface AudioDeviceInfo {
   deviceId: string;
@@ -58,8 +65,14 @@ export interface VoiceConfig {
   ttsVoiceId: string;
   /** Скорость речи Piper: 1.0 — как записано в модели. */
   ttsSpeed: number;
-  /** Громкость воспроизведения Piper: 0..1. */
+  /** Громкость воспроизведения локальных движков: 0..1. */
   ttsVolume: number;
+  /** Голос Qwen3-TTS: пресет `qwen:custom:<диктор>` или сохранённый `qwen:design:<имя>` (TASK-104). */
+  ttsQwenVoiceId?: string;
+  /** Инструкция подачи для пресет-голоса Qwen3-TTS: эмоция, темп. */
+  ttsQwenInstruct?: string;
+  /** Адрес Hugging Face или зеркала для загрузки весов Qwen3-TTS; пусто — huggingface.co. */
+  ttsQwenHfEndpoint?: string;
   handsFree: boolean; // Continuous listening without touching buttons
   vadSilenceThresholdMs: number; // Silence duration before cutting chunk (default: 480ms)
   customCommandPhrases?: Record<string, string[]>;
@@ -104,6 +117,9 @@ const DEFAULT_CONFIG: VoiceConfig = {
   ttsVoiceId: '',
   ttsSpeed: 1.0,
   ttsVolume: 1.0,
+  ttsQwenVoiceId: DEFAULT_QWEN_VOICE_ID,
+  ttsQwenInstruct: '',
+  ttsQwenHfEndpoint: '',
   handsFree: true, // Hands-Free by default
   vadSilenceThresholdMs: 480,
   customCommandPhrases: getDefaultCommandPhrases(),
@@ -1501,6 +1517,8 @@ class VoiceService {
     finish: (playedAudio: boolean) => void;
     playedChunks: number;
     generationDone: boolean;
+    /** Пауза пополнения буфера при разрыве — только для движков на грани реального времени. */
+    rebufferSec: number;
   } | null = null;
   private lastTtsError: string | null = null;
 
@@ -1554,7 +1572,8 @@ class VoiceService {
       void ttsPlayer
         .enqueue(chunk.jobId, chunk.samples, chunk.sampleRate, {
           sinkId: this.config.audioOutputDeviceId || '',
-          volume: this.config.ttsVolume
+          volume: this.config.ttsVolume,
+          rebufferSec: job.rebufferSec
         })
         .then((accepted) => {
           if (accepted) job.playedChunks += 1;
@@ -1572,7 +1591,8 @@ class VoiceService {
     window.api.onTtsError((info) => {
       const job = this.activeTtsJob;
       if (!job || job.id !== info.jobId) return;
-      this.lastTtsError = info.error;
+      // Qwen3-TTS отдаёт код причины — его переводят настройки; Piper сообщает текстом
+      this.lastTtsError = info.errorCode || info.error;
       job.finish(job.playedChunks > 0);
     });
 
@@ -1583,15 +1603,18 @@ class VoiceService {
   }
 
   /**
-   * Озвучивает текст выбранным движком. Если локальный Piper недоступен или не успел выдать
-   * ни одного чанка, происходит деградация в системный `speechSynthesis` — без краха (AC#7).
+   * Озвучивает текст выбранным движком. Если движок недоступен или не успел выдать ни одного
+   * чанка, фраза уходит следующему по цепочке (Qwen3-TTS → Piper → системный голос) — без краха
+   * (TASK-69 AC#7, TASK-104).
    */
   async speak(text: string, lang?: 'ru' | 'en'): Promise<void> {
     if (typeof window === 'undefined' || !this.config.ttsEnabled) return;
     const language = lang || this.config.language;
 
-    if (this.config.ttsEngine === 'piper') {
-      const handled = await this.speakWithPiper(text, language);
+    for (const engine of ttsEngineChain(this.config.ttsEngine)) {
+      if (engine === 'system') break;
+      const handled =
+        engine === 'qwen' ? await this.speakWithQwen(text, language) : await this.speakWithPiper(text, language);
       if (handled) return;
     }
 
@@ -1599,7 +1622,68 @@ class VoiceService {
   }
 
   /**
-   * Локальный синтез: main отдаёт PCM по предложениям, звук играет через AudioContext с
+   * Проба несохранённого голоса VoiceDesign в настройках. В отличие от обычной реплики ждёт
+   * загрузки модели: пользователь сам нажал кнопку и готов подождать.
+   * @returns true, если голос прозвучал; причина отказа — в `getLastTtsError()`
+   */
+  async previewQwenVoice(
+    text: string,
+    lang: 'ru' | 'en',
+    voice: { voiceId: string; instruct?: string } | { draft: { instruct: string; seed: number } }
+  ): Promise<boolean> {
+    if (typeof window === 'undefined' || !window.api?.speakTts) return false;
+    this.lastTtsError = null;
+    return this.playLocalJob(
+      (jobId) =>
+        'draft' in voice
+          ? { jobId, text, voiceId: QWEN_DRAFT_VOICE_ID, language: lang, draft: voice.draft }
+          : { jobId, text, voiceId: voice.voiceId, language: lang, instruct: voice.instruct },
+      QWEN_REBUFFER_SEC
+    );
+  }
+
+  /**
+   * Qwen3-TTS в сайдкаре. Пока модель не загружена, реплика не ждёт: загрузка запускается в фоне,
+   * а фразу озвучивает следующий движок.
+   * @returns true, если озвучка состоялась; false — нужен следующий движок
+   */
+  private async speakWithQwen(text: string, lang: 'ru' | 'en'): Promise<boolean> {
+    const api = window.api;
+    if (!api?.speakTts || !api.getQwenTtsStatus) return false;
+    const voiceId = this.config.ttsQwenVoiceId || DEFAULT_QWEN_VOICE_ID;
+
+    let readiness: ReturnType<typeof qwenReadiness>;
+    try {
+      const status = await api.getQwenTtsStatus();
+      readiness = qwenReadiness(status, voiceId);
+      if (readiness === 'skip') {
+        this.lastTtsError = status?.errorCode || (status?.install?.runtimeReady ? 'qwen_model_missing' : 'qwen_not_installed');
+      }
+    } catch (err) {
+      this.lastTtsError = err instanceof Error ? err.message : String(err);
+      return false;
+    }
+
+    if (readiness === 'warmup') {
+      void api.warmupTts?.(voiceId).catch(() => {});
+      return false;
+    }
+    if (readiness === 'skip') return false;
+
+    return this.playLocalJob(
+      (jobId) => ({
+        jobId,
+        text,
+        voiceId,
+        language: lang,
+        instruct: this.config.ttsQwenInstruct || undefined
+      }),
+      QWEN_REBUFFER_SEC
+    );
+  }
+
+  /**
+   * Локальный синтез Piper: main отдаёт PCM по предложениям, звук играет через AudioContext с
    * выбранным устройством вывода.
    * @returns true, если озвучка состоялась; false — нужен системный движок
    */
@@ -1617,6 +1701,25 @@ class VoiceService {
       this.lastTtsError = err instanceof Error ? err.message : String(err);
       return false;
     }
+
+    return this.playLocalJob((jobId) => ({
+      jobId,
+      text,
+      voiceId: this.resolveTtsVoiceId(lang),
+      speed: this.config.ttsSpeed
+    }));
+  }
+
+  /**
+   * Общий путь локальных движков: задание синтеза в main, чанки PCM — в очередь воспроизведения.
+   * Движок main выбирает сам по идентификатору голоса.
+   */
+  private async playLocalJob(
+    buildRequest: (jobId: string) => TtsSpeakRequest,
+    rebufferSec: number = 0
+  ): Promise<boolean> {
+    const api = window.api;
+    if (!api?.speakTts) return false;
 
     this.bindTtsListeners();
     // Повторный speak() без stopSpeaking(): предыдущее задание завершается явно, иначе его промис
@@ -1637,13 +1740,13 @@ class VoiceService {
         this.setTtsMuted(false);
         resolve(playedAudio);
       };
-      this.activeTtsJob = { id: jobId, finish, playedChunks: 0, generationDone: false };
+      this.activeTtsJob = { id: jobId, finish, playedChunks: 0, generationDone: false, rebufferSec };
 
       api
-        .speakTts({ jobId, text, voiceId: this.resolveTtsVoiceId(lang), speed: this.config.ttsSpeed })
+        .speakTts(buildRequest(jobId))
         .then((res) => {
           if (!res?.ok) {
-            this.lastTtsError = res?.error || 'Local TTS synthesis failed';
+            this.lastTtsError = res?.errorCode || res?.error || 'Local TTS synthesis failed';
             finish(false);
           }
         })

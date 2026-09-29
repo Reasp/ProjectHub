@@ -52,7 +52,8 @@ export interface TtsChunk {
 export interface SpeakHandlers {
   onChunk: (chunk: TtsChunk) => void;
   onDone: (info: { jobId: string; timeMs: number; audioSec: number; chunks: number }) => void;
-  onError: (info: { jobId: string; error: string }) => void;
+  /** `errorCode` отдаёт движок Qwen (TASK-104); Piper сообщает причину текстом. */
+  onError: (info: { jobId: string; error: string; errorCode?: string }) => void;
 }
 
 export interface SpeakRequest {

@@ -34,6 +34,8 @@ import type {
   TtsDonePayload,
   TtsDownloadProgress,
   TtsErrorPayload,
+  TtsSpeakRequest,
+  QwenInstallProgressInfo,
   MemoryDraftInput,
   AutomationRuleInput,
   SecuritySettings,
@@ -530,8 +532,7 @@ const api: IElectronAPI = {
   deleteTtsVoice: (voiceId: string) => ipcRenderer.invoke('tts:deleteVoice', voiceId),
   importTtsVoice: () => ipcRenderer.invoke('tts:importVoice'),
   warmupTts: (voiceId: string) => ipcRenderer.invoke('tts:warmup', voiceId),
-  speakTts: (req: { jobId: string; text: string; voiceId: string; speed?: number; speakerId?: number }) =>
-    ipcRenderer.invoke('tts:speak', req),
+  speakTts: (req: TtsSpeakRequest) => ipcRenderer.invoke('tts:speak', req),
   cancelTts: (jobId: string) => ipcRenderer.invoke('tts:cancel', jobId),
   cancelAllTts: () => ipcRenderer.invoke('tts:cancelAll'),
   // PCM приходит чанками по мере готовности: Float32Array переживает structured clone как есть
@@ -561,6 +562,23 @@ const api: IElectronAPI = {
     ipcRenderer.on('tts:downloadProgress', handler);
     return () => {
       ipcRenderer.removeListener('tts:downloadProgress', handler);
+    };
+  },
+
+  // Второй движок озвучки: Qwen3-TTS в сайдкаре Python (TASK-104, decision-64)
+  getQwenTtsStatus: () => ipcRenderer.invoke('tts:qwen:getStatus'),
+  listQwenTtsVoices: () => ipcRenderer.invoke('tts:qwen:listVoices'),
+  installQwenTts: (req: { models: string[]; hfEndpoint?: string }) => ipcRenderer.invoke('tts:qwen:install', req),
+  cancelQwenTtsInstall: () => ipcRenderer.invoke('tts:qwen:cancelInstall'),
+  unloadQwenTts: () => ipcRenderer.invoke('tts:qwen:unload'),
+  saveQwenTtsVoice: (input: { label: string; instruct: string; seed: number }) =>
+    ipcRenderer.invoke('tts:qwen:saveVoice', input),
+  deleteQwenTtsVoice: (voiceId: string) => ipcRenderer.invoke('tts:qwen:deleteVoice', voiceId),
+  onQwenTtsInstallProgress: (callback: (progress: QwenInstallProgressInfo) => void) => {
+    const handler = (_event: IpcRendererEvent, progress: QwenInstallProgressInfo) => callback(progress);
+    ipcRenderer.on('tts:qwen:installProgress', handler);
+    return () => {
+      ipcRenderer.removeListener('tts:qwen:installProgress', handler);
     };
   },
 

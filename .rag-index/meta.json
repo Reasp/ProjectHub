@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "27be3d23d6ad9c248996d8f9fd6c48c744b41906dd399da08c226588db0927f3",
+  "docsHash": "2ef50140180ba141fb8a3eaca4135f624a24b19d8dd5f21f14fa48e57c649e7a",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -65,6 +65,7 @@
     "backlog/decisions/decision-61 - Менеджер-скиллов-проекта-копии-в-.claude-skills-и-.agents-skills-атомарная-замена-и-источники-импорта.md",
     "backlog/decisions/decision-62 - Экспорт-ролей-и-хуков-в-Google-Antigravity-fail-closed-движка-и-инструменты-вместо-прав-роли.md",
     "backlog/decisions/decision-63 - Push-to-talk-на-клавише-модификаторе-нативный-хук-uiohook-napi-и-запасное-сочетание.md",
+    "backlog/decisions/decision-64 - Второй-движок-TTS-Qwen3-TTS-в-сайдкаре-на-faster-qwen3-tts-голос-по-описанию-эталон-и-клон.md",
     "backlog/decisions/decision-7 - Local-first-хранение-состояния-и-отсутствие-телеметрии.md",
     "backlog/decisions/decision-8 - Результаты-агентов-материализуются-в-git-авто-коммит-в-worktree-и-безопасное-слияние.md",
     "backlog/decisions/decision-9 - Роль-агента-как-first-class-сущность.md",
@@ -79,6 +80,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 831,
-  "builtAt": "2026-09-28T08:02:17.417Z"
+  "chunks": 854,
+  "builtAt": "2026-09-29T03:52:39.172Z"
 }

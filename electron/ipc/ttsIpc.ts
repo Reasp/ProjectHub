@@ -1,7 +1,8 @@
 /**
  * IPC локального синтеза речи (TASK-69, decision-25).
  *
- * Генерация идёт в воркере main-процесса, а воспроизведение — в рендерере: только там есть
+ * Генерация идёт в отдельном процессе (Piper — `utilityProcess`, Qwen3-TTS — сайдкар Python; движок
+ * выбирается по голосу, TASK-104), а воспроизведение — в рендерере: только там есть
  * `AudioContext` с `setSinkId`, то есть выбор устройства вывода, которого системный
  * `speechSynthesis` не умеет. Поэтому PCM-чанки уходят в рендерер событиями по мере готовности.
  */
@@ -18,11 +19,22 @@ import {
 } from '../services/ttsVoiceStore';
 import { PiperVoiceConfigError } from '../services/piperVoiceConfig';
 import { probeVoiceInSeparateProcess } from '../services/ttsVoiceProbe';
+import { qwenTtsService, type QwenSpeakRequest } from '../services/qwenTtsService';
+import { qwenTtsInstaller } from '../services/qwenTtsInstaller';
+import {
+  deleteDesignRecipe,
+  getQwenInstallStatus,
+  listQwenVoices,
+  QwenTtsStoreError,
+  recipeToListItem,
+  saveDesignRecipe
+} from '../services/qwenTtsStore';
+import { QWEN_MODEL_KINDS, resolveVoiceEngine, type QwenModelKind } from '../services/qwenTtsRegistry';
 import type { IpcContext } from './types';
 
 /** Ошибки наружу уходят кодом, а не текстом: строки интерфейса живут в i18n рендерера. */
 function toErrorPayload(err: unknown): { ok: false; error: string; errorCode?: string; detail?: string } {
-  if (err instanceof TtsVoiceStoreError || err instanceof PiperVoiceConfigError) {
+  if (err instanceof TtsVoiceStoreError || err instanceof PiperVoiceConfigError || err instanceof QwenTtsStoreError) {
     return { ok: false, error: err.message, errorCode: err.code, detail: err.detail };
   }
   const message = err instanceof Error ? err.message : String(err);
@@ -127,30 +139,121 @@ export function registerTtsIpc(ctx: IpcContext) {
   });
 
   ipcMain.handle('tts:warmup', async (_event, voiceId: string) => {
+    // Голос знает свой движок (TASK-104): прогревается тот процесс, которым он звучит
+    if (resolveVoiceEngine(voiceId) === 'qwen') {
+      // Прогрев недоступного движка запускает только человек (выбор голоса в настройках):
+      // реплики его пропускают, поэтому это осознанная повторная попытка
+      qwenTtsService.resetAvailability();
+      const state = await qwenTtsService.warmup(voiceId);
+      return { ...state, voiceId, workerActive: state.processActive, available: state.status !== 'unavailable' };
+    }
     const state = await piperTtsService.loadVoice(voiceId);
     return { ...state, available: piperTtsService.isAvailable };
   });
 
   ipcMain.handle(
     'tts:speak',
-    async (_event, req: { jobId: string; text: string; voiceId: string; speed?: number; speakerId?: number }) => {
+    async (
+      _event,
+      req: { jobId: string; text: string; voiceId: string; speed?: number; speakerId?: number } & Partial<QwenSpeakRequest>
+    ) => {
       if (!req?.jobId || !req?.text || !req?.voiceId) {
         return { ok: false, error: 'invalid_request', errorCode: 'invalid_request' };
       }
+      const handlers = {
+        onChunk: (chunk: unknown) => send('tts:chunk', chunk),
+        onDone: (info: unknown) => send('tts:done', info),
+        onError: (info: unknown) => send('tts:error', info)
+      };
       // Не ждём окончания синтеза: чанки идут событиями, ответ возвращается сразу
-      void piperTtsService.speak(req, {
-        onChunk: (chunk) => send('tts:chunk', chunk),
-        onDone: (info) => send('tts:done', info),
-        onError: (info) => send('tts:error', info)
-      });
+      if (resolveVoiceEngine(req.voiceId) === 'qwen') {
+        void qwenTtsService.speak(
+          {
+            jobId: req.jobId,
+            text: req.text,
+            voiceId: req.voiceId,
+            language: req.language,
+            instruct: req.instruct,
+            draft: req.draft
+          },
+          handlers
+        );
+      } else {
+        void piperTtsService.speak(req, handlers);
+      }
       return { ok: true };
     }
   );
 
-  ipcMain.handle('tts:cancel', async (_event, jobId: string) => piperTtsService.cancel(jobId));
+  // jobId уникален в пределах приложения, поэтому отмена адресуется обоим движкам
+  ipcMain.handle('tts:cancel', async (_event, jobId: string) => {
+    const piper = piperTtsService.cancel(jobId);
+    const qwen = qwenTtsService.cancel(jobId);
+    return piper || qwen;
+  });
 
   ipcMain.handle('tts:cancelAll', async () => {
     piperTtsService.cancelAll();
+    qwenTtsService.cancelAll();
     return true;
+  });
+
+  // ── Второй движок: Qwen3-TTS в сайдкаре Python (TASK-104, decision-64) ──
+
+  ipcMain.handle('tts:qwen:getStatus', async () => ({
+    ...qwenTtsService.getState(),
+    install: await getQwenInstallStatus(),
+    installProgress: qwenTtsInstaller.getProgress()
+  }));
+
+  ipcMain.handle('tts:qwen:listVoices', async () => {
+    try {
+      return await listQwenVoices();
+    } catch (err) {
+      console.warn('[TTS] listQwenVoices failed:', err);
+      return [];
+    }
+  });
+
+  ipcMain.handle('tts:qwen:install', async (_event, req: { models?: string[]; hfEndpoint?: string }) => {
+    const models = (Array.isArray(req?.models) ? req.models : []).filter((kind): kind is QwenModelKind =>
+      (QWEN_MODEL_KINDS as readonly string[]).includes(kind)
+    );
+    if (models.length === 0) return { ok: false, error: 'invalid_request', errorCode: 'invalid_request' };
+    // Сайдкар держит файлы окружения открытыми — на время установки он останавливается
+    await qwenTtsService.unload();
+    const result = await qwenTtsInstaller.start(
+      { models, hfEndpoint: typeof req?.hfEndpoint === 'string' ? req.hfEndpoint : '' },
+      (progress) => send('tts:qwen:installProgress', progress)
+    );
+    if (result.state !== 'done') {
+      return { ok: false, error: result.error || result.errorCode || 'qwen_install_failed', errorCode: result.errorCode };
+    }
+    qwenTtsService.resetAvailability();
+    return { ok: true };
+  });
+
+  ipcMain.handle('tts:qwen:cancelInstall', async () => qwenTtsInstaller.cancel());
+
+  ipcMain.handle('tts:qwen:unload', async () => qwenTtsService.unload());
+
+  ipcMain.handle('tts:qwen:saveVoice', async (_event, input: { label?: unknown; instruct?: unknown; seed?: unknown }) => {
+    try {
+      // Эталоном голоса становится звук прослушанной пробы: сохраняется то, что прозвучало
+      const reference = qwenTtsService.getDraftAudio(input?.instruct, input?.seed);
+      const recipe = await saveDesignRecipe(input ?? {}, reference);
+      const install = await getQwenInstallStatus();
+      return { ok: true, voice: recipeToListItem(recipe, install.runtimeReady && install.models.base) };
+    } catch (err) {
+      return toErrorPayload(err);
+    }
+  });
+
+  ipcMain.handle('tts:qwen:deleteVoice', async (_event, voiceId: string) => {
+    try {
+      return { ok: await deleteDesignRecipe(voiceId) };
+    } catch (err) {
+      return toErrorPayload(err);
+    }
   });
 }

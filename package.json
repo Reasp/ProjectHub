@@ -30,6 +30,7 @@
     "lightrag-index": "node scripts/lightrag/run.mjs index_docs.py",
     "lightrag-query": "node scripts/lightrag/run.mjs query.py",
     "lightrag-server": "node scripts/lightrag/lightrag-server.mjs",
+    "qwen-tts-setup": "node electron/workers/qwen/setup.mjs",
     "web": "node scripts/web.mjs",
     "remote-relay": "node scripts/remote-relay-server.mjs",
     "federation-smoke": "node scripts/federation-smoke.mjs",

@@ -30,7 +30,8 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     // Скрипты инфраструктуры и main-процесс Electron — Node.
-    files: ['electron/**/*.{ts,mjs,js}', 'scripts/**/*.{mjs,js}', 'tests/**/*.ts', '*.{ts,mjs,js}'],
+    // tests/**/*.mjs — поддельные дочерние процессы для тестов (fakeQwenSidecar.mjs, TASK-104).
+    files: ['electron/**/*.{ts,mjs,js}', 'scripts/**/*.{mjs,js}', 'tests/**/*.{ts,mjs}', '*.{ts,mjs,js}'],
     languageOptions: { globals: { ...globals.node, ...globals.es2022 } }
   },
   {

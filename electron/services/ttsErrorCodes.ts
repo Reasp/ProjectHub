@@ -71,6 +71,54 @@ export function isNativeModuleMissingError(message: string): boolean {
   return /MODULE_NOT_FOUND|Cannot find module|Could not find sherpa-onnx/i.test(message);
 }
 
+/**
+ * Второй движок — Qwen3-TTS в сайдкаре Python (TASK-104, decision-64): окружение не установлено,
+ * сайдкар не запустился или упал, модель не загрузилась, рецепт голоса не прошёл проверку.
+ * Часть кодов приходит из самого сайдкара (`sidecar.py`) — список общий.
+ */
+export const QWEN_TTS_ERROR_CODES = [
+  'qwen_not_installed',
+  'qwen_model_missing',
+  'qwen_sidecar_missing',
+  'qwen_sidecar_crashed',
+  'qwen_sidecar_timeout',
+  'qwen_runtime_broken',
+  'qwen_load_failed',
+  'qwen_model_not_loaded',
+  'qwen_out_of_memory',
+  'qwen_synthesis_failed',
+  'qwen_bad_request',
+  'qwen_invalid_recipe',
+  'qwen_probe_required',
+  'qwen_voice_not_found'
+] as const;
+
+/** Установка окружения и весов Qwen3-TTS (`electron/workers/qwen/setup.mjs`). */
+export const QWEN_INSTALL_ERROR_CODES = [
+  'qwen_install_in_progress',
+  'qwen_install_cancelled',
+  'qwen_install_failed',
+  'qwen_setup_missing',
+  'qwen_python_missing',
+  'qwen_gpu_missing',
+  'qwen_disk_space',
+  'qwen_venv_failed',
+  'qwen_pip_failed',
+  'qwen_download_failed',
+  'qwen_checksum_mismatch'
+] as const;
+
+export type QwenTtsErrorCode =
+  | (typeof QWEN_TTS_ERROR_CODES)[number]
+  | (typeof QWEN_INSTALL_ERROR_CODES)[number];
+
+const QWEN_CODES: readonly string[] = [...QWEN_TTS_ERROR_CODES, ...QWEN_INSTALL_ERROR_CODES];
+
+/** Код из сайдкара или скрипта установки; неизвестный заменяется общим, чтобы в интерфейс не ушла сырая строка. */
+export function toQwenErrorCode(code: unknown, fallback: QwenTtsErrorCode): QwenTtsErrorCode {
+  return typeof code === 'string' && QWEN_CODES.includes(code) ? (code as QwenTtsErrorCode) : fallback;
+}
+
 /** Отказы на уровне IPC: до хранилища и движка дело не дошло. */
 export const TTS_IPC_ERROR_CODES = ['no_window', 'invalid_request'] as const;
 
@@ -82,5 +130,7 @@ export const ALL_TTS_ERROR_CODES: readonly string[] = [
   ...PIPER_VOICE_CONFIG_ERROR_CODES,
   ...PIPER_TTS_UNAVAILABLE_CODES,
   ...PIPER_VOICE_PROBE_ERROR_CODES,
+  ...QWEN_TTS_ERROR_CODES,
+  ...QWEN_INSTALL_ERROR_CODES,
   ...TTS_IPC_ERROR_CODES
 ];

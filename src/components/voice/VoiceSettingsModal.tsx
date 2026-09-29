@@ -29,11 +29,14 @@ import {
 } from 'lucide-react';
 import {
   voiceService,
+  type TtsEngine,
   type VoiceConfig,
   type VoiceEngine,
   type WhisperProvider,
   type AudioDeviceInfo
 } from '../../services/voiceService';
+import { DEFAULT_QWEN_VOICE_ID } from '../../services/ttsEngineChain';
+import { QwenTtsSettings } from './QwenTtsSettings';
 import type {
   LocalWhisperStatusInfo,
   PushToTalkSettings,
@@ -219,7 +222,20 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
     if (isPreviewingVoice) return;
     setIsPreviewingVoice(true);
     try {
-      await voiceService.speak(t.voice.settingsModal.ttsPreviewText, language === 'ru' ? 'ru' : 'en');
+      const lang = language === 'ru' ? 'ru' : 'en';
+      if (voiceConfig.ttsEngine === 'qwen') {
+        // Прослушивание ждёт загрузки модели, а не уходит в запасной движок, как обычная реплика
+        const played = await voiceService.previewQwenVoice(t.voice.settingsModal.ttsPreviewText, lang, {
+          voiceId: voiceConfig.ttsQwenVoiceId || DEFAULT_QWEN_VOICE_ID,
+          instruct: voiceConfig.ttsQwenInstruct
+        });
+        if (!played) {
+          const reason = voiceService.getLastTtsError();
+          showTtsNotice(`${t.voice.settingsModal.qwen.previewFailed}: ${translateTtsError(reason ?? undefined, reason ?? undefined)}`);
+        }
+      } else {
+        await voiceService.speak(t.voice.settingsModal.ttsPreviewText, lang);
+      }
     } finally {
       setIsPreviewingVoice(false);
       // Прослушивание могло загрузить голос или упасть в системный движок — статус должен это отразить
@@ -1056,7 +1072,7 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                 <select
                   value={voiceConfig.ttsEngine}
                   onChange={(e) => {
-                    const ttsEngine = e.target.value as 'system' | 'piper';
+                    const ttsEngine = e.target.value as TtsEngine;
                     void voiceService.stopSpeaking();
                     voiceService.saveConfig({ ttsEngine });
                     setVoiceConfig((c) => ({ ...c, ttsEngine }));
@@ -1065,7 +1081,15 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                 >
                   <option value="system">{t.voice.settingsModal.ttsEngineSystem}</option>
                   <option value="piper">{t.voice.settingsModal.ttsEnginePiper}</option>
+                  <option value="qwen">{t.voice.settingsModal.ttsEngineQwen}</option>
                 </select>
+
+                {voiceConfig.ttsEngine === 'qwen' && (
+                  <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-[11px] text-indigo-300 flex items-start gap-2">
+                    <Zap className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>{t.voice.settingsModal.qwen.hint}</span>
+                  </div>
+                )}
 
                 {voiceConfig.ttsEngine === 'piper' && (
                   <>
@@ -1236,30 +1260,44 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                 </div>
               )}
 
+              {/* Второй движок: Qwen3-TTS в сайдкаре (TASK-104) */}
+              {voiceConfig.ttsEngine === 'qwen' && (
+                <QwenTtsSettings
+                  voiceConfig={voiceConfig}
+                  onConfigChange={(patch) => {
+                    voiceService.saveConfig(patch);
+                    setVoiceConfig((c) => ({ ...c, ...patch }));
+                  }}
+                  notify={showTtsNotice}
+                />
+              )}
+
               {/* Скорость, громкость и прослушивание */}
-              {voiceConfig.ttsEngine === 'piper' && (
+              {(voiceConfig.ttsEngine === 'piper' || voiceConfig.ttsEngine === 'qwen') && (
                 <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-slate-300 font-semibold">
-                      <span>{t.voice.settingsModal.ttsSpeed}</span>
-                      <span className="font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
-                        {voiceConfig.ttsSpeed.toFixed(2)}×
-                      </span>
+                  {voiceConfig.ttsEngine === 'piper' && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-slate-300 font-semibold">
+                        <span>{t.voice.settingsModal.ttsSpeed}</span>
+                        <span className="font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                          {voiceConfig.ttsSpeed.toFixed(2)}×
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="2"
+                        step="0.05"
+                        value={voiceConfig.ttsSpeed}
+                        onChange={(e) => {
+                          const ttsSpeed = Number(e.target.value);
+                          voiceService.saveConfig({ ttsSpeed });
+                          setVoiceConfig((c) => ({ ...c, ttsSpeed }));
+                        }}
+                        className="w-full accent-indigo-500 cursor-pointer"
+                      />
                     </div>
-                    <input
-                      type="range"
-                      min="0.5"
-                      max="2"
-                      step="0.05"
-                      value={voiceConfig.ttsSpeed}
-                      onChange={(e) => {
-                        const ttsSpeed = Number(e.target.value);
-                        voiceService.saveConfig({ ttsSpeed });
-                        setVoiceConfig((c) => ({ ...c, ttsSpeed }));
-                      }}
-                      className="w-full accent-indigo-500 cursor-pointer"
-                    />
-                  </div>
+                  )}
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-slate-300 font-semibold">
@@ -1285,7 +1323,9 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
 
                   <div className="flex items-center justify-between gap-3 pt-1">
                     <p className="text-[11px] text-slate-400 leading-relaxed">
-                      {t.voice.settingsModal.ttsImportHint}
+                      {voiceConfig.ttsEngine === 'qwen'
+                        ? t.voice.settingsModal.qwen.speedNote
+                        : t.voice.settingsModal.ttsImportHint}
                     </p>
                     <button
                       type="button"

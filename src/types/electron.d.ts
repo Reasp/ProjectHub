@@ -512,9 +512,13 @@ export interface VoiceDictateResponse {
 export type TtsVoiceLanguage = 'ru' | 'en';
 export type TtsVoiceSource = 'builtin' | 'imported';
 
+/** Движок, которым звучит голос: Piper в utilityProcess или Qwen3-TTS в сайдкаре (TASK-104). */
+export type TtsVoiceEngine = 'piper' | 'qwen';
+
 export interface TtsVoiceListItem {
   id: string;
   label: string;
+  engine: TtsVoiceEngine;
   language: TtsVoiceLanguage;
   source: TtsVoiceSource;
   installed: boolean;
@@ -611,6 +615,95 @@ export interface TtsDonePayload {
 export interface TtsErrorPayload {
   jobId: string;
   error: string;
+  /** Код причины от движка Qwen3-TTS — переводится через `ttsErrors`. */
+  errorCode?: string;
+}
+
+export interface TtsSpeakRequest {
+  jobId: string;
+  text: string;
+  /** Идентификатор голоса; по нему main выбирает движок (`qwen:` — Qwen3-TTS, иначе Piper). */
+  voiceId: string;
+  speed?: number;
+  speakerId?: number;
+  /** Язык текста — нужен Qwen3-TTS, у Piper язык задан голосом. */
+  language?: 'ru' | 'en';
+  /** Инструкция подачи для пресет-голоса Qwen3-TTS. */
+  instruct?: string;
+  /** Рецепт несохранённого голоса — проба; текст пробы задаёт main (текст эталонной записи). */
+  draft?: { instruct: string; seed: number };
+}
+
+// ─── Второй движок озвучки: Qwen3-TTS в сайдкаре Python (TASK-104, decision-64) ───
+/** Вид голоса — то, что выбирает пользователь. */
+export type QwenVoiceKind = 'custom' | 'design';
+/**
+ * Вид модели в сайдкаре: `custom` — пресет-голоса, `design` — создание голоса по описанию,
+ * `base` — озвучка голосом эталонной записи (ею звучат сохранённые голоса по описанию).
+ */
+export type QwenModelKind = 'custom' | 'design' | 'base';
+
+export interface QwenVoiceListItem {
+  id: string;
+  label: string;
+  engine: 'qwen';
+  kind: QwenVoiceKind;
+  installed: boolean;
+  /** Родной язык диктора-пресета: русского среди них нет. */
+  native?: string;
+  gender?: string;
+  /** Рецепт голоса по описанию: по нему один раз создана эталонная запись. */
+  instruct?: string;
+  seed?: number;
+  createdAt?: string;
+}
+
+export interface QwenInstallStatusInfo {
+  installed: boolean;
+  runtimeReady: boolean;
+  models: Record<QwenModelKind, boolean>;
+  python: string | null;
+  torch: string | null;
+  gpu: string | null;
+}
+
+export interface QwenInstallProgressInfo {
+  state: 'idle' | 'running' | 'done' | 'error';
+  phase: string | null;
+  lastLine: string;
+  file: string;
+  receivedBytes: number;
+  totalBytes: number;
+  overallReceived: number;
+  overallTotal: number;
+  errorCode?: string;
+  error?: string;
+}
+
+export interface QwenTtsStatusInfo {
+  status: 'unloaded' | 'starting' | 'loading' | 'ready' | 'error' | 'unavailable';
+  modelKind: QwenModelKind | null;
+  sampleRate: number | null;
+  processActive: boolean;
+  queueLength: number;
+  loadTimeMs?: number;
+  vramMb?: number;
+  gpu?: string;
+  respawnAttempts: number;
+  chunkSize: number;
+  idleUnloadMs: number;
+  error?: string;
+  errorCode?: string;
+  install: QwenInstallStatusInfo;
+  installProgress: QwenInstallProgressInfo;
+}
+
+export interface QwenVoiceOperationResult {
+  ok: boolean;
+  error?: string;
+  errorCode?: string;
+  detail?: string;
+  voice?: QwenVoiceListItem;
 }
 
 export interface TtsOperationResult {
@@ -1057,19 +1150,23 @@ export interface IElectronAPI {
   deleteTtsVoice: (voiceId: string) => Promise<TtsOperationResult>;
   importTtsVoice: () => Promise<TtsOperationResult>;
   warmupTts: (voiceId: string) => Promise<TtsStatusInfo>;
-  speakTts: (req: {
-    jobId: string;
-    text: string;
-    voiceId: string;
-    speed?: number;
-    speakerId?: number;
-  }) => Promise<{ ok: boolean; error?: string }>;
+  speakTts: (req: TtsSpeakRequest) => Promise<{ ok: boolean; error?: string; errorCode?: string }>;
   cancelTts: (jobId: string) => Promise<boolean>;
   cancelAllTts: () => Promise<boolean>;
   onTtsChunk: (callback: (chunk: TtsChunkPayload) => void) => () => void;
   onTtsDone: (callback: (info: TtsDonePayload) => void) => () => void;
   onTtsError: (callback: (info: TtsErrorPayload) => void) => () => void;
   onTtsDownloadProgress: (callback: (progress: TtsDownloadProgress) => void) => () => void;
+
+  // Второй движок озвучки: Qwen3-TTS в сайдкаре Python (TASK-104, decision-64)
+  getQwenTtsStatus: () => Promise<QwenTtsStatusInfo>;
+  listQwenTtsVoices: () => Promise<QwenVoiceListItem[]>;
+  installQwenTts: (req: { models: QwenModelKind[]; hfEndpoint?: string }) => Promise<TtsOperationResult>;
+  cancelQwenTtsInstall: () => Promise<boolean>;
+  unloadQwenTts: () => Promise<QwenTtsStatusInfo>;
+  saveQwenTtsVoice: (input: { label: string; instruct: string; seed: number }) => Promise<QwenVoiceOperationResult>;
+  deleteQwenTtsVoice: (voiceId: string) => Promise<QwenVoiceOperationResult>;
+  onQwenTtsInstallProgress: (callback: (progress: QwenInstallProgressInfo) => void) => () => void;
 
   // System
   getPlatform: () => Promise<string>;

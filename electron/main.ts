@@ -6,6 +6,8 @@ import { claudeBridgeService } from './services/claudeBridgeService';
 import { localWhisperService } from './services/localWhisperService';
 import { ragWorkerClient } from './services/ragWorkerClient';
 import { piperTtsService } from './services/piperTtsService';
+import { qwenTtsService } from './services/qwenTtsService';
+import { qwenTtsInstaller } from './services/qwenTtsInstaller';
 import { mcpServerService } from './services/mcpServerService';
 import { remoteControlService } from './services/remoteControlService';
 import { federationClientService } from './services/federationClientService';
@@ -593,6 +595,14 @@ async function performGracefulShutdown() {
     await piperTtsService.dispose();
   } catch (e) {
     console.warn('[Main] Error disposing local TTS worker:', e);
+  }
+
+  try {
+    // Сайдкар Qwen3-TTS держит несколько гигабайт видеопамяти — после выхода он оставаться не должен
+    await qwenTtsService.dispose();
+    qwenTtsInstaller.dispose();
+  } catch (e) {
+    console.warn('[Main] Error disposing Qwen3-TTS sidecar:', e);
   }
 
   try {

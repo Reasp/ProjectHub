@@ -11,6 +11,31 @@
 
 export type TtsPlayerState = 'idle' | 'playing';
 
+/** Запас, чтобы чанк не начался «в прошлом» из-за задержки планирования. */
+export const SCHEDULING_LEAD_SEC = 0.02;
+
+/**
+ * Когда начать очередной чанк (в шкале AudioContext).
+ *
+ * Обычно чанк ставится встык за предыдущим. Если очередь опустела посреди задания — генерация
+ * отстала от воспроизведения, — чанк откладывается на `rebufferSec`: получается одна короткая
+ * пауза, за время которой копится запас звука, вместо микропауз на стыке каждого чанка
+ * («заикания»). Так звучит Qwen3-TTS на загруженной видеокарте, где генерация идёт на грани
+ * реального времени (TASK-104). Для первого чанка задания пополнения нет: задержка до первого
+ * звука и так самая заметная.
+ */
+export function planChunkStart(
+  now: number,
+  nextStartTime: number,
+  chunksPlayed: number,
+  rebufferSec: number = 0
+): number {
+  // Встык уже не поставить: до конца очереди осталось меньше запаса планирования
+  const ranDry = chunksPlayed > 0 && nextStartTime < now + SCHEDULING_LEAD_SEC;
+  const lead = ranDry ? Math.max(SCHEDULING_LEAD_SEC, rebufferSec) : SCHEDULING_LEAD_SEC;
+  return Math.max(now + lead, nextStartTime);
+}
+
 class TtsPlayer {
   private ctx: AudioContext | null = null;
   private gain: GainNode | null = null;
@@ -23,6 +48,8 @@ class TtsPlayer {
   private playing = false;
   /** Активное задание: чанки с чужим jobId (от отменённого чтения) игнорируются. */
   private activeJobId: string | null = null;
+  /** Сколько чанков текущего задания уже поставлено в очередь. */
+  private jobChunks = 0;
 
   get isPlaying(): boolean {
     return this.playing;
@@ -92,6 +119,7 @@ class TtsPlayer {
   async begin(jobId: string): Promise<void> {
     if (this.activeJobId && this.activeJobId !== jobId) await this.stop();
     this.activeJobId = jobId;
+    this.jobChunks = 0;
   }
 
   /**
@@ -102,7 +130,7 @@ class TtsPlayer {
     jobId: string,
     samples: Float32Array,
     sampleRate: number,
-    options: { sinkId?: string; volume?: number } = {}
+    options: { sinkId?: string; volume?: number; rebufferSec?: number } = {}
   ): Promise<boolean> {
     // Чанк принимается только для задания, начатого begin(). Прежнее условие пропускало любой
     // чанк при activeJobId === null, то есть сразу после stop() звук мог ожить и сделать
@@ -123,10 +151,10 @@ class TtsPlayer {
     source.buffer = buffer;
     source.connect(this.gain!);
 
-    // Небольшой запас, чтобы первый чанк не начался «в прошлом» из-за задержки планирования
-    const startAt = Math.max(ctx.currentTime + 0.02, this.nextStartTime);
+    const startAt = planChunkStart(ctx.currentTime, this.nextStartTime, this.jobChunks, options.rebufferSec);
     source.start(startAt);
     this.nextStartTime = startAt + buffer.duration;
+    this.jobChunks += 1;
     this.playing = true;
 
     this.sources.add(source);
