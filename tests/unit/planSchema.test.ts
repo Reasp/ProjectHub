@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_PLAN_NODES,
   MAX_SUBTASK_TITLE,
+  PLAN_EXAMPLE,
   PLAN_FENCE,
   buildPlanInstructions,
   findCycle,
@@ -205,6 +206,15 @@ describe('промпты', () => {
     expect(text).toContain(String(MAX_SUBTASK_TITLE));
     expect(text).toContain('1. Схема покрыта тестами');
     expect(text).toContain('разные файлы');
+  });
+
+  it('инструкция требует описание подзадачи в Markdown, пример — валидный JSON с разделами (TASK-120)', () => {
+    const text = buildPlanInstructions('TASK-120', []);
+    expect(text).toContain('Описание подзадачи — Markdown');
+    const plan = parseAgentPlan('```' + PLAN_FENCE + '\n' + PLAN_EXAMPLE + '\n```');
+    expect(plan.ok).toBe(true);
+    const example = JSON.parse(PLAN_EXAMPLE) as { subtasks: { description: string }[] };
+    expect(example.subtasks[0].description).toContain('### Что сделать\n');
   });
 
   it('инструкция без критериев не обещает их', () => {

@@ -33,6 +33,7 @@ import { useSwarmStore } from '../../store/useSwarmStore';
 import { useRolesStore } from '../../store/useRolesStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { parseAssignee, formatAgentAssignee } from '../../utils/assignee';
+import { structureTaskDescription } from '../../utils/taskDescriptionFormat';
 import { useFederationStore } from '../../store/useFederationStore';
 import { useDialog } from '../../hooks/useDialog';
 import { generateTaskDraft } from '../../services/aiAssistantService';
@@ -674,7 +675,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
                 }`}
               >
                 {description.trim() ? (
-                  <MarkdownViewer content={description} />
+                  <MarkdownViewer content={structureTaskDescription(description)} />
                 ) : (
                   <div className="text-slate-500 italic py-2 select-none">
                     {t.taskDetail.noDescription}
