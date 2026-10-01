@@ -8,7 +8,7 @@ import {
 describe('summarizeForSpeech: ответ агента к озвучке (TASK-83, AC #3)', () => {
   it('блоки кода не читаются вслух', () => {
     const answer = 'Готово.\n\n```ts\nconst x = 1;\nconsole.log(x);\n```\n\nПроверь тесты.';
-    expect(summarizeForSpeech(answer)).toBe('Готово. Проверь тесты.');
+    expect(summarizeForSpeech(answer)).toBe('Готово.\n\nПроверь тесты.');
   });
 
   it('незакрытая ограда отрезает хвост: ответ мог оборваться на полуслове', () => {
@@ -35,12 +35,12 @@ describe('summarizeForSpeech: ответ агента к озвучке (TASK-83
   it('таблицы и горизонтальные линии не озвучиваются', () => {
     const answer = 'Итог ниже.\n\n| Файл | Строк |\n| --- | --- |\n| a.ts | 12 |\n\n---\n\nГотово.';
     const spoken = summarizeForSpeech(answer);
-    expect(spoken).toBe('Итог ниже. Готово.');
+    expect(spoken).toBe('Итог ниже.\n\nГотово.');
   });
 
   it('разметка снимается, текст ссылок сохраняется, картинки выбрасываются', () => {
     expect(summarizeForSpeech('## Заголовок\n\nСмотри [документацию](http://example.com/doc).')).toBe(
-      'Заголовок Смотри документацию.'
+      'Заголовок\n\nСмотри документацию.'
     );
     expect(summarizeForSpeech('![схема](assets/a.png)\n\nВсё собралось.')).toBe('Всё собралось.');
     expect(summarizeForSpeech('Запусти `npm run build` и жди.')).toBe('Запусти npm run build и жди.');
@@ -56,6 +56,32 @@ describe('summarizeForSpeech: ответ агента к озвучке (TASK-83
   it('без границы предложения обрезаем по слову и ставим многоточие', () => {
     const spoken = summarizeForSpeech('ААА БББ ВВВ ГГГ ДДД', { maxChars: 10 });
     expect(spoken).toBe('ААА БББ…');
+  });
+
+  it('границы абзацев и строк доходят до нарезки в main (TASK-116, AC #3)', () => {
+    const answer = [
+      'Сделал   два изменения.',
+      '',
+      '',
+      '',
+      '- Первый   пункт',
+      '- Второй пункт',
+      '',
+      '1. Нумерованный пункт',
+      '',
+      '> Цитата',
+      '',
+      '## Итог',
+      'Всё собралось.'
+    ].join('\r\n');
+    expect(summarizeForSpeech(answer)).toBe(
+      'Сделал два изменения.\n\nПервый пункт\nВторой пункт\n\nНумерованный пункт\n\nЦитата\n\nИтог\nВсё собралось.'
+    );
+  });
+
+  it('обрезка видит конец предложения перед переводом строки', () => {
+    const answer = 'Первый абзац закончен.\n\nВторой абзац длинный и в лимит не влезет целиком.';
+    expect(summarizeForSpeech(answer, { maxChars: 40 })).toBe('Первый абзац закончен.');
   });
 
   it('короткий текст не трогаем', () => {

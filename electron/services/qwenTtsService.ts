@@ -10,7 +10,7 @@
  * рендерер озвучивает фразу следующим движком по цепочке (Piper, затем системный голос).
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { splitTextForTts } from './ttsTextSplit';
+import { splitTextForStreamingTts } from './ttsTextSplit';
 import { toQwenErrorCode, type QwenTtsErrorCode } from './ttsErrorCodes';
 import {
   draftKey,
@@ -38,7 +38,12 @@ import {
   referenceAudioPath,
   type QwenReferenceAudio
 } from './qwenTtsStore';
-import { DEFAULT_QWEN_CHUNK_SIZE, nextQwenChunkSize, steadyGenerationRate } from './qwenChunkPolicy';
+import {
+  DEFAULT_QWEN_CHUNK_SIZE,
+  nextQwenChunkSize,
+  qwenSynthTimeoutMs,
+  steadyGenerationRate
+} from './qwenChunkPolicy';
 import type { QwenInstallStatus } from './qwenTtsRegistry';
 import type { SpeakHandlers } from './piperTtsService';
 
@@ -99,13 +104,21 @@ export interface QwenTtsTimeouts {
   startMs: number;
   /** Чтение 4.5 ГБ весов с диска и захват CUDA graphs. */
   loadMs: number;
-  /** Один фрагмент — не длиннее 240 символов, это до ~25 с звука при RTF около 1. */
+  /** Базовый запас на синтез фрагмента; к нему прибавляется `synthMsPerChar` за символ (TASK-116). */
   synthMs: number;
+  /** Время на символ фрагмента: фрагменты до 600 символов — это до ~45 с звука. */
+  synthMsPerChar: number;
   /** Сколько ждать завершения сайдкара по просьбе, прежде чем снять его принудительно. */
   stopGraceMs: number;
 }
 
-const DEFAULT_TIMEOUTS: QwenTtsTimeouts = { startMs: 120_000, loadMs: 300_000, synthMs: 90_000, stopGraceMs: 3_000 };
+const DEFAULT_TIMEOUTS: QwenTtsTimeouts = {
+  startMs: 120_000,
+  loadMs: 300_000,
+  synthMs: 30_000,
+  synthMsPerChar: 250,
+  stopGraceMs: 3_000
+};
 
 /** Внешние зависимости сервиса — подменяются в unit-тестах поддельным сайдкаром. */
 export interface QwenTtsDeps {
@@ -535,7 +548,8 @@ export class QwenTtsService {
       // склеиваться из кусков с разной интонацией
       const draftText = params.draftKey ? QWEN_REFERENCE_TEXT[langKey] : null;
       if (draftText) job.capture = [];
-      const fragments = draftText ? [draftText] : splitTextForTts(req.text);
+      // Каждый фрагмент — новая генерация со своей задержкой и интонацией, поэтому режем по абзацам
+      const fragments = draftText ? [draftText] : splitTextForStreamingTts(req.text);
       if (fragments.length === 0) {
         handlers.onDone({ jobId, timeMs: 0, audioSec: 0, chunks: 0 });
         return;
@@ -565,7 +579,7 @@ export class QwenTtsService {
             seed: params.seed,
             chunkSize
           },
-          this.deps.timeouts.synthMs
+          qwenSynthTimeoutMs(fragment.length, this.deps.timeouts.synthMs, this.deps.timeouts.synthMsPerChar)
         );
         if (reply.type === 'done') {
           // Размер чанка следует за измеренной скоростью: она зависит от загрузки видеокарты

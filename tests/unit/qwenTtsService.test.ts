@@ -101,12 +101,29 @@ describe('qwenTtsService — синтез через сайдкар (TASK-104, A
     const { service } = createService('ok');
     const result = await speak(service, {
       jobId: 'j1',
-      text: 'Первое предложение. Второе предложение.',
+      // первый фрагмент заканчивается с абзацем: два фрагмента, два запроса
+      text: 'Первое предложение.\n\nВторое предложение.',
       voiceId: 'qwen:custom:ryan',
       language: 'ru'
     });
     expect(result.chunks.map((c) => c.index)).toEqual([0, 1, 2, 3, 4, 5]);
     expect(result.done).toMatchObject({ chunks: 6 });
+  });
+
+  it('текст уходит в сайдкар нарастающими фрагментами по абзацам, а не по предложениям (TASK-116)', async () => {
+    const { service, stderr } = createService('ok');
+    await speak(service, {
+      jobId: 'j1',
+      text: 'Готово. Сборка прошла. Тесты зелёные. Линтер чистый.\n\nИндекс обновлён.',
+      voiceId: 'qwen:custom:serena',
+      language: 'ru'
+    });
+    const texts = stderr
+      .join('')
+      .split('\n')
+      .filter((line) => line.startsWith('synth '))
+      .map((line) => JSON.parse(line.slice('synth '.length)).text);
+    expect(texts).toEqual(['Готово. Сборка прошла.', 'Тесты зелёные. Линтер чистый. Индекс обновлён.']);
   });
 
   it('пресет-голос передаёт диктора, инструкцию подачи и язык', async () => {
@@ -219,7 +236,7 @@ describe('qwenTtsService — синтез через сайдкар (TASK-104, A
     const { service } = createService('ok', {}, { FAKE_QWEN_CHUNK_DELAY_MS: '60' });
     const outcome: Outcome = { chunks: [] };
     const finished = service.speak(
-      { jobId: 'j1', text: 'Первое предложение. Второе предложение.', voiceId: 'qwen:custom:serena' },
+      { jobId: 'j1', text: 'Первое предложение.\n\nВторое предложение.', voiceId: 'qwen:custom:serena' },
       {
         onChunk: (chunk) => outcome.chunks.push(chunk),
         onDone: (info) => {
@@ -287,7 +304,7 @@ describe('qwenTtsService — неисправности не роняют при
 
   it('сайдкар не ответил при запуске: таймаут и остановка процесса', async () => {
     const { service, spawned } = createService('no-ready', {
-      timeouts: { startMs: 150, loadMs: 1000, synthMs: 1000, stopGraceMs: 50 }
+      timeouts: { startMs: 150, loadMs: 1000, synthMs: 1000, synthMsPerChar: 0, stopGraceMs: 50 }
     });
     const result = await speak(service, { jobId: 'j1', text: 'Текст.', voiceId: 'qwen:custom:serena' });
     expect(result.error?.errorCode).toBe('qwen_sidecar_timeout');
@@ -332,7 +349,7 @@ describe('qwenTtsService — неисправности не роняют при
 
   it('зависший синтез снимается по таймауту вместе с процессом', async () => {
     const { service, spawned } = createService('hang-on-synth', {
-      timeouts: { startMs: 5000, loadMs: 5000, synthMs: 200, stopGraceMs: 50 }
+      timeouts: { startMs: 5000, loadMs: 5000, synthMs: 200, synthMsPerChar: 0, stopGraceMs: 50 }
     });
     const result = await speak(service, { jobId: 'j1', text: 'Текст.', voiceId: 'qwen:custom:serena' });
     expect(result.error?.errorCode).toBe('qwen_sidecar_timeout');

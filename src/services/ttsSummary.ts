@@ -17,6 +17,10 @@ export interface TtsSummaryOptions {
   maxChars?: number;
 }
 
+/**
+ * Около 45 с речи. Потолок задаёт, сколько слушать, а не как синтезировать: Qwen3-TTS озвучивает
+ * такую сводку двумя-тремя фрагментами, Piper — по предложениям (TASK-116, decision-71).
+ */
 export const DEFAULT_TTS_SUMMARY_MAX_CHARS = 600;
 
 /**
@@ -57,34 +61,50 @@ function stripCodeAndMarkup(text: string): string {
     .filter((line) => !isNoiseLine(line))
     .join('\n');
 
-  // Заголовки, цитаты, маркеры списков и выделение.
-  out = out.replace(/^#{1,6}\s+/gm, '');
-  out = out.replace(/^\s{0,3}>\s?/gm, '');
-  out = out.replace(/^\s*[*+-]\s+/gm, '');
-  out = out.replace(/^\s*\d+[.)]\s+/gm, '');
+  // Заголовки, цитаты, маркеры списков и выделение. Только `[ \t]`, не `\s`: в режиме `m` `\s`
+  // захватывает и перевод строки, и маркер следующей строки склеил бы абзацы.
+  out = out.replace(/^[ \t]*#{1,6}[ \t]+/gm, '');
+  out = out.replace(/^[ \t]{0,3}>[ \t]?/gm, '');
+  out = out.replace(/^[ \t]*[*+-][ \t]+/gm, '');
+  out = out.replace(/^[ \t]*\d+[.)][ \t]+/gm, '');
   out = out.replace(/`([^`]*)`/g, '$1');
   out = out.replace(/\*\*([^*]+)\*\*/g, '$1');
   out = out.replace(/\*([^*]+)\*/g, '$1');
   out = out.replace(/__([^_]+)__/g, '$1');
 
-  return out.replace(/\s+/g, ' ').trim();
+  // Пробелы схлопываются внутри строки; строки и абзацы (`\n\n`) сохраняются: по ним Qwen3-TTS
+  // собирает фрагменты, а Piper режет речь (TASK-116).
+  return out
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /** Обрезка по границе предложения, а не по символу: обрубленное слово на слух режет ухо. */
 function truncateAtSentence(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
 
-  const head = text.slice(0, maxChars);
-  const sentenceEnd = Math.max(head.lastIndexOf('. '), head.lastIndexOf('! '), head.lastIndexOf('? '));
-  if (sentenceEnd > maxChars * 0.4) return head.slice(0, sentenceEnd + 1).trim();
+  // Конец предложения — знак, за которым пробел или перевод строки (символ за пределом тоже смотрим)
+  let sentenceEnd = -1;
+  for (let i = maxChars - 1; i >= 0; i -= 1) {
+    if ('.!?'.includes(text[i]) && /\s/.test(text[i + 1] ?? '')) {
+      sentenceEnd = i;
+      break;
+    }
+  }
+  if (sentenceEnd > maxChars * 0.4) return text.slice(0, sentenceEnd + 1).trim();
 
-  const space = head.lastIndexOf(' ');
+  const head = text.slice(0, maxChars);
+  const space = Math.max(head.lastIndexOf(' '), head.lastIndexOf('\n'));
   const cut = space > maxChars * 0.4 ? head.slice(0, space) : head;
   return `${cut.trim()}…`;
 }
 
 /**
  * Готовит текст к произнесению: снимает код, диффы и разметку, схлопывает пробелы и обрезает.
+ * Переводы строк и пустая строка между абзацами сохраняются.
  *
  * @returns пустую строку, если читать вслух нечего (ответ состоял только из кода).
  */

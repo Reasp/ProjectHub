@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_MAX_CHARS, normalizeTtsText, splitTextForTts } from '../../electron/services/ttsTextSplit';
+import {
+  DEFAULT_MAX_CHARS,
+  normalizeTtsText,
+  splitTextForStreamingTts,
+  splitTextForTts,
+  STREAMING_FIRST_MAX_CHARS,
+  STREAMING_MAX_CHARS
+} from '../../electron/services/ttsTextSplit';
 
 const MARKDOWN_SAMPLE = [
   '## Заголовок раздела',
@@ -146,6 +153,111 @@ describe('ttsTextSplit — normalizeTtsText убирает разметку (TAS
     expect(out).not.toContain('`');
     expect(out).not.toContain('https://');
     expect(out).not.toContain('const x = 1');
+  });
+});
+
+/** Предложение заданной длины с точкой на конце. */
+function sentence(word: string, chars: number): string {
+  const body = `${word} ${'а'.repeat(Math.max(1, chars - word.length - 2))}`;
+  return `${body.slice(0, chars - 1)}.`;
+}
+
+describe('ttsTextSplit — абзацы в нормализации (TASK-116)', () => {
+  it('пустая строка между абзацами остаётся одной, строки внутри абзаца — переводом строки', () => {
+    expect(normalizeTtsText('Первый.\n\n\n\nВторой  \n  третий.')).toBe('Первый.\n\nВторой\nтретий.');
+  });
+
+  it('блок кода между абзацами не склеивает их', () => {
+    expect(normalizeTtsText('До.\n\n```js\nx\n```\n\nПосле.')).toBe('До.\n\nПосле.');
+  });
+
+  it('Piper по-прежнему режет по каждому переводу строки и предложению (AC #2)', () => {
+    expect(splitTextForTts('Раз. Два.\n\nТри\nЧетыре.')).toEqual(['Раз.', 'Два.', 'Три', 'Четыре.']);
+  });
+});
+
+describe('ttsTextSplit — нарастающие фрагменты для Qwen3-TTS (TASK-116, AC #1)', () => {
+  it('первый фрагмент — одно-два коротких предложения, остальное абзаца — одним фрагментом', () => {
+    const text = 'Готово. Сборка прошла. Тесты зелёные. Линтер чистый. Индекс обновлён.';
+    expect(splitTextForStreamingTts(text)).toEqual([
+      'Готово. Сборка прошла.',
+      'Тесты зелёные. Линтер чистый. Индекс обновлён.'
+    ]);
+  });
+
+  it('длинное первое предложение уходит одно', () => {
+    const first = sentence('Первое', 155);
+    const text = `${first} Второе. Третье.`;
+    expect(splitTextForStreamingTts(text)).toEqual([first, 'Второе. Третье.']);
+  });
+
+  it('фрагмент заканчивается с абзацем, если абзац не короче порога', () => {
+    const a = sentence('Альфа', 100);
+    const b = sentence('Бета', 100);
+    const c = sentence('Гамма', 100);
+    const text = `Вступление.\n\n${a} ${b}\n\n${c}`;
+    expect(splitTextForStreamingTts(text)).toEqual(['Вступление.', `${a} ${b}`, c]);
+  });
+
+  it('короткие абзацы копятся в один фрагмент, а не дают стык на каждой фразе', () => {
+    const text = 'Начало.\n\nКороткий абзац.\n\nЕщё один.\n\nИ последний.';
+    expect(splitTextForStreamingTts(text)).toEqual(['Начало.', 'Короткий абзац. Ещё один. И последний.']);
+  });
+
+  it('по пределу длины режется на границе предложения, а не посреди него', () => {
+    const sentences = Array.from({ length: 12 }, (_, i) => sentence(`Номер${i}`, 90));
+    const fragments = splitTextForStreamingTts(sentences.join(' '));
+
+    expect(fragments[0]).toBe(sentences[0]);
+    for (const fragment of fragments) {
+      expect(fragment.length).toBeLessThanOrEqual(STREAMING_MAX_CHARS);
+      expect(fragment.endsWith('.')).toBe(true);
+    }
+    // ни одно предложение не разрезано и не потеряно
+    expect(fragments.join(' ')).toBe(sentences.join(' '));
+    // фрагменты крупные: в каждый, кроме первого и последнего, влезло больше половины потолка
+    for (const fragment of fragments.slice(1, -1)) expect(fragment.length).toBeGreaterThan(STREAMING_MAX_CHARS / 2);
+  });
+
+  it('предложение длиннее потолка режется по знакам препинания и не прилипает к соседям', () => {
+    const long = 'Длинное ' + Array.from({ length: 40 }, (_, i) => `часть${i}, и ещё`).join(' ') + '.';
+    const text = `Начало. Перед длинным. ${long} После.`;
+    const fragments = splitTextForStreamingTts(text, { maxChars: 200 });
+
+    expect(fragments[0]).toBe('Начало. Перед длинным.');
+    expect(fragments[1].startsWith('Длинное часть0,')).toBe(true);
+    for (const fragment of fragments) expect(fragment.length).toBeLessThanOrEqual(200);
+    expect(fragments.join(' ').replace(/\s+/g, ' ')).toBe(text);
+  });
+
+  it('пункты списка без знаков в конце склеиваются через точку — на слух это пауза', () => {
+    const text = 'Сделал:\n- обновил нарезку\n- поправил таймаут\n\nВсё.';
+    expect(splitTextForStreamingTts(text, { firstMaxChars: 10 })).toEqual([
+      'Сделал:',
+      'обновил нарезку. поправил таймаут. Всё.'
+    ]);
+  });
+
+  it('потолки по умолчанию: первый короче остальных', () => {
+    expect(STREAMING_FIRST_MAX_CHARS).toBeLessThan(STREAMING_MAX_CHARS);
+    expect(STREAMING_MAX_CHARS).toBeGreaterThan(DEFAULT_MAX_CHARS);
+  });
+
+  it('пустой текст и чистый код — нет фрагментов; одно предложение — один фрагмент', () => {
+    expect(splitTextForStreamingTts('')).toEqual([]);
+    expect(splitTextForStreamingTts('\n\n \t')).toEqual([]);
+    expect(splitTextForStreamingTts('```\nconst x = 1;\n```')).toEqual([]);
+    expect(splitTextForStreamingTts('Готово.')).toEqual(['Готово.']);
+  });
+
+  it('фрагменты не пустые и без пробелов по краям', () => {
+    for (const input of [MARKDOWN_SAMPLE, 'Раз.  Два.   Три.', '---\n\n* пункт\n\n', 'а'.repeat(1500)]) {
+      for (const chunk of splitTextForStreamingTts(input)) {
+        expect(chunk.length).toBeGreaterThan(0);
+        expect(chunk.trim()).toBe(chunk);
+        expect(chunk.length).toBeLessThanOrEqual(STREAMING_MAX_CHARS);
+      }
+    }
   });
 });
 

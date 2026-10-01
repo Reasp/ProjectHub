@@ -5,6 +5,7 @@ import {
   nextQwenChunkSize,
   QWEN_CHUNK_SIZES,
   QWEN_FRAME_SEC,
+  qwenSynthTimeoutMs,
   steadyGenerationRate
 } from '../../electron/services/qwenChunkPolicy';
 import { planChunkStart, SCHEDULING_LEAD_SEC } from '../../src/services/ttsPlayer';
@@ -66,6 +67,23 @@ describe('размер чанка следует за скоростью', () =>
     expect(nextQwenChunkSize(12, Number.NaN)).toBe(12);
     expect(nextQwenChunkSize(12, Number.POSITIVE_INFINITY)).toBe(12);
     expect(nextQwenChunkSize(7, 0.9)).toBe(DEFAULT_QWEN_CHUNK_SIZE);
+  });
+});
+
+describe('таймаут синтеза фрагмента растёт с длиной (TASK-116, AC #4)', () => {
+  it('фрагмент в 240 символов получает прежние 90 с, в 600 — 180 с', () => {
+    expect(qwenSynthTimeoutMs(240, 30_000, 250)).toBe(90_000);
+    expect(qwenSynthTimeoutMs(600, 30_000, 250)).toBe(180_000);
+  });
+
+  it('длинный фрагмент получает больше времени, чем короткий', () => {
+    expect(qwenSynthTimeoutMs(500, 30_000, 250)).toBeGreaterThan(qwenSynthTimeoutMs(50, 30_000, 250));
+  });
+
+  it('мусор на входе даёт базовый запас, а не NaN', () => {
+    expect(qwenSynthTimeoutMs(Number.NaN, 30_000, 250)).toBe(30_000);
+    expect(qwenSynthTimeoutMs(-5, 30_000, 250)).toBe(30_000);
+    expect(qwenSynthTimeoutMs(100, 30_000, -1)).toBe(30_000);
   });
 });
 

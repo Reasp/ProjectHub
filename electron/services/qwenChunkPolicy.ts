@@ -50,6 +50,17 @@ export function steadyGenerationRate(timing: QwenFragmentTiming, chunkSize: numb
   return tailGenSec / tailAudioSec;
 }
 
+/**
+ * Таймаут синтеза одного фрагмента (TASK-116): базовый запас на первый чанк и разгон плюс время на
+ * каждый символ. Русская речь — около 14 символов в секунду; 250 мс на символ — это скорость
+ * генерации в 3.5 раза медленнее воспроизведения, прежде чем сайдкар сочтут зависшим. При базе 30 с
+ * фрагмент в 240 символов получает прежние 90 с, фрагмент в 600 символов — 180 с.
+ */
+export function qwenSynthTimeoutMs(chars: number, baseMs: number, perCharMs: number): number {
+  const length = Number.isFinite(chars) && chars > 0 ? chars : 0;
+  return Math.round(baseMs + Math.max(0, perCharMs) * length);
+}
+
 /** Размер чанка для следующего фрагмента по скорости предыдущего. */
 export function nextQwenChunkSize(current: number, rate: number | null): number {
   const sizes: readonly number[] = QWEN_CHUNK_SIZES;
