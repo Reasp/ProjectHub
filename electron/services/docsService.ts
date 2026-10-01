@@ -2,8 +2,9 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import matter from 'gray-matter';
-import type { DocItem, CreateDocParams, DocFileType, DecisionStatus } from '../../src/types/electron';
+import type { DocItem, CreateDocParams, DocFileType, DecisionStatus, DocLinkIndex } from '../../src/types/electron';
 import { normalizeSection, sectionFromRelativePath } from '../../src/utils/docTree';
+import { buildDocLinkIndex, type DocLinkSource } from '../../src/utils/docBacklinks';
 
 /**
  * YAML в frontmatter превращает незакавыченные значения вида `2026-09-03` в объекты Date,
@@ -224,6 +225,60 @@ export async function listProjectDocs(projectPath: string): Promise<DocItem[]> {
   }
 
   return items.sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/**
+ * Связи документации проекта (TASK-122, decision-69): обратные ссылки на решения и документы из
+ * решений, документов и задач, плюс заголовки документов для ссылок вида `[[decision-46#Decision]]`.
+ * Задачи читаются из файлов целиком: ссылка может стоять в плане, заметках или итоге.
+ */
+export async function buildProjectDocLinkIndex(projectPath: string): Promise<DocLinkIndex> {
+  const normalizedProject = path.normalize(projectPath);
+  const sources: DocLinkSource[] = [];
+
+  const readSource = async (filePath: string, kind: DocLinkSource['kind']) => {
+    try {
+      const raw = await fs.readFile(filePath, 'utf-8');
+      let data: Record<string, unknown> = {};
+      try {
+        data = matter(raw).data ?? {};
+      } catch {
+        // битый frontmatter — id и заголовок берём из имени файла
+      }
+      const fileName = path.basename(filePath);
+      const id =
+        kind === 'task'
+          ? toOptionalString(data.id)?.trim() || fileName.match(/^(task-\d+(?:\.\d+)*)/i)?.[1].toUpperCase()
+          : resolveDocId(data, fileName, kind);
+      if (!id) return;
+      sources.push({
+        id,
+        kind,
+        title: toOptionalString(data.title) || fileName.replace(/\.md$/i, ''),
+        status: toOptionalString(data.status),
+        content: raw
+      });
+    } catch (e) {
+      console.error(`Error reading ${kind} for link index:`, filePath, e);
+    }
+  };
+
+  const documentDirs: Array<{ dir: string; kind: DocLinkSource['kind'] }> = [
+    { dir: path.join(normalizedProject, 'backlog', 'decisions'), kind: 'decision' },
+    { dir: path.join(normalizedProject, 'backlog', 'docs'), kind: 'doc' }
+  ];
+  for (const { dir, kind } of documentDirs) {
+    if (!existsSync(dir)) continue;
+    for (const filePath of await collectMarkdownFiles(dir)) await readSource(filePath, kind);
+  }
+
+  // Доска показывает только задачи из корня backlog/tasks — на остальные перейти нельзя.
+  const tasksDir = path.join(normalizedProject, 'backlog', 'tasks');
+  if (existsSync(tasksDir)) {
+    for (const filePath of await collectMarkdownFiles(tasksDir, 0)) await readSource(filePath, 'task');
+  }
+
+  return buildDocLinkIndex(sources);
 }
 
 export async function readDocFile(filePath: string): Promise<string> {

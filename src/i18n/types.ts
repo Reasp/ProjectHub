@@ -948,6 +948,7 @@ export interface TranslationDictionary {
     placeholderText: string;
     docsRoot: string;
     back: string;
+    backlinksTitle: string;
     expandAll: string;
     collapseAll: string;
     section: string;
@@ -1728,6 +1729,8 @@ export interface TranslationDictionary {
     mermaidRendering: string;
     refNotFound: string;
     refDiscardConfirm: string;
+    refDiscardTaskConfirm: string;
+    refAnchorNotFound: string;
   };
   explorer: {
     title: string;

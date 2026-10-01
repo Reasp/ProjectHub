@@ -34,6 +34,7 @@ import { useRolesStore } from '../../store/useRolesStore';
 import { useTranslation } from '../../i18n/useTranslation';
 import { parseAssignee, formatAgentAssignee } from '../../utils/assignee';
 import { structureTaskDescription } from '../../utils/taskDescriptionFormat';
+import { isTaskDraftDirty } from '../../utils/taskDraft';
 import { useFederationStore } from '../../store/useFederationStore';
 import { useDialog } from '../../hooks/useDialog';
 import { generateTaskDraft } from '../../services/aiAssistantService';
@@ -77,7 +78,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     selectedProject,
     updateTaskStatusLocal,
     setActiveTab: setMainTab,
-    backlogConfig
+    backlogConfig,
+    setDirtyTaskId
   } = useProjectStore();
   // Статусы задаёт backlog/config.yml проекта, а не код ProjectHub (TASK-68, decision-24).
   const taskStatuses = backlogConfig.statuses;
@@ -95,6 +97,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
   const [title, setTitle] = useState(task?.title || '');
   const [status, setStatus] = useState<BacklogTask['status']>(task?.status || DEFAULT_TASK_STATUS);
+  // Статус, уже записанный в файл: карточка сама переводит задачу в работу при создании worktree.
+  const [savedStatus, setSavedStatus] = useState<BacklogTask['status']>(task?.status || DEFAULT_TASK_STATUS);
   const [milestone, setMilestone] = useState(task?.milestone || '');
   const [assignee, setAssignee] = useState(task?.assignee?.[0] || '');
   const [description, setDescription] = useState(task?.description || '');
@@ -138,6 +142,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
           if (inProgressStatus && todoStatus && matchStatus([todoStatus], status)) {
             setStatus(inProgressStatus);
             await updateTaskStatusLocal(task.id, inProgressStatus);
+            setSavedStatus(inProgressStatus);
           }
           await createPtySessionAction(
             selectedProject.path,
@@ -205,6 +210,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     if (!task) return;
     setTitle(task.title || '');
     setStatus(task.status || DEFAULT_TASK_STATUS);
+    setSavedStatus(task.status || DEFAULT_TASK_STATUS);
     setMilestone(task.milestone || '');
     setAssignee(task.assignee?.[0] || '');
     setDescription(task.description || '');
@@ -216,6 +222,28 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     setPreviewMode(true);
     setIsDescriptionExpanded(false);
   }, [task]);
+
+  // Несохранённые правки карточки (TASK-122): переход по ссылке из описания закрывает карточку,
+  // поэтому `useDocRefs` перед переходом спрашивает подтверждение.
+  const isDirty =
+    !!task &&
+    isTaskDraftDirty(
+      {
+        title: task.title || '',
+        status: savedStatus,
+        milestone: task.milestone || '',
+        assignee: task.assignee?.[0] || '',
+        description: task.description || '',
+        labels: task.labels || [],
+        criteria: (task.acceptanceCriteria || []).map((c) => c.text)
+      },
+      { title, status, milestone, assignee, description, labels, criteria: criteria.map((c) => c.text) }
+    );
+  const dirtyTaskId = isDirty && task ? task.id : null;
+  useEffect(() => {
+    setDirtyTaskId(dirtyTaskId);
+    return () => setDirtyTaskId(null);
+  }, [dirtyTaskId, setDirtyTaskId]);
 
   useEffect(() => {
     if (activeTab !== 'raw' || rawContent !== null || !task?.filePath || !window.api?.getTaskContent) return;

@@ -999,6 +999,7 @@ export const en: TranslationDictionary = {
     placeholderText: 'text',
     docsRoot: 'Documents',
     back: 'Back to the previous document',
+    backlinksTitle: 'Referenced by',
     expandAll: 'Expand all',
     collapseAll: 'Collapse all',
     section: 'Section',
@@ -1857,7 +1858,9 @@ export const en: TranslationDictionary = {
     mermaidSyntaxError: 'Mermaid diagram syntax error',
     mermaidRendering: 'Rendering Mermaid diagram...',
     refNotFound: 'The link points to {id}, but the project has no such document or task',
-    refDiscardConfirm: 'The open document has unsaved changes. Follow the link and discard them?'
+    refDiscardConfirm: 'The open document has unsaved changes. Follow the link and discard them?',
+    refDiscardTaskConfirm: 'The task card has unsaved changes. Follow the link and discard them?',
+    refAnchorNotFound: 'Document {id} has no section "{anchor}" — it will open from the top'
   },
   explorer: {
     title: 'Project Files',

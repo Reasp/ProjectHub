@@ -5,7 +5,7 @@ import { Copy, Check, Info, AlertTriangle, AlertCircle, Lightbulb, Flame } from 
 import { useI18n } from '../../i18n';
 import { useTimeoutState } from '../../hooks/useTimeoutState';
 import { useDocRefs, type DocRefNavigation } from '../../hooks/useDocRefs';
-import { tokenizeDocRefs, docRefFromHref, type DocRef } from '../../utils/docRefs';
+import { tokenizeDocRefs, docRefFromHref, headingAnchorKey, type DocRef } from '../../utils/docRefs';
 
 /** Перекрёстные ссылки Backlog.md для вложенных блоков: хук стора вызывается один раз на документ. */
 const DocRefContext = createContext<DocRefNavigation | null>(null);
@@ -51,9 +51,11 @@ const BlockRenderer: React.FC<{ block: MarkdownBlock }> = ({ block }) => {
 
     case 'heading': {
       const text = block.raw || '';
+      // Ключ заголовка — цель ссылки `[[id#Заголовок]]` (decision-69).
+      const headingKey = headingAnchorKey(text) || undefined;
       if (block.level === 1) {
         return (
-          <h1 className="text-xl font-bold text-white tracking-tight pb-2 border-b border-slate-800 mt-6 mb-4 flex items-center gap-2">
+          <h1 data-heading-key={headingKey} className="text-xl font-bold text-white tracking-tight pb-2 border-b border-slate-800 mt-6 mb-4 flex items-center gap-2">
             <span className="w-1.5 h-5 rounded-full bg-indigo-500" />
             <InlineMarkdown text={text} />
           </h1>
@@ -61,7 +63,7 @@ const BlockRenderer: React.FC<{ block: MarkdownBlock }> = ({ block }) => {
       }
       if (block.level === 2) {
         return (
-          <h2 className="text-base font-semibold text-slate-100 mt-6 mb-3 pb-1 border-b border-slate-800/60 flex items-center gap-2">
+          <h2 data-heading-key={headingKey} className="text-base font-semibold text-slate-100 mt-6 mb-3 pb-1 border-b border-slate-800/60 flex items-center gap-2">
             <span className="w-1 h-3.5 rounded-full bg-cyan-500" />
             <InlineMarkdown text={text} />
           </h2>
@@ -69,13 +71,13 @@ const BlockRenderer: React.FC<{ block: MarkdownBlock }> = ({ block }) => {
       }
       if (block.level === 3) {
         return (
-          <h3 className="text-sm font-semibold text-indigo-300 mt-4 mb-2">
+          <h3 data-heading-key={headingKey} className="text-sm font-semibold text-indigo-300 mt-4 mb-2">
             <InlineMarkdown text={text} />
           </h3>
         );
       }
       return (
-        <h4 className="text-xs font-semibold text-slate-200 mt-3 mb-1 uppercase tracking-wider text-slate-400">
+        <h4 data-heading-key={headingKey} className="text-xs font-semibold text-slate-200 mt-3 mb-1 uppercase tracking-wider text-slate-400">
           <InlineMarkdown text={text} />
         </h4>
       );
@@ -358,13 +360,21 @@ const DocRefLink: React.FC<{ docRef: DocRef; nav: DocRefNavigation | null; child
     );
   }
 
-  const title = [resolved.title !== docRef.id ? resolved.title : '', resolved.status ? `[${resolved.status}]` : '']
+  const title = [
+    resolved.title !== docRef.id ? resolved.title : '',
+    resolved.status ? `[${resolved.status}]` : '',
+    resolved.anchorMissing
+      ? `— ${t.markdown.refAnchorNotFound.replace('{id}', docRef.id).replace('{anchor}', docRef.anchor ?? '')}`
+      : ''
+  ]
     .filter(Boolean)
     .join(' ');
   return (
     <a
       href={`#${docRef.id}`}
       data-doc-ref={docRef.id}
+      data-doc-ref-anchor={docRef.anchor}
+      data-doc-ref-anchor-missing={resolved.anchorMissing ? 'true' : undefined}
       title={title || undefined}
       onClick={(e) => {
         e.preventDefault();
@@ -372,7 +382,9 @@ const DocRefLink: React.FC<{ docRef: DocRef; nav: DocRefNavigation | null; child
         nav.open(docRef);
       }}
       className={
-        docRef.wiki
+        resolved.anchorMissing
+          ? 'text-indigo-300 hover:text-indigo-200 underline decoration-dotted decoration-amber-500/70 underline-offset-2 cursor-pointer'
+          : docRef.wiki
           ? 'text-indigo-300 hover:text-indigo-200 underline decoration-indigo-500/50 underline-offset-2 cursor-pointer'
           : 'text-slate-200 hover:text-indigo-200 underline decoration-dotted decoration-slate-500 underline-offset-2 cursor-pointer'
       }

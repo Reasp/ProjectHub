@@ -2,11 +2,13 @@ import { useMemo } from 'react';
 import { useProjectStore } from '../store/useProjectStore';
 import { useDialog } from './useDialog';
 import { useI18n } from '../i18n';
-import type { DocRef } from '../utils/docRefs';
+import { headingAnchorKey, refLeaveGuards, type DocRef } from '../utils/docRefs';
 
 export interface ResolvedDocRef {
   title: string;
   status?: string;
+  /** Документ есть, но заголовка из якоря ссылки в нём нет: откроется с начала (decision-69). */
+  anchorMissing?: boolean;
 }
 
 export interface DocRefNavigation {
@@ -25,6 +27,7 @@ export function useDocRefs(): DocRefNavigation {
   const { confirm } = useDialog();
   const docsList = useProjectStore((state) => state.docsList);
   const tasks = useProjectStore((state) => state.tasks);
+  const headings = useProjectStore((state) => state.docLinkIndex.headings);
 
   return useMemo(() => {
     const docs = new Map(docsList.map((doc) => [doc.id.toLowerCase(), doc]));
@@ -37,24 +40,34 @@ export function useDocRefs(): DocRefNavigation {
         return task ? { title: task.title, status: task.status } : null;
       }
       const doc = docs.get(ref.id);
-      return doc ? { title: doc.title, status: doc.status } : null;
+      if (!doc) return null;
+      // Пока индекс заголовков не загружен, якорь битым не считаем.
+      const known = headings[ref.id];
+      const anchorMissing = Boolean(ref.anchor && known && !known.includes(headingAnchorKey(ref.anchor)));
+      return { title: doc.title, status: doc.status, ...(anchorMissing ? { anchorMissing } : {}) };
     };
 
     const open = (ref: DocRef) => {
-      const store = useProjectStore.getState();
-      if (ref.kind === 'task') {
-        store.requestOpenTask(ref.id);
-        return;
-      }
       void (async () => {
-        // Переход заменяет открытый документ: несохранённую правку без спроса не теряем.
-        const leavesDirtyDoc = store.isDocDirty && (ref.kind === 'mem' || store.selectedDoc?.id.toLowerCase() !== ref.id);
-        if (leavesDirtyDoc && !(await confirm(t.markdown.refDiscardConfirm))) return;
-        if (ref.kind === 'mem') useProjectStore.getState().requestOpenMemory(ref.id);
-        else useProjectStore.getState().openDocById(ref.id);
+        // Переход закрывает карточку задачи и заменяет открытый документ: несохранённую правку
+        // без спроса не теряем (TASK-122).
+        const store = useProjectStore.getState();
+        const guards = refLeaveGuards(ref, {
+          dirtyTaskId: store.dirtyTaskId,
+          isDocDirty: store.isDocDirty,
+          selectedDocId: store.selectedDoc?.id
+        });
+        for (const guard of guards) {
+          const message = guard === 'task' ? t.markdown.refDiscardTaskConfirm : t.markdown.refDiscardConfirm;
+          if (!(await confirm(message))) return;
+        }
+        const next = useProjectStore.getState();
+        if (ref.kind === 'task') next.requestOpenTask(ref.id);
+        else if (ref.kind === 'mem') next.requestOpenMemory(ref.id);
+        else next.openDocById(ref.id, ref.anchor);
       })();
     };
 
     return { resolve, open };
-  }, [docsList, tasks, confirm, t]);
+  }, [docsList, tasks, headings, confirm, t]);
 }

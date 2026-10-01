@@ -999,6 +999,7 @@ export const ru: TranslationDictionary = {
     placeholderText: 'текст',
     docsRoot: 'Документы',
     back: 'Назад к предыдущему документу',
+    backlinksTitle: 'На этот документ ссылаются',
     expandAll: 'Развернуть всё',
     collapseAll: 'Свернуть всё',
     section: 'Раздел',
@@ -1857,7 +1858,9 @@ export const ru: TranslationDictionary = {
     mermaidSyntaxError: 'Ошибка синтаксиса диаграммы Mermaid',
     mermaidRendering: 'Построение диаграммы Mermaid...',
     refNotFound: 'Ссылка ведёт на {id}, но такого документа или задачи в проекте нет',
-    refDiscardConfirm: 'Открытый документ изменён и не сохранён. Перейти по ссылке и потерять правки?'
+    refDiscardConfirm: 'Открытый документ изменён и не сохранён. Перейти по ссылке и потерять правки?',
+    refDiscardTaskConfirm: 'В карточке задачи есть несохранённые правки. Перейти по ссылке и потерять их?',
+    refAnchorNotFound: 'В документе {id} нет раздела «{anchor}» — он откроется с начала'
   },
   explorer: {
     title: 'Файлы проекта',

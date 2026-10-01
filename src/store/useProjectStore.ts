@@ -12,6 +12,7 @@ import type {
   PRCreateOptions,
   PRProviderInfo,
   DocItem,
+  DocLinkIndex,
   CreateDocParams,
   Milestone,
   CreateMilestoneParams,
@@ -144,6 +145,9 @@ export function emptyProjectScopedState() {
     docContent: '',
     isDocDirty: false,
     docBackStack: [] as string[],
+    docLinkIndex: { backlinks: {}, headings: {} } as DocLinkIndex,
+    docAnchorToOpen: null as string | null,
+    dirtyTaskId: null as string | null,
     taskRefToOpen: null as string | null,
     memoryRefToOpen: null as string | null,
     milestones: [] as Milestone[],
@@ -269,7 +273,17 @@ interface ProjectState {
   taskRefToOpen: string | null;
   /** id факта памяти, который должен показать раздел «Память». */
   memoryRefToOpen: string | null;
-  openDocById: (id: string) => boolean;
+  /** Обратные ссылки и заголовки документов проекта (TASK-122, decision-69); обновляется вместе со списком. */
+  docLinkIndex: DocLinkIndex;
+  /** Заголовок, к которому просмотр документа должен прокрутиться после перехода по `[[id#Заголовок]]`. */
+  docAnchorToOpen: string | null;
+  /** Счётчик переходов к документу по ссылке: вкладка документации возвращается из «Памяти» к документам. */
+  docOpenSeq: number;
+  /** id задачи, в открытой карточке которой есть несохранённые правки. */
+  dirtyTaskId: string | null;
+  openDocById: (id: string, anchor?: string) => boolean;
+  setDocAnchorToOpen: (anchor: string | null) => void;
+  setDirtyTaskId: (id: string | null) => void;
   goBackDoc: () => void;
   requestOpenTask: (id: string | null) => void;
   requestOpenMemory: (id: string | null) => void;
@@ -625,6 +639,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isDocSaving: false,
   isDocDirty: false,
   docBackStack: [],
+  docLinkIndex: { backlinks: {}, headings: {} },
+  docAnchorToOpen: null,
+  docOpenSeq: 0,
+  dirtyTaskId: null,
   taskRefToOpen: null,
   memoryRefToOpen: null,
 
@@ -2179,6 +2197,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // Проект успели переключить, пока шёл запрос — чужие доки в новый экран не подставляем (TASK-67).
       if (!samePath(get().selectedProject?.path, projectPath)) return;
       set({ docsList: list });
+      // Связи считаются отдельно и списку не мешают: без них нет только блока обратных ссылок.
+      void window.api
+        .getDocLinkIndex?.(projectPath)
+        ?.then((index) => {
+          if (samePath(get().selectedProject?.path, projectPath)) set({ docLinkIndex: index });
+        })
+        .catch((e) => console.error('Failed to build doc link index:', e));
       if (!get().selectedDoc && list.length > 0) {
         get().selectDoc(list[0]);
       } else if (get().selectedDoc) {
@@ -2221,9 +2246,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ docContent: content, isDocDirty: true });
   },
 
-  openDocById: (id: string) => {
+  openDocById: (id: string, anchor?: string) => {
     const target = get().docsList.find((d) => d.id.toLowerCase() === id.toLowerCase());
     if (!target) return false;
+    set({ docAnchorToOpen: anchor?.trim() || null, docOpenSeq: get().docOpenSeq + 1 });
     const current = get().selectedDoc;
     if (current && current.filePath !== target.filePath) {
       set({ docBackStack: [...get().docBackStack.slice(-49), current.filePath] });
@@ -2247,6 +2273,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
     set({ docBackStack: [] });
   },
+
+  setDocAnchorToOpen: (anchor: string | null) => set({ docAnchorToOpen: anchor }),
+
+  setDirtyTaskId: (id: string | null) => set({ dirtyTaskId: id }),
 
   requestOpenTask: (id: string | null) => {
     set({ taskRefToOpen: id });

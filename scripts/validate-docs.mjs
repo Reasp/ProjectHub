@@ -44,6 +44,15 @@ function collectTypedValueErrors(value, keyPath, errors) {
   totalFrontmatterFieldsChecked++;
 }
 
+/** Ключ заголовка для якоря ссылки — та же нормализация, что `headingAnchorKey` в src/utils/docRefs.ts. */
+function headingAnchorKey(text) {
+  return text
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 function validateMarkdownFile(relPath, { frontmatterOnly = false, requiredFields = ['id', 'title'] } = {}) {
   const fullPath = path.join(ROOT, relPath);
   const content = fs.readFileSync(fullPath, 'utf-8');
@@ -78,13 +87,24 @@ function validateMarkdownFile(relPath, { frontmatterOnly = false, requiredFields
           const docRoot = DOC_ROOTS.find((root) => relPath.startsWith(`${root}/`));
           const inSubfolder = docRoot ? relPath.slice(docRoot.length + 1).includes('/') : false;
           // Ссылки внутри блоков кода — примеры, а не ссылки.
-          const prose = body.replace(/```[\s\S]*?```/g, '').replace(/`[^`\n]*`/g, '');
-          const refs = [...prose.matchAll(/\[\[\s*((?:decision|doc)-\d+)\s*(?:\|[^\]\n]*)?\]\]/gi)].map((m) => m[1].toLowerCase());
+          const withoutFences = body.replace(/```[\s\S]*?```/g, '');
+          const prose = withoutFences.replace(/`[^`\n]*`/g, '');
+          // Ссылка на заголовок: [[decision-46#Decision]] (decision-69).
+          const refMatches = [
+            ...prose.matchAll(/\[\[\s*((?:decision|doc)-\d+)\s*(?:#([^\]|\n]*))?(?:\|[^\]\n]*)?\]\]/gi)
+          ];
+          const refs = refMatches.map((m) => m[1].toLowerCase());
+          const anchors = refMatches
+            .filter((m) => m[2] && m[2].trim())
+            .map((m) => ({ id: m[1].toLowerCase(), anchor: m[2].trim() }));
+          const headings = [...withoutFences.matchAll(/^#{1,6}\s+(.*)$/gm)].map((m) => headingAnchorKey(m[1]));
           docIndex.push({
             relPath,
             id: typeof data.id === 'string' ? data.id.trim().toLowerCase() : '',
             hasSection: (hasSectionField && typeof data.section === 'string' && data.section.trim() !== '') || inSubfolder,
-            refs: [...new Set(refs)]
+            refs: [...new Set(refs)],
+            anchors,
+            headings: new Set(headings)
           });
         }
       } catch (e) {
@@ -187,6 +207,7 @@ for (const roleRoot of ROLE_ROOTS) walkMarkdown(roleRoot.path, { frontmatterOnly
 // Сквозные проверки документации (decision-68).
 {
   const knownIds = new Set(docIndex.map((doc) => doc.id).filter(Boolean));
+  const headingsById = new Map(docIndex.filter((doc) => doc.id).map((doc) => [doc.id, doc.headings]));
   // Разделы обязательны, только если проект ими пользуется: в чужих проектах без разделов линтер молчит.
   const usesSections = docIndex.some((doc) => doc.hasSection);
   for (const doc of docIndex) {
@@ -199,6 +220,12 @@ for (const roleRoot of ROLE_ROOTS) walkMarkdown(roleRoot.path, { frontmatterOnly
     }
     for (const ref of doc.refs) {
       if (!knownIds.has(ref)) errors.push(`Ссылка [[${ref}]] ведёт на несуществующий документ или решение`);
+    }
+    for (const { id, anchor } of doc.anchors) {
+      const headings = headingsById.get(id);
+      if (headings && !headings.has(headingAnchorKey(anchor))) {
+        errors.push(`Ссылка [[${id}#${anchor}]]: в документе ${id} нет заголовка «${anchor}»`);
+      }
     }
     if (errors.length > 0) reportFileResult(doc.relPath, errors, []);
   }

@@ -18,7 +18,7 @@ import {
 } from '../services/backlogTaskFormat';
 import { createBacklogTaskFile } from '../services/backlogTaskCreate';
 import { readBacklogConfig } from '../services/backlogConfigService';
-import { listProjectDocs, readDocFile, saveDocFile, createProjectDoc } from '../services/docsService';
+import { listProjectDocs, readDocFile, saveDocFile, createProjectDoc, buildProjectDocLinkIndex } from '../services/docsService';
 import { listMilestones, createMilestone, saveMilestone, deleteMilestone } from '../services/milestoneService';
 import { assertInsideRegisteredProject, assertRegisteredProject } from '../services/projectPathGuard';
 import { DEFAULT_TASK_STATUS } from '../../src/utils/taskStatus.js';
@@ -219,6 +219,10 @@ export function registerBacklogIpc(ctx: IpcContext) {
   // Docs & Decisions
   ipcMain.handle('docs:list', async (_event, projectPath: string) => {
     return await listProjectDocs(projectPath);
+  });
+
+  ipcMain.handle('docs:linkIndex', async (_event, projectPath: string) => {
+    return await buildProjectDocLinkIndex(projectPath);
   });
 
   ipcMain.handle('docs:read', async (_event, filePath: string) => {

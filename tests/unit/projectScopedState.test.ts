@@ -16,6 +16,9 @@ describe('emptyProjectScopedState', () => {
         // Состав статусов проектный (TASK-68): сброс — это четыре стандартных статуса,
         // а не колонки предыдущего проекта.
         expect(value, 'backlogConfig должен вернуться к стандартным статусам').toEqual(FALLBACK_STATUS_CONFIG);
+      } else if (key === 'docLinkIndex') {
+        // Связи документации проектные (TASK-122): обратные ссылки чужого проекта показывать нельзя.
+        expect(value, 'docLinkIndex должен быть пустым индексом').toEqual({ backlinks: {}, headings: {} });
       } else if (Array.isArray(value)) {
         expect(value, `${key} должен быть пустым списком`).toEqual([]);
       } else {
@@ -29,8 +32,11 @@ describe('emptyProjectScopedState', () => {
       [
         'activeProcessId',
         'backlogConfig',
+        'dirtyTaskId',
+        'docAnchorToOpen',
         'docBackStack',
         'docContent',
+        'docLinkIndex',
         'docsList',
         'gitDiffContent',
         'gitLogs',

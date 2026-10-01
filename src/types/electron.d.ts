@@ -797,6 +797,23 @@ export interface DocItem {
   size: number;
 }
 
+/** Объект, в тексте которого есть ссылка на документ (TASK-122, decision-69). */
+export interface DocBacklink {
+  /** Идентификатор как в источнике: `decision-46`, `doc-5`, `TASK-103`. */
+  id: string;
+  kind: 'decision' | 'doc' | 'task';
+  title: string;
+  status?: string;
+}
+
+/** Связи документации проекта: обратные ссылки и заголовки документов (decision-69). */
+export interface DocLinkIndex {
+  /** id документа в нижнем регистре → кто на него ссылается. */
+  backlinks: Record<string, DocBacklink[]>;
+  /** id документа в нижнем регистре → ключи его заголовков (`headingAnchorKey`). */
+  headings: Record<string, string[]>;
+}
+
 /** Тип документа во frontmatter Backlog.md (`type:`), правило 13 CLAUDE.md. */
 export type DocFileType = 'guide' | 'readme' | 'specification' | 'other';
 /** Статус ADR во frontmatter Backlog.md (`status:`), правило 13 CLAUDE.md. */
@@ -831,6 +848,7 @@ export interface IElectronAPI {
 
   // Documentation & ADR Decisions
   listDocs: (projectPath: string) => Promise<DocItem[]>;
+  getDocLinkIndex: (projectPath: string) => Promise<DocLinkIndex>;
   readDoc: (filePath: string) => Promise<string>;
   saveDoc: (filePath: string, content: string) => Promise<boolean>;
   createDoc: (projectPath: string, params: CreateDocParams) => Promise<DocItem>;

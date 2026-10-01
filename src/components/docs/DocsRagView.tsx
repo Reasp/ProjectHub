@@ -28,6 +28,8 @@ import { CreateDocModal } from './CreateDocModal';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 import { MemoryView } from './MemoryView';
 import { DocsTree } from './DocsTree';
+import { DocBacklinks } from './DocBacklinks';
+import { headingAnchorKey } from '../../utils/docRefs';
 
 export const DocsRagView: React.FC = () => {
   const { t } = useTranslation();
@@ -46,7 +48,11 @@ export const DocsRagView: React.FC = () => {
     saveDocAction,
     docBackStack,
     goBackDoc,
-    memoryRefToOpen
+    memoryRefToOpen,
+    docLinkIndex,
+    docAnchorToOpen,
+    docOpenSeq,
+    setDocAnchorToOpen
   } = useProjectStore();
 
   const [ragStats, setRagStats] = useState<{ hasIndex: boolean; chunksCount: number; lastModified?: string }>({
@@ -62,14 +68,23 @@ export const DocsRagView: React.FC = () => {
   const [section, setSection] = useState<'docs' | 'memory'>('docs');
   // Уведомление об успешном сохранении гаснет само; таймер снимается при размонтировании (TASK-50)
   const [saveSuccessNotice, showSaveSuccessNotice] = useTimeoutState(false, 3000);
-  const { setTimer } = useTimers();
+  const { setTimer, clearTimer } = useTimers();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   // Переход по ссылке `[[mem-N]]` (TASK-121): показать раздел памяти, сам факт выберет MemoryView.
   useEffect(() => {
     if (memoryRefToOpen) setSection('memory');
   }, [memoryRefToOpen]);
+
+  // Переход по ссылке на документ из факта памяти (TASK-122): вернуться из «Памяти» к документам.
+  const seenDocOpenSeq = useRef(docOpenSeq);
+  useEffect(() => {
+    if (seenDocOpenSeq.current === docOpenSeq) return;
+    seenDocOpenSeq.current = docOpenSeq;
+    setSection('docs');
+  }, [docOpenSeq]);
 
   // Fetch RAG stats
   const fetchStats = async () => {
@@ -95,7 +110,28 @@ export const DocsRagView: React.FC = () => {
     if (selectedDoc) {
       setViewMode('preview');
     }
+    // Новый документ читается с начала, а не с места прокрутки предыдущего.
+    if (previewRef.current) previewRef.current.scrollTop = 0;
   }, [selectedDoc?.filePath]);
+
+  // Переход по `[[id#Заголовок]]` (TASK-122, decision-69): прокрутить к разделу, когда текст документа
+  // на экране. Заголовок ищется по ключу, поэтому регистр и знаки в якоре не важны. Если раздела нет,
+  // документ остаётся открытым с начала, а запрос снимается.
+  useEffect(() => {
+    if (!docAnchorToOpen || isDocLoading || section !== 'docs') return;
+    const key = headingAnchorKey(docAnchorToOpen);
+    const heading = Array.from(previewRef.current?.querySelectorAll<HTMLElement>('[data-heading-key]') ?? []).find(
+      (el) => el.dataset.headingKey === key
+    );
+    if (!heading) {
+      const handle = setTimer(() => setDocAnchorToOpen(null), 1500);
+      return () => clearTimer(handle);
+    }
+    heading.scrollIntoView({ block: 'start' });
+    heading.classList.add('bg-indigo-500/20');
+    setTimer(() => heading.classList.remove('bg-indigo-500/20'), 1600);
+    setDocAnchorToOpen(null);
+  }, [docAnchorToOpen, isDocLoading, docContent, viewMode, section, setTimer, clearTimer, setDocAnchorToOpen]);
 
   // Keyboard shortcut: Ctrl + S to save
   useEffect(() => {
@@ -500,8 +536,12 @@ export const DocsRagView: React.FC = () => {
 
                 {/* Live Markdown Preview Pane */}
                 {(viewMode === 'preview' || viewMode === 'split') && (
-                  <div className="flex-1 overflow-y-auto p-6 bg-[#10121d] select-text">
+                  <div ref={previewRef} className="flex-1 overflow-y-auto p-6 bg-[#10121d] select-text">
                     <MarkdownViewer content={docContent} />
+                    <DocBacklinks
+                      title={t.docs.backlinksTitle}
+                      items={docLinkIndex.backlinks[selectedDoc.id.toLowerCase()] ?? []}
+                    />
                   </div>
                 )}
               </div>

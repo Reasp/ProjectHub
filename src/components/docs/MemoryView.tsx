@@ -35,6 +35,8 @@ export const MemoryView: React.FC<Props> = ({ projectPath }) => {
   const [facts, setFacts] = useState<MemoryFactInfo[]>([]);
   const [invalid, setInvalid] = useState<Array<{ fileName: string; issues: MemoryIssueInfo[] }>>([]);
   const [loading, setLoading] = useState(false);
+  /** Список фактов этого проекта уже прочитан: до этого переход по ссылке `[[mem-N]]` ждёт. */
+  const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<MemoryFactType | 'all'>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -58,6 +60,7 @@ export const MemoryView: React.FC<Props> = ({ projectPath }) => {
       }
     } finally {
       setLoading(false);
+      setLoaded(true);
     }
   }, [projectPath, m]);
 
@@ -66,6 +69,7 @@ export const MemoryView: React.FC<Props> = ({ projectPath }) => {
     setSelectedId(null);
     setEditing(null);
     setQuery('');
+    setLoaded(false);
     void load();
   }, [projectPath, load]);
 
@@ -80,10 +84,12 @@ export const MemoryView: React.FC<Props> = ({ projectPath }) => {
   const selected = facts.find((f) => f.id === selectedId) ?? null;
 
   // Переход по ссылке `[[mem-N]]` из документа (TASK-121): выбрать факт, когда список загружен.
+  // При первом показе раздела `loading` ещё не поднят, поэтому ждём признак `loaded` (TASK-122):
+  // иначе запрос снимался на пустом списке и факт оставался невыбранным.
   const memoryRefToOpen = useProjectStore((state) => state.memoryRefToOpen);
   const requestOpenMemory = useProjectStore((state) => state.requestOpenMemory);
   useEffect(() => {
-    if (!memoryRefToOpen || loading) return;
+    if (!memoryRefToOpen || loading || !loaded) return;
     const target = facts.find((f) => f.id.toLowerCase() === memoryRefToOpen.toLowerCase());
     if (target) {
       setQuery('');
@@ -91,7 +97,7 @@ export const MemoryView: React.FC<Props> = ({ projectPath }) => {
       setSelectedId(target.id);
     }
     requestOpenMemory(null);
-  }, [memoryRefToOpen, facts, loading, requestOpenMemory]);
+  }, [memoryRefToOpen, facts, loading, loaded, requestOpenMemory]);
 
   const startEdit = (fact?: MemoryFactInfo) => {
     setError(null);
