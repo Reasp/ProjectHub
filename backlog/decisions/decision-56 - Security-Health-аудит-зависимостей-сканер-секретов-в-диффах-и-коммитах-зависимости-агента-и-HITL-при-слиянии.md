@@ -3,6 +3,7 @@ id: decision-56
 title: "Security Health: аудит зависимостей, сканер секретов в диффах и коммитах, зависимости агента и HITL при слиянии"
 date: "2026-09-27 14:09"
 status: accepted
+section: "Безопасность"
 ---
 ## Context
 

@@ -3,6 +3,7 @@ id: decision-14
 title: "Релиз-инфраструктура: GitHub Actions, автообновление, crash-репорты и Linux-таргет"
 date: "2026-09-10 15:40"
 status: accepted
+section: "Качество и релизы"
 ---
 ## Context
 

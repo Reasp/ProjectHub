@@ -9,6 +9,7 @@ tags:
   - project-hub
   - status
   - git
+section: "Архитектура"
 ---
 # ProjectHub — Контекст проекта и состояние системы
 

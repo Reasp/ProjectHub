@@ -3,6 +3,7 @@ id: decision-22
 title: "Отложенные вызовы в React-компонентах — только через useTimeoutState/useTimers"
 date: "2026-09-12 07:58"
 status: accepted
+section: "Интерфейс"
 ---
 ## Context
 

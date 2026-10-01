@@ -3,6 +3,7 @@ id: decision-48
 title: "Продолжение после отката в цикле «до готовности» и перезапуск этапов handoff"
 date: "2026-09-19 22:00"
 status: accepted
+section: "Агенты/Оркестрация"
 ---
 ## Context
 

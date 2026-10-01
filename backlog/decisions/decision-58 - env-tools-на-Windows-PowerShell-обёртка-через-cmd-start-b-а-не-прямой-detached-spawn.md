@@ -3,6 +3,7 @@ id: decision-58
 title: "env-tools на Windows: PowerShell-обёртка через cmd start /b, а не прямой detached-spawn"
 date: "2026-09-28 08:20"
 status: accepted
+section: "Процессы и env-tools"
 ---
 ## Context
 

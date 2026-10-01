@@ -3,6 +3,7 @@ id: decision-16
 title: "Персистентность swarm-сессий, кольцевые буферы логов и учёт стоимости агентов"
 date: "2026-09-10 19:00"
 status: accepted
+section: "Агенты/Swarm Arena"
 ---
 ## Context
 

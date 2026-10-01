@@ -3,6 +3,7 @@ id: decision-35
 title: "Служебные запросы к модели и голос → компьютер через Claude Code по подписке при провайдере anthropic без ключа"
 date: "2026-09-17 20:40"
 status: accepted
+section: "LLM-провайдеры"
 ---
 ## Context
 

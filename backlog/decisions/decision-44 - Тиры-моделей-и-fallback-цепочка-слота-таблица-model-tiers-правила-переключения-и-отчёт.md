@@ -3,6 +3,7 @@ id: decision-44
 title: "Тиры моделей и fallback-цепочка слота: таблица model-tiers, правила переключения и отчёт"
 date: "2026-09-19 10:30"
 status: accepted
+section: "LLM-провайдеры"
 ---
 ## Context
 

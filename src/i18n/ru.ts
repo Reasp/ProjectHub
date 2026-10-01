@@ -996,7 +996,14 @@ export const ru: TranslationDictionary = {
     noDocSelected: 'Выберите документ из списка слева для просмотра или редактирования.',
     titleRequired: 'Укажите название документа или решения',
     createError: 'Ошибка создания документа',
-    placeholderText: 'текст'
+    placeholderText: 'текст',
+    docsRoot: 'Документы',
+    back: 'Назад к предыдущему документу',
+    expandAll: 'Развернуть всё',
+    collapseAll: 'Свернуть всё',
+    section: 'Раздел',
+    sectionPlaceholder: 'Например: Агенты/HITL',
+    sectionHint: 'Путь в дереве документации через «/»; пишется в поле section во frontmatter'
   },
   security: {
     title: 'Безопасность проекта',
@@ -1848,7 +1855,9 @@ export const ru: TranslationDictionary = {
     codeSnippet: 'Фрагмент кода',
     emptyDocument: 'Документ пуст',
     mermaidSyntaxError: 'Ошибка синтаксиса диаграммы Mermaid',
-    mermaidRendering: 'Построение диаграммы Mermaid...'
+    mermaidRendering: 'Построение диаграммы Mermaid...',
+    refNotFound: 'Ссылка ведёт на {id}, но такого документа или задачи в проекте нет',
+    refDiscardConfirm: 'Открытый документ изменён и не сохранён. Перейти по ссылке и потерять правки?'
   },
   explorer: {
     title: 'Файлы проекта',

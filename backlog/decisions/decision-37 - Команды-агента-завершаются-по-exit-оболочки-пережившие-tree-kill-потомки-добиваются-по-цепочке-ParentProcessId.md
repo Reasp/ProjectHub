@@ -3,6 +3,7 @@ id: decision-37
 title: "Команды агента завершаются по exit оболочки, пережившие tree-kill потомки добиваются по цепочке ParentProcessId"
 date: "2026-09-18 14:10"
 status: accepted
+section: "Агенты/HITL и инструменты"
 ---
 ## Context
 

@@ -3,6 +3,7 @@ id: decision-26
 title: "Независимость от вендора LLM: Codex app-server, универсальный OpenAI-совместимый провайдер и тиры моделей"
 date: "2026-09-15 02:33"
 status: proposed
+section: "LLM-провайдеры"
 ---
 ## Context
 

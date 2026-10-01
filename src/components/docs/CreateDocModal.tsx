@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { X, BookOpen, ShieldCheck, Tag, FileText, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { X, BookOpen, ShieldCheck, Tag, FileText, Sparkles, CheckCircle2, AlertCircle, FolderTree } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useTranslation } from '../../i18n/useTranslation';
+import { listSections } from '../../utils/docTree';
 import type { DocFileType } from '../../types/electron';
 
 const DOC_FILE_TYPES: DocFileType[] = ['guide', 'readme', 'specification', 'other'];
@@ -13,13 +15,14 @@ interface CreateDocModalProps {
 
 export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
-  const { createDocAction, selectedProject } = useProjectStore();
+  const { createDocAction, selectedProject, docsList } = useProjectStore();
 
   const [type, setType] = useState<'doc' | 'decision'>('decision');
   const [title, setTitle] = useState('');
   const [status, setStatus] = useState<'Proposed' | 'Accepted' | 'Rejected'>('Accepted');
   const [docType, setDocType] = useState<DocFileType>('guide');
   const [tagsInput, setTagsInput] = useState('');
+  const [section, setSection] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +49,8 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
         title: title.trim(),
         status: type === 'decision' ? status : undefined,
         docType: type === 'doc' ? docType : undefined,
-        tags: tags.length > 0 ? tags : undefined
+        tags: tags.length > 0 ? tags : undefined,
+        section: section.trim() || undefined
       });
 
       if (created) {
@@ -61,7 +65,8 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
     }
   };
 
-  return (
+  // Модальное окно — только через портал (decision-17): предки с backdrop-filter запирают fixed-слой.
+  return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-[#121522] border border-slate-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col">
         {/* Header */}
@@ -200,6 +205,28 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
             </div>
           )}
 
+          {/* Раздел дерева документации (decision-68) */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+              <FolderTree className="w-3 h-3 text-slate-400" />
+              {t.docs.section}
+            </label>
+            <input
+              type="text"
+              list="create-doc-sections"
+              value={section}
+              onChange={(e) => setSection(e.target.value)}
+              placeholder={t.docs.sectionPlaceholder}
+              className="w-full bg-[#10121d] border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+            />
+            <datalist id="create-doc-sections">
+              {listSections(docsList, type).map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+            <p className="text-[10px] text-slate-500">{t.docs.sectionHint}</p>
+          </div>
+
           {/* Tags */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
@@ -235,6 +262,7 @@ export const CreateDocModal: React.FC<CreateDocModalProps> = ({ isOpen, onClose 
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

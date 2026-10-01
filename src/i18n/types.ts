@@ -946,6 +946,13 @@ export interface TranslationDictionary {
     titleRequired: string;
     createError: string;
     placeholderText: string;
+    docsRoot: string;
+    back: string;
+    expandAll: string;
+    collapseAll: string;
+    section: string;
+    sectionPlaceholder: string;
+    sectionHint: string;
   };
   /** Security Health (TASK-73, decision-56): вкладка проекта, коммит с секретом, безопасность слота Swarm. */
   security: {
@@ -1719,6 +1726,8 @@ export interface TranslationDictionary {
     emptyDocument: string;
     mermaidSyntaxError: string;
     mermaidRendering: string;
+    refNotFound: string;
+    refDiscardConfirm: string;
   };
   explorer: {
     title: string;

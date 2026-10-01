@@ -3,6 +3,7 @@ id: decision-21
 title: "Тяжёлые вычисления main-процесса — в worker_threads с fallback в main"
 date: "2026-09-12 07:55"
 status: accepted
+section: "Архитектура"
 ---
 ## Context
 

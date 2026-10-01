@@ -3,6 +3,7 @@ id: decision-38
 title: "OpenAI-совместимый путь: тело запроса без вендорских дефолтов, temperature и max_tokens только явно"
 date: "2026-09-18 20:04"
 status: accepted
+section: "LLM-провайдеры"
 ---
 ## Context
 

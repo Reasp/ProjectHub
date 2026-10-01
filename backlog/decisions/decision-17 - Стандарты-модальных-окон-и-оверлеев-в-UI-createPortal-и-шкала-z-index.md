@@ -3,6 +3,7 @@ id: decision-17
 title: "Стандарты модальных окон и оверлеев в UI: createPortal и шкала z-index"
 date: "2026-09-10 20:05"
 status: accepted
+section: "Интерфейс"
 ---
 ## Context
 

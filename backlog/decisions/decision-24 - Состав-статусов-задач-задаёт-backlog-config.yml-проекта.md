@@ -3,6 +3,7 @@ id: decision-24
 title: "Состав статусов задач задаёт backlog/config.yml проекта"
 date: "2026-09-13 12:57"
 status: accepted
+section: "Backlog и документация"
 ---
 
 ## Context

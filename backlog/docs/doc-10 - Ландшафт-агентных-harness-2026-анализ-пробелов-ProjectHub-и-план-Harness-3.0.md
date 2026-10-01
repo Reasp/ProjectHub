@@ -10,6 +10,7 @@ tags:
   - claude-code
   - roadmap
   - piper
+section: "Аудиты и обзоры"
 ---
 # Ландшафт агентных harness 2026 — анализ пробелов ProjectHub и план Harness 3.0
 

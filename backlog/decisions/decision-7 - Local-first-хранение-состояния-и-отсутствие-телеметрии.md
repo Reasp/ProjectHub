@@ -3,6 +3,7 @@ id: decision-7
 title: "Local-first хранение состояния и отсутствие телеметрии"
 date: "2026-09-10 15:40"
 status: accepted
+section: "Архитектура"
 ---
 ## Context
 

@@ -3,6 +3,7 @@ id: decision-6
 title: "Git worktree как единица изоляции задачи и агента"
 date: "2026-09-10 15:40"
 status: accepted
+section: "Агенты/Изоляция и git"
 ---
 ## Context
 

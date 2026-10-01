@@ -12,6 +12,7 @@ tags:
   - memory-leaks
   - refactoring
   - roadmap
+section: "Аудиты и обзоры"
 ---
 # Технический аудит ProjectHub (сентябрь 2026)
 

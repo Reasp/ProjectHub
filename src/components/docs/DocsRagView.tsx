@@ -3,26 +3,22 @@ import {
   BookOpen,
   ShieldCheck,
   FileText,
+  ArrowLeft,
   RefreshCw,
   Search,
   CheckCircle2,
-  ChevronRight,
   Database,
   Plus,
   Save,
   Eye,
   Edit3,
   Columns,
-  Tag,
-  Clock,
-  Sparkles,
   Bold,
   Italic,
   Heading,
   Code,
   List,
   Quote,
-  AlertCircle,
   Brain
 } from 'lucide-react';
 import { useProjectStore } from '../../store/useProjectStore';
@@ -31,7 +27,7 @@ import { useTimeoutState, useTimers } from '../../hooks/useTimeoutState';
 import { CreateDocModal } from './CreateDocModal';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 import { MemoryView } from './MemoryView';
-import type { DocItem } from '../../types/electron';
+import { DocsTree } from './DocsTree';
 
 export const DocsRagView: React.FC = () => {
   const { t } = useTranslation();
@@ -47,7 +43,10 @@ export const DocsRagView: React.FC = () => {
     fetchDocs,
     selectDoc,
     setDocContent,
-    saveDocAction
+    saveDocAction,
+    docBackStack,
+    goBackDoc,
+    memoryRefToOpen
   } = useProjectStore();
 
   const [ragStats, setRagStats] = useState<{ hasIndex: boolean; chunksCount: number; lastModified?: string }>({
@@ -66,6 +65,11 @@ export const DocsRagView: React.FC = () => {
   const { setTimer } = useTimers();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Переход по ссылке `[[mem-N]]` (TASK-121): показать раздел памяти, сам факт выберет MemoryView.
+  useEffect(() => {
+    if (memoryRefToOpen) setSection('memory');
+  }, [memoryRefToOpen]);
 
   // Fetch RAG stats
   const fetchStats = async () => {
@@ -173,7 +177,9 @@ export const DocsRagView: React.FC = () => {
     const matchesQuery =
       !query ||
       d.title.toLowerCase().includes(query) ||
+      d.id.toLowerCase().includes(query) ||
       d.fileRelative.toLowerCase().includes(query) ||
+      (d.section || '').toLowerCase().includes(query) ||
       d.tags.some((t) => t.toLowerCase().includes(query));
     return matchesCategory && matchesQuery;
   });
@@ -294,77 +300,30 @@ export const DocsRagView: React.FC = () => {
           </div>
 
           {/* Docs Scroll List */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+          <div className="flex-1 overflow-y-auto p-2">
             {filteredDocs.length === 0 && (
               <div className="p-8 text-center text-xs text-slate-500">
                 {t.docs.noDocsFound}
               </div>
             )}
 
-            {filteredDocs.map((doc) => {
-              const isSelected = selectedDoc?.filePath === doc.filePath;
-              const isDecision = doc.category === 'decision';
-
-              return (
-                <div
-                  key={doc.id}
-                  onClick={() => {
-                    selectDoc(doc);
-                    setViewMode('preview');
-                  }}
-                  className={`p-3 rounded-xl border transition cursor-pointer flex flex-col gap-1.5 ${
-                    isSelected
-                      ? 'bg-indigo-600/15 border-indigo-500/50 text-white shadow-sm'
-                      : 'bg-[#10121d]/40 border-slate-800/60 text-slate-300 hover:bg-[#181c2d]'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {isDecision ? (
-                        <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
-                      ) : (
-                        <FileText className="w-4 h-4 text-sky-400 shrink-0" />
-                      )}
-                      <span className="text-xs font-semibold truncate block">
-                        {doc.title}
-                      </span>
-                    </div>
-
-                    {doc.status && (
-                      <span
-                        className={`text-[9px] px-1.5 py-0.5 rounded font-mono shrink-0 border ${
-                          doc.status === 'Accepted'
-                            ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-                            : doc.status === 'Proposed'
-                            ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
-                            : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
-                        }`}
-                      >
-                        {doc.status}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between text-[10px] text-slate-500">
-                    <span className="font-mono truncate max-w-[140px]">{doc.fileRelative}</span>
-                    {doc.date && <span>{doc.date}</span>}
-                  </div>
-
-                  {doc.tags && doc.tags.length > 0 && (
-                    <div className="flex items-center gap-1 flex-wrap pt-0.5">
-                      {doc.tags.slice(0, 3).map((t) => (
-                        <span
-                          key={t}
-                          className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono"
-                        >
-                          #{t}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {filteredDocs.length > 0 && (
+              <DocsTree
+                docs={filteredDocs}
+                selectedPath={selectedDoc?.filePath}
+                onSelect={(doc) => {
+                  selectDoc(doc);
+                  setViewMode('preview');
+                }}
+                forceExpanded={filterDocQuery.trim() !== ''}
+                labels={{
+                  decisions: t.docs.decisionsTab,
+                  docs: t.docs.docsRoot,
+                  expandAll: t.docs.expandAll,
+                  collapseAll: t.docs.collapseAll
+                }}
+              />
+            )}
           </div>
         </div>
 
@@ -375,6 +334,16 @@ export const DocsRagView: React.FC = () => {
               {/* Editor Header Bar */}
               <div className="p-3 border-b border-slate-800 flex items-center justify-between bg-[#111422] gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
+                  {docBackStack.length > 0 && (
+                    <button
+                      onClick={goBackDoc}
+                      title={t.docs.back}
+                      data-testid="docs-back"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                    </button>
+                  )}
                   {selectedDoc.category === 'decision' ? (
                     <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
                   ) : (
@@ -397,6 +366,7 @@ export const DocsRagView: React.FC = () => {
                       )}
                     </div>
                     <span className="text-[10px] font-mono text-slate-500 block truncate">
+                      {selectedDoc.section ? `${selectedDoc.section} · ` : ''}
                       {selectedDoc.filePath}
                     </span>
                   </div>

@@ -3,6 +3,7 @@ id: decision-52
 title: "Automations: триггер, условие, действие, доверие к проектным правилам и лимиты"
 date: "2026-09-27 07:00"
 status: accepted
+section: "Агенты/Оркестрация"
 ---
 ## Context
 

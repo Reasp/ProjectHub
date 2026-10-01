@@ -3,6 +3,7 @@ id: decision-4
 title: "Claude Code CLI как основной агентный движок, API-провайдеры как дополнение"
 date: "2026-09-10 15:40"
 status: accepted
+section: "Агенты/Движки и контекст"
 ---
 ## Context
 

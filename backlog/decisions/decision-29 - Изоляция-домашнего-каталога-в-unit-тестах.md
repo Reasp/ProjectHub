@@ -3,6 +3,7 @@ id: decision-29
 title: "Изоляция домашнего каталога в unit-тестах"
 date: "2026-09-15 21:55"
 status: accepted
+section: "Качество и релизы"
 ---
 ## Context
 

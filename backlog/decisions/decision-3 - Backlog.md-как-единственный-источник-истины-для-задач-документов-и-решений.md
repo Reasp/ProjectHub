@@ -3,6 +3,7 @@ id: decision-3
 title: "Backlog.md как единственный источник истины для задач, документов и решений"
 date: "2026-09-10 15:40"
 status: accepted
+section: "Backlog и документация"
 ---
 ## Context
 

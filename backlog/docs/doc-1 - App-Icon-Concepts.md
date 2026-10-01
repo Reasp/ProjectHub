@@ -3,6 +3,7 @@ id: doc-1
 title: "Концепты иконок ProjectHub"
 type: specification
 created_date: "2026-08-31 12:30"
+section: "Дизайн"
 ---
 
 # Галерея и варианты официальной иконки ProjectHub

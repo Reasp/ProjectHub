@@ -3,6 +3,7 @@ id: decision-1
 title: "Выбор архитектуры и технологического стека ProjectHub"
 date: "2026-08-28 10:00"
 status: accepted
+section: "Архитектура"
 ---
 
 ## Context

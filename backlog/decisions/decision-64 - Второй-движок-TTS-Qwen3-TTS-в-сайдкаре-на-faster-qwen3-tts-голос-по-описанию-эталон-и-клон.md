@@ -3,6 +3,7 @@ id: decision-64
 title: "Второй движок TTS: Qwen3-TTS в сайдкаре на faster-qwen3-tts, голос по описанию — эталон и клон"
 date: "2026-09-28 20:40"
 status: accepted
+section: "Голос/Синтез речи"
 ---
 ## Context
 

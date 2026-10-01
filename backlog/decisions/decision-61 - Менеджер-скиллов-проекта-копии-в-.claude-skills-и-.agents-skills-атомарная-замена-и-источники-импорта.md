@@ -3,6 +3,7 @@ id: decision-61
 title: "Менеджер скиллов проекта: копии в .claude/skills и .agents/skills, атомарная замена и источники импорта"
 date: "2026-09-28 09:55"
 status: accepted
+section: "Агенты/Роли и скиллы"
 ---
 ## Context
 

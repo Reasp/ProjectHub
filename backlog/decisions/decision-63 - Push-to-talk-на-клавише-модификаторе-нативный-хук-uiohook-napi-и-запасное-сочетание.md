@@ -3,6 +3,7 @@ id: decision-63
 title: "Push-to-talk на клавише-модификаторе: нативный хук uiohook-napi и запасное сочетание globalShortcut"
 date: "2026-09-28 15:20"
 status: accepted
+section: "Голос/Команды и push-to-talk"
 ---
 ## Context
 

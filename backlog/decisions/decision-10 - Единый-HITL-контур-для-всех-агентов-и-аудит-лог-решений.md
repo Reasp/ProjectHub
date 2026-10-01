@@ -3,6 +3,7 @@ id: decision-10
 title: "Единый HITL-контур для всех агентов и аудит-лог решений"
 date: "2026-09-10 15:40"
 status: accepted
+section: "Агенты/HITL и инструменты"
 ---
 ## Context
 

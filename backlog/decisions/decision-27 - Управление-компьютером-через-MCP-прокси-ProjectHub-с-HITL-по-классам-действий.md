@@ -3,6 +3,7 @@ id: decision-27
 title: "Управление компьютером через MCP-прокси ProjectHub с HITL по классам действий"
 date: "2026-09-15 03:40"
 status: accepted
+section: "Безопасность"
 ---
 ## Context
 

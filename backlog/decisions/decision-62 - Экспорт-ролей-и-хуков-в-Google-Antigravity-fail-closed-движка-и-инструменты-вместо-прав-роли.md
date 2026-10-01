@@ -3,6 +3,7 @@ id: decision-62
 title: "Экспорт ролей и хуков в Google Antigravity: fail-closed движка и инструменты вместо прав роли"
 date: "2026-09-28 12:40"
 status: accepted
+section: "Агенты/Роли и скиллы"
 ---
 ## Context
 

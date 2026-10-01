@@ -5,6 +5,7 @@ title: >-
   и проверка externals бандла
 date: '2026-09-07 00:43'
 status: accepted
+section: "Качество и релизы"
 ---
 ## Context
 

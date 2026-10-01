@@ -3,6 +3,7 @@ id: decision-47
 title: "AI Studio на общем исполнителе API-инструментов: адаптер чата и политика"
 date: "2026-09-19 21:30"
 status: accepted
+section: "Агенты/HITL и инструменты"
 ---
 ## Context
 

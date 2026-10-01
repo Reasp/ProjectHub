@@ -3,6 +3,7 @@ id: decision-32
 title: Распаковка архивов голосов внутри процесса вместо системного tar
 date: '2026-09-16 11:14'
 status: accepted
+section: "Голос/Синтез речи"
 ---
 ## Context
 

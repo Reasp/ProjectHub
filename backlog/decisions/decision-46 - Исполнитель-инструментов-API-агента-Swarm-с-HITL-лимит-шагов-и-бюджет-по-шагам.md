@@ -3,6 +3,7 @@ id: decision-46
 title: "Исполнитель инструментов API-агента Swarm с HITL, лимит шагов и бюджет по шагам"
 date: "2026-09-19 13:00"
 status: accepted
+section: "Агенты/HITL и инструменты"
 ---
 ## Context
 

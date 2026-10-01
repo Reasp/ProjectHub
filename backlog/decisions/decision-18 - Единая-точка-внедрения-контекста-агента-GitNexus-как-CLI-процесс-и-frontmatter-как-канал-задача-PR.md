@@ -3,6 +3,7 @@ id: decision-18
 title: "Единая точка внедрения контекста агента, GitNexus как CLI-процесс и frontmatter как канал задача↔PR"
 date: "2026-09-11 09:00"
 status: accepted
+section: "Агенты/Движки и контекст"
 ---
 ## Context
 

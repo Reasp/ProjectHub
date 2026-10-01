@@ -1,9 +1,14 @@
-import React from 'react';
+import React, { createContext, useContext } from 'react';
 import { MermaidDiagram } from './MermaidDiagram';
 import { parseMarkdownBlocks, type MarkdownBlock } from './markdownBlocks';
 import { Copy, Check, Info, AlertTriangle, AlertCircle, Lightbulb, Flame } from 'lucide-react';
 import { useI18n } from '../../i18n';
 import { useTimeoutState } from '../../hooks/useTimeoutState';
+import { useDocRefs, type DocRefNavigation } from '../../hooks/useDocRefs';
+import { tokenizeDocRefs, docRefFromHref, type DocRef } from '../../utils/docRefs';
+
+/** Перекрёстные ссылки Backlog.md для вложенных блоков: хук стора вызывается один раз на документ. */
+const DocRefContext = createContext<DocRefNavigation | null>(null);
 
 interface MarkdownViewerProps {
   content: string;
@@ -17,6 +22,7 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
   emptyMessage
 }) => {
   const { t } = useI18n();
+  const docRefs = useDocRefs();
   const effectiveEmptyMessage = emptyMessage !== undefined ? emptyMessage : t.markdown.emptyDocument;
 
   if (!content || !content.trim()) {
@@ -28,11 +34,13 @@ export const MarkdownViewer: React.FC<MarkdownViewerProps> = ({
   const blocks = parseMarkdownBlocks(content);
 
   return (
-    <div className={`space-y-3.5 text-xs text-slate-200 leading-relaxed font-sans select-text ${className}`}>
-      {blocks.map((block, idx) => (
-        <BlockRenderer key={idx} block={block} />
-      ))}
-    </div>
+    <DocRefContext.Provider value={docRefs}>
+      <div className={`space-y-3.5 text-xs text-slate-200 leading-relaxed font-sans select-text ${className}`}>
+        {blocks.map((block, idx) => (
+          <BlockRenderer key={idx} block={block} />
+        ))}
+      </div>
+    </DocRefContext.Provider>
   );
 };
 
@@ -226,6 +234,7 @@ const TableBlock: React.FC<{ headers: string[]; rows: string[][] }> = ({ headers
 };
 
 const InlineMarkdown: React.FC<{ text: string }> = ({ text }) => {
+  const docRefs = useContext(DocRefContext);
   if (!text) return null;
 
   // Split by markdown images: ![alt](url) OR html img tags: <img src="..." />
@@ -236,7 +245,7 @@ const InlineMarkdown: React.FC<{ text: string }> = ({ text }) => {
 
   while ((match = imageRegex.exec(text)) !== null) {
     if (match.index > lastIdx) {
-      parts.push(renderFormattedText(text.substring(lastIdx, match.index), parts.length));
+      parts.push(renderFormattedText(text.substring(lastIdx, match.index), parts.length, docRefs));
     }
 
     if (match[0].startsWith('![')) {
@@ -286,7 +295,7 @@ const InlineMarkdown: React.FC<{ text: string }> = ({ text }) => {
   }
 
   if (lastIdx < text.length) {
-    parts.push(renderFormattedText(text.substring(lastIdx), parts.length));
+    parts.push(renderFormattedText(text.substring(lastIdx), parts.length, docRefs));
   }
 
   return <>{parts}</>;
@@ -321,9 +330,70 @@ const ExternalLink: React.FC<{ href: string; children: React.ReactNode }> = ({ h
   );
 };
 
-function renderFormattedText(str: string, keyPrefix: number): React.ReactNode {
-  // Replace bold, italic, inline code, links
-  const tokens = str.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g);
+/**
+ * Перекрёстная ссылка Backlog.md (TASK-121, decision-68). `[[id]]` показывается ссылкой всегда:
+ * существующий объект открывается по клику, несуществующий помечен и не кликается. Упоминание
+ * идентификатора без скобок становится ссылкой, только если объект существует.
+ */
+const DocRefLink: React.FC<{ docRef: DocRef; nav: DocRefNavigation | null; children?: React.ReactNode }> = ({
+  docRef,
+  nav,
+  children
+}) => {
+  const { t } = useI18n();
+  const resolved = nav?.resolve(docRef) ?? null;
+  const label = children ?? docRef.label;
+
+  if (!nav || !resolved) {
+    if (!docRef.wiki) return <>{label}</>;
+    return (
+      <span
+        title={t.markdown.refNotFound.replace('{id}', docRef.id)}
+        data-doc-ref={docRef.id}
+        data-doc-ref-missing="true"
+        className="text-slate-500 underline decoration-dotted decoration-rose-500/60 underline-offset-2 cursor-help"
+      >
+        {label}
+      </span>
+    );
+  }
+
+  const title = [resolved.title !== docRef.id ? resolved.title : '', resolved.status ? `[${resolved.status}]` : '']
+    .filter(Boolean)
+    .join(' ');
+  return (
+    <a
+      href={`#${docRef.id}`}
+      data-doc-ref={docRef.id}
+      title={title || undefined}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        nav.open(docRef);
+      }}
+      className={
+        docRef.wiki
+          ? 'text-indigo-300 hover:text-indigo-200 underline decoration-indigo-500/50 underline-offset-2 cursor-pointer'
+          : 'text-slate-200 hover:text-indigo-200 underline decoration-dotted decoration-slate-500 underline-offset-2 cursor-pointer'
+      }
+    >
+      {label}
+    </a>
+  );
+};
+
+function renderTextWithRefs(text: string, keyPrefix: string, nav: DocRefNavigation | null): React.ReactNode {
+  const tokens = tokenizeDocRefs(text);
+  if (tokens.length === 1 && tokens[0].type === 'text') return text;
+  return tokens.map((token, idx) =>
+    token.type === 'text' ? token.value : <DocRefLink key={`${keyPrefix}-${idx}`} docRef={token} nav={nav} />
+  );
+}
+
+function renderFormattedText(str: string, keyPrefix: number, nav: DocRefNavigation | null): React.ReactNode {
+  // Replace bold, italic, inline code, links. `[[id]]` и `[[id|подпись]]` выделяются отдельным токеном,
+  // чтобы подпись ссылки не разбиралась как разметка.
+  const tokens = str.split(/(`[^`]+`|\[\[[^\]\n]+\]\]|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g);
 
   return (
     <span key={`ftext-${keyPrefix}`}>
@@ -336,20 +406,37 @@ function renderFormattedText(str: string, keyPrefix: number): React.ReactNode {
           );
         }
         if (token.startsWith('**') && token.endsWith('**')) {
-          return <strong key={idx} className="font-semibold text-white">{token.slice(2, -2)}</strong>;
+          return (
+            <strong key={idx} className="font-semibold text-white">
+              {renderTextWithRefs(token.slice(2, -2), `b${idx}`, nav)}
+            </strong>
+          );
         }
         if (token.startsWith('*') && token.endsWith('*')) {
-          return <em key={idx} className="italic text-slate-300">{token.slice(1, -1)}</em>;
+          return (
+            <em key={idx} className="italic text-slate-300">
+              {renderTextWithRefs(token.slice(1, -1), `i${idx}`, nav)}
+            </em>
+          );
         }
         const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
         if (linkMatch) {
+          // Относительная ссылка на файл Backlog.md (`decision-46 - Заголовок.md`) открывает документ.
+          const fileRef = docRefFromHref(linkMatch[2]);
+          if (fileRef) {
+            return (
+              <DocRefLink key={idx} docRef={fileRef} nav={nav}>
+                {linkMatch[1]}
+              </DocRefLink>
+            );
+          }
           return (
             <ExternalLink key={idx} href={linkMatch[2]}>
               {linkMatch[1]}
             </ExternalLink>
           );
         }
-        return token;
+        return <React.Fragment key={idx}>{renderTextWithRefs(token, `t${idx}`, nav)}</React.Fragment>;
       })}
     </span>
   );

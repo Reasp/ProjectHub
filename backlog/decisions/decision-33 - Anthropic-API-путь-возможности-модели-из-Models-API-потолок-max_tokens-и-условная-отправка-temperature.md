@@ -3,6 +3,7 @@ id: decision-33
 title: "Anthropic API-путь: возможности модели из Models API, потолок max_tokens и условная отправка temperature"
 date: "2026-09-17 09:44"
 status: accepted
+section: "LLM-провайдеры"
 ---
 ## Context
 

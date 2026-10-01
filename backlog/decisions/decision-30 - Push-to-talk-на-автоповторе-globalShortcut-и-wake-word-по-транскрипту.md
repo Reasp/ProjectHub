@@ -3,6 +3,7 @@ id: decision-30
 title: "Push-to-talk на автоповторе globalShortcut и wake word по транскрипту, без нативных хуков"
 date: "2026-09-16 13:20"
 status: accepted
+section: "Голос/Команды и push-to-talk"
 ---
 ## Context
 

@@ -3,6 +3,7 @@ id: decision-23
 title: "Сброс состояния при смене проекта в рендерере"
 date: "2026-09-12 03:45"
 status: accepted
+section: "Интерфейс"
 ---
 
 ## Context

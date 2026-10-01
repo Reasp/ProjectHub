@@ -29,6 +29,7 @@ describe('emptyProjectScopedState', () => {
       [
         'activeProcessId',
         'backlogConfig',
+        'docBackStack',
         'docContent',
         'docsList',
         'gitDiffContent',
@@ -36,6 +37,7 @@ describe('emptyProjectScopedState', () => {
         'gitRepoDetails',
         'gitSelectedFile',
         'isDocDirty',
+        'memoryRefToOpen',
         'milestones',
         'prDiffContent',
         'prProviderInfo',
@@ -45,6 +47,7 @@ describe('emptyProjectScopedState', () => {
         'selectedLabelFilter',
         'selectedMilestoneFilter',
         'selectedPR',
+        'taskRefToOpen',
         'tasks'
       ].sort()
     );

@@ -3,6 +3,7 @@ id: decision-43
 title: "Ошибки провайдера LLM: классификатор, сообщение с советом и снимок для fallback"
 date: "2026-09-19 10:00"
 status: accepted
+section: "LLM-провайдеры"
 ---
 ## Context
 

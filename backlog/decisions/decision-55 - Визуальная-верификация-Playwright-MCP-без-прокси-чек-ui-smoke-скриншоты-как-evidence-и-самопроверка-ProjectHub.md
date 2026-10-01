@@ -3,6 +3,7 @@ id: decision-55
 title: "Визуальная верификация: Playwright MCP без прокси, чек ui-smoke, скриншоты как evidence и самопроверка ProjectHub"
 date: "2026-09-27 13:13"
 status: accepted
+section: "Качество и релизы"
 ---
 ## Context
 

@@ -3,6 +3,7 @@ id: doc-3
 title: "Сравнительный анализ и выбор технологического стека ProjectHub"
 type: specification
 created_date: "2026-08-28 11:00"
+section: "Архитектура"
 ---
 
 # Сравнительный анализ и выбор технологического стека ProjectHub

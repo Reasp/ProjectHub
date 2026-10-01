@@ -3,6 +3,7 @@ id: decision-11
 title: "Федерация компьютеров и Remote Control: identity на ключевой паре, релей как каталог, hub-режим"
 date: "2026-09-10 15:40"
 status: accepted
+section: "Федерация"
 ---
 ## Context
 

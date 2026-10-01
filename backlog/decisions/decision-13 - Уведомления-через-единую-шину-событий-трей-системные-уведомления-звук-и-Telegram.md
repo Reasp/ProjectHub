@@ -3,6 +3,7 @@ id: decision-13
 title: "Уведомления через единую шину событий: трей, системные уведомления, звук и Telegram"
 date: "2026-09-10 15:40"
 status: accepted
+section: "Архитектура"
 ---
 ## Context
 

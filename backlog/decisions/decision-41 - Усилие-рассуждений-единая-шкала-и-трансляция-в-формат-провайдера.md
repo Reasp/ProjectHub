@@ -3,6 +3,7 @@ id: decision-41
 title: "Усилие рассуждений: единая шкала и трансляция в формат провайдера"
 date: "2026-09-18 23:30"
 status: accepted
+section: "LLM-провайдеры"
 ---
 ## Context
 

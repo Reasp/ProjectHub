@@ -8,6 +8,7 @@ tags:
   - claude-code
   - security
   - mcp
+section: "Агенты"
 ---
 # Human-in-the-loop для режима Claude CLI в AI Studio
 

@@ -3,6 +3,7 @@ id: decision-9
 title: "Роль агента как first-class сущность"
 date: "2026-09-10 15:40"
 status: accepted
+section: "Агенты/Роли и скиллы"
 ---
 ## Context
 

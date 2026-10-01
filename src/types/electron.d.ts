@@ -789,6 +789,8 @@ export interface DocItem {
   filePath: string;
   fileRelative: string;
   tags: string[];
+  /** Раздел дерева документации через `/`: поле `section` frontmatter или вложенная папка (decision-68). */
+  section?: string;
   status?: string;
   date?: string;
   updatedAt?: string;
@@ -808,6 +810,8 @@ export interface CreateDocParams {
   /** Для doc: guide | readme | specification | other. По умолчанию other. */
   docType?: DocFileType;
   tags?: string[];
+  /** Раздел дерева документации через `/` (decision-68); пишется в поле `section` frontmatter. */
+  section?: string;
   /** Тело документа. Если содержит свой frontmatter — берётся только тело, frontmatter генерируется по стандарту. */
   content?: string;
 }

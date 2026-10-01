@@ -3,6 +3,7 @@ id: decision-40
 title: "Провайдер слота Swarm, роли и ревьюера Arena: профиль, без вендорских fallback"
 date: "2026-09-18 21:40"
 status: accepted
+section: "LLM-провайдеры"
 ---
 ## Context
 

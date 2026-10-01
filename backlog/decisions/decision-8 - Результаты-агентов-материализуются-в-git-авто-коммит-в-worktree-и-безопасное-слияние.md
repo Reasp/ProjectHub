@@ -3,6 +3,7 @@ id: decision-8
 title: "Результаты агентов материализуются в git: авто-коммит в worktree и безопасное слияние"
 date: "2026-09-10 15:40"
 status: proposed
+section: "Агенты/Изоляция и git"
 ---
 ## Context
 

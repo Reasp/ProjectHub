@@ -996,7 +996,14 @@ export const en: TranslationDictionary = {
     noDocSelected: 'Select a document from the left list to view or edit.',
     titleRequired: 'Please specify the title of the document or decision',
     createError: 'Failed to create document',
-    placeholderText: 'text'
+    placeholderText: 'text',
+    docsRoot: 'Documents',
+    back: 'Back to the previous document',
+    expandAll: 'Expand all',
+    collapseAll: 'Collapse all',
+    section: 'Section',
+    sectionPlaceholder: 'For example: Agents/HITL',
+    sectionHint: 'Path in the documentation tree, separated by “/”; stored in the section frontmatter field'
   },
   security: {
     title: 'Project security',
@@ -1848,7 +1855,9 @@ export const en: TranslationDictionary = {
     codeSnippet: 'Code snippet',
     emptyDocument: 'Document is empty',
     mermaidSyntaxError: 'Mermaid diagram syntax error',
-    mermaidRendering: 'Rendering Mermaid diagram...'
+    mermaidRendering: 'Rendering Mermaid diagram...',
+    refNotFound: 'The link points to {id}, but the project has no such document or task',
+    refDiscardConfirm: 'The open document has unsaved changes. Follow the link and discard them?'
   },
   explorer: {
     title: 'Project Files',

@@ -3,6 +3,7 @@ id: decision-25
 title: "Локальный TTS на голосах Piper через sherpa-onnx в worker main-процесса"
 date: "2026-09-15 02:33"
 status: accepted
+section: "Голос/Синтез речи"
 ---
 ## Context
 

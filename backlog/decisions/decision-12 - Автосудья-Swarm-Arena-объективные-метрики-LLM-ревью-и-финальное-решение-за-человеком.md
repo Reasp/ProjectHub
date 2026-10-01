@@ -3,6 +3,7 @@ id: decision-12
 title: "Автосудья Swarm Arena: объективные метрики, LLM-ревью и финальное решение за человеком"
 date: "2026-09-10 15:40"
 status: accepted
+section: "Агенты/Swarm Arena"
 ---
 ## Context
 

@@ -143,6 +143,9 @@ export function emptyProjectScopedState() {
     selectedDoc: null as DocItem | null,
     docContent: '',
     isDocDirty: false,
+    docBackStack: [] as string[],
+    taskRefToOpen: null as string | null,
+    memoryRefToOpen: null as string | null,
     milestones: [] as Milestone[],
     processes: [] as ManagedProcess[],
     activeProcessId: null as string | null,
@@ -258,6 +261,18 @@ interface ProjectState {
   setDocContent: (content: string) => void;
   saveDocAction: () => Promise<boolean>;
   createDocAction: (params: CreateDocParams) => Promise<DocItem | null>;
+
+  // Переходы по перекрёстным ссылкам документации (TASK-121, decision-68)
+  /** Журнал переходов по ссылкам: пути документов, к которым можно вернуться кнопкой «Назад». */
+  docBackStack: string[];
+  /** id задачи, карточку которой должна открыть доска после перехода по ссылке. */
+  taskRefToOpen: string | null;
+  /** id факта памяти, который должен показать раздел «Память». */
+  memoryRefToOpen: string | null;
+  openDocById: (id: string) => boolean;
+  goBackDoc: () => void;
+  requestOpenTask: (id: string | null) => void;
+  requestOpenMemory: (id: string | null) => void;
 
   // Milestones State
   milestones: Milestone[];
@@ -609,6 +624,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isDocLoading: false,
   isDocSaving: false,
   isDocDirty: false,
+  docBackStack: [],
+  taskRefToOpen: null,
+  memoryRefToOpen: null,
 
   milestones: [],
   isLoadingMilestones: false,
@@ -2201,6 +2219,43 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   setDocContent: (content: string) => {
     set({ docContent: content, isDocDirty: true });
+  },
+
+  openDocById: (id: string) => {
+    const target = get().docsList.find((d) => d.id.toLowerCase() === id.toLowerCase());
+    if (!target) return false;
+    const current = get().selectedDoc;
+    if (current && current.filePath !== target.filePath) {
+      set({ docBackStack: [...get().docBackStack.slice(-49), current.filePath] });
+    }
+    if (get().activeTab !== 'docs') get().setActiveTab('docs');
+    if (current?.filePath !== target.filePath) void get().selectDoc(target);
+    return true;
+  },
+
+  goBackDoc: () => {
+    const stack = [...get().docBackStack];
+    // Документ из журнала могли удалить или переименовать — берём ближайший существующий.
+    while (stack.length > 0) {
+      const filePath = stack.pop();
+      const doc = get().docsList.find((d) => d.filePath === filePath);
+      if (doc) {
+        set({ docBackStack: stack });
+        void get().selectDoc(doc);
+        return;
+      }
+    }
+    set({ docBackStack: [] });
+  },
+
+  requestOpenTask: (id: string | null) => {
+    set({ taskRefToOpen: id });
+    if (id && get().activeTab !== 'kanban') get().setActiveTab('kanban');
+  },
+
+  requestOpenMemory: (id: string | null) => {
+    set({ memoryRefToOpen: id });
+    if (id && get().activeTab !== 'docs') get().setActiveTab('docs');
   },
 
   saveDocAction: async () => {

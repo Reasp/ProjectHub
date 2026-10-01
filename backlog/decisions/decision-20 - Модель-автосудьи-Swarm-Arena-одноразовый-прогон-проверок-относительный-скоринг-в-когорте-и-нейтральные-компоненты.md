@@ -3,6 +3,7 @@ id: decision-20
 title: "Модель автосудьи Swarm Arena: одноразовый прогон проверок, относительный скоринг в когорте и нейтральные компоненты"
 date: "2026-09-11 11:02"
 status: accepted
+section: "Агенты/Swarm Arena"
 ---
 ## Context
 

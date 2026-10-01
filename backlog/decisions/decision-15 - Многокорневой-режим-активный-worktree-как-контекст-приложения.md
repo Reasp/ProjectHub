@@ -3,6 +3,7 @@ id: decision-15
 title: "Многокорневой режим: активный worktree как контекст приложения"
 date: "2026-09-10 15:40"
 status: accepted
+section: "Архитектура"
 ---
 ## Context
 

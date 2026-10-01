@@ -3,6 +3,7 @@ id: decision-54
 title: "Экспорт ролей в нативные субагенты и слой хуков терминальных сессий: HITL, аудит, fail-open"
 date: "2026-09-27 12:15"
 status: accepted
+section: "Агенты/Роли и скиллы"
 ---
 ## Context
 

@@ -3,6 +3,7 @@ id: doc-2
 title: "Концепция и архитектура ProjectHub"
 type: specification
 created_date: "2026-08-28 10:00"
+section: "Архитектура"
 ---
 
 # ProjectHub — Концепция и архитектура единой панели управления проектами

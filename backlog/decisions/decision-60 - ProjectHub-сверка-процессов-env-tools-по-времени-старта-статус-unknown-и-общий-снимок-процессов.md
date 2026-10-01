@@ -3,6 +3,7 @@ id: decision-60
 title: "ProjectHub: сверка процессов env-tools по времени старта, статус unknown и общий снимок процессов"
 date: "2026-09-28 09:20"
 status: accepted
+section: "Процессы и env-tools"
 ---
 ## Context
 

@@ -3,6 +3,7 @@ id: decision-45
 title: "Чекпоинты ходов агента в worktree, откат, таймлайн инструментов и трасса JSONL"
 date: "2026-09-19 11:30"
 status: accepted
+section: "Агенты/Изоляция и git"
 ---
 ## Context
 

@@ -3,6 +3,7 @@ id: decision-42
 title: "Цены агентов: редактор, нулевая цена локальных провайдеров, импорт OpenRouter и usage Ollama"
 date: "2026-09-19 08:20"
 status: accepted
+section: "LLM-провайдеры"
 ---
 ## Context
 

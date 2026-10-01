@@ -3,6 +3,7 @@ id: decision-65
 title: "Карточка результата push-to-talk: закрытие глобальным кликом через uiohook и временный Esc"
 date: "2026-09-29 16:45"
 status: accepted
+section: "Голос/Команды и push-to-talk"
 ---
 ## Context
 

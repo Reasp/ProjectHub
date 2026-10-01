@@ -3,6 +3,7 @@ id: decision-59
 title: "env-tools: идентичность процесса в реестре по времени старта и чистка мёртвых записей"
 date: "2026-09-28 08:50"
 status: accepted
+section: "Процессы и env-tools"
 ---
 ## Context
 

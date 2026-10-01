@@ -3,6 +3,7 @@ id: decision-51
 title: "Память агента по проекту: backlog/memory, инструменты memory_write и memory_search, заметки хода"
 date: "2026-09-26 13:40"
 status: accepted
+section: "Агенты/Движки и контекст"
 ---
 ## Context
 

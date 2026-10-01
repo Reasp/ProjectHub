@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import matter from 'gray-matter';
 import type { DocItem, CreateDocParams, DocFileType, DecisionStatus } from '../../src/types/electron';
+import { normalizeSection, sectionFromRelativePath } from '../../src/utils/docTree';
 
 /**
  * YAML в frontmatter превращает незакавыченные значения вида `2026-09-03` в объекты Date,
@@ -151,7 +152,12 @@ function yamlStringList(values: string[]): string {
   return `[${values.map((v) => yamlString(v)).join(', ')}]`;
 }
 
-async function readDocItem(filePath: string, projectRoot: string, category: DocCategory): Promise<DocItem> {
+async function readDocItem(
+  filePath: string,
+  projectRoot: string,
+  category: DocCategory,
+  categoryRoot: string
+): Promise<DocItem> {
   const fileName = path.basename(filePath);
   const stat = await fs.stat(filePath);
   const raw = await fs.readFile(filePath, 'utf-8');
@@ -185,6 +191,10 @@ async function readDocItem(filePath: string, projectRoot: string, category: DocC
     filePath,
     fileRelative: path.relative(projectRoot, filePath).replace(/\\/g, '/'),
     tags: toStringList(data.tags),
+    // Раздел дерева: поле `section` frontmatter, иначе вложенная папка (decision-68).
+    section:
+      normalizeSection(toOptionalString(data.section)) ??
+      sectionFromRelativePath(path.relative(categoryRoot, filePath)),
     status,
     date,
     updatedAt: stat.mtime.toISOString(),
@@ -206,7 +216,7 @@ export async function listProjectDocs(projectPath: string): Promise<DocItem[]> {
     const files = await collectMarkdownFiles(dir);
     for (const filePath of files) {
       try {
-        items.push(await readDocItem(filePath, normalizedProject, category));
+        items.push(await readDocItem(filePath, normalizedProject, category, dir));
       } catch (e) {
         console.error(`Error reading ${category}:`, filePath, e);
       }
@@ -332,6 +342,8 @@ export async function createProjectDoc(
     lines.push(`created_date: ${yamlString(stamp)}`);
   }
   if (tags.length > 0) lines.push(`tags: ${yamlStringList(tags)}`);
+  const section = normalizeSection(params.section ?? toOptionalString(user.data.section));
+  if (section) lines.push(`section: ${yamlString(section)}`);
   lines.push('---', '');
 
   const body = user.body ?? (category === 'decision' ? decisionTemplate(cleanTitle) : docTemplate(cleanTitle));
@@ -348,6 +360,7 @@ export async function createProjectDoc(
     filePath: fullPath,
     fileRelative: path.relative(normalizedProject, fullPath).replace(/\\/g, '/'),
     tags,
+    section,
     status,
     date: stamp,
     updatedAt: stat.mtime.toISOString(),

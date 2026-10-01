@@ -3,6 +3,7 @@ id: decision-34
 title: "Синтез Piper и проба импортированных голосов в utilityProcess вместо worker_threads"
 date: "2026-09-17 20:35"
 status: accepted
+section: "Голос/Синтез речи"
 ---
 ## Context
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus,
@@ -44,6 +44,8 @@ export const KanbanBoard: React.FC = () => {
     setSelectedLabelFilter,
     selectedMilestoneFilter,
     setSelectedMilestoneFilter,
+    taskRefToOpen,
+    requestOpenTask,
     updateTaskStatusLocal,
     saveFullTaskLocal,
     deleteTaskLocal,
@@ -72,6 +74,14 @@ export const KanbanBoard: React.FC = () => {
   const reviewStatus = matchStatus(statuses, 'Review');
 
   const [selectedTask, setSelectedTask] = useState<BacklogTask | null>(null);
+  // Переход по ссылке `[[TASK-N]]` из документа или другой задачи (TASK-121): открыть карточку.
+  useEffect(() => {
+    if (!taskRefToOpen) return;
+    const target = tasks.find((task) => task.id.toLowerCase() === taskRefToOpen.toLowerCase());
+    if (target) setSelectedTask(target);
+    requestOpenTask(null);
+  }, [taskRefToOpen, tasks, requestOpenTask]);
+
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
@@ -503,6 +513,7 @@ export const KanbanBoard: React.FC = () => {
       {/* Task Details Modal */}
       {selectedTask && (
         <TaskDetailModal
+          key={selectedTask.id}
           task={selectedTask}
           onClose={() => setSelectedTask(null)}
           onSave={saveFullTaskLocal}

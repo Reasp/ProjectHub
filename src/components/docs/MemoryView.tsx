@@ -3,6 +3,7 @@ import { AlertCircle, Brain, CheckCircle2, Edit3, Plus, RefreshCw, Save, Search,
 import { useTranslation } from '../../i18n/useTranslation';
 import { useTimeoutState } from '../../hooks/useTimeoutState';
 import { useDialogStore } from '../../store/useDialogStore';
+import { useProjectStore } from '../../store/useProjectStore';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 import { describeMemoryFailure } from './memoryErrorView';
 import type { MemoryDraftInput, MemoryFactInfo, MemoryFactType, MemoryIssueInfo } from '../../types/electron';
@@ -77,6 +78,20 @@ export const MemoryView: React.FC<Props> = ({ projectPath }) => {
   }, [facts, query, typeFilter]);
 
   const selected = facts.find((f) => f.id === selectedId) ?? null;
+
+  // Переход по ссылке `[[mem-N]]` из документа (TASK-121): выбрать факт, когда список загружен.
+  const memoryRefToOpen = useProjectStore((state) => state.memoryRefToOpen);
+  const requestOpenMemory = useProjectStore((state) => state.requestOpenMemory);
+  useEffect(() => {
+    if (!memoryRefToOpen || loading) return;
+    const target = facts.find((f) => f.id.toLowerCase() === memoryRefToOpen.toLowerCase());
+    if (target) {
+      setQuery('');
+      setTypeFilter('all');
+      setSelectedId(target.id);
+    }
+    requestOpenMemory(null);
+  }, [memoryRefToOpen, facts, loading, requestOpenMemory]);
 
   const startEdit = (fact?: MemoryFactInfo) => {
     setError(null);

@@ -16,6 +16,8 @@ let hasErrors = false;
 let totalFilesChecked = 0;
 let totalImagesChecked = 0;
 let totalFrontmatterFieldsChecked = 0;
+// Документы и решения для сквозных проверок после обхода: разделы дерева и ссылки [[id]] (decision-68).
+const docIndex = [];
 
 /**
  * Правило 16: YAML превращает незакавыченные значения вида `2026-09-03` в объекты Date.
@@ -65,8 +67,26 @@ function validateMarkdownFile(relPath, { frontmatterOnly = false, requiredFields
 
       // 1b. Типы значений: тем же парсером, что и приложение (gray-matter), чтобы совпадало 1:1.
       try {
-        const { data } = matter(content);
+        const { data, content: body } = matter(content);
         collectTypedValueErrors(data, '', errors);
+        if (!frontmatterOnly) {
+          // Раздел дерева документации (decision-68): строка-путь через «/» в кавычках.
+          const hasSectionField = data.section !== undefined && data.section !== null;
+          if (hasSectionField && (typeof data.section !== 'string' || !data.section.trim())) {
+            errors.push('Frontmatter, поле "section": ожидается непустая строка в кавычках, например "Агенты/HITL"');
+          }
+          const docRoot = DOC_ROOTS.find((root) => relPath.startsWith(`${root}/`));
+          const inSubfolder = docRoot ? relPath.slice(docRoot.length + 1).includes('/') : false;
+          // Ссылки внутри блоков кода — примеры, а не ссылки.
+          const prose = body.replace(/```[\s\S]*?```/g, '').replace(/`[^`\n]*`/g, '');
+          const refs = [...prose.matchAll(/\[\[\s*((?:decision|doc)-\d+)\s*(?:\|[^\]\n]*)?\]\]/gi)].map((m) => m[1].toLowerCase());
+          docIndex.push({
+            relPath,
+            id: typeof data.id === 'string' ? data.id.trim().toLowerCase() : '',
+            hasSection: (hasSectionField && typeof data.section === 'string' && data.section.trim() !== '') || inSubfolder,
+            refs: [...new Set(refs)]
+          });
+        }
       } catch (e) {
         errors.push(`Frontmatter не парсится как YAML: ${e.message}`);
       }
@@ -163,6 +183,27 @@ function walkMarkdown(root, options) {
 for (const docRoot of DOC_ROOTS) walkMarkdown(docRoot, {});
 for (const fmRoot of FRONTMATTER_ONLY_ROOTS) walkMarkdown(fmRoot, { frontmatterOnly: true });
 for (const roleRoot of ROLE_ROOTS) walkMarkdown(roleRoot.path, { frontmatterOnly: true, requiredFields: roleRoot.requiredFields });
+
+// Сквозные проверки документации (decision-68).
+{
+  const knownIds = new Set(docIndex.map((doc) => doc.id).filter(Boolean));
+  // Разделы обязательны, только если проект ими пользуется: в чужих проектах без разделов линтер молчит.
+  const usesSections = docIndex.some((doc) => doc.hasSection);
+  for (const doc of docIndex) {
+    const errors = [];
+    if (usesSections && !doc.hasSection) {
+      errors.push(
+        'Документ без раздела: добавьте во frontmatter поле section: "Раздел/Подраздел" ' +
+          '(Backlog.md CLI стирает его при `doc update` — после обновления документа верните поле)'
+      );
+    }
+    for (const ref of doc.refs) {
+      if (!knownIds.has(ref)) errors.push(`Ссылка [[${ref}]] ведёт на несуществующий документ или решение`);
+    }
+    if (errors.length > 0) reportFileResult(doc.relPath, errors, []);
+  }
+}
+
 // Память проекта (decision-51 п. 7): формат факта, секреты, соответствие индекса MEMORY.md файлам.
 for (const [relPath, errors] of validateMemoryDir(ROOT)) {
   totalFilesChecked++;

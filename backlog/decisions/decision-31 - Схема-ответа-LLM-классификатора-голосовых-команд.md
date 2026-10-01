@@ -3,6 +3,7 @@ id: decision-31
 title: "Схема ответа LLM-классификатора голосовых команд и одноразовый вызов модели"
 date: "2026-09-16 13:25"
 status: accepted
+section: "Голос/Команды и push-to-talk"
 ---
 ## Context
 
