@@ -1,11 +1,11 @@
 ---
 id: TASK-116
 title: Озвучка Qwen3-TTS крупными фрагментами по абзацам вместо отдельных предложений
-status: Review
+status: Done
 assignee:
   - claude
 created_date: '2026-09-29 08:27'
-updated_date: '2026-10-01 20:22'
+updated_date: '2026-10-01 23:35'
 labels:
   - voice
   - tts
