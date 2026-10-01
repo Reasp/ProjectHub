@@ -3,10 +3,10 @@ id: TASK-123
 title: >-
   Карточка задачи: подтверждение закрытия с правками; факты памяти в обратных
   ссылках
-status: Review
+status: Done
 assignee: []
 created_date: '2026-10-01 11:36'
-updated_date: '2026-10-01 11:46'
+updated_date: '2026-10-01 12:14'
 labels:
   - ui
   - backlog
