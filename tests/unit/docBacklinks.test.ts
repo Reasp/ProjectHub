@@ -70,6 +70,24 @@ describe('buildDocLinkIndex', () => {
     expect(index.backlinks['task-10']).toBeUndefined();
   });
 
+  it('факты памяти идут после задач и сами целью обратных ссылок не становятся', () => {
+    const withMemory = buildDocLinkIndex([
+      ...sources,
+      doc('mem-2', 'Почему так: [[decision-1]].', { kind: 'mem' }),
+      doc('mem-1', 'Договорённость из decision-1, см. также [[mem-2]].', { kind: 'mem' })
+    ]);
+    expect(withMemory.backlinks['decision-1'].map((item) => item.id)).toEqual([
+      'decision-2',
+      'doc-3',
+      'TASK-2',
+      'TASK-10',
+      'mem-1',
+      'mem-2'
+    ]);
+    expect(withMemory.backlinks['mem-2']).toBeUndefined();
+    expect(withMemory.headings['mem-1']).toBeUndefined();
+  });
+
   it('хранит заголовки только для решений и документов', () => {
     expect(index.headings['decision-1']).toEqual(['decision']);
     expect(index.headings['doc-3']).toEqual([]);

@@ -1,17 +1,18 @@
 import React from 'react';
-import { CheckSquare, FileText, Link2, ShieldCheck } from 'lucide-react';
+import { Brain, CheckSquare, FileText, Link2, ShieldCheck } from 'lucide-react';
 import { useDocRefs } from '../../hooks/useDocRefs';
 import type { DocBacklink } from '../../types/electron';
 
 const KIND_ICON = {
   decision: <ShieldCheck className="w-3.5 h-3.5 text-indigo-400 shrink-0" />,
   doc: <FileText className="w-3.5 h-3.5 text-sky-400 shrink-0" />,
-  task: <CheckSquare className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+  task: <CheckSquare className="w-3.5 h-3.5 text-emerald-400 shrink-0" />,
+  mem: <Brain className="w-3.5 h-3.5 text-violet-400 shrink-0" />
 };
 
 /**
  * Блок «На этот документ ссылаются» под текстом документа (TASK-122, decision-69): решения,
- * документы и задачи, в тексте которых есть ссылка на открытый документ. Переход — тем же
+ * документы, задачи и факты памяти, в тексте которых есть ссылка на открытый документ. Переход — тем же
  * `useDocRefs`, что и по ссылке в тексте, с тем же подтверждением несохранённых правок.
  */
 export const DocBacklinks: React.FC<{ title: string; items: DocBacklink[] }> = ({ title, items }) => {

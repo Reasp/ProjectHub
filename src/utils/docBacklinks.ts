@@ -13,7 +13,7 @@ export interface DocLinkSource extends DocBacklink {
   content: string;
 }
 
-const KIND_ORDER: Record<DocBacklink['kind'], number> = { decision: 0, doc: 1, task: 2 };
+const KIND_ORDER: Record<DocBacklink['kind'], number> = { decision: 0, doc: 1, task: 2, mem: 3 };
 
 /** Текст документа без frontmatter, блоков кода и диаграмм, по одному фрагменту на блок. */
 function proseFragments(markdown: string): string[] {
@@ -74,14 +74,15 @@ function compareBacklinks(a: DocBacklink, b: DocBacklink): number {
 
 /**
  * Индекс связей: обратные ссылки собираются только для решений и документов, ссылка документа
- * на самого себя не учитывается. Источники в списке идут решениями, документами, задачами по номеру.
+ * на самого себя не учитывается. Источники в списке идут решениями, документами, задачами и фактами
+ * памяти (decision-70), внутри вида по номеру.
  */
 export function buildDocLinkIndex(sources: DocLinkSource[]): DocLinkIndex {
   const backlinks: Record<string, DocBacklink[]> = {};
   const headings: Record<string, string[]> = {};
   const documentIds = new Set<string>();
   for (const source of sources) {
-    if (source.kind === 'task') continue;
+    if (source.kind !== 'decision' && source.kind !== 'doc') continue;
     const key = source.id.toLowerCase();
     documentIds.add(key);
     headings[key] = collectHeadingKeys(source.content);

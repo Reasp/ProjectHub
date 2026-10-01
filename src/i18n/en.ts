@@ -706,6 +706,7 @@ export const en: TranslationDictionary = {
     editTask: 'Edit Task',
     deleteTask: 'Delete Task',
     confirmDelete: 'Are you sure you want to permanently delete this task file?',
+    discardConfirm: 'The task card has unsaved changes. Close it and discard them?',
     status: 'Status',
     milestone: 'Milestone',
     noMilestone: 'No Milestone',

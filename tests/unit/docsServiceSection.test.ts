@@ -51,11 +51,19 @@ describe('docsService: раздел документа', () => {
       '## Implementation Notes\n\nСделано по decision-1.'
     );
     await writeBody('backlog/tasks/archive/task-8 - D.md', ['id: TASK-8', "title: 'D'"], '[[decision-1]]');
+    await writeBody(
+      'backlog/memory/mem-1 - E.md',
+      ['id: "mem-1"', 'title: "E"', 'description: "Почему"', 'type: "project"', 'created: "2026-10-01 10:00"'],
+      'Основание — [[decision-1]].'
+    );
+    // Индекс памяти ссылается на файлы фактов, но источником обратных ссылок не является.
+    await fs.writeFile(path.join(project, 'backlog/memory/MEMORY.md'), '- [E](mem-1%20-%20E.md) — decision-1\n', 'utf-8');
 
     const index = await buildProjectDocLinkIndex(project);
     expect(index.backlinks['decision-1']).toEqual([
       { id: 'doc-1', kind: 'doc', title: 'B' },
-      { id: 'TASK-7', kind: 'task', title: 'C', status: 'Done' }
+      { id: 'TASK-7', kind: 'task', title: 'C', status: 'Done' },
+      { id: 'mem-1', kind: 'mem', title: 'E' }
     ]);
     expect(index.headings).toEqual({ 'decision-1': ['context', 'decision'], 'doc-1': [] });
   });

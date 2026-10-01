@@ -603,6 +603,7 @@ export interface TranslationDictionary {
     editTask: string;
     deleteTask: string;
     confirmDelete: string;
+    discardConfirm: string;
     status: string;
     milestone: string;
     noMilestone: string;

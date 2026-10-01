@@ -706,6 +706,7 @@ export const ru: TranslationDictionary = {
     editTask: 'Редактировать',
     deleteTask: 'Удалить задачу',
     confirmDelete: 'Вы уверены, что хотите безвозвратно удалить файл этой задачи?',
+    discardConfirm: 'В карточке задачи есть несохранённые правки. Закрыть её и потерять их?',
     status: 'Статус',
     milestone: 'Milestone',
     noMilestone: 'Без вехи',

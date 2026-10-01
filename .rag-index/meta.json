@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "922ae964a6b76c478e3e243a628ea064f0a73de771f6bc53e444e3fa4549db9f",
+  "docsHash": "a82019a13ed274743e0f0dc8ae9dbdea3988357f232cfd44a1ed1b0223994f84",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -72,6 +72,7 @@
     "backlog/decisions/decision-68 - Дерево-документации-раздел-в-поле-section-или-вложенной-папке-и-перекрёстные-ссылки-по-идентификатору.md",
     "backlog/decisions/decision-69 - Обратные-ссылки-документации-ссылка-на-заголовок-и-подтверждение-перехода-из-карточки-задачи.md",
     "backlog/decisions/decision-7 - Local-first-хранение-состояния-и-отсутствие-телеметрии.md",
+    "backlog/decisions/decision-70 - Закрытие-карточки-задачи-с-правками-и-факты-памяти-в-обратных-ссылках.md",
     "backlog/decisions/decision-8 - Результаты-агентов-материализуются-в-git-авто-коммит-в-worktree-и-безопасное-слияние.md",
     "backlog/decisions/decision-9 - Роль-агента-как-first-class-сущность.md",
     "backlog/docs/doc-1 - App-Icon-Concepts.md",
@@ -85,6 +86,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 893,
-  "builtAt": "2026-10-01T11:28:09.063Z"
+  "chunks": 898,
+  "builtAt": "2026-10-01T11:42:29.710Z"
 }

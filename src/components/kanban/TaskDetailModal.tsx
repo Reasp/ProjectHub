@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   X,
@@ -37,6 +37,7 @@ import { structureTaskDescription } from '../../utils/taskDescriptionFormat';
 import { isTaskDraftDirty } from '../../utils/taskDraft';
 import { useFederationStore } from '../../store/useFederationStore';
 import { useDialog } from '../../hooks/useDialog';
+import { useDialogStore } from '../../store/useDialogStore';
 import { generateTaskDraft } from '../../services/aiAssistantService';
 import { MarkdownViewer } from '../common/MarkdownViewer';
 import { PlanPanel } from './PlanPanel';
@@ -265,15 +266,27 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
     };
   }, [activeTab, rawContent, task?.filePath]);
 
+  // Закрытие карточки не явной кнопкой «Отмена» (decision-70): крестик, Escape, клик по фону и кнопки,
+  // уводящие в другой раздел, при несохранённых правках спрашивают подтверждение. Возвращает, закрыта ли карточка.
+  const confirmDialog = dialog.confirm;
+  const discardMessage = t.taskDetail.discardConfirm;
+  const requestClose = useCallback(async () => {
+    if (isDirty && !(await confirmDialog(discardMessage))) return false;
+    onClose();
+    return true;
+  }, [isDirty, confirmDialog, discardMessage, onClose]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
+      if (e.key !== 'Escape') return;
+      // Escape, уже обработанный диалогом поверх карточки, закрывает только диалог: порядок
+      // слушателей на window не определён, поэтому проверяются оба признака.
+      if (e.defaultPrevented || useDialogStore.getState().activeDialog) return;
+      void requestClose();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [requestClose]);
 
   if (!task) return null;
 
@@ -359,7 +372,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
   return createPortal(
     <div
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) void requestClose();
       }}
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150 select-text"
     >
@@ -402,7 +415,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             </div>
 
             <button
-              onClick={onClose}
+              onClick={() => void requestClose()}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition ml-2"
             >
               <X className="w-4 h-4" />
@@ -637,9 +650,9 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
               projectPath={selectedProject.path}
               taskId={task.id}
               taskTitle={task.title}
-              onOpenSession={(swarmId) => {
+              onOpenSession={async (swarmId) => {
+                if (!(await requestClose())) return;
                 setActiveSwarmId(selectedProject.path, swarmId);
-                onClose();
                 setMainTab('ai');
               }}
             />
@@ -843,8 +856,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             {/* Swarm Arena Action (TASK-54) */}
             <button
               type="button"
-              onClick={() => {
-                onClose();
+              onClick={async () => {
+                if (!(await requestClose())) return;
                 openNewSwarmModal({
                   taskId: task.id,
                   taskTitle: task.title,
@@ -862,8 +875,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             {/* Цикл «до готовности» (TASK-75): модалка запуска открывается сразу в режиме done_loop */}
             <button
               type="button"
-              onClick={() => {
-                onClose();
+              onClick={async () => {
+                if (!(await requestClose())) return;
                 openNewSwarmModal({
                   taskId: task.id,
                   taskTitle: task.title,

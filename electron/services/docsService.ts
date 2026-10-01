@@ -229,7 +229,7 @@ export async function listProjectDocs(projectPath: string): Promise<DocItem[]> {
 
 /**
  * Связи документации проекта (TASK-122, decision-69): обратные ссылки на решения и документы из
- * решений, документов и задач, плюс заголовки документов для ссылок вида `[[decision-46#Decision]]`.
+ * решений, документов, задач и фактов памяти, плюс заголовки документов для ссылок вида `[[decision-46#Decision]]`.
  * Задачи читаются из файлов целиком: ссылка может стоять в плане, заметках или итоге.
  */
 export async function buildProjectDocLinkIndex(projectPath: string): Promise<DocLinkIndex> {
@@ -249,6 +249,8 @@ export async function buildProjectDocLinkIndex(projectPath: string): Promise<Doc
       const id =
         kind === 'task'
           ? toOptionalString(data.id)?.trim() || fileName.match(/^(task-\d+(?:\.\d+)*)/i)?.[1].toUpperCase()
+          : kind === 'mem'
+          ? toOptionalString(data.id)?.trim() || fileName.match(/^(mem-\d+)/i)?.[1].toLowerCase()
           : resolveDocId(data, fileName, kind);
       if (!id) return;
       sources.push({
@@ -276,6 +278,14 @@ export async function buildProjectDocLinkIndex(projectPath: string): Promise<Doc
   const tasksDir = path.join(normalizedProject, 'backlog', 'tasks');
   if (existsSync(tasksDir)) {
     for (const filePath of await collectMarkdownFiles(tasksDir, 0)) await readSource(filePath, 'task');
+  }
+
+  // Факты памяти проекта (decision-51, decision-70): один факт — один файл `mem-N - ….md`.
+  const memoryDir = path.join(normalizedProject, 'backlog', 'memory');
+  if (existsSync(memoryDir)) {
+    for (const filePath of await collectMarkdownFiles(memoryDir, 0)) {
+      if (/^mem-\d+/i.test(path.basename(filePath))) await readSource(filePath, 'mem');
+    }
   }
 
   return buildDocLinkIndex(sources);

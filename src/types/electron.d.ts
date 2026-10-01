@@ -799,9 +799,9 @@ export interface DocItem {
 
 /** Объект, в тексте которого есть ссылка на документ (TASK-122, decision-69). */
 export interface DocBacklink {
-  /** Идентификатор как в источнике: `decision-46`, `doc-5`, `TASK-103`. */
+  /** Идентификатор как в источнике: `decision-46`, `doc-5`, `TASK-103`, `mem-3`. */
   id: string;
-  kind: 'decision' | 'doc' | 'task';
+  kind: 'decision' | 'doc' | 'task' | 'mem';
   title: string;
   status?: string;
 }
