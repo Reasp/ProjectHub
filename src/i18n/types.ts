@@ -289,6 +289,14 @@ export interface TranslationDictionary {
       engineWhisperOption: string;
       engineWebSpeechOption: string;
       engineWebSpeechDesc: string;
+      recognitionLanguageLabel: string;
+      recognitionLanguageUi: string;
+      recognitionLanguageRu: string;
+      recognitionLanguageEn: string;
+      recognitionLanguageAuto: string;
+      recognitionLanguageHint: string;
+      recognitionLanguageAutoNote: string;
+      recognitionLanguageAutoUnavailable: string;
       whisperProviderLabel: string;
       whisperLocalWorkerOption: string;
       whisperLocalWorkerNotice: string;

@@ -198,7 +198,7 @@ function normalizeIntentId(value: unknown): string {
 export interface VoiceClassifierPromptInput {
   /** Распознанная фраза пользователя. */
   transcript: string;
-  /** Язык интерфейса — подсказка модели, на каком языке ждать фразу. */
+  /** Язык распознанной фразы (TASK-117, decision-72) — подсказка модели, как читать фразу. */
   language?: 'ru' | 'en';
   /** Открытые проекты: помогают распознать «переключись на ...». */
   projectNames?: string[];
@@ -246,7 +246,7 @@ export function buildVoiceClassifierPrompt(input: VoiceClassifierPromptInput): s
     sections.push(`## Контекст\n${context.join('\n')}`);
   }
 
-  sections.push(`## Фраза пользователя${input.language === 'en' ? ' (язык интерфейса: английский)' : ''}\n${input.transcript}`);
+  sections.push(`## Фраза пользователя${input.language === 'en' ? ' (язык фразы: английский)' : ''}\n${input.transcript}`);
 
   sections.push(
     '## Формат ответа\n' +

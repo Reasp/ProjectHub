@@ -13,6 +13,8 @@ export type VoiceState =
 /** Откуда фраза: записанная удержанием клавиши закрепляется карточкой результата (TASK-115). */
 export interface VoiceResultMeta {
   pushToTalk: boolean;
+  /** Язык распознанной фразы (TASK-117): по нему работают классификатор и озвучка ответа. */
+  language?: VoiceLanguage;
 }
 
 export type VoiceResultCallback = (transcript: string, isFinal: boolean, meta?: VoiceResultMeta) => void;
@@ -23,6 +25,17 @@ export type { TtsAttemptFailure, TtsNotice } from './ttsReplyPolicy';
 export type WhisperProvider = 'local' | 'groq' | 'openai';
 
 import { getDefaultCommandPhrases } from './voiceCommandPhrases';
+import {
+  DEFAULT_RECOGNITION_LANGUAGE,
+  normalizeRecognitionLanguage,
+  resolvePhraseLanguage,
+  resolveRecognitionRequest,
+  speechLanguageForText,
+  supportsAutoDetect,
+  type RecognitionLanguage,
+  type RecognitionRequestLanguage,
+  type VoiceLanguage
+} from './voiceLanguage';
 import { DEFAULT_WAKE_WORD_PHRASES } from './wakeWord';
 import {
   DEFAULT_BARGE_IN,
@@ -80,7 +93,13 @@ export interface VoiceConfig {
   whisperApiKey: string;
   whisperModel: string;
   whisperEndpoint: string;
+  /** Язык интерфейса: синхронизируется с переключателем EN / RU в шапке. */
   language: 'ru' | 'en';
+  /**
+   * Язык распознавания речи (TASK-117): «как интерфейс», явный язык или автоопределение. Переключатель
+   * EN / RU в шапке его не трогает.
+   */
+  recognitionLanguage: RecognitionLanguage;
   ttsEnabled: boolean;
   /** Какой движок озвучивает текст (TASK-69). */
   ttsEngine: TtsEngine;
@@ -134,6 +153,7 @@ const DEFAULT_CONFIG: VoiceConfig = {
   whisperModel: 'Xenova/whisper-base',
   whisperEndpoint: 'http://127.0.0.1:8000/v1/audio/transcriptions',
   language: 'ru',
+  recognitionLanguage: DEFAULT_RECOGNITION_LANGUAGE,
   ttsEnabled: true,
   // По умолчанию остаётся системный движок: модели Piper ещё не скачаны (decision-25)
   ttsEngine: 'system',
@@ -256,7 +276,13 @@ class VoiceService {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        this.config = { ...DEFAULT_CONFIG, ...JSON.parse(stored) };
+        const parsed = JSON.parse(stored);
+        // У сохранённых до TASK-117 настроек поля нет — «как интерфейс», прежнее поведение
+        this.config = {
+          ...DEFAULT_CONFIG,
+          ...parsed,
+          recognitionLanguage: normalizeRecognitionLanguage(parsed?.recognitionLanguage)
+        };
       }
       if (window.api?.getEncryptedSecret) {
         const encKey = await window.api.getEncryptedSecret('whisperApiKey');
@@ -329,8 +355,23 @@ class VoiceService {
 
   private updateLanguage() {
     if (this.recognition) {
-      this.recognition.lang = this.config.language === 'ru' ? 'ru-RU' : 'en-US';
+      this.recognition.lang = this.webSpeechLang();
     }
+  }
+
+  /** Язык запроса к движку распознавания: явная настройка, автоопределение или язык интерфейса. */
+  private recognitionRequest(): RecognitionRequestLanguage {
+    return resolveRecognitionRequest(
+      this.config.recognitionLanguage,
+      this.config.language,
+      supportsAutoDetect(this.config.engine)
+    );
+  }
+
+  /** Web Speech API языка не определяет: при «Автоопределении» слушает на языке интерфейса. */
+  private webSpeechLang(): string {
+    const lang = resolveRecognitionRequest(this.config.recognitionLanguage, this.config.language, false);
+    return lang === 'en' ? 'en-US' : 'ru-RU';
   }
 
   private setState(state: VoiceState) {
@@ -691,7 +732,7 @@ class VoiceService {
         this.recognition = new SpeechRecognition();
         this.recognition.continuous = true;
         this.recognition.interimResults = true;
-        this.recognition.lang = this.config.language === 'ru' ? 'ru-RU' : 'en-US';
+        this.recognition.lang = this.webSpeechLang();
 
         this.recognition.onstart = () => {
           this.setState('listening_handsfree');
@@ -716,7 +757,14 @@ class VoiceService {
 
           if (finalTranscript) {
             const cleanFinal = finalTranscript.trim();
-            const meta: VoiceResultMeta = { pushToTalk: this.consumeWebSpeechPushToTalk() };
+            const meta: VoiceResultMeta = {
+              pushToTalk: this.consumeWebSpeechPushToTalk(),
+              language: resolvePhraseLanguage({
+                requested: this.recognition.lang === 'en-US' ? 'en' : 'ru',
+                text: cleanFinal,
+                uiLanguage: this.config.language
+              })
+            };
             this.onResultCallbacks.forEach((cb) => {
               try { cb(cleanFinal, true, meta); } catch (e) {}
             });
@@ -1184,13 +1232,21 @@ class VoiceService {
 
     console.log(`[VoiceService] Hands-Free phrase captured (${(totalSamples / 16000).toFixed(2)}s). Dispatching to Whisper worker...`);
 
-    return this.dispatchToWhisper(fullPhrase)
-      .then((text) => {
+    const requested = this.recognitionRequest();
+    return this.dispatchToWhisper(fullPhrase, requested)
+      .then(({ text, language }) => {
         if (text && text.trim()) {
           const clean = text.trim();
-          console.log(`[VoiceService] ✓ Hands-Free transcript: "${clean}"`);
+          const phraseLanguage = resolvePhraseLanguage({
+            reported: language,
+            requested,
+            text: clean,
+            uiLanguage: this.config.language
+          });
+          console.log(`[VoiceService] ✓ Hands-Free transcript (${phraseLanguage}): "${clean}"`);
+          const withLanguage: VoiceResultMeta = { ...meta, language: phraseLanguage };
           this.onResultCallbacks.forEach((cb) => {
-            try { cb(clean, true, meta); } catch (e) {}
+            try { cb(clean, true, withLanguage); } catch (e) {}
           });
         }
       })
@@ -1205,25 +1261,32 @@ class VoiceService {
       });
   }
 
-  private async dispatchToWhisper(pcmSamples: Float32Array): Promise<string> {
-    const { whisperProvider, language } = this.config;
+  /**
+   * Распознаёт фразу. `language` в ответе — язык, который сообщил движок (автоопределение
+   * локального Whisper); облачный путь его не сообщает, язык тогда виден по тексту.
+   */
+  private async dispatchToWhisper(
+    pcmSamples: Float32Array,
+    requested: RecognitionRequestLanguage
+  ): Promise<{ text: string; language?: VoiceLanguage }> {
+    const { whisperProvider } = this.config;
 
     // 1. Local Whisper in isolated Worker thread (Primary)
     if (whisperProvider === 'local' && window.api?.transcribeLocalWhisper) {
       try {
-        const res = await window.api.transcribeLocalWhisper(pcmSamples, language);
-        if (res?.text) return res.text;
+        const res = await window.api.transcribeLocalWhisper(pcmSamples, requested, this.config.language);
+        if (res?.text) return { text: res.text, language: res.language };
       } catch (err) {
         console.warn('[VoiceService] Local Whisper worker failed, checking cloud fallback:', err);
       }
     }
 
     // 2. Cloud Whisper Fallback (WAV buffer)
-    return await this.transcribePcmWithCloud(pcmSamples);
+    return { text: await this.transcribePcmWithCloud(pcmSamples, requested) };
   }
 
-  private async transcribePcmWithCloud(pcmSamples: Float32Array): Promise<string> {
-    const { whisperProvider, whisperApiKey, whisperEndpoint, whisperModel, language } = this.config;
+  private async transcribePcmWithCloud(pcmSamples: Float32Array, requested: RecognitionRequestLanguage): Promise<string> {
+    const { whisperProvider, whisperApiKey, whisperEndpoint, whisperModel } = this.config;
 
     // Только whisperApiKey: ключ AI Studio (Anthropic/DeepSeek) к Groq/OpenAI не подходит
     const apiKey = whisperApiKey?.trim();
@@ -1250,8 +1313,9 @@ class VoiceService {
     const formData = new FormData();
     formData.append('file', wavBlob, 'speech.wav');
     formData.append('model', model);
-    if (language) {
-      formData.append('language', language === 'ru' ? 'ru' : 'en');
+    // Без параметра language Whisper API определяет язык сам (TASK-117)
+    if (requested !== 'auto') {
+      formData.append('language', requested);
     }
     formData.append('temperature', '0.0');
 
@@ -1748,7 +1812,9 @@ class VoiceService {
    */
   async speak(text: string, lang?: 'ru' | 'en'): Promise<void> {
     if (typeof window === 'undefined' || !this.config.ttsEnabled) return;
-    const language = lang || this.config.language;
+    // Без явного языка голос подбирается под язык текста: ответ агента по-русски при интерфейсе EN
+    // читается русским голосом (TASK-117)
+    const language = lang || speechLanguageForText(text, this.config.language);
     // Новая реплика перебивает прежнюю, даже если та ещё ждёт загрузки голоса
     this.abortReplyWait?.();
     const seq = ++this.speechSeq;

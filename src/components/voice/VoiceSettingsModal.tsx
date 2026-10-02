@@ -47,6 +47,7 @@ import type {
 } from '../../types/electron';
 import { CONFIGURABLE_COMMANDS, type CommandPhraseDefinition } from '../../services/voiceCommandPhrases';
 import { describeTtsStatus } from '../../services/ttsStatusView';
+import { autoDetectUnavailable, normalizeRecognitionLanguage } from '../../services/voiceLanguage';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useDialog } from '../../hooks/useDialog';
 import { useTimeoutState, useToast, useTimers } from '../../hooks/useTimeoutState';
@@ -942,6 +943,39 @@ export const VoiceSettingsModal: React.FC<VoiceSettingsModalProps> = ({ isOpen, 
                       {t.voice.settingsModal.engineWebSpeechDesc}
                     </span>
                   </div>
+                )}
+              </div>
+
+              {/* Язык распознавания отдельно от языка интерфейса (TASK-117) */}
+              <div className="space-y-2 p-4 rounded-xl bg-slate-950/60 border border-slate-800">
+                <label htmlFor="voice-recognition-language" className="block text-slate-300 font-semibold mb-1.5">
+                  {t.voice.settingsModal.recognitionLanguageLabel}
+                </label>
+                <select
+                  id="voice-recognition-language"
+                  value={voiceConfig.recognitionLanguage}
+                  onChange={(e) => {
+                    const recognitionLanguage = normalizeRecognitionLanguage(e.target.value);
+                    voiceService.saveConfig({ recognitionLanguage });
+                    setVoiceConfig((c) => ({ ...c, recognitionLanguage }));
+                  }}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="ui">{t.voice.settingsModal.recognitionLanguageUi}</option>
+                  <option value="ru">{t.voice.settingsModal.recognitionLanguageRu}</option>
+                  <option value="en">{t.voice.settingsModal.recognitionLanguageEn}</option>
+                  <option value="auto">{t.voice.settingsModal.recognitionLanguageAuto}</option>
+                </select>
+                <p className="text-[11px] text-slate-500">{t.voice.settingsModal.recognitionLanguageHint}</p>
+                {autoDetectUnavailable(voiceConfig.recognitionLanguage, voiceConfig.engine) ? (
+                  <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-500/30 text-[11px] text-amber-200 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <span>{t.voice.settingsModal.recognitionLanguageAutoUnavailable}</span>
+                  </div>
+                ) : (
+                  voiceConfig.recognitionLanguage === 'auto' && (
+                    <p className="text-[11px] text-indigo-300">{t.voice.settingsModal.recognitionLanguageAutoNote}</p>
+                  )
                 )}
               </div>
 

@@ -228,8 +228,9 @@ export function registerVoiceIpc(ctx: IpcContext) {
   });
 
   // Local Whisper STT Engine
-  ipcMain.handle('voice:transcribeLocal', async (_event, { audioData, language }) => {
-    return await localWhisperService.transcribe(audioData, language);
+  ipcMain.handle('voice:transcribeLocal', async (_event, { audioData, language, fallbackLanguage }) => {
+    const requested = language === 'en' || language === 'auto' ? language : 'ru';
+    return await localWhisperService.transcribe(audioData, requested, fallbackLanguage === 'en' ? 'en' : 'ru');
   });
 
   ipcMain.handle('voice:getLocalWhisperStatus', async () => {

@@ -562,11 +562,14 @@ export const VoiceControlWidget: React.FC = () => {
    * Такой порядок держит привычные команды мгновенными и бесплатными, а модель подключает только
    * к свободной речи.
    */
-  const handleTranscript = useCallback(async (rawText: string) => {
+  const handleTranscript = useCallback(async (rawText: string, phraseLanguage?: 'ru' | 'en') => {
     const config = voiceService.getConfig();
     const { language: lang } = useProjectStore.getState();
     const dict = getDictionary(lang);
+    // Строки интерфейса озвучиваются на языке интерфейса — они на нём написаны. Классификатор
+    // получает язык самой фразы: распознавание может быть на другом языке (TASK-117, decision-72)
     const speakLang = lang === 'ru' ? 'ru' : 'en';
+    const transcriptLang = phraseLanguage ?? speakLang;
 
     // Режим диктовки: всё услышанное печатается в активное окно, кроме явной команды выхода.
     // Ключевое слово здесь намеренно не применяется — диктуют прозу, а не команды, и требовать
@@ -638,7 +641,7 @@ export const VoiceControlWidget: React.FC = () => {
     const response = await window.api
       .classifyVoiceCommand({
         transcript: gate.command,
-        language: speakLang,
+        language: transcriptLang,
         projectNames: projects.filter((p) => activeProjectPaths.includes(p.path)).map((p) => p.name),
         hasPendingApproval: (pendingApprovals[selectedProject?.path || ''] || []).length > 0
       })
@@ -679,15 +682,16 @@ export const VoiceControlWidget: React.FC = () => {
         })
         .catch(() => null);
 
-      const spoken =
-        taskResponse?.ok && taskResponse.text
-          ? summarizeForSpeech(taskResponse.text, { maxChars: 200 })
-          : taskResponse?.error === 'computer_use_disabled'
-            ? dict.voice.feedback.computerUseDisabled
-            : dict.voice.feedback.computerTaskFailed;
+      const fromAgent = Boolean(taskResponse?.ok && taskResponse.text);
+      const spoken = fromAgent
+        ? summarizeForSpeech(taskResponse!.text!, { maxChars: 200 })
+        : taskResponse?.error === 'computer_use_disabled'
+          ? dict.voice.feedback.computerUseDisabled
+          : dict.voice.feedback.computerTaskFailed;
 
       setLastFeedback(spoken);
-      void voiceService.speak(spoken, speakLang);
+      // Ответ агента читается голосом его языка, строка интерфейса — языком интерфейса
+      void voiceService.speak(spoken, fromAgent ? undefined : speakLang);
       return;
     }
 
@@ -734,7 +738,7 @@ export const VoiceControlWidget: React.FC = () => {
       syncToOverlay({ transcript: text });
 
       if (isFinal && text.trim()) {
-        const handled = handleTranscript(text.trim());
+        const handled = handleTranscript(text.trim(), meta?.language);
         if (cardId !== null) {
           const id = cardId;
           void handled.finally(() => updateResultCard(completeCard(resultCardRef.current, id)));

@@ -15,10 +15,20 @@ export interface LocalWhisperState {
   respawnAttempts?: number;
 }
 
+/** Язык запроса: явный или автоопределение по первому шагу декодера (TASK-117). */
+export type WhisperRequestLanguage = 'ru' | 'en' | 'auto';
+
+export interface LocalWhisperResult {
+  text: string;
+  timeMs: number;
+  /** На каком языке распознана речь: заданный или определённый автоматически. */
+  language?: 'ru' | 'en';
+}
+
 interface PendingJob {
   id: string;
-  language: 'ru' | 'en';
-  resolve: (res: { text: string; timeMs: number }) => void;
+  language: WhisperRequestLanguage;
+  resolve: (res: LocalWhisperResult) => void;
   reject: (err: any) => void;
   startTime: number;
   timer: NodeJS.Timeout;
@@ -144,7 +154,10 @@ class LocalWhisperService {
           // иначе воркер, падающий на каждой задаче, перезапускался бы бесконечно
           this.respawnAttempts = 0;
           const job = this.takePendingJob(msg.id);
-          if (job) job.resolve({ text: msg.text, timeMs: msg.timeMs });
+          if (job) {
+            const language = msg.language === 'en' || msg.language === 'ru' ? msg.language : undefined;
+            job.resolve({ text: msg.text, timeMs: msg.timeMs, language });
+          }
         } else if (msg.type === 'error') {
           const job = this.takePendingJob(msg.id);
           if (job) job.reject(new Error(msg.error));
@@ -318,11 +331,15 @@ class LocalWhisperService {
   /**
    * Transcribe 16kHz Mono PCM float audio data.
    * Delegates execution to the isolated Worker thread.
+   *
+   * @param language `auto` — язык определяется по речи (TASK-117)
+   * @param fallbackLanguage язык при неуверенном автоопределении и в запасном пайплайне без него
    */
   async transcribe(
     audioData: Float32Array | ArrayBuffer | number[],
-    language: 'ru' | 'en' = 'ru'
-  ): Promise<{ text: string; timeMs: number }> {
+    language: WhisperRequestLanguage = 'ru',
+    fallbackLanguage: 'ru' | 'en' = 'ru'
+  ): Promise<LocalWhisperResult> {
     const startTime = Date.now();
 
     const floatArray = this.toTransferableFloat32(audioData);
@@ -359,7 +376,7 @@ class LocalWhisperService {
         try {
           // Буфер передаётся в воркер без копирования (transferList)
           worker.postMessage(
-            { type: 'transcribe', id, audioData: floatArray, language },
+            { type: 'transcribe', id, audioData: floatArray, language, fallbackLanguage },
             [floatArray.buffer as ArrayBuffer]
           );
         } catch (err) {
@@ -369,16 +386,17 @@ class LocalWhisperService {
       });
     }
 
-    // 2. In-process fallback
+    // 2. In-process fallback. Автоопределения здесь нет — он живёт в воркере; запасной путь
+    // распознаёт на запасном языке
     if (this.fallbackPipeline) {
-      const targetLang = language === 'en' ? 'english' : 'russian';
+      const spoken = language === 'auto' ? fallbackLanguage : language;
       const output = await this.fallbackPipeline(floatArray, {
-        language: targetLang,
+        language: spoken === 'en' ? 'english' : 'russian',
         task: 'transcribe',
         chunk_length_s: 30,
         stride_length_s: 5
       });
-      return { text: (output?.text || '').trim(), timeMs: Date.now() - startTime };
+      return { text: (output?.text || '').trim(), timeMs: Date.now() - startTime, language: spoken };
     }
 
     // 3. Not ready yet

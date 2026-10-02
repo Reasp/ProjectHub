@@ -3,7 +3,7 @@
   "queryPrefix": "query: ",
   "passagePrefix": "passage: ",
   "chunkerVersion": 2,
-  "docsHash": "5a61736f2377e2169462e173ec7ec93c480a5874364c63d86d408aaa86cce7af",
+  "docsHash": "f58c17f43ca78901c44e9625a84cfcba1cd8b3272022693306f37be4501c358f",
   "files": [
     "backlog/decisions/decision-1 - Vybor-Arkhitektury-I-Tekhnologicheskogo-Steka.md",
     "backlog/decisions/decision-10 - Единый-HITL-контур-для-всех-агентов-и-аудит-лог-решений.md",
@@ -74,6 +74,7 @@
     "backlog/decisions/decision-7 - Local-first-хранение-состояния-и-отсутствие-телеметрии.md",
     "backlog/decisions/decision-70 - Закрытие-карточки-задачи-с-правками-и-факты-памяти-в-обратных-ссылках.md",
     "backlog/decisions/decision-71 - Нарезка-текста-для-Qwen3-TTS-нарастающими-фрагментами-по-абзацам.md",
+    "backlog/decisions/decision-72 - Язык-распознавания-речи-отдельно-от-языка-интерфейса-и-язык-фразы.md",
     "backlog/decisions/decision-8 - Результаты-агентов-материализуются-в-git-авто-коммит-в-worktree-и-безопасное-слияние.md",
     "backlog/decisions/decision-9 - Роль-агента-как-first-class-сущность.md",
     "backlog/docs/doc-1 - App-Icon-Concepts.md",
@@ -87,6 +88,6 @@
     "backlog/docs/doc-8 - Human-in-the-loop-для-режима-Claude-CLI-в-AI-Studio.md",
     "backlog/docs/doc-9 - Контекст-проекта-и-состояние-системы-Context-Dump.md"
   ],
-  "chunks": 910,
-  "builtAt": "2026-10-01T20:19:07.562Z"
+  "chunks": 920,
+  "builtAt": "2026-10-01T23:54:53.583Z"
 }

@@ -1141,7 +1141,11 @@ export interface IElectronAPI {
   deleteFileOrFolder: (projectPath: string, relativePath: string) => Promise<boolean>;
 
   // Local Whisper STT Engine
-  transcribeLocalWhisper: (audioData: number[] | Float32Array, language?: 'ru' | 'en') => Promise<{ text: string; timeMs: number }>;
+  transcribeLocalWhisper: (
+    audioData: number[] | Float32Array,
+    language?: 'ru' | 'en' | 'auto',
+    fallbackLanguage?: 'ru' | 'en'
+  ) => Promise<{ text: string; timeMs: number; language?: 'ru' | 'en' }>;
   getLocalWhisperStatus: () => Promise<LocalWhisperStatusInfo>;
   warmupLocalWhisper: () => Promise<LocalWhisperStatusInfo>;
 

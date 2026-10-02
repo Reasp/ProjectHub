@@ -455,10 +455,16 @@ const api: IElectronAPI = {
 
   // Local Whisper STT Engine
   // Float32Array уходит через IPC как есть (structured clone сохраняет TypedArray) — без Array.from
-  transcribeLocalWhisper: (audioData: number[] | Float32Array, language?: 'ru' | 'en') =>
+  // language: 'auto' — язык определяется по речи, fallbackLanguage — при неуверенности (TASK-117)
+  transcribeLocalWhisper: (
+    audioData: number[] | Float32Array,
+    language?: 'ru' | 'en' | 'auto',
+    fallbackLanguage?: 'ru' | 'en'
+  ) =>
     ipcRenderer.invoke('voice:transcribeLocal', {
       audioData: audioData instanceof Float32Array ? audioData : Float32Array.from(audioData),
-      language
+      language,
+      fallbackLanguage
     }),
   getLocalWhisperStatus: () => ipcRenderer.invoke('voice:getLocalWhisperStatus'),
   // Ленивый прогрев модели: вызывается при первом включении hands-free или из настроек
